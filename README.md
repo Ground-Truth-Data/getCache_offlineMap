@@ -76,7 +76,7 @@ Instruments attached to a stand-in produce confident wrong answers.
 |---|---|---|---|
 | Vector roads — plus water, town labels, hospital/campsite POIs, all in the same blob | One Cloudflare R2 bucket (`offline-tiles`) holding a full-planet OpenStreetMap extract (`planet.pmtiles`); the Worker in `worker/` range-reads it and serves one `/pack` blob per pin | yes | 30 km (`lib/contract/grid.ts`) |
 | Satellite photo | EOX Sentinel-2 cloudless (public WMTS, no key, ~10 m/px), baked on the phone | yes | 2 km per photo; photos along a line overlap into a ribbon (`lib/onPhone/satellite/satelliteImage.ts`) |
-| Fires | NASA FIRMS — VIIRS on NOAA-20, NOAA-21 and Suomi-NPP, last 48 h, proxied through the same Worker's `/fires` route so the API key stays a Worker secret | **not yet** — fetch/store runs, render is Known broken #6 | 500 km (`lib/shared/fireContract.ts`) |
+| Fires | NASA FIRMS — VIIRS on NOAA-20, NOAA-21 and Suomi-NPP, last 48 h, proxied through the same Worker's `/fires` route so the API key stays a Worker secret | **not yet** — fetch/store runs, render is Known broken #5 | 500 km (`lib/shared/fireContract.ts`) |
 
 Everything lands in IndexedDB under a 1 GB budget (`OFFLINE_BUDGET_BYTES`)
 and renders with no network.
@@ -177,41 +177,37 @@ the online child.
 
 ## Known broken — pick any of these up
 
-1. **LOCAL WORKER SERVES ITALY.** `worker/setupLocalTiles.sh` seeds the local
-   R2 with a Florence sample archive, so the `worker-local-dev` tier returns empty
-   packs for every North American pin. Replace with a Canadian extract.
-
-2. **AN EMPTY ANSWER LOOKS LIKE SUCCESS.** The Worker returns HTTP 200 with an
+1. **AN EMPTY ANSWER LOOKS LIKE SUCCESS.** The Worker returns HTTP 200 with an
    empty pack when it has nothing. A miss is indistinguishable from a hit at
    every layer above. Make it error.
 
-3. **NO PROGRESS DURING A BAKE.** ~8 s per area, ~39 areas — about 5 minutes of
+2. **NO PROGRESS DURING A BAKE.** ~8 s per area, ~39 areas — about 5 minutes of
    black rectangle. "Still downloading" and "broken" look identical.
 
-4. **COVERAGE NEVER EVICTS BELOW 1 GB** (`OFFLINE_BUDGET_BYTES`), and stores
+3. **COVERAGE NEVER EVICTS BELOW 1 GB** (`OFFLINE_BUDGET_BYTES`), and stores
    no pin or map identity — areas from deleted pins accumulate forever and are
    unattributable. A real session showed 392 areas across the continent while
    the map was over Ontario.
 
-5. **DEAD EXPORTS.** Written, exported, never called: `setCoverageMirror`,
+4. **DEAD EXPORTS.** Written, exported, never called: `setCoverageMirror`,
    `parseCellKey`, `tileHoldsRadius`, `idbDeleteMany`,
    `offlineDownloadGateStats`, `wallLabelLayers`, and the whole of
    `lib/shared/mapboxErrorCapture.ts`. Wire or delete.
 
-6. **FIRES RENDER IS A NO-OP.** The Fires switch renders and clicks but its
+5. **FIRES RENDER IS A NO-OP.** The Fires switch renders and clicks but its
    `ids` array is empty (`lib/onPhone/render/wallLegend.ts`) — no fire layer is
    mounted, so the CONFIG row shows dead with a "not yet" tag. The fetch/store
    half runs (`FIRE_REFRESH_ENABLED = true` in `lib/shared/bakeFlags.ts`), and
    `routes/fires/v2/fireLayerV2.ts` exists but nothing imports it yet. Also:
    the Worker's `/fires` route needs a NASA FIRMS Area API key (a Worker
-   secret; free at firms.modaps.eosdis.nasa.gov) — the worker-local-dev sample setup
-   ships none, so expect `/fires` to fail until you add one with
+   secret; free at firms.modaps.eosdis.nasa.gov) — a fresh local Worker has
+   none, so expect `/fires` to fail until you add one with
    `wrangler secret put`. Done = that switch turns real fire features on and
    off. Hospitals and Places are NOT in this bucket — they already ride in the
    `/pack` blob per pin (see `lib/contract/packLayers.ts`); a row reading
    "dl Ns · 0 in view" means the download worked and the area simply has none.
 
-7. **THE WORKER TRUSTS EVERYONE.** Every request to `tiles-prod` is anonymous —
+6. **THE WORKER TRUSTS EVERYONE.** Every request to `tiles-prod` is anonymous —
    the app has no more standing than a stranger's `curl`, so a third party
    could build their own service on the tile Worker. Add a shared token: the
    client sends a header read from `rapper/.env` (beside `VITE_TILES_HOST`),
@@ -220,7 +216,7 @@ the online child.
    token and freeloaders go dark while the app updates. Build and test it
    against `worker-local-dev`; no Cloudflare account needed.
 
-8. **THE MAP UI HAS NO HOST HERE.** Nothing in this repo mounts `lib/mapUi/` or
+7. **THE MAP UI HAS NO HOST HERE.** Nothing in this repo mounts `lib/mapUi/` or
    `lib/mapState/` — only ReTreever does, through `retreeverMapPorts.ts`. Five
    of them (`SnakeRuler`, `userLocation`, `vertexDrag`, `overlayManager`,
    `pinMarkers`) import `getCache_OnlineMap`, so they need that sibling

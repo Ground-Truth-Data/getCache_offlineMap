@@ -15,15 +15,17 @@ GET /fires?lng=&lat=&km=  NASA FIRMS hotspots for one disc — proxied so MAP_KE
 - Which Worker the app talks to (prod / dev / local) is the client's business:
   `../lib/worker/README.md`.
 
-## Run it locally — no Cloudflare account
+## Run it locally
 
 ```bash
+npx wrangler login    # once — or export CLOUDFLARE_API_TOKEN (R2 read is enough)
 npm install
-npm run dev:local     # seeds a sample .pmtiles into the local R2 simulator, then wrangler dev --local
+npm run dev           # the Worker runs here, on :8787, reading the REAL planet.pmtiles in R2
 ```
 
-⚠️ The sample is one city (Florence, ~6 MB). Every North American pin gets an
-empty 200 from it — see the root README's "Known broken".
+There is no local copy of the data and no sample extract: the bucket binding
+is `remote = true` in `wrangler.toml`, so a local run answers exactly what
+prod answers. Pick `worker-local-dev` in the map's CONFIG panel.
 
 ## Deploy
 

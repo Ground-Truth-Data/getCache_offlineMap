@@ -5,13 +5,11 @@
  "private": true,
  "type": "module",
  "scripts": {
-  "deploy": "../worker-cloud-prod/deployProduction.sh",
-  "deploy:dev": "../worker-cloud-dev/deployDev.sh",
   "dev": "wrangler dev",
   "typecheck": "tsc --noEmit",
   "test": "vitest run",
-  "dev:local": "./setupLocalTiles.sh && wrangler dev --local",
-  "dev:cloud": "wrangler dev --remote"
+  "deploy:dev": "../worker-cloud-dev/deployDev.sh",
+  "deploy": "../worker-cloud-prod/deployProduction.sh"
  },
  "dependencies": {
   "fflate": "^0.8.3",
