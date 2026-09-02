@@ -29,7 +29,7 @@ import hospitalsPack from "./hospitalsWorld.v1.bin";
 /** Edge-cache buster for /hospitals — the bundled pack has no object key, so
  *  this const plays HOSPITALS_KEY's old role. Bump it with every re-bake
  *  (bakeHospitals.mjs prints the value to use). */
-const HOSPITALS_BUILD = "v1-216117-20260901";
+const HOSPITALS_BUILD = "v1-209173-20260901";
 
 /** Bump whenever the PACK CONTENTS change. Part of the edge cache key, so a
  *  new build can never be masked by a year-old immutable cache entry. */

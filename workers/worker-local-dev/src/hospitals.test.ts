@@ -53,13 +53,28 @@ describe("hospitalsCollection", () => {
 		expect(fc.features[0].properties.emergency).toBe("yes");
 		expect("emergency" in fc.features[1].properties).toBe(false);
 	});
+
+	it("rides phone through, and never turns a null emergency into a property", () => {
+		const full: HospitalEntry = [-122.7, 53.9, "UHNBC", "yes", "250-565-2000"];
+		const phoneOnly: HospitalEntry = [-122.8, 53.95, "Lakes", null, "250-692-2400"];
+		const fc = hospitalsCollection([[full, phoneOnly]], anchor[0], anchor[1]);
+		expect(fc.features[0].properties).toEqual({
+			name: "UHNBC",
+			emergency: "yes",
+			phone: "250-565-2000",
+		});
+		expect(fc.features[1].properties).toEqual({
+			name: "Lakes",
+			phone: "250-692-2400",
+		});
+	});
 });
 
 describe("bundled pack", () => {
 	it("round-trips: bake format → parse → cell read", () => {
 		// Mirrors bakeHospitals.mjs's serializer byte-for-byte, in miniature.
 		const enc = new TextEncoder();
-		const cellA: HospitalEntry[] = [[-122.7, 53.9, "UHNBC", "yes"]];
+		const cellA: HospitalEntry[] = [[-122.7, 53.9, "UHNBC", "yes", "250-565-2000"]];
 		const cellB: HospitalEntry[] = [[-79.4, 43.7, "Toronto General"]];
 		const aBytes = enc.encode(JSON.stringify(cellA));
 		const bBytes = enc.encode(JSON.stringify(cellB));

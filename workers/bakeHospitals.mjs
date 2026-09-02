@@ -12,11 +12,18 @@
  * z12 holds 13 of 30), and no local copy of the 127 GB archive exists to walk.
  * Overpass also carries `emergency=*`, which Protomaps' pois layer drops.
  *
+ * Country blocks (the block law — see hospitalBlocks/ and the refresh-hospitals
+ * skill): a country with a trusted national registry gets its ENTIRE block from
+ * that registry — every OSM row inside the country is dropped and the
+ * registry's rows added. Never row-merged; dedupe is by construction.
+ *
  * Output: worker-local-dev/src/hospitalsWorld.v1.bin —
  *   [uint32 LE indexLen][index JSON][cell JSON blobs, concatenated]
  *   index = { v, cellDeg, count, generated, cells: { "cy_cx": [offset, len] } }
  *   offsets are relative to the first byte AFTER the index. Each cell blob is
- *   a JSON array of [lng, lat, name] or [lng, lat, name, emergency].
+ *   a JSON array of [lng, lat, name, emergency?, phone?] — emergency a string
+ *   ("yes"/"ambulance_station"/…) or null when unknown, phone a string;
+ *   trailing null/absent fields are trimmed, so [lng, lat, name] is valid.
  * Same header shape as the /pack wire format (packBuilder.ts serializePack),
  * so both sides of the bucket speak one dialect.
  *
@@ -30,6 +37,11 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { makeEntry } from "./hospitalBlocks/lib.mjs";
+import * as blockFr from "./hospitalBlocks/fr.mjs";
+import * as blockUs from "./hospitalBlocks/us.mjs";
+
+const BLOCKS = [blockFr, blockUs];
 
 // ⚠️ boxes are (S, W, N, E), sized for what Overpass will answer in one query.
 // They overlap on purpose — dedupe below makes overlap free, gaps are the bug.
@@ -117,20 +129,59 @@ for (const [name, s, w, n, e] of REGIONS) {
 		const lat = el.lat ?? el.center?.lat;
 		const lon = el.lon ?? el.center?.lon;
 		if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+		// emergency is tri-state: yes / no / untagged. An explicit "no" answered
+		// the question — drop it (a confirmed no-ER hospital is noise on a
+		// safety layer). Untagged stays: absence means "unknown", never "no ER",
+		// and most of the world's real ERs are untagged. (Chris, 1 Sep 2026.)
+		if (el.tags?.emergency === "no") continue;
 		const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
 		if (byCoord.has(key)) continue;
-		const entry = [
-			Number(lon.toFixed(5)),
-			Number(lat.toFixed(5)),
-			el.tags?.name ?? "Hospital",
-		];
-		// emergency=* carried through raw when tagged (yes/no/…) — coverage is
-		// patchy, so absence means "unknown", never "no ER".
-		if (typeof el.tags?.emergency === "string") entry.push(el.tags.emergency);
-		byCoord.set(key, entry);
+		// emergency=* carried through raw when tagged (yes, ambulance_station, …).
+		const emergency =
+			typeof el.tags?.emergency === "string" ? el.tags.emergency : null;
+		const phone = (el.tags?.phone ?? el.tags?.["contact:phone"])?.trim();
+		byCoord.set(
+			key,
+			makeEntry(lon, lat, el.tags?.name ?? "Hospital", emergency, phone || undefined),
+		);
 		kept++;
 	}
 	console.log(`[${name}] fetched ${elements.length}, new after dedupe ${kept} (total ${byCoord.size})`);
+}
+
+// ── country blocks: registry replaces OSM wholesale inside its country ──────
+for (const block of BLOCKS) {
+	const contains = await block.bounds();
+	let dropped = 0;
+	for (const [key, entry] of byCoord) {
+		if (contains(entry[0], entry[1])) {
+			byCoord.delete(key);
+			dropped++;
+		}
+	}
+	const rows = await block.fetch();
+	let added = 0;
+	let outside = 0; // e.g. FINESS in St-Pierre-et-Miquelon, CMS in Puerto Rico —
+	let collided = 0; // separate NE features, so those stay OSM-covered.
+	for (const entry of rows) {
+		if (!contains(entry[0], entry[1])) {
+			outside++;
+			continue;
+		}
+		const key = `${entry[1].toFixed(5)},${entry[0].toFixed(5)}`;
+		if (byCoord.has(key)) {
+			collided++;
+			continue;
+		}
+		byCoord.set(key, entry);
+		added++;
+	}
+	console.log(
+		`[block ${block.countryCode}] OSM dropped ${dropped}, registry added ${added}` +
+			(outside ? `, outside-bounds skipped ${outside}` : "") +
+			(collided ? `, same-coord collapsed ${collided}` : "") +
+			` — ${block.source}`,
+	);
 }
 
 if (byCoord.size < 50_000) {

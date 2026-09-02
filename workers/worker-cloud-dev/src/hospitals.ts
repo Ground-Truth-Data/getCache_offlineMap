@@ -13,7 +13,9 @@ export const HOSPITAL_RADIUS_KM = 200;
 /** Pack format — same header dialect as /pack (packBuilder.ts serializePack):
  *  [uint32 LE indexLen][index JSON][cell JSON blobs, concatenated].
  *  Cell offsets are relative to the first byte AFTER the index. A cell blob is
- *  a JSON array of [lng, lat, name] or [lng, lat, name, emergency]. */
+ *  a JSON array of [lng, lat, name, emergency?, phone?] — emergency a string
+ *  ("yes"/"ambulance_station"/…) or null when unknown, phone a string; trailing
+ *  null/absent fields are trimmed, so old-shape [lng, lat, name] stays valid. */
 export interface HospitalsIndex {
   v: number;
   /** Grid cell size in degrees (5 → 72×36 world grid, keys "cy_cx"). */
@@ -25,7 +27,8 @@ export interface HospitalsIndex {
 
 export type HospitalEntry =
   | [number, number, string]
-  | [number, number, string, string];
+  | [number, number, string, string | null]
+  | [number, number, string, string | null, string];
 
 /** Parse the bundled pack once (call at first request, cache the result —
  *  module scope survives across requests within an isolate). Throws on a
@@ -109,13 +112,14 @@ export function haversineKm(
 interface HospitalFeature {
   type: "Feature";
   geometry: { type: "Point"; coordinates: [number, number] };
-  properties: { name: string; emergency?: string };
+  properties: { name: string; emergency?: string; phone?: string };
 }
 
 /** The response body: every hospital in `cellArrays` within the radius, as a
- *  FeatureCollection. `emergency` rides through raw (yes/no/…) ONLY when OSM
- *  tags it — absence means "unknown", so the UI may badge on it but the layer
- *  must never filter to ER-only. */
+ *  FeatureCollection. `emergency` rides through raw (yes/…) ONLY when the
+ *  source states it — null/absent means "unknown" and is omitted, so the UI
+ *  may badge on it but the layer must never filter to ER-only. `phone` rides
+ *  through when present. */
 export function hospitalsCollection(
   cellArrays: HospitalEntry[][],
   lng: number,
@@ -127,6 +131,7 @@ export function hospitalsCollection(
       if (haversineKm(lat, lng, e[1], e[0]) > HOSPITAL_RADIUS_KM) continue;
       const properties: HospitalFeature["properties"] = { name: e[2] };
       if (e.length > 3 && typeof e[3] === "string") properties.emergency = e[3];
+      if (e.length > 4 && typeof e[4] === "string") properties.phone = e[4];
       features.push({
         type: "Feature",
         geometry: { type: "Point", coordinates: [e[0], e[1]] },
