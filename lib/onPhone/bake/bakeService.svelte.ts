@@ -139,8 +139,25 @@ let touchByKey = new Map<string, number>();
 
 // SATELLITE BACKOFF — a failed photo bake gets an exponential cooldown (cap 15min) so retries don't keep hammering a throttled source; does NOT gate roads, only the photo.
 const satCooldown = new Map<string, { until: number; fails: number }>();
-// FIRE BACKOFF — same shape, separate map: a throttled photo source must not suppress fires, and a fire-source outage must not stall photo bakes.
-const fireCooldown = new Map<string, { until: number; fails: number }>();
+// FIRE BREAKER — ONE per host, never per area: the fires Worker is up or it isn't, so a per-area cooldown only rediscovered the same dead host once per area per tick. Separate from satCooldown: a fire outage must not stall photo bakes.
+let fireBreaker: { until: number; fails: number } | null = null;
+// WORKER BREAKER — the tiles Worker serves packs AND fires, so a connection-level failure from either pass (fetch's TypeError: refused, DNS, CORS) pauses both. HTTP errors and timeouts are the server answering and stay per-area.
+let workerBreaker: { until: number; fails: number } | null = null;
+function isHostDown(err: unknown): boolean {
+	return err instanceof TypeError;
+}
+function workerBreakerOpen(): boolean {
+	return workerBreaker !== null && workerBreaker.until > Date.now();
+}
+function tripWorkerBreaker(pass: string, err: unknown): void {
+	const fails = (workerBreaker?.fails ?? 0) + 1;
+	const backoff = Math.min(900_000, 30_000 * 2 ** Math.min(fails - 1, 5));
+	workerBreaker = { fails, until: Date.now() + backoff };
+	console.warn(
+		`[offline-bake] tiles Worker unreachable (seen by ${pass}) — roads and fires paused, attempt ${fails}, retrying in ${Math.round(backoff / 1000)}s`,
+		err,
+	);
+}
 // THIS PASS's live position (null = unknown/not permitted) — read once at the top of bakeAll and reused by the fire pass.
 let liveFix: [number, number] | null = null;
 // Did THIS pass change anything on disk (download/bake/eviction)? Drives the generation bump that tells the viewer to re-decode.
@@ -285,7 +302,10 @@ async function ensureAreaData(
 			hasLines = true;
 			lineBytes = prevCov?.lineBytes ?? 0;
 			lineCount = prevCov?.lineCount ?? 0;
-		} else if (typeof navigator !== "undefined" && navigator.onLine === false) {
+		} else if (
+			(typeof navigator !== "undefined" && navigator.onLine === false) ||
+			workerBreakerOpen()
+		) {
 			// OFFLINE — skip quietly (area stays un-recorded for the next ONLINE pass); throwing here would abort the whole pass and starve the rest.
 		} else {
 			// ⛔ Per-area logging used to print 3 lines × dozens of areas (mostly identical) — now summarized once in the pass tally; per-area detail via localStorage.rtVerbose='wall'.
@@ -302,9 +322,11 @@ async function ensureAreaData(
 				dl = await downloadV4Area(lng, lat, undefined, corridor);
 			} catch (err) {
 				doneRoads(true); // count it as a failed run, not a missing one
+				if (isHostDown(err)) tripWorkerBreaker("roads", err);
 				throw err;
 			}
 			doneRoads();
+			workerBreaker = null;
 			setAt(null);
 			const ms = Date.now() - t0;
 			vlog(
@@ -377,11 +399,13 @@ async function refreshFires(
 
 	// ARRIVAL — ignores the TTL once; consumed (not just read) so a failed/skipped pass can't leave it armed and re-fetch every 20s.
 	const onDemand = fires.takeArrival();
+	// An arrival (boot, back online, tab visible) also re-arms the breaker: the user just asked, so a host declared dead gets one fresh probe.
+	if (onDemand) fireBreaker = null;
+	if (fireBreaker && fireBreaker.until > Date.now()) return;
+	if (workerBreakerOpen()) return;
 
 	for (const [lng, lat] of centres) {
 		const key = satImageKey([lng, lat]);
-		const cd = fireCooldown.get(key);
-		if (cd && cd.until > Date.now()) continue;
 		try {
 			const prev = await fires.read(key);
 			// TTL answers "gone stale?" not "did the user just arrive and ask?" — a 59-min-old record passing fireIsFresh silently handed an hour-old answer; `onDemand` covers that moment.
@@ -403,7 +427,8 @@ async function refreshFires(
 				// COPIED, not aliased — sharing the port's array with the cache entry would let a later mutation on either reach back into the other (the lossy-copy trap). [[quality704-autosave-lossy-copy-trap]]
 				hotspots: [...r.hotspots],
 			});
-			fireCooldown.delete(key);
+			fireBreaker = null;
+			workerBreaker = null;
 			noteCircuit("fires", "ok", `${r.hotspots.length} hotspots · ${r.sourcesOk}/3 sats`);
 			noteDownloadedBytes(r.bytes); // tally toward the cellular gate
 			passChanged = true; // new dots → tell the viewer to repaint
@@ -413,15 +438,20 @@ async function refreshFires(
 			);
 		} catch (err) {
 			noteCircuit("fires", "err", err instanceof Error ? err.message : String(err));
-			// Same exponential backoff as the satellite bake (30s → 15m cap); the PREVIOUS record is deliberately left in place.
-			const fails = (cd?.fails ?? 0) + 1;
+			if (isHostDown(err)) {
+				tripWorkerBreaker("fires", err);
+				return;
+			}
+			// Same exponential backoff as the satellite bake (30s → 15m cap); previous records are deliberately left in place. The first failure ends the pass — the remaining areas would only fail against the same feed.
+			const fails = (fireBreaker?.fails ?? 0) + 1;
 			const backoff = Math.min(900_000, 30_000 * 2 ** Math.min(fails - 1, 5));
-			fireCooldown.set(key, { fails, until: Date.now() + backoff });
+			fireBreaker = { fails, until: Date.now() + backoff };
 			// codestyle-allow-swallow: not a swallow — this catch drives the retry backoff and warns by default; the layer keeps its last good hotspots.
 			console.warn(
-				`[v4 fire] fetch failed for ${key} (attempt ${fails}, retrying in ${Math.round(backoff / 1000)}s) — keeping cached hotspots`,
+				`[v4 fire] fires feed failed at ${key} — ${centres.length} area(s) paused, attempt ${fails}, retrying in ${Math.round(backoff / 1000)}s — keeping cached hotspots`,
 				err,
 			);
+			return;
 		}
 	}
 }
@@ -596,6 +626,7 @@ async function bakeAll(): Promise<void> {
 					}
 					break;
 				}
+				if (isHostDown(err)) continue; // tripWorkerBreaker already said so once
 				console.warn("[offline-bake] area failed (retry next pass)", err);
 			}
 		}
@@ -839,6 +870,7 @@ export function startOfflineBakeService(hostPorts: HostPorts): () => void {
 	if (typeof document !== "undefined") {
 		const onVisible = () => {
 			if (document.visibilityState === "visible") {
+				workerBreaker = null;
 				hostPorts.fires?.arrival();
 				kickBake();
 			}
@@ -852,6 +884,7 @@ export function startOfflineBakeService(hostPorts: HostPorts): () => void {
 	// ARRIVAL #3 — connectivity returns (the field moment). refreshFires bails while offline, so without this the next 20s tick finds a "fresh" record and skips — the arrival TTL alone gets most wrong.
 	if (typeof window !== "undefined") {
 		const onOnline = () => {
+			workerBreaker = null;
 			hostPorts.fires?.arrival();
 			kickBake();
 		};
