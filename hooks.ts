@@ -5,7 +5,14 @@ import type { Reroute } from "@sveltejs/kit";
 const SERVED: string[] = ["/api/parentGuard"];
 const DEFAULT = "/offline";
 
+// Both tiers mount this child under /app; a solo install serves it flat. The
+// same link (`/app/offline`) must land in both, so the prefix is stripped here.
+const APP_PREFIX = "/app";
+
 export const reroute: Reroute = ({ url }) => {
-	const known = [DEFAULT, ...SERVED].some((p) => url.pathname === p);
-	if (!known) return DEFAULT;
+	const p = url.pathname.startsWith(APP_PREFIX + "/")
+		? url.pathname.slice(APP_PREFIX.length)
+		: url.pathname;
+	const known = [DEFAULT, ...SERVED].some((k) => p === k);
+	return known ? p : DEFAULT;
 };

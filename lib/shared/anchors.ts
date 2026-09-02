@@ -1,5 +1,5 @@
 /**
- * anchors.ts — canonical "where does a feature get offline blobs" map, shared by the reconcile (`/mobile/offlinev4`) and the debug array (`/debug/blobs/array`).
+ * anchors.ts — canonical "where does a feature get offline blobs" map, shared by the reconcile (`/mobile/offlinev4`) and the debug array (`/app/debug/blobs/array`).
  * Point → one blob at the point. Line → sampled ALONG it (`sampleLineAnchors`), a ribbon not one midpoint. Polygon → ONE blob at centroid (`polygonAnchor`), deters huge polys. PDF/overlay → a blob at each of the four `overlayBounds` corners.
  * Overlap is expected — anchors dedup downstream by `satImageKey`, tile discs share one global deduped pile, nothing bakes twice.
  */

@@ -55,7 +55,7 @@ describe("lastMapRoute", () => {
 
 		it("ignores a route that is not one of the two maps", () => {
 			saveLastMapRoute(OFFLINE_MAP_ROUTE);
-			saveLastMapRoute("/cache" as never);
+			saveLastMapRoute("/app/cache" as never);
 			expect(loadLastMapRoute()).toBe(OFFLINE_MAP_ROUTE);
 		});
 	});
@@ -114,14 +114,14 @@ describe("lastMapRoute", () => {
 		});
 
 		it("is true for sub-paths and query-bearing paths", () => {
-			expect(isMapPath("/map/gdal")).toBe(true);
+			expect(isMapPath("/app/map/gdal")).toBe(true);
 		});
 
 		it("is false for the other tabs", () => {
-			expect(isMapPath("/cache")).toBe(false);
-			expect(isMapPath("/quality704")).toBe(false);
-			expect(isMapPath("/stats")).toBe(false);
-			expect(isMapPath("/inbox")).toBe(false);
+			expect(isMapPath("/app/cache")).toBe(false);
+			expect(isMapPath("/app/quality704")).toBe(false);
+			expect(isMapPath("/app/stats")).toBe(false);
+			expect(isMapPath("/app/inbox")).toBe(false);
 		});
 	});
 });

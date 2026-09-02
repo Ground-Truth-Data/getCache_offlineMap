@@ -1,5 +1,5 @@
-export const ONLINE_MAP_ROUTE = "/map";
-export const OFFLINE_MAP_ROUTE = "/offline";
+export const ONLINE_MAP_ROUTE = "/app/map";
+export const OFFLINE_MAP_ROUTE = "/app/offline";
 
 export type MapRoute = typeof ONLINE_MAP_ROUTE | typeof OFFLINE_MAP_ROUTE;
 
