@@ -10,6 +10,7 @@
 import type * as maplibregl from "maplibre-gl";
 
 import { fireEntriesNear } from "../../../routes/fires/fireCache";
+import { glyphStack } from "../../shared/glyphStack";
 
 export const FIRE_LAYER_IDS = {
 	src: "v4-fire-geo",
@@ -70,8 +71,14 @@ export function attachFireLayer(map: maplibregl.Map): FireLayerHandle {
 			filter: ["has", "point_count"],
 			layout: {
 				"text-field": ["get", "point_count_abbreviated"],
-				// The one bundled fontstack — see wallLabels.ts.
-				"text-font": ["Noto Sans Regular"],
+				// ASK THE MAP, never write the stack. The hosted style serves
+				// DIN/Arial and no Noto; the offline base serves Noto and nothing
+				// else — disjoint, so a literal is wrong on one of them by
+				// construction, and a symbol layer asking for a font its style
+				// cannot serve re-requests the missing range once per tile,
+				// forever. Inlined at the font site, not hoisted: glyphStacks.test.ts
+				// scans the source text right after the key.
+				"text-font": glyphStack(map as never),
 				"text-size": 11,
 			},
 			paint: { "text-color": "#ffffff" },

@@ -2,6 +2,7 @@
 import Layout from "$rig/Layout.svelte";
 import PhoneRig from "$gc/PhoneRig.svelte";
 import logoUrl from "$gc/assets/GC_fly_logo_transparent.webp";
+import iconUrl from "$gc/assets/favicon.png";
 import { configureTilesFromEnv } from "../lib/worker/worker-local-dev/tilesFromEnv";
 
 configureTilesFromEnv();
@@ -16,6 +17,6 @@ const CHILD = {
 let { children } = $props();
 </script>
 
-<Layout child={CHILD} logo={logoUrl}>
+<Layout child={CHILD} logo={logoUrl} icon={iconUrl}>
 	<PhoneRig>{@render children()}</PhoneRig>
 </Layout>
