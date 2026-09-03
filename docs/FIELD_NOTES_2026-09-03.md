@@ -31,14 +31,12 @@ beyond its native resolution (a ~2 km photo stretched across z16), and did
 anything change the raster's maxzoom/resampling? Compare an old bake vs a fresh
 pv48 bake of the same spot before assuming.
 
-## 3. Fires: red everywhere off prod
+## 3. Fires red on worker-local-dev
 
-- On **worker-local-dev**: `/fires` returns 500 — no `FIRMS_MAP_KEY` locally.
-  Fine if that's the accepted local story, but then the rail should say
-  "no fire key locally", not a generic red err.
-- On **worker-cloud-dev** (freshly deployed): fires still red for Chris. Check
-  whether the dev Worker has the `FIRMS_MAP_KEY` secret set at all —
-  `npx wrangler secret list --env dev`. Prod has it; dev may never have.
+`/fires` returns 500 locally — no `FIRMS_MAP_KEY` on a laptop. Fine if that's
+the accepted local story, but then the rail should say "no fire key locally",
+not a generic red err. (Cloud-dev is fixed: the secret was missing on
+offline-tiles-dev, set 3 Sep — `/fires` now 200s there.)
 
 ## 4. Hospitals have no pin-card
 
