@@ -55,9 +55,12 @@ counting, and totals push 10 s. Two separate questions:
   ~10 s. The gap between "bytes landed" and "painted" was 5.7 s for the
   satellite (`paintLagMs: 5729`). The paint lag looks like the bigger fish.
 
-## 6. Memory: ~800 MB peaks
+## 6. Memory: peaks past 1.2 GB
 
-Peak 806 MB main-thread (avg ~330 MB) during normal pin/zoom play. Ideas
+Peak 806 MB main-thread (avg ~330 MB) in the first session; a later session the
+same day hit **1222 MB** (avg 601 MB) on worker-local-dev around z8. The rail's
+graph shows one sharp spike then a fall back to ~170 MB, so GC does reclaim —
+the problem is the spike height, and it lines up with bake activity. Ideas
 floated, in Chris's words, roughly:
 - draw/decode less at high zoom, truncate harder;
 - make the spikes less spiky (the peak graph shows sharp bake-time spikes);
