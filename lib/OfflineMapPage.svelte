@@ -44,6 +44,7 @@
     import { attachDoubleTapToPin } from "./shared/doubleTapToPin";
     import { startOfflineBakeService } from "./onPhone/bake/bakeService.svelte";
     import {
+        circuitFocus,
         resetCircuits,
         subscribeCircuits,
     } from "./shared/workMeter.svelte";
@@ -539,25 +540,96 @@
                         });
 
                         // ── THE SATELLITE PHOTOS ─────────────────────────────
+                        // VIEWPORT-MOUNTED. Photos endure in IndexedDB; the map only
+                        // holds the ones the camera can see at photo scale. One
+                        // permanent layer per pin put 321 sources on the map at once
+                        // and zoom-out freed nothing (measured 3 Sep, field notes §6);
+                        // unmount releases the decoded image, remount is a fast IDB
+                        // read. The focused (just-dropped) pin is ALWAYS wanted —
+                        // paintWatch can only green its row from a mounted layer.
                         satMount = createSatelliteMount(map);
+                        // Below this a 2 km photo is a few px — the ghost grid is the presence cue.
+                        const SAT_MOUNT_MINZOOM = 10;
+                        // Nearest-first cap: a dense cluster must not mount unbounded decoded photos.
+                        const SAT_MOUNT_MAX = 16;
+                        // ~11 km — covers the 2 km photo disc plus a flick of pan before moveend refires.
+                        const SAT_VIEW_MARGIN_DEG = 0.1;
+                        const wantedPhotos = (): [number, number][] => {
+                            const focus = circuitFocus();
+                            const anchors = ports
+                                .places()
+                                .flatMap((p) => p.anchors);
+                            const isFocus = (c: [number, number]) =>
+                                focus !== null && satImageKey(c) === focus;
+                            if (map.getZoom() < SAT_MOUNT_MINZOOM)
+                                return anchors.filter(isFocus);
+                            const b = map.getBounds();
+                            const ctr = map.getCenter();
+                            const d2 = ([lng, lat]: [number, number]) =>
+                                (lng - ctr.lng) ** 2 + (lat - ctr.lat) ** 2;
+                            const want = anchors
+                                .filter(
+                                    ([lng, lat]) =>
+                                        lng >=
+                                            b.getWest() -
+                                                SAT_VIEW_MARGIN_DEG &&
+                                        lng <=
+                                            b.getEast() +
+                                                SAT_VIEW_MARGIN_DEG &&
+                                        lat >=
+                                            b.getSouth() -
+                                                SAT_VIEW_MARGIN_DEG &&
+                                        lat <=
+                                            b.getNorth() +
+                                                SAT_VIEW_MARGIN_DEG,
+                                )
+                                .sort((a, z) => d2(a) - d2(z))
+                                .slice(0, SAT_MOUNT_MAX);
+                            if (!want.some(isFocus))
+                                want.push(...anchors.filter(isFocus));
+                            return want;
+                        };
+                        // One pass at a time — a moveend landing mid-pass queues one
+                        // trailing rerun instead of racing mounts against unmounts.
+                        let satBusy = false;
+                        let satAgain = false;
+                        let lastSatLog = "";
                         const showPhotos = async (): Promise<void> => {
-                            let shown = 0;
-                            for (const p of ports.places())
-                                for (const c of p.anchors) {
-                                    await satMount?.display(c);
-                                    if (satMount?.mounted().has(satImageKey(c)))
-                                        shown++;
+                            if (!satMount) return;
+                            if (satBusy) {
+                                satAgain = true;
+                                return;
+                            }
+                            satBusy = true;
+                            try {
+                                const want = wantedPhotos();
+                                const wantKeys = new Set(
+                                    want.map((c) => satImageKey(c)),
+                                );
+                                for (const key of [...satMount.mounted()])
+                                    if (!wantKeys.has(key))
+                                        satMount.unmount(key);
+                                for (const c of want) await satMount.display(c);
+                                // LOUD, but only on change (this now runs per gesture) —
+                                // "no photo on disk yet" and "the mount is missing" still
+                                // look identical on a black map.
+                                const line = `[sat] ${satMount.mounted().size} photo(s) mounted, ${wantKeys.size} wanted in view`;
+                                if (line !== lastSatLog) {
+                                    lastSatLog = line;
+                                    console.info(line);
                                 }
-                            // LOUD either way — "no photo on disk yet" and "the mount is
-                            // missing" look identical on a black map.
-                            console.info(
-                                `[sat] ${shown} photo(s) on the map` +
-                                    (shown === 0
-                                        ? " — nothing baked here yet"
-                                        : ""),
-                            );
+                            } finally {
+                                satBusy = false;
+                                if (satAgain) {
+                                    satAgain = false;
+                                    void showPhotos();
+                                }
+                            }
                         };
                         void showPhotos();
+                        // Every gesture re-decides — zoom-out UNLOADS, pan-back
+                        // reloads from IDB. Dies with the map, like writeCameraToUrl.
+                        map.on("moveend", () => void showPhotos());
                         // A photo that lands 30 s into the bake must appear without
                         // a reload.
                         satPoll = setInterval(() => void showPhotos(), 20000);

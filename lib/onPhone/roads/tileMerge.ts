@@ -39,7 +39,7 @@ function readVarint(buf: Uint8Array, pos: number): [number, number] {
  * (2026-09-02).
  */
 class Writer {
-	private buf: Uint8Array;
+	private buf: Uint8Array<ArrayBuffer>;
 	private len = 0;
 
 	constructor(capacity = 1 << 16) {
@@ -70,7 +70,7 @@ class Writer {
 		this.len += b.length;
 	}
 
-	finish(): Uint8Array {
+	finish(): Uint8Array<ArrayBuffer> {
 		return this.buf.slice(0, this.len);
 	}
 }
@@ -278,7 +278,7 @@ function remapTags(
  * into a single layer (one `roads`), keys/values tables merged with per-feature
  * tag remap, features copied verbatim. Order-independent — every owner draws.
  */
-export function mergeSameFrameTiles(parts: readonly Uint8Array[]): Uint8Array {
+export function mergeSameFrameTiles(parts: readonly Uint8Array[]): Uint8Array<ArrayBuffer> {
 	// keyIndex/valIndex ride along so table dedupe is O(1) per entry — the old
 	// indexOf/findIndex scans made table merge O(n²) on real tiles (2026-09-02).
 	const byName = new Map<
@@ -381,4 +381,3 @@ export function mergeSameFrameTiles(parts: readonly Uint8Array[]): Uint8Array {
 	}
 	return out.finish();
 }
-
