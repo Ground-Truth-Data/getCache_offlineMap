@@ -90,7 +90,17 @@ Measured 3 Sep (Claude driving `__rtMap` on a fresh tab, 430 areas on disk):
 - Satellite decoded-tile caches are already capped sanely (48 tiles ≈ 12 MB
   each, main thread + bake worker).
 
-## 7. Process note
+## 7. Lint drift on the new roads files (DeepMoire, quick)
+
+`npx biome check lib/worker/worker-local-dev/roads` fails on main: the new
+direction2 files are tab-indented (repo rule is spaces/4 — root `biome.json`)
+and there are two unused imports (`packDownload.ts` `cellTileKey`,
+`areaArrives.test.ts` line 4). One `biome check --write` pass, but run it over
+**all three `lib/worker` tier twins in the same commit** so the copies stay
+identical. Left for you rather than fixed here to avoid reformat churn under
+your feet.
+
+## 8. Process note
 
 Chris isn't editing the same files while DeepMoire is moving fast — this doc is
 the handoff channel. DeepMoire: work from `main` (the direction2 merge + a
