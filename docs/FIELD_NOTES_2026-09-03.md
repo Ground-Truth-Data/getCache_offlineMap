@@ -72,16 +72,7 @@ floated, in Chris's words, roughly:
   decoded tile/image payloads.)
 
 Measured 3 Sep (Claude driving `__rtMap` on a fresh tab, 430 areas on disk):
-- **Zoom-out evicts nothing.** z14 → z8 over a pin: same 3 sources with tiles,
-  same 8 tiles, heap 145 → 163 MB (it went *up*). MapLibre's per-source
-  out-of-view LRU (cap 30) measured empty throughout — vector tiles are NOT
-  the hoard.
-- **One satellite source per baked pin**: 326 sources / 348 layers on the map
-  (321 are `v4-sat-*`), mounted for the whole session; mountSatellite.ts only
-  removes a source on unmount/re-bake, never on pan/zoom away. Dormant they're
-  cheap-ish (fresh tab idles ~75 MB), but every frame walks all of them, and
-  each one that paints keeps its decoded photo.
-- **The merged-read memo is the big bounded pot**: `mergedTiles` LRU in
+- **The merged-read memo is the big remaining pot**: `mergedTiles` LRU in
   packDownload.ts caps at 512 *entries*, no byte bound — z13 road tiles run
   100s of KB, so worst case is 100 MB+ of ArrayBuffers that only rotate out on
   overflow or wipe, never on zoom-out. Deliberate (it unfroze gestures) — the
@@ -89,6 +80,18 @@ Measured 3 Sep (Claude driving `__rtMap` on a fresh tab, 430 areas on disk):
   entries whose addresses leave the viewport.
 - Satellite decoded-tile caches are already capped sanely (48 tiles ≈ 12 MB
   each, main thread + bake worker).
+
+**LANDED 3 Sep afternoon (`716c4f6`) — pull before touching the map page.**
+The other measured hoard — one permanent satellite source per baked pin, 326
+sources / 348 layers on the map at once, zoom-out freeing nothing — is fixed:
+photos are now VIEWPORT-MOUNTED (`OfflineMapPage.svelte`, the satellite block).
+Below z10 nothing mounts (the ghost grid is the presence cue); at z10+ the ≤16
+nearest photos that can touch the viewport mount, and every gesture unmounts
+the rest — a photo scrolling back in is a fast IndexedDB re-read. The focused
+(just-dropped) pin is always mounted so paintWatch can still green its row.
+Re-measured on the same 430-area disk: 5 sources at z8 (was 326), zoom-out
+drops photo sources to 0, densest cluster mounts 7. mountSatellite.ts itself
+is unchanged — the mount/unmount decision lives with the page.
 
 ## 7. Lint drift on the new roads files (DeepMoire, quick)
 
