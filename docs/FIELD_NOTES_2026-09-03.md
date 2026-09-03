@@ -93,6 +93,27 @@ Re-measured on the same 430-area disk: 5 sources at z8 (was 326), zoom-out
 drops photo sources to 0, densest cluster mounts 7. mountSatellite.ts itself
 is unchanged — the mount/unmount decision lives with the page.
 
+**LANDED 3 Sep evening: `maxTileCacheSize: 2` on the map constructor**
+(offlineMapInit.ts). Chris's DevTools showed the REAL hoard was never on the
+main thread: MapLibre's worker VM held 1.7 GB (2.1 GB total JS heap) while
+the in-app rail — which reads main-thread `performance.memory` only — said
+450 MB. Uncapped, MapLibre's off-screen tile cache sizes itself to ~5 zoom
+levels of viewport tiles PER SOURCE, and every low-zoom road tile here is the
+merge of ALL areas on disk (tens of MB each, retained raw+parsed in the
+worker). Cached tiles only save a re-parse — IDB re-reads are ~1 ms — so the
+cap costs a little pan-back parsing and bounds the hoard. The deeper issue
+stands for the pack pipeline: low-zoom tile PAYLOADS scale with total areas
+on disk, not with the viewport (thin/simplify at z≤8, tippecanoe-style).
+
+## 6b. WIPE while the app is open reports "blocked"
+
+Pressing WIPE with the map running throws an unhandled rejection: `wipe
+blocked: {"gc-offlineTiles":"blocked", "gc-offlineSatellite":"blocked", …}` —
+`indexedDB.deleteDatabase` blocks while the page and its workers hold open
+connections. Wipe should close connections first (or reload into a
+`?wipe` boot path), and the rejection should surface as a toast, not an
+unhandled promise.
+
 ## 7. Lint drift on the new roads files (DeepMoire, quick)
 
 `npx biome check lib/worker/worker-local-dev/roads` fails on main: the new

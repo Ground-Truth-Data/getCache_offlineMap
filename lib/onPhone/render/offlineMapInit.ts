@@ -139,6 +139,12 @@ export function initializeOfflineMap(
 		// map sets it true for Sentry replay canvas capture; on an offline map
 		// that costs GPU memory for a replay nobody watches.
 		attributionControl: false,
+		// Uncapped, the off-screen tile cache sizes itself to ~5 zoom levels of
+		// viewport tiles PER SOURCE, and each low-zoom road tile here is the
+		// merge of EVERY area on disk (tens of MB, held raw+parsed, mostly in
+		// the worker thread — the 1.7 GB "worker VM" of 3 Sep 2026). A cached
+		// tile only saves a re-parse; the bytes re-read from IndexedDB in ~1 ms.
+		maxTileCacheSize: 2,
 	});
 
 	// NORTH IS UP — and it cannot be turned off.
