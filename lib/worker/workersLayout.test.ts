@@ -9,7 +9,7 @@
  * this folder, and the same failure mode guarded: a tier folder silently
  * going missing, or the old single worker/ coming back in a merge.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -26,7 +26,12 @@ describe("workers/ layout", () => {
 	});
 
 	it("keeps the local runner in worker-local-dev and a deploy script in each cloud tier", () => {
-		expect(existsSync(at("worker-local-dev/setupLocalTiles.sh"))).toBe(true);
+		// the local tier runs bare `wrangler dev` against the real planet bucket —
+		// setupLocalTiles.sh and its sample extracts were deleted with that move
+		const localScripts = JSON.parse(
+			readFileSync(at("worker-local-dev/package.json"), "utf8"),
+		).scripts;
+		expect(localScripts.dev).toBe("wrangler dev");
 		expect(existsSync(at("worker-cloud-dev/deployDev.sh"))).toBe(true);
 		expect(existsSync(at("worker-cloud-prod/deployProduction.sh"))).toBe(true);
 	});
