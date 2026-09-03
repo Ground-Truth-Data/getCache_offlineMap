@@ -16,7 +16,7 @@
  *
  * ── PAINT ORDER (bottom → top), and why ──────────────────────────────────
  *
- *   land cover → water fill → [per-pin satellite photos] → roads → water edge
+ *   ghost grid → land cover → water fill → [per-pin satellite photos] → roads → water edge
  *                             └── mounted by the page's reconcile, BETWEEN
  *                                 `v4-water-fill` and `v4-roads`, so a photo
  *                                 always covers the fills and never the roads.
@@ -24,11 +24,22 @@
  * The photos are not in this list because they are per-area and dynamic; the
  * page mounts them against `SAT_INSERT_BEFORE`. Everything else is static.
  *
+ * The ghost grid (direction2.5) IS a static layer here — bottom of the stack —
+ * but its DATA is per-pin and dynamic: the page feeds `BLOB_GRID_SOURCE` from
+ * blobGrid.ts. Same split as the photos: the paint order is this file's job,
+ * the payload is the page's.
+ *
  * ── ONE SOURCE, ONE DISC, EVERY ZOOM ────────────────────────────────────
  *
  * One downloaded 30 km disc, saved at every zoom in `BLOB_ZOOMS`
  * (roadBlob.ts). ONE source spans exactly those levels, and every road layer
  * reads it. There is no relay, no band, and no zoom number written here.
+ *
+ * The ONE exception (2026-09-02, direction2.3): the SHALLOW tier — a separate
+ * z6 store (grid.ts: SHALLOW_Z) with its OWN source, painted only in the
+ * camera z6–z7 window where the disc is silent by contract. It is a second
+ * STORE, not a band of the disc — the ⛔ below still holds for the disc itself,
+ * whose span stays whole and unwritten here.
  *
  * ⛔ THERE USED TO BE FOUR SOURCES with hand-written bands (wide z1-12, ring
  * z12-13, mid z13-15, core z15+). That was correct only while the pack held
@@ -59,7 +70,11 @@ import {
 } from "./offlineColors";
 import {
 	RAW_SOURCE,
+	SHALLOW_SOURCE,
 } from "../roads/rawWallProtocol";
+import { BLOB_MIN_Z } from "../../contract/roadBlob";
+import { BLOB_TILE_Z, SHALLOW_Z } from "../../contract/grid";
+import { BLOB_GRID_SOURCE } from "./blobGrid";
 
 /** The layer per-area satellite photos mount BEFORE — i.e. directly under the
  *  roads, directly over the water fill. The page's reconcile reads this rather
@@ -142,6 +157,34 @@ const ROADS_ONLY: mapboxgl.FilterSpecification = [
  */
 export function wallLayers(): mapboxgl.LayerSpecification[] {
 	return [
+		// ── -1) THE GHOST GRID (direction2.5) ────────────────────────────────
+		// One white square per pin — the bounding box of that pin's tileset
+		// (radiusBox, blobGrid.ts), shown only while the camera is BELOW the
+		// disc's floor so you can see where the z8 tiles will appear. Data is
+		// per-pin and dynamic: the page feeds BLOB_GRID_SOURCE (blobGrid.ts).
+		// UNDER EVERYTHING by the user's instruction; fill only, no outline
+		// ("bordo invisibile"). Opacity is the direction2.5 spec verbatim —
+		// MapLibre clamps an interpolation outside its stops, so TWO stops
+		// produce all three regimes: 0 at z≥8, LINEAR 0→0.01 between
+		// BLOB_TILE_Z−0.1 and SHALLOW_Z, flat 0.01 below. Both stops DERIVED
+		// from the contract constants, never hand-written.
+		{
+			id: "v4-blob-grid-fill",
+			type: "fill",
+			source: BLOB_GRID_SOURCE,
+			paint: {
+				"fill-color": "#ffffff",
+				"fill-opacity": [
+					"interpolate",
+					["linear"],
+					["zoom"],
+					SHALLOW_Z,
+					0.01,
+					BLOB_TILE_Z - 0.1,
+					0,
+				],
+			},
+		} as mapboxgl.LayerSpecification,
 		// ── 0) LAND COVER ────────────────────────────────────────────────────
 		// The `landuse` source-layer of the z15 core tiles, each polygon keeping
 		// its `kind`. Bottom of the stack: water, satellite and roads all draw
@@ -193,6 +236,41 @@ export function wallLayers(): mapboxgl.LayerSpecification[] {
 			},
 		} as mapboxgl.LayerSpecification,
 
+		// ── 1b) THE SHALLOW WATER RELAY (camera z6–z7) ─────────────────────
+		// The z6 tier carries the pack's water rule UNCHANGED (river/canal lines
+		// + lake/pond polygons ride along — SHALLOW_LAYER_RULES spreads
+		// PACK_LAYERS), but until these two layers existed that water sat
+		// unpainted: `v4-water-*` read the disc only, which is silent under
+		// BLOB_MIN_Z. Same split as the disc (a fill ignores lines; a line
+		// layer would outline every pond), same colours, window DERIVED from
+		// the constants — hands over to the disc exactly at its floor.
+		{
+			id: "v4-water-fill-shallow",
+			type: "fill",
+			source: SHALLOW_SOURCE,
+			"source-layer": "water",
+			minzoom: SHALLOW_Z,
+			maxzoom: BLOB_MIN_Z,
+			filter: ["==", ["geometry-type"], "Polygon"],
+			paint: { "fill-color": WATER_FILL, "fill-opacity": 0.85 },
+		} as mapboxgl.LayerSpecification,
+		{
+			id: "v4-water-line-shallow",
+			type: "line",
+			source: SHALLOW_SOURCE,
+			"source-layer": "water",
+			minzoom: SHALLOW_Z,
+			maxzoom: BLOB_MIN_Z,
+			filter: ["==", ["geometry-type"], "LineString"],
+			layout: { "line-cap": "round", "line-join": "round" },
+			paint: {
+				"line-color": WATER_LINE,
+				// 0.8 at z6 so rivers read as blue threads at the tier's own
+				// scale, easing to the disc's own 0.6 at the handover — no pop.
+				"line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.8, 8, 0.6],
+			},
+		} as mapboxgl.LayerSpecification,
+
 		// ── 2) THE ROAD RELAY ────────────────────────────────────────────────
 		// Four bands, one per stored zoom, meeting exactly. See the header.
 		//
@@ -201,6 +279,27 @@ export function wallLayers(): mapboxgl.LayerSpecification[] {
 		// here and every one read on screen as a second, bigger shape appearing
 		// and vanishing ("an unbelievable tripping hazard"). The Worker derives
 		// both from the same km for exactly this reason.
+		// ── 2a) THE SHALLOW RELAY (camera z6–z7) ────────────────────────────
+		// The z6 tier (grid.ts: SHALLOW_Z, its own IDB store + source via
+		// rtraw://shallow) keeps the pin's roads on screen below the disc's
+		// floor — the disc is silent under BLOB_MIN_Z by contract, and stretching
+		// a z8 tile down was the zoom<8 distortion bug (2026-09-01).
+		// SAME colour law as the disc (kind-based, no zoom term); the window is
+		// DERIVED from the constants, never hand-written. maxzoom = BLOB_MIN_Z
+		// hands over to the disc exactly where its own floor begins — and hides
+		// this layer above z8 so the shallow source is never overzoom-queried
+		// where the disc already paints.
+		{
+			id: "v4-roads-shallow",
+			type: "line",
+			source: SHALLOW_SOURCE,
+			"source-layer": "roads",
+			minzoom: SHALLOW_Z,
+			maxzoom: BLOB_MIN_Z,
+			filter: ROADS_ONLY,
+			paint: { "line-color": ROAD_COLOR, "line-width": ROAD_WIDTH },
+		} as mapboxgl.LayerSpecification,
+
 		// THE ROADS. One layer, one source, no zoom window — the source's own
 		// span (BLOB_MIN_Z→BLOB_MAX_Z) already says exactly which levels exist,
 		// and MapLibre overzooms above the deepest one for free.

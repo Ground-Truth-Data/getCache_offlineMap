@@ -33,7 +33,7 @@ const HOSPITALS_BUILD = "v1-209173-20260901";
 
 /** Bump whenever the PACK CONTENTS change. Part of the edge cache key, so a
  *  new build can never be masked by a year-old immutable cache entry. */
-const PACK_BUILD = "v33-oob-pin-guard";
+const PACK_BUILD = "v35-shallow-z6-built";
 
 interface Env {
   /** R2 bucket binding (see wrangler.toml [[r2_buckets]]). */
@@ -418,7 +418,7 @@ export default {
         // the response was byte-identical, because the edge replayed a year-old
         // immutable entry).
         "X-Pack-Build": PACK_BUILD,
-        "X-Diag": `disc=${diag.discTiles} reads=${diag.r2Reads} rbytes=${diag.r2Bytes} headerMs=${diag.headerMs} loopMs=${diag.loopMs} outerKm=${diag.outerKm} cells=${diag.cells} features=${diag.blobFeatures} bytes=${diag.blobBytes}`,
+        "X-Diag": `disc=${diag.discTiles} reads=${diag.r2Reads} rbytes=${diag.r2Bytes} headerMs=${diag.headerMs} loopMs=${diag.loopMs} outerKm=${diag.outerKm} cells=${diag.cells} features=${diag.blobFeatures} bytes=${diag.blobBytes} shallowTiles=${diag.shallowTiles} shallowBytes=${diag.shallowBytes}`,
         "X-Pack-Cache": "MISS",
         "Cache-Control": "public, max-age=31536000, immutable",
       };

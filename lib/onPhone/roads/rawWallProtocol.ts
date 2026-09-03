@@ -9,9 +9,13 @@ import maplibregl from "maplibre-gl";
 
 import { vlog } from "../../shared/verboseLog";
 
-import { BLOB_MAX_Z } from "../../contract/roadBlob";
+import { BLOB_MAX_Z, BLOB_MIN_Z } from "../../contract/roadBlob";
+import { SHALLOW_Z } from "../../contract/grid";
 
-import { idbGetTileForAddress } from "../../worker/worker-local-dev/roads/packDownload";
+import {
+	idbGetShallowTileForAddress,
+	idbGetTileForAddress,
+} from "../../worker/worker-local-dev/roads/packDownload";
 
 /**
  * THE source id — ONE disc, ONE source, every zoom.
@@ -22,11 +26,23 @@ export const RAW_SCHEME = "rtraw";
 
 export const RAW_TILE_URL = `${RAW_SCHEME}://disc/{z}/{x}/{y}`;
 
+/**
+ * THE SHALLOW TIER's source id and URL — same scheme, its OWN host, store and
+ * source. One generalized z6 tile per pin (grid.ts: SHALLOW_Z) so roads stay
+ * visible at camera z6–z7, where the disc is silent by contract (RAW_MIN_Z) and
+ * only the world-base would draw. ⛔ never merge this into the disc's namespace —
+ * a z6 stored on the main path answering z8 requests IS the pv46 incident.
+ */
+export const SHALLOW_SOURCE = "v4-raw-shallow";
+export const SHALLOW_TILE_URL = `${RAW_SCHEME}://shallow/{z}/{x}/{y}`;
+
 /** The disc's zoom span, DERIVED from `BLOB_ZOOMS` — never hand-written. `roadBlob.ts` is the only file allowed to name a road zoom or radius. */
 /**
- * ⛔ the render floor (RAW_MIN_Z) is NOT the storage level (BLOB_TILE_Z) — they were one number once, and setting minzoom to the storage level blanked the map the instant the camera rose above it, since MapLibre only ever overzooms UP.
+ * The render floor EQUALS the shallowest stored level — below it this source is SILENT by design, and the world-base (offlineBaseStyle.ts) draws major roads, lakes, borders and labels instead.
+ * ⛔ do NOT lower it to "stretch" the stored tile over a shallower address — a z8-framed tile served at a z6 address paints 4×-off-place geometry (the zoom<8 distortion bug, killed 2026-09-01).
+ * (History: minzoom was once set shallow so the blob itself filled the zoomed-out view; that invented the distortion instead of leaving the band to the base style.)
  */
-export const RAW_MIN_Z = 5;
+export const RAW_MIN_Z = BLOB_MIN_Z;
 export const RAW_MAX_Z = BLOB_MAX_Z;
 
 let installed = false;
@@ -42,13 +58,17 @@ export function installRawWallProtocol(): void {
 			throw Object.assign(new Error("aborted"), { name: "AbortError" });
 		}
 
-		// `rtraw://disc/15/5245/11454` → ["15","5245","11454"]
-		const m = /^rtraw:\/\/[a-z]+\/(\d+)\/(\d+)\/(\d+)/.exec(params.url);
+		// `rtraw://disc/15/5245/11454` → ["disc","15","5245","11454"] — the HOST names the TIER.
+		const m = /^rtraw:\/\/([a-z]+)\/(\d+)\/(\d+)\/(\d+)/.exec(params.url);
 		if (!m) throw notFound(params.url);
 
-		const [, z, x, y] = m;
-		// ⛔ resolve the address to the nearest owning pin — roads are keyed by pin, not bare z/x/y, or a shared tile serves one pin's roads to another (the 50 km bug, 2026-08-20).
-		const buf = await idbGetTileForAddress(Number(z), Number(x), Number(y));
+		const [, tier, z, x, y] = m;
+		// ⛔ resolve the address to EVERY owning pin, layer-merged into ONE tile — roads are keyed by pin, not bare z/x/y; resolving to a single "nearest" pin serves one pin's roads to another (the 50 km bug, 2026-08-20), and byte-concat keeps only the last same-named layer (the strips bug, 2026-09-01).
+		// The tier picks the STORE: `disc` → the z8+ main namespace; `shallow` → the z6 tier's own store (its lookup never touches the main namespace, and the main lookup never answers z6 — both quarantines in grid.ts/roadBlob.ts).
+		const buf =
+			tier === "shallow"
+				? await idbGetShallowTileForAddress(Number(z), Number(x), Number(y))
+				: await idbGetTileForAddress(Number(z), Number(x), Number(y));
 		noteTileRead(!!buf && buf.byteLength > 0);
 		// ⚠️ a miss is the common path, not an error — fail loud only on returning another pin's bytes, never on a routine 404 for an undownloaded tile.
 		if (!buf || buf.byteLength === 0) throw notFound(params.url);
@@ -133,23 +153,46 @@ export function rawSourceSpec(): maplibregl.VectorSourceSpecification {
 		tiles: [RAW_TILE_URL],
 		// ⛔ minzoom is the SHALLOWEST STORED LEVEL the pack holds, not 0 and not the detail level — source minzoom/maxzoom describe the tile pyramid, not the camera.
 		// ⚠️ minzoom: 0 does NOT mean "scale the deepest level to fill any zoom" — it means z0 addresses may be requested, and if the pack doesn't have them: 404, blank map, no error.
+		// Below RAW_MIN_Z the camera shows the world-base only — that handover is the design, not a hole.
 		minzoom: RAW_MIN_Z,
 		maxzoom: RAW_MAX_Z,
 	};
 }
 
 /**
+ * The SHALLOW tier's source spec — same law as the disc: the span EQUALS the
+ * stored level exactly. z6 is requested at camera z6, overzoomed at z7, and
+ * below z6 the source is silent so the world-base (offlineBaseStyle.ts) draws.
+ * (The layer hides it again above z8 — see wallStyle.ts `v4-roads-shallow`.)
+ */
+export function shallowSourceSpec(): maplibregl.VectorSourceSpecification {
+	return {
+		type: "vector",
+		tiles: [SHALLOW_TILE_URL],
+		minzoom: SHALLOW_Z,
+		maxzoom: SHALLOW_Z,
+	};
+}
+
+/**
  * TELL THE MAP THE DISK CHANGED — MapLibre caches a 404 from before the download landed, and a tile that missed once is never requested again.
  * ⛔ do not "fix" a blank map by re-adding the source or layers — that rebuilds the whole stack and drops the per-pin satellite layers. `setTiles` with the same URL is the narrow tool: it only invalidates the tile cache.
+ * ⚠️ BOTH tiers go stale together — one download event writes the disc AND the
+ * shallow store, so both pre-download 404 caches must be invalidated.
  */
 export function refreshRawTiles(map: maplibregl.Map): void {
-	const src = map.getSource(RAW_SOURCE);
-	// Not mounted yet (or torn down mid-flight) — the next mount reads fresh; SILENT on purpose, a routine race at page bring-up, not a fault.
-	if (!src || typeof (src as maplibregl.VectorTileSource).setTiles !== "function") {
-		vlog("wall", "refresh skipped — source not mounted yet");
-		return;
+	for (const [id, url] of [
+		[RAW_SOURCE, RAW_TILE_URL],
+		[SHALLOW_SOURCE, SHALLOW_TILE_URL],
+	] as const) {
+		const src = map.getSource(id);
+		// Not mounted yet (or torn down mid-flight) — the next mount reads fresh; SILENT on purpose, a routine race at page bring-up, not a fault.
+		if (!src || typeof (src as maplibregl.VectorTileSource).setTiles !== "function") {
+			vlog("wall", `refresh skipped — ${id} not mounted yet`);
+			continue;
+		}
+		// ⛔ vlog only, not console — an unprompted console line here would duplicate the outcome that arrives ~200ms later via the [offline] verdict on the next idle.
+		vlog("wall", `new tiles on disk → telling ${id} to re-request`);
+		(src as maplibregl.VectorTileSource).setTiles([url]);
 	}
-	// ⛔ vlog only, not console — an unprompted console line here would duplicate the outcome that arrives ~200ms later via the [offline] verdict on the next idle.
-	vlog("wall", "new tiles on disk → telling the map to re-request");
-	(src as maplibregl.VectorTileSource).setTiles([RAW_TILE_URL]);
 }
