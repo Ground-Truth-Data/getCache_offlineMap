@@ -130,19 +130,19 @@ const ROAD_COLOR: mapboxgl.ExpressionSpecification = [
 /** Roads only — `path`, `rail` and `aeroway` each render elsewhere (or not at
  *  all), so every road layer excludes them identically. */
 /** Camera zoom from which minor roads draw at all. Below it only highways and
- *  major roads: at z6 the screen holds a whole state's worth of small roads and
- *  the tile worker parsed every one (1.4 GB measured 5 Sep 2026; 327 MB after).
- *  ONE dial for both tiers so the small roads never appear in one and vanish
- *  in the other. */
-const SHALLOW_MINOR_Z = 7;
+ *  major roads. A disc tile carries every driveway at full detail whatever its
+ *  zoom, so with small roads on, RAM scales with the ground on screen: a
+ *  carpet of merged discs at z9 cost 2.3 GB in the tile worker (5 Sep 2026),
+ *  a single state at z6 cost 1.4 GB. Google draws local streets from z13. */
+const MINOR_ROAD_Z = 11;
 /** Small roads fade in over half a zoom level rather than snapping on. */
 const MINOR_ROAD_OPACITY: mapboxgl.ExpressionSpecification = [
     "interpolate",
     ["linear"],
     ["zoom"],
-    SHALLOW_MINOR_Z,
+    MINOR_ROAD_Z,
     0,
-    SHALLOW_MINOR_Z + 0.5,
+    MINOR_ROAD_Z + 0.5,
     1,
 ];
 const MINOR_ONLY: mapboxgl.FilterSpecification = [
@@ -339,20 +339,6 @@ export function wallLayers(): mapboxgl.LayerSpecification[] {
             filter: ["all", ROADS_ONLY, NOT_MINOR],
             paint: { "line-color": ROAD_COLOR, "line-width": ROAD_WIDTH },
         } as mapboxgl.LayerSpecification,
-        {
-            id: "v4-roads-shallow-minor",
-            type: "line",
-            source: SHALLOW_SOURCE,
-            "source-layer": "roads",
-            minzoom: SHALLOW_MINOR_Z,
-            maxzoom: BLOB_MIN_Z,
-            filter: MINOR_ONLY,
-            paint: {
-                "line-color": ROAD_COLOR,
-                "line-width": ROAD_WIDTH,
-                "line-opacity": MINOR_ROAD_OPACITY,
-            },
-        } as mapboxgl.LayerSpecification,
 
         // THE ROADS. One layer, one source, no zoom window — the source's own
         // span (BLOB_MIN_Z→BLOB_MAX_Z) already says exactly which levels exist,
@@ -365,14 +351,14 @@ export function wallLayers(): mapboxgl.LayerSpecification[] {
             filter: ["all", ROADS_ONLY, NOT_MINOR],
             paint: { "line-color": ROAD_COLOR, "line-width": ROAD_WIDTH },
         } as mapboxgl.LayerSpecification,
-        // Same dial as the shallow tier: if SHALLOW_MINOR_Z ever rises past
-        // BLOB_MIN_Z the disc's small roads wait for it too.
+        // Small roads only inside a disc, and only from MINOR_ROAD_Z. The
+        // shallow wall never draws them: it is context between blobs.
         {
             id: "v4-roads-minor",
             type: "line",
             source: RAW_SOURCE,
             "source-layer": "roads",
-            minzoom: Math.max(SHALLOW_MINOR_Z, BLOB_MIN_Z),
+            minzoom: MINOR_ROAD_Z,
             filter: MINOR_ONLY,
             paint: {
                 "line-color": ROAD_COLOR,
