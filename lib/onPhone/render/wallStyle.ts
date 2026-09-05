@@ -135,6 +135,28 @@ const ROAD_COLOR: mapboxgl.ExpressionSpecification = [
  *  carpet of merged discs at z9 cost 2.3 GB in the tile worker (5 Sep 2026),
  *  a single state at z6 cost 1.4 GB. Google draws local streets from z13. */
 const MINOR_ROAD_Z = 11;
+/** Camera zoom from which water draws. Below it the map is highways, major
+ *  roads and photos — Chris, 5 Sep 2026: "water only past z10". Half-level
+ *  fade so lakes ease in rather than pop. */
+const WATER_Z = 10;
+const WATER_FILL_OPACITY: mapboxgl.ExpressionSpecification = [
+    "interpolate",
+    ["linear"],
+    ["zoom"],
+    WATER_Z,
+    0,
+    WATER_Z + 0.5,
+    0.85,
+];
+const WATER_LINE_OPACITY: mapboxgl.ExpressionSpecification = [
+    "interpolate",
+    ["linear"],
+    ["zoom"],
+    WATER_Z,
+    0,
+    WATER_Z + 0.5,
+    1,
+];
 /** Small roads fade in over half a zoom level rather than snapping on. */
 const MINOR_ROAD_OPACITY: mapboxgl.ExpressionSpecification = [
     "interpolate",
@@ -236,24 +258,30 @@ export function wallLayers(): mapboxgl.LayerSpecification[] {
         // Two layers because the `water` source-layer mixes geometry: polygons
         // (kind water/lake) and lines (kind river/canal). A fill ignores lines
         // and a line layer would outline every pond, so each takes its own
-        // geometry. No zoom band — Law 1, the disc is drawn at every zoom.
+        // geometry. Water draws from WATER_Z only, disc tiles only.
         {
             id: "v4-water-fill",
             type: "fill",
             source: RAW_SOURCE,
             "source-layer": "water",
+            minzoom: WATER_Z,
             filter: ["==", ["geometry-type"], "Polygon"],
-            paint: { "fill-color": WATER_FILL, "fill-opacity": 0.85 },
+            paint: {
+                "fill-color": WATER_FILL,
+                "fill-opacity": WATER_FILL_OPACITY,
+            },
         } as mapboxgl.LayerSpecification,
         {
             id: "v4-water-line",
             type: "line",
             source: RAW_SOURCE,
             "source-layer": "water",
+            minzoom: WATER_Z,
             filter: ["==", ["geometry-type"], "LineString"],
             layout: { "line-cap": "round", "line-join": "round" },
             paint: {
                 "line-color": WATER_LINE,
+                "line-opacity": WATER_LINE_OPACITY,
                 "line-width": [
                     "interpolate",
                     ["linear"],
@@ -264,49 +292,6 @@ export function wallLayers(): mapboxgl.LayerSpecification[] {
                     1.2,
                     16,
                     2.4,
-                ],
-            },
-        } as mapboxgl.LayerSpecification,
-
-        // ── 1b) THE SHALLOW WATER RELAY (camera z6–z7) ─────────────────────
-        // The z6 tier carries the pack's water rule UNCHANGED (river/canal lines
-        // + lake/pond polygons ride along — SHALLOW_LAYER_RULES spreads
-        // PACK_LAYERS), but until these two layers existed that water sat
-        // unpainted: `v4-water-*` read the disc only, which is silent under
-        // BLOB_MIN_Z. Same split as the disc (a fill ignores lines; a line
-        // layer would outline every pond), same colours, window DERIVED from
-        // the constants — hands over to the disc exactly at its floor.
-        {
-            id: "v4-water-fill-shallow",
-            type: "fill",
-            source: SHALLOW_SOURCE,
-            "source-layer": "water",
-            minzoom: SHALLOW_Z,
-            maxzoom: BLOB_MIN_Z,
-            filter: ["==", ["geometry-type"], "Polygon"],
-            paint: { "fill-color": WATER_FILL, "fill-opacity": 0.85 },
-        } as mapboxgl.LayerSpecification,
-        {
-            id: "v4-water-line-shallow",
-            type: "line",
-            source: SHALLOW_SOURCE,
-            "source-layer": "water",
-            minzoom: SHALLOW_Z,
-            maxzoom: BLOB_MIN_Z,
-            filter: ["==", ["geometry-type"], "LineString"],
-            layout: { "line-cap": "round", "line-join": "round" },
-            paint: {
-                "line-color": WATER_LINE,
-                // 0.8 at z6 so rivers read as blue threads at the tier's own
-                // scale, easing to the disc's own 0.6 at the handover — no pop.
-                "line-width": [
-                    "interpolate",
-                    ["linear"],
-                    ["zoom"],
-                    6,
-                    0.8,
-                    8,
-                    0.6,
                 ],
             },
         } as mapboxgl.LayerSpecification,
@@ -369,20 +354,21 @@ export function wallLayers(): mapboxgl.LayerSpecification[] {
 
         // ── 3) TRAILS + RAIL ─────────────────────────────────────────────────
         // PATH — sage-green + a fine dash so a footpath or logging track reads as
-        // a trail, NOT a road. Same width as roads. A trail never shows before
-        // the small roads around it do.
+        // a trail, NOT a road. Same width as roads. Trails and small roads
+        // appear together: same dial, same fade.
         {
             id: "v4-path",
             type: "line",
             source: RAW_SOURCE,
             "source-layer": "roads",
-            minzoom: MINOR_ROAD_Z + 1,
+            minzoom: MINOR_ROAD_Z,
             filter: ["==", ["get", "kind"], "path"],
             layout: { "line-cap": "round", "line-join": "round" },
             paint: {
                 "line-color": PATH_LINE,
                 "line-width": ROAD_WIDTH,
                 "line-dasharray": [1.5, 1.5],
+                "line-opacity": MINOR_ROAD_OPACITY,
             },
         } as mapboxgl.LayerSpecification,
         // RAIL — a PROPER railway, not a dotted line: a thin solid SPINE plus

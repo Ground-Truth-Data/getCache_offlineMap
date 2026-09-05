@@ -52,7 +52,7 @@ describe("downloadGuard circuit breaker", () => {
 		expect(captureMessage).toHaveBeenCalledTimes(1);
 	});
 
-	it("TRIPS on too many pack downloads in a session", async () => {
+	it("TRIPS on too many pack downloads in one hour", async () => {
 		const g = await freshGuard();
 		// ⛔ READ THE CAP FROM THE SOURCE, NEVER HARD-CODE IT — a hard-coded assertion silently stopped testing anything when the constant changed twice under it.
 		const { readFileSync } = await import("node:fs");
@@ -61,7 +61,7 @@ describe("downloadGuard circuit breaker", () => {
 			fileURLToPath(new URL("./downloadGuard.ts", import.meta.url)),
 			"utf8",
 		);
-		const cap = Number(/const SESSION_PACK_CAP = (\d+);/.exec(src)?.[1]);
+		const cap = Number(/const HOURLY_PACK_CAP = (\d+);/.exec(src)?.[1]);
 		expect(Number.isFinite(cap)).toBe(true);
 
 		let count = 0;

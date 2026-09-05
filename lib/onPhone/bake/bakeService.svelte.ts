@@ -280,6 +280,20 @@ async function ensureAreaData(
                 err instanceof Error ? err.message : String(err),
                 key,
             );
+            // A photo timeout is the imagery provider's problem, not the tiles
+            // Worker's: it gets this area's own cooldown and must NOT reach the
+            // pass-level timeout back-off, which paused every /pack fetch for
+            // up to 5 min (5 Sep 2026). Anything else still fails the area.
+            if (isTimeoutErr(err)) {
+                const fails = (cd?.fails ?? 0) + 1;
+                satCooldown.set(key, {
+                    fails,
+                    until:
+                        Date.now() +
+                        Math.min(900_000, 30_000 * 2 ** Math.min(fails - 1, 5)),
+                });
+                return;
+            }
             throw err;
         }
         if (sat) {
