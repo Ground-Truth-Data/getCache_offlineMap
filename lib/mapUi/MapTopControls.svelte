@@ -1,4 +1,4 @@
-<!-- MapTopControls — top-right stack shared by /mobile/map and /mobile/offlinev4: map-only eye toggle above the online/offline crow switch. -->
+<!-- MapTopControls — top-right stack shared by /app/map and /app/offline: map-only eye toggle above the online/offline crow switch. -->
 <script lang="ts">
 // ports.scenes is OPTIONAL — no scene registry means a plain, static eye and no timers, never a throw.
 import type { MapHostPorts } from "../shared/mapHostPorts";

@@ -15,6 +15,7 @@
      */
     import type * as maplibreType from "maplibre-gl";
     import { onMount } from "svelte";
+    import { goto } from "$app/navigation";
     // The app's own grab hand, replacing MapLibre's stock white glove. Imported
     // (not a static URL) so the bytes are part of THIS build in every tier.
     // ⚠️ _100 = the 100px cut. Browsers IGNORE a cursor image above ~128px with no
@@ -64,6 +65,13 @@
     } from "../routes/fires/fireArrival";
     import { fetchAreaFires } from "./worker/worker-local-dev/fires/fireFetch";
     import type { HostPorts } from "./shared/hostPorts";
+    import type { MapHostPorts } from "./shared/mapHostPorts";
+    import MapTopControls from "./mapUi/MapTopControls.svelte";
+    import {
+        OFFLINE_MAP_ROUTE,
+        ONLINE_MAP_ROUTE,
+        saveLastMapRoute,
+    } from "./mapState/lastMapRoute.svelte";
     import OfflineWorkMeter from "./shared/OfflineWorkMeter.svelte";
     import OfflineBlobPanel from "./panels/OfflineBlobPanel.svelte";
     import "$rig/dev/devCard.css";
@@ -165,6 +173,9 @@
     let {
         /** A real host's ports. Absent → the literal fixtures above. */
         hostPorts,
+        /** The map UI's door to the host (crow art, eye frames). Absent → no
+         *  eye/crow stack; the fixture route has no CrowSwitch to render. */
+        mapPorts,
         /**
          * WHERE THE DEV CHROME GOES. The panels' DATA is this component's, so they
          * stay owned here; their PLACE is the host's. A page hands in an element —
@@ -176,6 +187,7 @@
         railRightHost,
     }: {
         hostPorts?: HostPorts;
+        mapPorts?: MapHostPorts;
         debugHost?: HTMLElement;
         railLeftHost?: HTMLElement;
         railRightHost?: HTMLElement;
@@ -207,6 +219,10 @@
     /** THE PORTS, RESOLVED ONCE. The bake service, the marker loop and the blob
      *  panel all read this, so they cannot disagree about what the data is. */
     const ports = $derived(hostPorts ?? fixturePorts);
+
+    /** Map-only mode, toggled by the eye in MapTopControls (body.map-only
+     *  slides the shell's bars away). */
+    let mapOnly = $state(false);
 
     let activePin = $state("pin");
 
@@ -361,6 +377,10 @@
     );
 
     onMount(() => {
+        // STICKY MAP: the bottom bar's MAP tab and every "See on map" eye come
+        // back to whichever map was used last. Recorded at the destination, so
+        // arriving by deep link sticks too. Mirrors MobMapPage.
+        saveLastMapRoute(OFFLINE_MAP_ROUTE);
         const stopBake = startOfflineBakeService(ports);
         let cleanup: (() => void) | undefined;
         let satMount: ReturnType<typeof createSatelliteMount> | undefined;
@@ -729,6 +749,17 @@
         {/if}
         <div bind:this={mapContainer} class="map-canvas"></div>
 
+        <!-- Eye (map-only toggle) + crow (online/offline switch) — the same
+             stack the online map mounts, so the two maps read as one app. -->
+        {#if mapPorts}
+            <MapTopControls
+                ports={mapPorts}
+                bind:mapOnly
+                crowMode="offline"
+                onCrowToggle={() => goto(ONLINE_MAP_ROUTE)}
+            />
+        {/if}
+
         <!-- THE PIN LIBRARY, ON THE MAP. Anchored under the selected pin and
 			     re-projected on every camera move, so it behaves like the app's
 			     feature popover rather than a panel off to one side. -->
@@ -781,9 +812,10 @@
     .debug-toggle {
         position: absolute;
         /* The phone's top edge sits UNDER the parent's nav (67px on rapper).
-		   Clear it, or the button is clickable but half-hidden. */
+		   Clear it, or the button is clickable but half-hidden. Left, because
+		   the eye/crow stack owns the top-right corner. */
         top: 40px;
-        right: 12px;
+        left: 12px;
         z-index: 50;
         padding: 4px 12px;
         border: 1px solid #555;
