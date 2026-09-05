@@ -102,7 +102,9 @@ DELETED; trails from z12. The permanent demo blob at the map home is deleted,
 and a blob whose pin is gone is pruned on the next pass. Law 1 in
 OFFLINE_PLAN.md is rewritten — "every road at every zoom" is retired, do not
 restore it. Server-side thinning of z8–z10 disc tiles is next (needs a
-PACK_FORMAT_VERSION bump after deploy).
+PACK_FORMAT_VERSION bump after deploy). Photos mount from `SAT_MIN_Z = 10`
+only (`mountSatellite.ts`), fading in over the half level above it — at z7
+every baked photo was a 60 px grey smudge over the roads.
 
 **LANDED 3 Sep evening: `maxTileCacheSize: 2` on the map constructor**
 (offlineMapInit.ts). Chris's DevTools showed the REAL hoard was never on the

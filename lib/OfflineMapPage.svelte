@@ -542,10 +542,11 @@
                         // only the ones near the camera — reconcile() mounts inside
                         // one viewport of the screen and unmounts (object URL
                         // revoked) beyond two, so an edge photo never flaps. Geometry
-                        // only, never zoom (Law 1): a photo on screen is mounted at
-                        // every zoom. The focused (just-dropped) pin is ALWAYS
-                        // mounted — paintWatch can only green its row from a mounted
-                        // layer.
+                        // plus one floor (SAT_MIN_Z): a photo on screen is mounted at
+                        // every zoom from z10 up; below it every photo unmounts. The
+                        // focused (just-dropped) pin is ALWAYS mounted — paintWatch
+                        // can only green its row from a mounted layer — and the
+                        // opacity ramp keeps it invisible below the floor.
                         satMount = createSatelliteMount(map);
                         // One pass at a time — a moveend landing mid-pass queues one
                         // trailing rerun instead of racing mounts against unmounts.
@@ -572,6 +573,7 @@
                                         b.getNorth(),
                                     ],
                                     anchors,
+                                    map.getZoom(),
                                 );
                                 const focus = circuitFocus();
                                 if (

@@ -4,10 +4,10 @@
  * Before the cull, the page mounted every baked photo on disk and never
  * unmounted: RAM grew with the PIN COUNT, not the screen (Law 5). These tests
  * pin the two-ring geometry that replaced it — mount one viewport out, unmount
- * two out (hysteresis) — and the two laws the cull must NOT break: Law 1 (a
- * photo on screen is mounted at EVERY zoom — the plan sees geometry, never a
- * zoom level) and Law 3 (the pre-mount ring means a panning user never sees a
- * photo pop in; the hysteresis band means one never flaps on the edge).
+ * two out (hysteresis) — plus the one zoom floor (SAT_MIN_Z, 5 Sep 2026:
+ * below it a photo is a grey smudge and nothing mounts), and Law 3 (the
+ * pre-mount ring means a panning user never sees a photo pop in; the
+ * hysteresis band means one never flaps on the edge).
  */
 import { describe, expect, it, vi } from "vitest";
 
@@ -24,6 +24,7 @@ vi.mock("./satelliteImage", () => ({
 
 import {
     photoCullPlan,
+    SAT_MIN_Z,
     SAT_MOUNT_VIEWPORTS,
     SAT_UNMOUNT_VIEWPORTS,
 } from "./mountSatellite";
@@ -38,10 +39,25 @@ describe("photoCullPlan (the direction2.6 viewport cull)", () => {
         expect(SAT_UNMOUNT_VIEWPORTS).toBeGreaterThan(SAT_MOUNT_VIEWPORTS);
     });
 
-    it("mounts the photo the camera is sitting on (Law 1 — every zoom)", () => {
-        const p = photoCullPlan(camera, [[0, 0]]);
+    it("mounts the photo the camera is sitting on, at the floor and above", () => {
+        const p = photoCullPlan(camera, [[0, 0]], SAT_MIN_Z);
         expect(p.mount).toEqual([[0, 0]]);
         expect(p.keep.has("0.0000,0.0000")).toBe(true);
+        expect(photoCullPlan(camera, [[0, 0]], 16).mount).toEqual([[0, 0]]);
+    });
+
+    it("below the floor the plan is EMPTY on both sides — nothing mounts, everything mounted is swept", () => {
+        // z7: a 30 km photo is a 60 px smudge; even the photo under the camera goes.
+        const p = photoCullPlan(
+            camera,
+            [
+                [0, 0],
+                [2.5, 0],
+            ],
+            SAT_MIN_Z - 0.01,
+        );
+        expect(p.mount).toEqual([]);
+        expect(p.keep.size).toBe(0);
     });
 
     it("pre-mounts one viewport out — a panning user must never watch a photo pop in (Law 3)", () => {
@@ -83,7 +99,7 @@ describe("photoCullPlan (the direction2.6 viewport cull)", () => {
         expect(north.mount).toEqual([[3.02, 60]]);
     });
 
-    it("a world-spanning camera mounts EVERYTHING — presence survives zoom-out (Law 1)", () => {
+    it("a world-spanning camera at the floor mounts EVERYTHING — the cull is geometry above the floor", () => {
         const world: [number, number, number, number] = [-170, -80, 170, 80];
         const anchors: [number, number][] = [
             [0, 0],

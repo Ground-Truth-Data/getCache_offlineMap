@@ -21,6 +21,7 @@ export interface SatelliteMount {
     reconcile(
         camera: Bounds,
         anchors: readonly [number, number][],
+        zoom?: number,
     ): Promise<number>;
     /** Drop a photo and release its blob. */
     unmount(key: string): void;
@@ -38,12 +39,23 @@ export function satLayerId(key: string): string {
 // ── THE VIEWPORT CULL (direction2.6) ────────────────────────────────────────
 // Before this, the page mounted EVERY baked photo on disk, forever: RAM grew
 // with the PIN COUNT (~9 MB decoded per 1536-px photo — 321 pins ≈ 2.9 GB),
-// not the screen (Law 5). The cull is GEOMETRY ONLY, never zoom (Law 1): a
-// photo inside the camera is mounted at every zoom; what it reacts to is
-// distance from the screen. Two rings give hysteresis — mount near, unmount
-// far — so a photo near the edge does not flap on every pan, and a re-entry
-// remounts from IndexedDB (a millisecond read) before the disc can scroll
-// into view (Law 3, no blink).
+// not the screen (Law 5). The cull is geometry plus ONE zoom floor: a photo
+// inside the camera is mounted at every zoom from SAT_MIN_Z up; what it
+// reacts to is distance from the screen. Two rings give hysteresis — mount
+// near, unmount far — so a photo near the edge does not flap on every pan,
+// and a re-entry remounts from IndexedDB (a millisecond read) before the disc
+// can scroll into view (Law 3, no blink).
+
+/** Camera zoom below which NO photo mounts. At z7 a 30 km photo is a 60 px
+ *  grey smudge over the roads (Chris: "Kleenex stains", 5 Sep 2026) and every
+ *  baked area in view costs ~9 MB decoded for nothing. Photos fade in over the
+ *  half level above this, so crossing it eases rather than pops. */
+export const SAT_MIN_Z = 10;
+/** How far above SAT_MIN_Z a photo takes to reach full opacity. */
+const SAT_FADE_SPAN = 0.5;
+/** Cross-fade on mount/unmount, ms — long enough to read as an ease, short
+ *  enough that a pan never shows a half-faded photo. */
+const SAT_FADE_MS = 300;
 
 /** Whole viewports added per side of the camera before a photo may MOUNT. */
 export const SAT_MOUNT_VIEWPORTS = 1;
@@ -85,7 +97,12 @@ export interface PhotoCullPlan {
 export function photoCullPlan(
     camera: Bounds,
     anchors: readonly [number, number][],
+    zoom: number = SAT_MIN_Z,
 ): PhotoCullPlan {
+    // Below the floor the plan is empty on BOTH sides: nothing mounts and
+    // nothing is kept, so the sweep unmounts every photo the moment the
+    // camera crosses it.
+    if (zoom < SAT_MIN_Z) return { mount: [], keep: new Set() };
     const mountRing = expanded(camera, SAT_MOUNT_VIEWPORTS);
     const keepRing = expanded(camera, SAT_UNMOUNT_VIEWPORTS);
     const mount: [number, number][] = [];
@@ -153,8 +170,18 @@ export function createSatelliteMount(
                 id: `${id}-l`,
                 type: "raster",
                 source: id,
-                // No fade — Law 3 (no blink): a cross-fade on mount is a visible gap in presence.
-                paint: { "raster-fade-duration": 0 },
+                paint: {
+                    "raster-fade-duration": SAT_FADE_MS,
+                    "raster-opacity": [
+                        "interpolate",
+                        ["linear"],
+                        ["zoom"],
+                        SAT_MIN_Z,
+                        0,
+                        SAT_MIN_Z + SAT_FADE_SPAN,
+                        1,
+                    ],
+                },
             } as mapboxgl.LayerSpecification,
             // Under the wall-map roads, so streets draw on top of the photo — wallStyle owns that ordering rule.
             map.getLayer(SAT_INSERT_BEFORE) ? SAT_INSERT_BEFORE : undefined,
@@ -186,8 +213,9 @@ export function createSatelliteMount(
         async reconcile(
             camera: Bounds,
             anchors: readonly [number, number][],
+            zoom: number = SAT_MIN_Z,
         ): Promise<number> {
-            const { mount, keep } = photoCullPlan(camera, anchors);
+            const { mount, keep } = photoCullPlan(camera, anchors, zoom);
             // The sweep runs BEFORE mounting (reconcile invariant) — unmount
             // everything outside the keep ring, revoking each object URL or
             // the blob stays pinned (steady RAM climb).
