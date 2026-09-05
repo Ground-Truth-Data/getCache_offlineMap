@@ -13,6 +13,7 @@ import {
     keysForAddress,
     shallowKeysForAddress,
 } from "../../../onPhone/roads/pinTileLookup";
+import { TileByteCache } from "../../../onPhone/roads/tileByteCache";
 import { mergeSameFrameTiles } from "../../../onPhone/roads/tileMerge";
 import {
     cellsFor,
@@ -188,18 +189,18 @@ registerWipeLatch({
 // memory spikes. These caches sit in front of IndexedDB, are maintained by the
 // write path (idbPutMany / idbDeleteMany) and cleared on wipe/reset/purge.
 
+/** Byte budget per tier: ~2 screens of z8 merges; a miss re-merges from IndexedDB, so this is latency, never data. */
+const MERGED_CACHE_BYTES = 48 * 1024 * 1024;
 /** Merged (or solo) tile per address; `owners` = the pin keys that produced `buf`. */
-const mergedTiles = new Map<string, { owners: string[]; buf: ArrayBuffer }>();
+const mergedTiles = new TileByteCache(MERGED_CACHE_BYTES);
 /** One in-flight read per address — a tile burst must not merge the same blob N×. */
 const inFlightReads = new Map<string, Promise<ArrayBuffer | null>>();
-/** LRU cap — a long panning session must not accumulate unbounded tile bytes. */
-const MERGED_CACHE_MAX = 512;
 /** The store's key set, kept in memory so probes never re-open IndexedDB. */
 let allKeysCache: Set<string> | null = null;
 let allKeysLoad: Promise<Set<string>> | null = null;
 let allKeysEpoch = 0;
 /** The shallow tier's PARALLEL caches — same shape, own namespace; `shallow/…` keys never touch the z8 caches and vice versa. */
-const shallowMerged = new Map<string, { owners: string[]; buf: ArrayBuffer }>();
+const shallowMerged = new TileByteCache(MERGED_CACHE_BYTES);
 const inFlightShallowReads = new Map<string, Promise<ArrayBuffer | null>>();
 let shallowKeysCache: Set<string> | null = null;
 let shallowKeysLoad: Promise<Set<string>> | null = null;
@@ -344,18 +345,12 @@ function computeTileForAddress(
     return job;
 }
 
-/** Insertion-order LRU: delete-then-set refreshes recency; cap evicts the oldest. */
 function cacheMergedTile(
     addr: string,
     owners: string[],
     buf: ArrayBuffer,
 ): void {
-    mergedTiles.delete(addr);
-    mergedTiles.set(addr, { owners, buf });
-    if (mergedTiles.size > MERGED_CACHE_MAX) {
-        const oldest = mergedTiles.keys().next();
-        if (!oldest.done) mergedTiles.delete(oldest.value);
-    }
+    mergedTiles.set(addr, owners, buf);
 }
 
 export async function idbGetTile(key: string): Promise<ArrayBuffer | null> {
@@ -912,18 +907,12 @@ function computeShallowTileForAddress(
     return job;
 }
 
-/** Insertion-order LRU for the shallow tier — same cap law as cacheMergedTile. */
 function cacheShallowTile(
     addr: string,
     owners: string[],
     buf: ArrayBuffer,
 ): void {
-    shallowMerged.delete(addr);
-    shallowMerged.set(addr, { owners, buf });
-    if (shallowMerged.size > MERGED_CACHE_MAX) {
-        const oldest = shallowMerged.keys().next();
-        if (!oldest.done) shallowMerged.delete(oldest.value);
-    }
+    shallowMerged.set(addr, owners, buf);
 }
 
 export function areaTilesPresentIn(
