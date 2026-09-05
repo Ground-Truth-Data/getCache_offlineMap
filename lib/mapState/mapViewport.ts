@@ -142,3 +142,16 @@ export function saveFramedMapKey(key: string | null): void {
 	} catch {
 	}
 }
+
+/** Where a map opens: an explicit URL camera (deep link, "see on map") beats the persisted one, which beats home. Both routes resolve through this so the crow toggle lands where you were — the persisted store is the truth they share. */
+export function openingCamera(
+	url: { center: [number, number]; zoom?: number } | undefined,
+	saved: SavedCamera | null,
+	home: { center: [number, number]; zoom: number },
+): { center: [number, number]; zoom: number } {
+	if (url) {
+		return { center: url.center, zoom: url.zoom ?? saved?.zoom ?? home.zoom };
+	}
+	if (saved) return { center: saved.center, zoom: saved.zoom };
+	return home;
+}

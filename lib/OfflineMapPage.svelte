@@ -67,6 +67,12 @@
     import type { HostPorts } from "./shared/hostPorts";
     import type { MapHostPorts } from "./shared/mapHostPorts";
     import MapTopControls from "./mapUi/MapTopControls.svelte";
+    import SnakeRuler from "./mapUi/SnakeRuler.svelte";
+    import type { Map as MapboxMap } from "mapbox-gl";
+    import {
+        finalizeFeature,
+        type Lnglat,
+    } from "$parent/siblings/getCache_OnlineMap/lib/mapDraw";
     import {
         OFFLINE_MAP_ROUTE,
         ONLINE_MAP_ROUTE,
@@ -201,6 +207,15 @@
      *  slides the shell's bars away). */
     let mapOnly = $state(false);
 
+    /** The Snake Ruler's handle on the map. `mapInstance` stays plain (hot
+     *  loops read it); the ruler is a component and needs a reactive one. */
+    let rulerMap = $state<maplibreType.Map | null>(null);
+    let measureEvent = $state<{ lng: number; lat: number; n: number } | null>(
+        null,
+    );
+    let measureN = 0;
+    let dismissDropCard: (() => void) | null = null;
+
     let activePin = $state("pin");
 
     /** Pins dropped this session — the MARKER side only (which artwork, which one
@@ -244,6 +259,32 @@
         };
         const el = m?.getElement?.();
         if (el) el.src = pinAssetPath(key as PinKey);
+    }
+
+    function dropPinAtPoint(lng: number, lat: number): void {
+        const map = mapInstance;
+        if (!map) return;
+        dropped = [...dropped, { lng, lat, pin: activePin }];
+        addMarker(map, lng, lat, activePin);
+        // Circles go grey for THIS pin, then the host keeps the place →
+        // onPlacesChanged → the bake requests it → yellow → green/red.
+        resetCircuits(satImageKey([lng, lat]));
+        if (ports.addPlace) {
+            ports.addPlace(
+                [lng, lat],
+                `${activePin} ${lng.toFixed(4)},${lat.toFixed(4)}`,
+            );
+        } else {
+            console.warn(
+                "[offline] pin dropped but this host has no addPlace port — nothing will be downloaded for it.",
+            );
+        }
+    }
+
+    /** A finished ruler line/polygon becomes a feature in the host's active
+     *  map — the same store the online map writes, so it shows on both. */
+    function persistMeasure(kind: "line" | "polygon", verts: Lnglat[]): void {
+        mapPorts?.store.addFeature(finalizeFeature(kind, verts), kind);
     }
 
     let mapContainer: HTMLDivElement;
@@ -398,6 +439,7 @@
                 },
                 onMapReady: (map: maplibreType.Map) => {
                     mapInstance = map;
+                    rulerMap = map;
                     // LIVE ZOOM FOR THE RAIL — `zoom` alone misses camera changes
                     // that fire only `move` (jumpTo-style programmatic moves);
                     // both handlers are one getZoom() each, so wiring both is free.
@@ -435,30 +477,18 @@
                         popAt = null;
                     });
 
-                    // ⚠️ onMeasureSeed, NOT onDrop: in the app a double-tap seeds the Snake
-                    // Ruler and its Save button drops the pin. With no ruler here, the seed
-                    // IS the drop — `onDrop` is declared by the module but never called.
+                    // Same gesture as the online map: double-tap / long-press seeds the
+                    // Snake Ruler and its Save drops the pin. The fixture route has no
+                    // host ports so no ruler — there the seed IS the drop. `onDrop` is
+                    // declared by the module but never called.
                     detachTap = attachDoubleTapToPin(map, {
                         onDrop: () => {},
                         onMeasureSeed: (lng: number, lat: number) => {
-                            dropped = [
-                                ...dropped,
-                                { lng, lat, pin: activePin },
-                            ];
-                            addMarker(map, lng, lat, activePin);
-                            // Circles go grey for THIS pin, then the host keeps the place →
-                            // onPlacesChanged → the bake requests it → yellow → green/red.
-                            resetCircuits(satImageKey([lng, lat]));
-                            if (ports.addPlace) {
-                                ports.addPlace(
-                                    [lng, lat],
-                                    `${activePin} ${lng.toFixed(4)},${lat.toFixed(4)}`,
-                                );
-                            } else {
-                                console.warn(
-                                    "[offline] pin dropped but this host has no addPlace port — nothing will be downloaded for it.",
-                                );
-                            }
+                            if (mapPorts) measureEvent = { lng, lat, n: measureN++ };
+                            else dropPinAtPoint(lng, lat);
+                        },
+                        registerDismiss: (fn) => {
+                            dismissDropCard = fn;
                         },
                     });
 
@@ -726,6 +756,14 @@
                 bind:mapOnly
                 crowMode="offline"
                 onCrowToggle={() => goto(ONLINE_MAP_ROUTE)}
+            />
+            <SnakeRuler
+                ports={mapPorts}
+                map={rulerMap as unknown as MapboxMap | null}
+                bind:measureEvent
+                onMeasureDrag={() => dismissDropCard?.()}
+                onPersist={persistMeasure}
+                onSavePoint={dropPinAtPoint}
             />
         {/if}
 
