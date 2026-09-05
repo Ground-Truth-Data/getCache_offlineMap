@@ -305,7 +305,8 @@ export interface MapQ704Ports {
 	activeMapNumbering(): Map<string, number>;
 	plotByGpsKey(gpsFeatureKey: string): MapQ704PlotPinData | null;
 	plotFullCodeByGpsKey(gpsFeatureKey: string): string;
-	updateActivePlot(plotNo: number, fields: MapQ704PlotEdit): MapQ704WriteOutcome;
+	/** Write one ACTIVE plot row by its deck row id (`q`-prefixed or the bare store key). */
+	updateActivePlot(rowId: string, fields: MapQ704PlotEdit): MapQ704WriteOutcome;
 	setActiveSpeciesChoices(choices: string[]): void;
 	getPendingDrop(): MapQ704PendingDrop | null;
 	pendingDropPinData(): MapQ704PlotPinData | null;

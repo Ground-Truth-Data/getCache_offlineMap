@@ -196,10 +196,10 @@ onMount(async () => {
 });
 
 // ⚠️ Only writes on commit (swipe-right); an untyped-but-unswiped row is discarded. Uses targeted updateActivePlot — never the page's destructive persistInspection.
-// saveFailed: updateActivePlot returned "missing" — a duplicate-heal can bump the plot number out from under `rows`'s mount-time snapshot; raises the refusal strip so an unsaved value never renders as filed.
+// saveFailed: updateActivePlot returned "missing" — the row is gone from the store (deleted from another surface); raises the refusal strip so an unsaved value never renders as filed.
 let saveFailed = $state(false);
-// Reports each impossible-write plot number ONCE per mount — the commit effect re-runs on every rows edit.
-const missingReported = new Set<number>();
+// Reports each refused row ONCE per mount — the commit effect re-runs on every rows edit.
+const missingReported = new Set<string>();
 
 $effect(() => {
 	if (!hydrated || !q704) return;
@@ -209,7 +209,7 @@ $effect(() => {
 	for (const r of rows) {
 		if (r.plotNo == null) continue; // the trailing blank has no number yet.
 		if (!r.committed) continue; // UNCOMMITTED → buffered in memory, not saved.
-		const outcome = q704.updateActivePlot(r.plotNo, {
+		const outcome = q704.updateActivePlot(r.id, {
 			planted: r.planted,
 			plantableSpotsOverride: r.plantableSpotsOverride,
 			plantableSpots: r.plantableSpots,
@@ -219,14 +219,14 @@ $effect(() => {
 		});
 		if (outcome === "updated") changed = true;
 		if (outcome === "missing") {
-			// ⚠️ "missing" write is IMPOSSIBLE, not "unchanged" — treating it as unchanged is how a committed count rendered as filed but lived only in memory (gone on restart).
+			// ⚠️ "missing" is not "unchanged" — treating it as unchanged is how a committed count rendered as filed but lived only in memory (gone on restart).
 			missing = true;
-			if (!missingReported.has(r.plotNo)) {
-				missingReported.add(r.plotNo);
+			if (!missingReported.has(r.id)) {
+				missingReported.add(r.id);
 				ports.ui.reportSwallowed(
 					"PlotMapPopoverV2:commit",
 					new Error(
-						`updateActivePlot: no ACTIVE row carries plot #${r.plotNo} — the committed count was NOT persisted`,
+						`updateActivePlot: no ACTIVE row ${r.id} (plot #${r.plotNo}) — the committed count was NOT persisted`,
 					),
 					{ plotNo: r.plotNo, mapFeatureKey, gpsFeatureKey: r.gpsFeatureKey ?? "" },
 				);
