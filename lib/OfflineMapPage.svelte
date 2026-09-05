@@ -42,6 +42,12 @@
     import { createSatelliteMount } from "./onPhone/satellite/mountSatellite";
     import { watchPaint } from "./onPhone/render/paintWatch";
     import { cameraFromUrl } from "./shared/cameraFromUrl";
+    import {
+        attachCameraPersistence,
+        loadCamera,
+        openingCamera,
+    } from "./mapState/mapViewport";
+    import { anchorKey, attachPlacePins } from "./onPhone/render/placePins";
     import { attachDoubleTapToPin } from "./shared/doubleTapToPin";
     import { startOfflineBakeService } from "./onPhone/bake/bakeService.svelte";
     import {
@@ -410,20 +416,25 @@
         let unsubSatCircuit: (() => void) | undefined;
         let unsubBlobGrid: (() => void) | undefined;
         let firePaintTimer: ReturnType<typeof setTimeout> | undefined;
+        let detachCamera: (() => void) | undefined;
+        let detachPlacePins: (() => void) | undefined;
         try {
-            // WHERE THE MAP OPENS. A coordinate in the query string wins over the
-            // fixture, so `?=58.7986,-122.6761` points BOTH routes at the same
-            // spot — see cameraFromUrl.ts. Absent, the first fixture pin stands.
+            // WHERE THE MAP OPENS. `?at=lat,lng&z=` wins (deep links, "see on
+            // map"); otherwise the camera the online map persisted, so the crow
+            // lands on the same spot — one map, two renderers. Home last.
             const urlCam = cameraFromUrl(location.search);
-            if (urlCam)
-                console.info(
-                    `[map] opening at ${urlCam.center[1]},${urlCam.center[0]}` +
-                        `${urlCam.zoom !== undefined ? ` z${urlCam.zoom}` : ""} (from the URL)`,
-                );
+            const cam = openingCamera(urlCam, loadCamera(), {
+                center: PINS[0].lngLat,
+                zoom: 9,
+            });
+            console.info(
+                `[map] opening at ${cam.center[1]},${cam.center[0]} z${cam.zoom} ` +
+                    `(from ${urlCam ? "the URL" : "the shared camera"})`,
+            );
             cleanup = initializeOfflineMap(mapContainer, {
                 style: buildOfflineBaseStyle() as maplibreType.StyleSpecification,
-                initialCenter: urlCam?.center ?? PINS[0].lngLat,
-                initialZoom: urlCam?.zoom ?? 9,
+                initialCenter: cam.center,
+                initialZoom: cam.zoom,
                 // LAW 0, at the renderer's own door: every non-local URL is rejected,
                 // so the map CANNOT stream even if a style entry tried to.
                 transformRequest:
@@ -472,6 +483,15 @@
                     // On load too, or a freshly-opened page has a bare url until you drag.
                     writeCameraToUrl();
                     map.on("moveend", writeCameraToUrl);
+                    // The SAME store the online map reads on mount (mapViewport.ts).
+                    detachCamera = attachCameraPersistence(map);
+                    // THE HOST'S PINS — every point feature of every map, the same
+                    // pins the online map draws. A pin dropped this session keeps
+                    // its own marker (artwork, popover); the store's copy skips it.
+                    detachPlacePins = attachPlacePins(map, ports, {
+                        skip: () =>
+                            new Set(dropped.map((d) => anchorKey(d.lng, d.lat))),
+                    });
                     map.on("click", () => {
                         selectedIdx = null;
                         popAt = null;
@@ -689,6 +709,8 @@
         }
         return () => {
             detachTap?.();
+            detachCamera?.();
+            detachPlacePins?.();
             clearInterval(satPoll);
             stopPaintWatch?.();
             clearTimeout(firePaintTimer);
