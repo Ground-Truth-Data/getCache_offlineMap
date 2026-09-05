@@ -84,14 +84,25 @@ Measured 3 Sep (Claude driving `__rtMap` on a fresh tab, 430 areas on disk):
 **LANDED 3 Sep afternoon (`716c4f6`) — pull before touching the map page.**
 The other measured hoard — one permanent satellite source per baked pin, 326
 sources / 348 layers on the map at once, zoom-out freeing nothing — is fixed:
-photos are now VIEWPORT-MOUNTED (`OfflineMapPage.svelte`, the satellite block).
-Below z10 nothing mounts (the ghost grid is the presence cue); at z10+ the ≤16
-nearest photos that can touch the viewport mount, and every gesture unmounts
-the rest — a photo scrolling back in is a fast IndexedDB re-read. The focused
-(just-dropped) pin is always mounted so paintWatch can still green its row.
-Re-measured on the same 430-area disk: 5 sources at z8 (was 326), zoom-out
-drops photo sources to 0, densest cluster mounts 7. mountSatellite.ts itself
-is unchanged — the mount/unmount decision lives with the page.
+photos are now VIEWPORT-MOUNTED. **Superseded 4 Sep by DeepMoire's two-ring
+cull** (`mountSatellite.ts` `photoCullPlan`/`reconcile()`, merged `7f83afd`):
+the page hands the viewport bounds and anchors to `reconcile()`, which mounts
+the photos in the inner ring, keeps the outer ring warm and unmounts the rest.
+The z10 floor and the ≤16 cap from the 3 Sep version are gone. The focused
+(just-dropped) pin is still pinned so paintWatch can green its row.
+
+**LANDED 5 Sep (`2f17f0c`, `77f2a92`) — the roads, not the photos, were the
+big pot.** The tile worker (DevTools "Select JavaScript VM instance", NOT the
+in-app rail, which reads the main thread only) held 1.4 GB at z6 and 2.3 GB at
+z9 over a carpet of 440 merged discs: a disc tile carries every driveway at
+full detail whatever its zoom, so with small roads drawn RAM scales with the
+GROUND on screen. Small roads now draw only inside a disc and only from
+`MINOR_ROAD_Z = 11` (`wallStyle.ts`); the shallow wall's small-road layer is
+DELETED; trails from z12. The permanent demo blob at the map home is deleted,
+and a blob whose pin is gone is pruned on the next pass. Law 1 in
+OFFLINE_PLAN.md is rewritten — "every road at every zoom" is retired, do not
+restore it. Server-side thinning of z8–z10 disc tiles is next (needs a
+PACK_FORMAT_VERSION bump after deploy).
 
 **LANDED 3 Sep evening: `maxTileCacheSize: 2` on the map constructor**
 (offlineMapInit.ts). Chris's DevTools showed the REAL hoard was never on the
