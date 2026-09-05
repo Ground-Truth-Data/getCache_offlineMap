@@ -211,7 +211,12 @@ const line = (anchor: [number, number]) => ({
 	lastTouched: "2026-06-17T12:00:00Z",
 	anchors: [anchor],
 });
-/** Seed an ORPHAN blob (on disk, no live feature points at it). */
+/** Seed a PHOTO nobody references and WE did not bake (no coverage record) —
+ *  the online map's shared satellite cache. Ours to budget, not ours to drop. */
+function seedForeignPhoto(lng: number, lat: number): void {
+	h.satStore.set(h.key(lng, lat), 1000);
+}
+/** Seed an ORPHAN blob WE baked (coverage record) whose pin is gone. */
 function seedOrphan(lng: number, lat: number, lastTouched: number): void {
 	const k = h.key(lng, lat);
 	h.satStore.set(k, 1000);
@@ -339,14 +344,29 @@ describe("offline tripwire — ONE pass has a TIME BUDGET", () => {
 	});
 });
 
-describe("offline tripwire 3 — under budget, NOTHING is ever evicted", () => {
-	it("an orphan blob (no live feature) survives every pass while under the 1 GB budget", async () => {
-		// Regression (578→206 swing bug): orphans must persist forever under budget, never deleted on sight.
+describe("offline tripwire 3 — a deleted pin takes its blob; foreign photos are never touched under budget", () => {
+	it("a blob WE baked whose pin is gone is dropped on the next pass, even under budget", async () => {
+		// The "Ontario carpet" (5 Sep 2026): deleted test pins left their discs on disk and the map kept drawing them.
 		seedOrphan(99, 99, 1);
-		features = []; // nothing references the orphan
+		features = []; // nothing references it
+		await reconcileOnceForTest(testPorts);
+		expect(h.deleteSatImage).toHaveBeenCalledWith(h.key(99, 99));
+		expect(h.satStore.has(h.key(99, 99))).toBe(false);
+	});
+	it("a photo with no coverage record (online map's cache) survives every pass while under budget", async () => {
+		// Regression (578→206 swing bug): never delete a photo on sight just because no pin points at it.
+		seedForeignPhoto(98, 98);
+		features = [];
 		await reconcileOnceForTest(testPorts);
 		expect(h.deleteSatImage).not.toHaveBeenCalled();
-		expect(h.satStore.has(h.key(99, 99))).toBe(true);
+		expect(h.satStore.has(h.key(98, 98))).toBe(true);
+	});
+	it("a blob is NOT an orphan while the host is still hydrating", async () => {
+		// The 1 GB → 70 MB collapse: a briefly-empty place list on cold reload must never look like "every pin deleted".
+		seedOrphan(97, 97, 1);
+		features = [];
+		await reconcileOnceForTest({ ...testPorts, ready: () => false });
+		expect(h.deleteSatImage).not.toHaveBeenCalled();
 	});
 });
 
@@ -363,7 +383,7 @@ describe("offline tripwire 3b — a kept pin gets BOTH halves; roads top up a ph
 describe("offline tripwire 3c — a NEW pin gets its satellite even at the cap (displaces oldest)", () => {
 	it("disk full of OLDER photos → the newest pin still bakes its photo; an old one is evicted", async () => {
 		// Regression (stuck-at-1GB bug): the conveyor must rank by touch (newest wins) — measuring total disk bytes blocked every new pin's photo.
-		h.budget.bytes = 2000; // demo(1000) + ONE more pin fits; the rest evict
+		h.budget.bytes = 2000; // the new pin + ONE old one fit; the oldest evicts
 		// Two OLDER pins already have their photos on disk (disk is "full").
 		h.satStore.set(h.key(10, 10), 1000);
 		h.tiles.add(h.key(10, 10));
@@ -384,11 +404,16 @@ describe("offline tripwire 3c — a NEW pin gets its satellite even at the cap (
 
 describe("offline tripwire 4 — over budget, oldest falls off, newest survives", () => {
 	it("the milk-shelf conveyor: only the oldest-touched blob is dropped", async () => {
-		// Budget holds the demo (always baked) + the newest orphan, but not the oldest.
-		h.budget.bytes = 2500; // demo(1000) + new(1000) = 2000 ≤ 2500 < +old(1000)=3000
-		seedOrphan(11, 11, 1); // OLDEST (lastTouched 1)
-		seedOrphan(22, 22, 100); // NEWEST (lastTouched 100)
-		features = [];
+		// Two live pins, budget for one blob: the OLDEST-touched falls off.
+		h.budget.bytes = 1500; // one(1000) ≤ 1500 < two(2000)
+		h.satStore.set(h.key(11, 11), 1000);
+		h.tiles.add(h.key(11, 11));
+		h.satStore.set(h.key(22, 22), 1000);
+		h.tiles.add(h.key(22, 22));
+		features = [
+			pointAt([22, 22], "2026-06-18T12:00:00Z"), // NEWEST
+			pointAt([11, 11], "2026-05-01T12:00:00Z"), // OLDEST
+		];
 		await reconcileOnceForTest(testPorts);
 		// Oldest evicted, newest kept.
 		expect(h.deleteSatImage).toHaveBeenCalledWith(h.key(11, 11));

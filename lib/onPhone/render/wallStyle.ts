@@ -369,12 +369,14 @@ export function wallLayers(): mapboxgl.LayerSpecification[] {
 
         // ── 3) TRAILS + RAIL ─────────────────────────────────────────────────
         // PATH — sage-green + a fine dash so a footpath or logging track reads as
-        // a trail, NOT a road. Same width as roads.
+        // a trail, NOT a road. Same width as roads. A trail never shows before
+        // the small roads around it do.
         {
             id: "v4-path",
             type: "line",
             source: RAW_SOURCE,
             "source-layer": "roads",
+            minzoom: MINOR_ROAD_Z + 1,
             filter: ["==", ["get", "kind"], "path"],
             layout: { "line-cap": "round", "line-join": "round" },
             paint: {

@@ -28,7 +28,6 @@ import {
     satImageKey,
     satImageMeta,
 } from "../satellite/satelliteImage";
-import { MAP_HOME_CENTER } from "../../shared/homeCentre";
 import { vlog } from "../../shared/verboseLog";
 import type { HostPorts } from "../../shared/hostPorts";
 import {
@@ -553,9 +552,6 @@ async function bakeAll(): Promise<void> {
             const t = Date.parse(p.lastTouched) || 0;
             for (const c of p.anchors) note(c, p.corridor, t);
         }
-        // The permanent demo blob — always present, treated as newest so it is never evicted.
-        note(MAP_HOME_CENTER, false, Number.POSITIVE_INFINITY);
-
         // 1b) THE LIVE ANCHOR — a user with no features yet still gets covered at their live position (no prompt, see liveFix.ts); added LAST and gated on containment since note()'s ~11m key assumes anchors don't move.
         //
         // ⚠️ Containment is measured against WHAT IS ON DISK (covByKey), not just this pass's feature anchors — the live anchor is TRANSIENT (never re-noted), so measuring against features alone would report "outside coverage" forever.
@@ -687,17 +683,14 @@ async function bakeAll(): Promise<void> {
             }
         }
 
-        // 5) EVICT — only when the jar overflows. Under 1GB nothing is ever removed; past it the OLDEST-touched fall off (milk-shelf conveyor) until back under.
-        // Orphans (shared satellite cache, deleted pin leftovers) are KEPT while under budget — deleting on sight caused the 578→206 swing bug. Skipped on a cellular pause.
+        // 5) EVICT. Two rules. (a) An area WE baked whose pin is gone goes on the next pass — a deleted pin must take its blob with it, or the map keeps drawing ground nobody asked for (the "Ontario carpet", 5 Sep 2026). "We baked it" = it has a coverage record; a photo with no record belongs to the online map's shared satellite cache and is not ours to drop. (b) Everything else is LRU: under 1GB nothing is removed; past it the OLDEST-touched fall off until back under. Skipped on a cellular pause.
         const kept = new Set<string>();
         // ⚠️ SAFETY GUARD against the "1GB → 70MB" collapse — NEVER evict before the host has HYDRATED, or a briefly-empty place list on cold reload makes every blob look unreferenced and the conveyor nukes nearly everything.
         //
         // ⚠️ ready(), NOT "places().length > 0" — a hydrated host with all pins deleted has zero places but must still evict; conflating them silently disabled the conveyor. budgetPaused/gatePaused also block eviction, since a stopped-early walk leaves keptBytes PARTIAL.
         if (!gatePaused && !budgetPaused && (ports?.ready() ?? false)) {
-            const demoKey = satImageKey(MAP_HOME_CENTER);
-            // Touch time: referenced areas use feature touch time, orphans use registry lastTouched (0 if none — the most disposable, ages out first). Demo never dies.
+            // Touch time: referenced areas use feature touch time, orphans use registry lastTouched (0 if none — the most disposable, ages out first).
             const touchOf = (k: string): number => {
-                if (k === demoKey) return Number.POSITIVE_INFINITY;
                 const t = touchByKey.get(k);
                 if (t !== undefined) return t;
                 return covByKey.get(k)?.lastTouched ?? 0;
@@ -713,6 +706,10 @@ async function bakeAll(): Promise<void> {
             ].sort((a, b) => touchOf(b) - touchOf(a)); // NEWEST first
             let total = 0;
             for (const k of stored) {
+                if (!touchByKey.has(k) && covByKey.has(k)) {
+                    await pruneArea(k); // rule (a): our blob, its pin is gone
+                    continue;
+                }
                 total += sizeOf(k);
                 if (total > OFFLINE_BUDGET_BYTES) {
                     await pruneArea(k); // past the line = oldest, over budget -> conveyor drop

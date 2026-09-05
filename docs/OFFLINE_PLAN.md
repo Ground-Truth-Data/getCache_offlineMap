@@ -278,10 +278,15 @@ First: a guard. Any maps loaded?  ──NO──▶ do NOTHING this pass.
   (On a cold reload the in-memory map list is briefly empty; evicting then would make
    every pin look unowned and wipe everything — the 1 GB → 70 MB crash. Wait for it.)
 
-Rank EVERY feature's blob by LAST-TOUCHED, newest on top. (the demo is pinned on top.)
+Rank EVERY feature's blob by LAST-TOUCHED, newest on top. There is no demo blob
+(the permanent one at the map home was deleted 5 Sep 2026 — it was the "Ontario
+carpet" nobody asked for).
 
 LIST A — KEEP-OR-EVICT
-  add up blob sizes from the top; the moment the total passes 1 GB, draw the line.
+  first: a blob WE baked (has a coverage record) that NO feature references any
+  more is evicted now — a deleted pin takes its blob with it. A photo with no
+  record is the online map's shared cache; it only ever falls off by LRU below.
+  then: add up blob sizes from the top; the moment the total passes 1 GB, draw the line.
     • above the line → KEEP
     • below the line → EVICT the WHOLE blob (image + roads together — never half)
 
