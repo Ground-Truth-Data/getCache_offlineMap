@@ -73,12 +73,7 @@
     import type { HostPorts } from "./shared/hostPorts";
     import type { MapHostPorts } from "./shared/mapHostPorts";
     import MapTopControls from "./mapUi/MapTopControls.svelte";
-    import SnakeRuler from "./mapUi/SnakeRuler.svelte";
-    import type { Map as MapboxMap } from "mapbox-gl";
-    import {
-        finalizeFeature,
-        type Lnglat,
-    } from "$parent/siblings/getCache_OnlineMap/lib/mapDraw";
+    import type { Snippet } from "svelte";
     import {
         OFFLINE_MAP_ROUTE,
         ONLINE_MAP_ROUTE,
@@ -198,29 +193,41 @@
          */
         railLeftHost,
         railRightHost,
+        /** THE HOST'S TOOLS, INSIDE THE MAP BOX. The route renders the map tool
+         *  drawer (ruler, draw palette, layers, locate…) here so the shared
+         *  `.mobile-map-fill` chrome — map-only fade, control placement — reads
+         *  as one map with /app/map. Bound out: the ready map, the eye's state
+         *  and the double-tap ruler seed the drawer's Snake Ruler consumes. */
+        children,
+        map = $bindable(null),
+        mapOnly = $bindable(false),
+        measureEvent = $bindable(null),
     }: {
         hostPorts?: HostPorts;
         mapPorts?: MapHostPorts;
         railLeftHost?: HTMLElement;
         railRightHost?: HTMLElement;
+        children?: Snippet;
+        map?: maplibreType.Map | null;
+        mapOnly?: boolean;
+        measureEvent?: { lng: number; lat: number; n: number } | null;
     } = $props();
 
     /** THE PORTS, RESOLVED ONCE. The bake service, the marker loop and the blob
      *  panel all read this, so they cannot disagree about what the data is. */
     const ports = $derived(hostPorts ?? fixturePorts);
 
-    /** Map-only mode, toggled by the eye in MapTopControls (body.map-only
-     *  slides the shell's bars away). */
-    let mapOnly = $state(false);
-
-    /** The Snake Ruler's handle on the map. `mapInstance` stays plain (hot
-     *  loops read it); the ruler is a component and needs a reactive one. */
-    let rulerMap = $state<maplibreType.Map | null>(null);
-    let measureEvent = $state<{ lng: number; lat: number; n: number } | null>(
-        null,
-    );
     let measureN = 0;
     let dismissDropCard: (() => void) | null = null;
+    /** `onMapReady`'s parameter shadows the bindable prop; this reaches it. */
+    const publishMap = (m: maplibreType.Map | null) => {
+        map = m;
+    };
+    /** The host's drawer calls this the instant a ruler end is grabbed: the
+     *  double-tap "Drop" card is stale once the seed became a line. */
+    export function dismissDrop(): void {
+        dismissDropCard?.();
+    }
 
     let activePin = $state("pin");
 
@@ -285,12 +292,6 @@
                 "[offline] pin dropped but this host has no addPlace port — nothing will be downloaded for it.",
             );
         }
-    }
-
-    /** A finished ruler line/polygon becomes a feature in the host's active
-     *  map — the same store the online map writes, so it shows on both. */
-    function persistMeasure(kind: "line" | "polygon", verts: Lnglat[]): void {
-        mapPorts?.store.addFeature(finalizeFeature(kind, verts), kind);
     }
 
     let mapContainer: HTMLDivElement;
@@ -405,6 +406,9 @@
         // back to whichever map was used last. Recorded at the destination, so
         // arriving by deep link sticks too. Mirrors MobMapPage.
         saveLastMapRoute(OFFLINE_MAP_ROUTE);
+        // The map box is fixed and full-frame; this lifts the shell's bars over
+        // its edges, the same flag MobMapPage sets.
+        document.body.classList.add("demo-map-fullbleed");
         const stopBake = startOfflineBakeService(ports);
         let cleanup: (() => void) | undefined;
         let satMount: ReturnType<typeof createSatelliteMount> | undefined;
@@ -450,7 +454,9 @@
                 },
                 onMapReady: (map: maplibreType.Map) => {
                     mapInstance = map;
-                    rulerMap = map;
+                    // The bindable handle the host's drawer reads. `mapInstance`
+                    // stays plain for the hot loops.
+                    publishMap(map);
                     // LIVE ZOOM FOR THE RAIL — `zoom` alone misses camera changes
                     // that fire only `move` (jumpTo-style programmatic moves);
                     // both handlers are one getZoom() each, so wiring both is free.
@@ -498,9 +504,9 @@
                     });
 
                     // Same gesture as the online map: double-tap / long-press seeds the
-                    // Snake Ruler and its Save drops the pin. The fixture route has no
-                    // host ports so no ruler — there the seed IS the drop. `onDrop` is
-                    // declared by the module but never called.
+                    // host drawer's Snake Ruler, whose Save drops the pin. The fixture
+                    // route has no host so no ruler — there the seed IS the drop.
+                    // `onDrop` is declared by the module but never called.
                     detachTap = attachDoubleTapToPin(map, {
                         onDrop: () => {},
                         onMeasureSeed: (lng: number, lat: number) => {
@@ -708,6 +714,8 @@
             mapError = err instanceof Error ? err.message : String(err);
         }
         return () => {
+            document.body.classList.remove("demo-map-fullbleed");
+            publishMap(null);
             detachTap?.();
             detachCamera?.();
             detachPlacePins?.();
@@ -761,7 +769,7 @@
         </aside>
     {/if}
 
-    <div class="phone">
+    <div class="phone mobile-map-fill">
         {#if mapError}
             <div class="map-error">
                 <p>Map unavailable</p>
@@ -779,15 +787,8 @@
                 crowMode="offline"
                 onCrowToggle={() => goto(ONLINE_MAP_ROUTE)}
             />
-            <SnakeRuler
-                ports={mapPorts}
-                map={rulerMap as unknown as MapboxMap | null}
-                bind:measureEvent
-                onMeasureDrag={() => dismissDropCard?.()}
-                onPersist={persistMeasure}
-                onSavePoint={dropPinAtPoint}
-            />
         {/if}
+        {@render children?.()}
 
         <!-- THE PIN LIBRARY, ON THE MAP. Anchored under the selected pin and
 			     re-projected on every camera move, so it behaves like the app's
@@ -863,8 +864,12 @@
         flex-direction: column;
         gap: 0.5rem;
     }
+    /* The SAME box as /app/map: fixed, behind the shell's bars, so the eye's
+       slide-away and the eye/crow stack land at the same spot on both maps.
+       Duplicates the shared `.mobile-map-fill` rule only so the child's own
+       fixture route, which loads no host CSS, gets the same box. */
     .phone {
-        position: absolute;
+        position: fixed;
         inset: 0;
         z-index: 0;
         overflow: hidden;
