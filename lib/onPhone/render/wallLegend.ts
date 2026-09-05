@@ -12,34 +12,34 @@
  */
 
 import {
-	PATH_LINE,
-	RAIL_LINE,
-	ROAD_LINE,
-	ROAD_MAJOR_LINE,
+    PATH_LINE,
+    RAIL_LINE,
+    ROAD_LINE,
+    ROAD_MAJOR_LINE,
 } from "./offlineColors";
 import type { PackRead } from "../../contract/packLayers";
 
 /** One switch in MapDrawControls' BASEMAP popover. */
 export interface LayerToggle {
-	readonly key: string;
-	readonly label: string;
-	readonly ids: readonly string[];
-	/** HOW this layer is drawn, in one or two words, shown greyed beside the
-	 *  label. Not a description of what the layer IS — the label says that —
-	 *  but of the mechanism, because the mechanism is what you are debugging:
-	 *  "always on" cannot be the cause of a missing feature, "cluster" and
-	 *  "pyramid" can, and they fail differently. */
-	readonly hint?: string;
-	/** WHICH DOWNLOAD this layer draws from — the circuit key in
-	 *  workMeter.svelte.ts whose circle the CONFIG row shows. Roads, labels,
-	 *  places and hospitals all ride in the one pack, so they share `pack`. */
-	readonly feed?: "sat" | "pack" | "fires";
-	/** WHAT THIS LAYER READS OUT OF THE PACK — source-layer + the kinds its
-	 *  style filters on. The debug report checks each read against the
-	 *  contract (`packShips` in contract/packLayers.ts) to say whether the
-	 *  pack is MEANT to carry it, instead of the old hard-coded "roads only".
-	 *  Must match the filters in wallStyle.ts / wallLabels.ts. */
-	readonly reads?: readonly PackRead[];
+    readonly key: string;
+    readonly label: string;
+    readonly ids: readonly string[];
+    /** HOW this layer is drawn, in one or two words, shown greyed beside the
+     *  label. Not a description of what the layer IS — the label says that —
+     *  but of the mechanism, because the mechanism is what you are debugging:
+     *  "always on" cannot be the cause of a missing feature, "cluster" and
+     *  "pyramid" can, and they fail differently. */
+    readonly hint?: string;
+    /** WHICH DOWNLOAD this layer draws from — the circuit key in
+     *  workMeter.svelte.ts whose circle the CONFIG row shows. Roads, labels,
+     *  places and hospitals all ride in the one pack, so they share `pack`. */
+    readonly feed?: "sat" | "pack" | "fires";
+    /** WHAT THIS LAYER READS OUT OF THE PACK — source-layer + the kinds its
+     *  style filters on. The debug report checks each read against the
+     *  contract (`packShips` in contract/packLayers.ts) to say whether the
+     *  pack is MEANT to carry it, instead of the old hard-coded "roads only".
+     *  Must match the filters in wallStyle.ts / wallLabels.ts. */
+    readonly reads?: readonly PackRead[];
 }
 
 /**
@@ -50,76 +50,91 @@ export interface LayerToggle {
  * reconcile, so the page sweeps every `v4-sat-*` layer when this key toggles.
  */
 export const LAYER_TOGGLES: readonly LayerToggle[] = [
-	{ key: "sat", label: "Satellite", ids: ["v4-sat"], hint: "always on", feed: "sat" },
-	{
-		key: "vector",
-		label: "Roads/water",
-		ids: [
-			"v4-water-fill",
-			"v4-water-line",
-			// the z6 tier's own water + roads — same feed, same colours, the
-			// band below the disc's floor; leaving them out kept them painted
-			// when the toggle swept the disc's layers only.
-			"v4-water-fill-shallow",
-			"v4-water-line-shallow",
-			"v4-roads-shallow",
-			"v4-roads",
-			"v4-path",
-			"v4-rail",
-			"v4-rail-ties",
-		],
-		hint: "always on",
-		feed: "pack",
-		reads: [
-			{ layer: "roads" },
-			{ layer: "water", kinds: ["water", "lake", "river", "canal"] },
-		],
-	},
-	// LAND COVER TOGGLE REMOVED — the fills are gone (wallStyle.ts). A switch
-	// for layers that do not exist is a dead control, and offlineLaws.test.ts
-	// fails on ids that are not in the stack.
-	{
-		key: "labels",
-		label: "Labels",
-		ids: ["v4-town-label", "v4-road-label"],
-		hint: "pyramid",
-		feed: "pack",
-		reads: [
-			// kind_detail, NOT kind — every v4 places feature is kind:locality
-			{ layer: "places", key: "kind_detail", kinds: ["city", "town", "village", "hamlet"] },
-			{ layer: "roads" },
-		],
-	},
-	// ⚠️ PLACES SITS ABOVE HOSPITALS, on Chris's instruction 28 Aug 2026 (it
-	// was below Fires until that morning). Order is by what he looks at first
-	// in the field, not by mechanism — the `hint` column still names the
-	// mechanism, so the pyramid/cluster comparison is a glance, not a position.
-	{
-		key: "camps",
-		label: "Places",
-		ids: ["v4-poi-camp"],
-		hint: "cluster",
-		feed: "pack",
-		reads: [{ layer: "pois", kinds: ["camp_site"] }],
-	},
-	{
-		key: "hospitals",
-		label: "Hospitals",
-		ids: ["v4-poi-hospital"],
-		hint: "pyramid",
-		feed: "pack",
-		reads: [{ layer: "pois", kinds: ["hospital"] }],
-	},
-	// Fires draw dynamically — attachFireLayer() (fireLayer.ts) adds these ids
-	// on map ready, so they are NOT in wallStyle.ts. Ordinary toggle, no expiry
-	// (that rule is for the field-facing MapLegend.svelte only, not this debugger).
-	{
-		key: "fires",
-		label: "Fires",
-		ids: ["v4-fire-cluster", "v4-fire-cluster-count", "v4-fire-flame"],
-		hint: "cluster",
-		feed: "fires",
-	},
+    {
+        key: "sat",
+        label: "Satellite",
+        ids: ["v4-sat"],
+        hint: "always on",
+        feed: "sat",
+    },
+    {
+        key: "vector",
+        label: "Roads/water",
+        ids: [
+            "v4-water-fill",
+            "v4-water-line",
+            // the z6 tier's own water + roads — same feed, same colours, the
+            // band below the disc's floor; leaving them out kept them painted
+            // when the toggle swept the disc's layers only.
+            "v4-water-fill-shallow",
+            "v4-water-line-shallow",
+            "v4-roads-shallow",
+            "v4-roads",
+            "v4-path",
+            "v4-rail",
+            "v4-rail-ties",
+        ],
+        hint: "always on",
+        feed: "pack",
+        reads: [
+            { layer: "roads" },
+            { layer: "water", kinds: ["water", "lake", "river", "canal"] },
+        ],
+    },
+    // LAND COVER TOGGLE REMOVED — the fills are gone (wallStyle.ts). A switch
+    // for layers that do not exist is a dead control, and offlineLaws.test.ts
+    // fails on ids that are not in the stack.
+    {
+        key: "labels",
+        label: "Labels",
+        ids: ["v4-town-label", "v4-road-label"],
+        hint: "pyramid",
+        feed: "pack",
+        reads: [
+            // kind_detail, NOT kind — every v4 places feature is kind:locality
+            {
+                layer: "places",
+                key: "kind_detail",
+                kinds: ["city", "town", "village", "hamlet"],
+            },
+            { layer: "roads" },
+        ],
+    },
+    // ⚠️ PLACES SITS ABOVE HOSPITALS, on Chris's instruction 28 Aug 2026 (it
+    // was below Fires until that morning). Order is by what he looks at first
+    // in the field, not by mechanism — the `hint` column still names the
+    // mechanism, so the pyramid/cluster comparison is a glance, not a position.
+    {
+        key: "camps",
+        label: "Places",
+        ids: ["v4-poi-camp"],
+        hint: "cluster",
+        feed: "pack",
+        reads: [{ layer: "pois", kinds: ["camp_site"] }],
+    },
+    {
+        key: "hospitals",
+        label: "Hospitals",
+        ids: ["v4-poi-hospital"],
+        hint: "pyramid",
+        feed: "pack",
+        reads: [{ layer: "pois", kinds: ["hospital"] }],
+    },
+    // Fires draw dynamically — attachFireLayer() (fireLayer.ts) adds these ids
+    // on map ready, so they are NOT in wallStyle.ts. Ordinary toggle, no expiry
+    // (that rule is for the field-facing MapLegend.svelte only, not this debugger).
+    {
+        key: "fires",
+        label: "Fires",
+        ids: [
+            "v4-fire-cluster",
+            "v4-fire-cluster-count",
+            "v4-fire-flame-single",
+            "v4-fire-outline",
+        ],
+        hint: "cluster",
+        feed: "fires",
+    },
 ] as const;
 
 /** Toggle keys `resetLayersAllOn()` must NOT force back on. Empty here —
@@ -130,9 +145,9 @@ export const OPT_IN_LAYERS: readonly string[] = [];
  *  feature renders: a solid line for roads, a dashed line for trails, a rail
  *  hatch for railways, a filled chip for water bodies. */
 export interface LegendEntry {
-	label: string;
-	color: string;
-	swatch: "line" | "dashed" | "fill" | "rail";
+    label: string;
+    color: string;
+    swatch: "line" | "dashed" | "fill" | "rail";
 }
 
 /**
@@ -143,8 +158,8 @@ export interface LegendEntry {
  * makes it look decided. Add the rows when the real hexes land.
  */
 export const LEGEND: readonly LegendEntry[] = [
-	{ label: "Roads", color: ROAD_LINE, swatch: "line" },
-	{ label: "Major roads / highways", color: ROAD_MAJOR_LINE, swatch: "line" },
-	{ label: "Trails / paths", color: PATH_LINE, swatch: "dashed" },
-	{ label: "Railways", color: RAIL_LINE, swatch: "rail" },
+    { label: "Roads", color: ROAD_LINE, swatch: "line" },
+    { label: "Major roads / highways", color: ROAD_MAJOR_LINE, swatch: "line" },
+    { label: "Trails / paths", color: PATH_LINE, swatch: "dashed" },
+    { label: "Railways", color: RAIL_LINE, swatch: "rail" },
 ] as const;

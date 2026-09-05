@@ -369,6 +369,7 @@
         let fireHandle: ReturnType<typeof attachFireLayer> | undefined;
         let unsubFireCircuit: (() => void) | undefined;
         let unsubPackCircuit: (() => void) | undefined;
+        let unsubSatCircuit: (() => void) | undefined;
         let unsubBlobGrid: (() => void) | undefined;
         let firePaintTimer: ReturnType<typeof setTimeout> | undefined;
         try {
@@ -611,8 +612,14 @@
                         // reconcile per settled gesture, not per frame. Dies with
                         // the map, like writeCameraToUrl.
                         map.on("moveend", () => void showPhotos());
-                        // A photo that lands 30 s into the bake must appear without
-                        // a reload.
+                        // A photo that lands mid-bake must appear without a reload:
+                        // the sat circuit going ok IS the write event (measured
+                        // 11.5 s paint lag on the poll alone, 5 Sep 2026). The poll
+                        // stays as the backstop for writes with no circuit event.
+                        unsubSatCircuit = subscribeCircuits((c) => {
+                            if (c.key !== "sat" || c.state !== "ok") return;
+                            void showPhotos();
+                        });
                         satPoll = setInterval(() => void showPhotos(), 20000);
                         stopPaintWatch = watchPaint(
                             map,
@@ -621,7 +628,11 @@
 
                         // ── THE FIRES ────────────────────────────────────────
                         // Paints the bake's cached hotspots (see fireLayer.ts).
-                        fireHandle = attachFireLayer(map);
+                        // Relevance is measured from the pins, never the screen.
+                        fireHandle = attachFireLayer(map, {
+                            origins: () =>
+                                ports.places().flatMap((p) => p.anchors),
+                        });
                         // ANY fires event, debounced past the meter's TRANSIT_HOLD — the
                         // hold can eat an intermediate `ok`, so keying on `ok` alone left
                         // cached hotspots unpainted until reload.
@@ -654,6 +665,7 @@
             clearTimeout(firePaintTimer);
             unsubFireCircuit?.();
             unsubPackCircuit?.();
+            unsubSatCircuit?.();
             unsubBlobGrid?.();
             fireHandle?.();
             // Revoke every photo object-URL, or each unmount strands the blob.

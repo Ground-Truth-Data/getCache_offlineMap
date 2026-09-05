@@ -61,17 +61,14 @@
 import type * as mapboxgl from "maplibre-gl";
 
 import {
-	PATH_LINE,
-	RAIL_LINE,
-	ROAD_LINE,
-	ROAD_MAJOR_LINE,
-	WATER_FILL,
-	WATER_LINE,
+    PATH_LINE,
+    RAIL_LINE,
+    ROAD_LINE,
+    ROAD_MAJOR_LINE,
+    WATER_FILL,
+    WATER_LINE,
 } from "./offlineColors";
-import {
-	RAW_SOURCE,
-	SHALLOW_SOURCE,
-} from "../roads/rawWallProtocol";
+import { RAW_SOURCE, SHALLOW_SOURCE } from "../roads/rawWallProtocol";
 import { BLOB_MIN_Z } from "../../contract/roadBlob";
 import { BLOB_TILE_Z, SHALLOW_Z } from "../../contract/grid";
 import { BLOB_GRID_SOURCE } from "./blobGrid";
@@ -89,17 +86,17 @@ export const SAT_INSERT_BEFORE = "v4-roads";
  * different colour. The low-zoom floor keeps rural roads visible from z7-8.
  */
 const ROAD_WIDTH: mapboxgl.ExpressionSpecification = [
-	"interpolate",
-	["linear"],
-	["zoom"],
-	6,
-	0.85,
-	9,
-	1.1,
-	12,
-	1.35,
-	16,
-	1.7,
+    "interpolate",
+    ["linear"],
+    ["zoom"],
+    6,
+    0.85,
+    9,
+    1.1,
+    12,
+    1.35,
+    16,
+    1.7,
 ];
 
 /** Rust for the major network, owned brown for everything else. */
@@ -123,24 +120,49 @@ const ROAD_WIDTH: mapboxgl.ExpressionSpecification = [
  * from the archive — either one brings the colour-shift straight back.
  */
 const ROAD_COLOR: mapboxgl.ExpressionSpecification = [
-	"match",
-	["get", "kind"],
-	["major_road", "highway"],
-	ROAD_MAJOR_LINE,
-	ROAD_LINE,
+    "match",
+    ["get", "kind"],
+    ["major_road", "highway"],
+    ROAD_MAJOR_LINE,
+    ROAD_LINE,
 ];
 
 /** Roads only — `path`, `rail` and `aeroway` each render elsewhere (or not at
  *  all), so every road layer excludes them identically. */
-const ROADS_ONLY: mapboxgl.FilterSpecification = [
-	"match",
-	["get", "kind"],
-	["rail", "aeroway", "path"],
-	false,
-	true,
+/** Camera zoom from which minor roads draw at all. Below it only highways and
+ *  major roads: at z6 the screen holds a whole state's worth of small roads and
+ *  the tile worker parsed every one (1.4 GB measured 5 Sep 2026; 327 MB after).
+ *  ONE dial for both tiers so the small roads never appear in one and vanish
+ *  in the other. */
+const SHALLOW_MINOR_Z = 7;
+/** Small roads fade in over half a zoom level rather than snapping on. */
+const MINOR_ROAD_OPACITY: mapboxgl.ExpressionSpecification = [
+    "interpolate",
+    ["linear"],
+    ["zoom"],
+    SHALLOW_MINOR_Z,
+    0,
+    SHALLOW_MINOR_Z + 0.5,
+    1,
+];
+const MINOR_ONLY: mapboxgl.FilterSpecification = [
+    "==",
+    ["get", "kind"],
+    "minor_road",
+];
+const NOT_MINOR: mapboxgl.FilterSpecification = [
+    "!=",
+    ["get", "kind"],
+    "minor_road",
 ];
 
-
+const ROADS_ONLY: mapboxgl.FilterSpecification = [
+    "match",
+    ["get", "kind"],
+    ["rail", "aeroway", "path"],
+    false,
+    true,
+];
 
 /**
  * The whole wall-map stack, bottom-first, in paint order.
@@ -156,238 +178,284 @@ const ROADS_ONLY: mapboxgl.FilterSpecification = [
  * polygons — no per-area download either way.
  */
 export function wallLayers(): mapboxgl.LayerSpecification[] {
-	return [
-		// ── -1) THE GHOST GRID (direction2.5) ────────────────────────────────
-		// One white square per pin — the bounding box of that pin's tileset
-		// (radiusBox, blobGrid.ts), shown only while the camera is BELOW the
-		// disc's floor so you can see where the z8 tiles will appear. Data is
-		// per-pin and dynamic: the page feeds BLOB_GRID_SOURCE (blobGrid.ts).
-		// UNDER EVERYTHING by the user's instruction; fill only, no outline
-		// ("bordo invisibile"). Opacity is the direction2.5 spec verbatim —
-		// MapLibre clamps an interpolation outside its stops, so TWO stops
-		// produce all three regimes: 0 at z≥8, LINEAR 0→0.01 between
-		// BLOB_TILE_Z−0.1 and SHALLOW_Z, flat 0.01 below. Both stops DERIVED
-		// from the contract constants, never hand-written.
-		{
-			id: "v4-blob-grid-fill",
-			type: "fill",
-			source: BLOB_GRID_SOURCE,
-			paint: {
-				"fill-color": "#ffffff",
-				"fill-opacity": [
-					"interpolate",
-					["linear"],
-					["zoom"],
-					SHALLOW_Z,
-					0.01,
-					BLOB_TILE_Z - 0.1,
-					0,
-				],
-			},
-		} as mapboxgl.LayerSpecification,
-		// ── 0) LAND COVER ────────────────────────────────────────────────────
-		// The `landuse` source-layer of the z15 core tiles, each polygon keeping
-		// its `kind`. Bottom of the stack: water, satellite and roads all draw
-		// over it, so in the dark road ring (no photo) you still read forest vs
-		// swamp vs field. Shipped by the Worker as of pack v20; it used to be
-		// SYNTHESISED on-device, which was most of the reason a decoder existed.
-		// ⚠️ PLACEHOLDER HEXES (Law 4) — the user picks the real ones.
-		// ⛔ LAND COVER IS OFF. The user's call, on seeing the first working blob:
-		// "get rid of the green ... let's just do the roads for now, it's not
-		// meant to be a satellite image". The fills also painted the whole disc a
-		// flat green that made the blob read as one solid mass instead of a road
-		// network, and their hexes were never signed off (Law 4 PLACEHOLDERs).
-		//
-		// WATER STAYS — "leave the water, it works". Roads + water only.
-		//
-		// To bring land cover back, restore the landFill() calls below and pick
-		// real colours WITH the user first.
+    return [
+        // ── -1) THE GHOST GRID (direction2.5) ────────────────────────────────
+        // One white square per pin — the bounding box of that pin's tileset
+        // (radiusBox, blobGrid.ts), shown only while the camera is BELOW the
+        // disc's floor so you can see where the z8 tiles will appear. Data is
+        // per-pin and dynamic: the page feeds BLOB_GRID_SOURCE (blobGrid.ts).
+        // UNDER EVERYTHING by the user's instruction; fill only, no outline
+        // ("bordo invisibile"). Opacity is the direction2.5 spec verbatim —
+        // MapLibre clamps an interpolation outside its stops, so TWO stops
+        // produce all three regimes: 0 at z≥8, LINEAR 0→0.01 between
+        // BLOB_TILE_Z−0.1 and SHALLOW_Z, flat 0.01 below. Both stops DERIVED
+        // from the contract constants, never hand-written.
+        {
+            id: "v4-blob-grid-fill",
+            type: "fill",
+            source: BLOB_GRID_SOURCE,
+            paint: {
+                "fill-color": "#ffffff",
+                "fill-opacity": [
+                    "interpolate",
+                    ["linear"],
+                    ["zoom"],
+                    SHALLOW_Z,
+                    0.01,
+                    BLOB_TILE_Z - 0.1,
+                    0,
+                ],
+            },
+        } as mapboxgl.LayerSpecification,
+        // ── 0) LAND COVER ────────────────────────────────────────────────────
+        // The `landuse` source-layer of the z15 core tiles, each polygon keeping
+        // its `kind`. Bottom of the stack: water, satellite and roads all draw
+        // over it, so in the dark road ring (no photo) you still read forest vs
+        // swamp vs field. Shipped by the Worker as of pack v20; it used to be
+        // SYNTHESISED on-device, which was most of the reason a decoder existed.
+        // ⚠️ PLACEHOLDER HEXES (Law 4) — the user picks the real ones.
+        // ⛔ LAND COVER IS OFF. The user's call, on seeing the first working blob:
+        // "get rid of the green ... let's just do the roads for now, it's not
+        // meant to be a satellite image". The fills also painted the whole disc a
+        // flat green that made the blob read as one solid mass instead of a road
+        // network, and their hexes were never signed off (Law 4 PLACEHOLDERs).
+        //
+        // WATER STAYS — "leave the water, it works". Roads + water only.
+        //
+        // To bring land cover back, restore the landFill() calls below and pick
+        // real colours WITH the user first.
 
-		// ── 1) WATER ─────────────────────────────────────────────────────────
-		// Back as of pack v45. It was removed when water came from ~3,950 z15
-		// tiles across three rings and pushed the build to 56-65 s; the cost was
-		// READ COUNT, never bytes (blob.ts). The pack is now ONE z13 read, and
-		// the Worker ships only what the contract lists (contract/packLayers.ts):
-		// lake/pond polygons + river/canal lines, streams dropped — MEASURED
-		// +85 kB raw on a 445 kB roads-only pack at the test pin.
-		//
-		// Two layers because the `water` source-layer mixes geometry: polygons
-		// (kind water/lake) and lines (kind river/canal). A fill ignores lines
-		// and a line layer would outline every pond, so each takes its own
-		// geometry. No zoom band — Law 1, the disc is drawn at every zoom.
-		{
-			id: "v4-water-fill",
-			type: "fill",
-			source: RAW_SOURCE,
-			"source-layer": "water",
-			filter: ["==", ["geometry-type"], "Polygon"],
-			paint: { "fill-color": WATER_FILL, "fill-opacity": 0.85 },
-		} as mapboxgl.LayerSpecification,
-		{
-			id: "v4-water-line",
-			type: "line",
-			source: RAW_SOURCE,
-			"source-layer": "water",
-			filter: ["==", ["geometry-type"], "LineString"],
-			layout: { "line-cap": "round", "line-join": "round" },
-			paint: {
-				"line-color": WATER_LINE,
-				"line-width": ["interpolate", ["linear"], ["zoom"], 8, 0.6, 12, 1.2, 16, 2.4],
-			},
-		} as mapboxgl.LayerSpecification,
+        // ── 1) WATER ─────────────────────────────────────────────────────────
+        // Back as of pack v45. It was removed when water came from ~3,950 z15
+        // tiles across three rings and pushed the build to 56-65 s; the cost was
+        // READ COUNT, never bytes (blob.ts). The pack is now ONE z13 read, and
+        // the Worker ships only what the contract lists (contract/packLayers.ts):
+        // lake/pond polygons + river/canal lines, streams dropped — MEASURED
+        // +85 kB raw on a 445 kB roads-only pack at the test pin.
+        //
+        // Two layers because the `water` source-layer mixes geometry: polygons
+        // (kind water/lake) and lines (kind river/canal). A fill ignores lines
+        // and a line layer would outline every pond, so each takes its own
+        // geometry. No zoom band — Law 1, the disc is drawn at every zoom.
+        {
+            id: "v4-water-fill",
+            type: "fill",
+            source: RAW_SOURCE,
+            "source-layer": "water",
+            filter: ["==", ["geometry-type"], "Polygon"],
+            paint: { "fill-color": WATER_FILL, "fill-opacity": 0.85 },
+        } as mapboxgl.LayerSpecification,
+        {
+            id: "v4-water-line",
+            type: "line",
+            source: RAW_SOURCE,
+            "source-layer": "water",
+            filter: ["==", ["geometry-type"], "LineString"],
+            layout: { "line-cap": "round", "line-join": "round" },
+            paint: {
+                "line-color": WATER_LINE,
+                "line-width": [
+                    "interpolate",
+                    ["linear"],
+                    ["zoom"],
+                    8,
+                    0.6,
+                    12,
+                    1.2,
+                    16,
+                    2.4,
+                ],
+            },
+        } as mapboxgl.LayerSpecification,
 
-		// ── 1b) THE SHALLOW WATER RELAY (camera z6–z7) ─────────────────────
-		// The z6 tier carries the pack's water rule UNCHANGED (river/canal lines
-		// + lake/pond polygons ride along — SHALLOW_LAYER_RULES spreads
-		// PACK_LAYERS), but until these two layers existed that water sat
-		// unpainted: `v4-water-*` read the disc only, which is silent under
-		// BLOB_MIN_Z. Same split as the disc (a fill ignores lines; a line
-		// layer would outline every pond), same colours, window DERIVED from
-		// the constants — hands over to the disc exactly at its floor.
-		{
-			id: "v4-water-fill-shallow",
-			type: "fill",
-			source: SHALLOW_SOURCE,
-			"source-layer": "water",
-			minzoom: SHALLOW_Z,
-			maxzoom: BLOB_MIN_Z,
-			filter: ["==", ["geometry-type"], "Polygon"],
-			paint: { "fill-color": WATER_FILL, "fill-opacity": 0.85 },
-		} as mapboxgl.LayerSpecification,
-		{
-			id: "v4-water-line-shallow",
-			type: "line",
-			source: SHALLOW_SOURCE,
-			"source-layer": "water",
-			minzoom: SHALLOW_Z,
-			maxzoom: BLOB_MIN_Z,
-			filter: ["==", ["geometry-type"], "LineString"],
-			layout: { "line-cap": "round", "line-join": "round" },
-			paint: {
-				"line-color": WATER_LINE,
-				// 0.8 at z6 so rivers read as blue threads at the tier's own
-				// scale, easing to the disc's own 0.6 at the handover — no pop.
-				"line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.8, 8, 0.6],
-			},
-		} as mapboxgl.LayerSpecification,
+        // ── 1b) THE SHALLOW WATER RELAY (camera z6–z7) ─────────────────────
+        // The z6 tier carries the pack's water rule UNCHANGED (river/canal lines
+        // + lake/pond polygons ride along — SHALLOW_LAYER_RULES spreads
+        // PACK_LAYERS), but until these two layers existed that water sat
+        // unpainted: `v4-water-*` read the disc only, which is silent under
+        // BLOB_MIN_Z. Same split as the disc (a fill ignores lines; a line
+        // layer would outline every pond), same colours, window DERIVED from
+        // the constants — hands over to the disc exactly at its floor.
+        {
+            id: "v4-water-fill-shallow",
+            type: "fill",
+            source: SHALLOW_SOURCE,
+            "source-layer": "water",
+            minzoom: SHALLOW_Z,
+            maxzoom: BLOB_MIN_Z,
+            filter: ["==", ["geometry-type"], "Polygon"],
+            paint: { "fill-color": WATER_FILL, "fill-opacity": 0.85 },
+        } as mapboxgl.LayerSpecification,
+        {
+            id: "v4-water-line-shallow",
+            type: "line",
+            source: SHALLOW_SOURCE,
+            "source-layer": "water",
+            minzoom: SHALLOW_Z,
+            maxzoom: BLOB_MIN_Z,
+            filter: ["==", ["geometry-type"], "LineString"],
+            layout: { "line-cap": "round", "line-join": "round" },
+            paint: {
+                "line-color": WATER_LINE,
+                // 0.8 at z6 so rivers read as blue threads at the tier's own
+                // scale, easing to the disc's own 0.6 at the handover — no pop.
+                "line-width": [
+                    "interpolate",
+                    ["linear"],
+                    ["zoom"],
+                    6,
+                    0.8,
+                    8,
+                    0.6,
+                ],
+            },
+        } as mapboxgl.LayerSpecification,
 
-		// ── 2) THE ROAD RELAY ────────────────────────────────────────────────
-		// Four bands, one per stored zoom, meeting exactly. See the header.
-		//
-		// WIDE is NOT a second radius — it is the SAME circle stored zoomed-out.
-		// ⛔ Its radius must equal the ring's. Three builds shipped a wider circle
-		// here and every one read on screen as a second, bigger shape appearing
-		// and vanishing ("an unbelievable tripping hazard"). The Worker derives
-		// both from the same km for exactly this reason.
-		// ── 2a) THE SHALLOW RELAY (camera z6–z7) ────────────────────────────
-		// The z6 tier (grid.ts: SHALLOW_Z, its own IDB store + source via
-		// rtraw://shallow) keeps the pin's roads on screen below the disc's
-		// floor — the disc is silent under BLOB_MIN_Z by contract, and stretching
-		// a z8 tile down was the zoom<8 distortion bug (2026-09-01).
-		// SAME colour law as the disc (kind-based, no zoom term); the window is
-		// DERIVED from the constants, never hand-written. maxzoom = BLOB_MIN_Z
-		// hands over to the disc exactly where its own floor begins — and hides
-		// this layer above z8 so the shallow source is never overzoom-queried
-		// where the disc already paints.
-		{
-			id: "v4-roads-shallow",
-			type: "line",
-			source: SHALLOW_SOURCE,
-			"source-layer": "roads",
-			minzoom: SHALLOW_Z,
-			maxzoom: BLOB_MIN_Z,
-			filter: ROADS_ONLY,
-			paint: { "line-color": ROAD_COLOR, "line-width": ROAD_WIDTH },
-		} as mapboxgl.LayerSpecification,
+        // ── 2) THE ROAD RELAY ────────────────────────────────────────────────
+        // Four bands, one per stored zoom, meeting exactly. See the header.
+        //
+        // WIDE is NOT a second radius — it is the SAME circle stored zoomed-out.
+        // ⛔ Its radius must equal the ring's. Three builds shipped a wider circle
+        // here and every one read on screen as a second, bigger shape appearing
+        // and vanishing ("an unbelievable tripping hazard"). The Worker derives
+        // both from the same km for exactly this reason.
+        // ── 2a) THE SHALLOW RELAY (camera z6–z7) ────────────────────────────
+        // The z6 tier (grid.ts: SHALLOW_Z, its own IDB store + source via
+        // rtraw://shallow) keeps the pin's roads on screen below the disc's
+        // floor — the disc is silent under BLOB_MIN_Z by contract, and stretching
+        // a z8 tile down was the zoom<8 distortion bug (2026-09-01).
+        // SAME colour law as the disc (kind-based, no zoom term); the window is
+        // DERIVED from the constants, never hand-written. maxzoom = BLOB_MIN_Z
+        // hands over to the disc exactly where its own floor begins — and hides
+        // this layer above z8 so the shallow source is never overzoom-queried
+        // where the disc already paints.
+        {
+            id: "v4-roads-shallow",
+            type: "line",
+            source: SHALLOW_SOURCE,
+            "source-layer": "roads",
+            minzoom: SHALLOW_Z,
+            maxzoom: BLOB_MIN_Z,
+            filter: ["all", ROADS_ONLY, NOT_MINOR],
+            paint: { "line-color": ROAD_COLOR, "line-width": ROAD_WIDTH },
+        } as mapboxgl.LayerSpecification,
+        {
+            id: "v4-roads-shallow-minor",
+            type: "line",
+            source: SHALLOW_SOURCE,
+            "source-layer": "roads",
+            minzoom: SHALLOW_MINOR_Z,
+            maxzoom: BLOB_MIN_Z,
+            filter: MINOR_ONLY,
+            paint: {
+                "line-color": ROAD_COLOR,
+                "line-width": ROAD_WIDTH,
+                "line-opacity": MINOR_ROAD_OPACITY,
+            },
+        } as mapboxgl.LayerSpecification,
 
-		// THE ROADS. One layer, one source, no zoom window — the source's own
-		// span (BLOB_MIN_Z→BLOB_MAX_Z) already says exactly which levels exist,
-		// and MapLibre overzooms above the deepest one for free.
-		{
-			id: "v4-roads",
-			type: "line",
-			source: RAW_SOURCE,
-			"source-layer": "roads",
-			filter: ROADS_ONLY,
-			paint: { "line-color": ROAD_COLOR, "line-width": ROAD_WIDTH },
-		} as mapboxgl.LayerSpecification,
+        // THE ROADS. One layer, one source, no zoom window — the source's own
+        // span (BLOB_MIN_Z→BLOB_MAX_Z) already says exactly which levels exist,
+        // and MapLibre overzooms above the deepest one for free.
+        {
+            id: "v4-roads",
+            type: "line",
+            source: RAW_SOURCE,
+            "source-layer": "roads",
+            filter: ["all", ROADS_ONLY, NOT_MINOR],
+            paint: { "line-color": ROAD_COLOR, "line-width": ROAD_WIDTH },
+        } as mapboxgl.LayerSpecification,
+        // Same dial as the shallow tier: if SHALLOW_MINOR_Z ever rises past
+        // BLOB_MIN_Z the disc's small roads wait for it too.
+        {
+            id: "v4-roads-minor",
+            type: "line",
+            source: RAW_SOURCE,
+            "source-layer": "roads",
+            minzoom: Math.max(SHALLOW_MINOR_Z, BLOB_MIN_Z),
+            filter: MINOR_ONLY,
+            paint: {
+                "line-color": ROAD_COLOR,
+                "line-width": ROAD_WIDTH,
+                "line-opacity": MINOR_ROAD_OPACITY,
+            },
+        } as mapboxgl.LayerSpecification,
 
-		// ── 3) TRAILS + RAIL ─────────────────────────────────────────────────
-		// PATH — sage-green + a fine dash so a footpath or logging track reads as
-		// a trail, NOT a road. Same width as roads.
-		{
-			id: "v4-path",
-			type: "line",
-			source: RAW_SOURCE,
-			"source-layer": "roads",
-			filter: ["==", ["get", "kind"], "path"],
-			layout: { "line-cap": "round", "line-join": "round" },
-			paint: {
-				"line-color": PATH_LINE,
-				"line-width": ROAD_WIDTH,
-				"line-dasharray": [1.5, 1.5],
-			},
-		} as mapboxgl.LayerSpecification,
-		// RAIL — a PROPER railway, not a dotted line: a thin solid SPINE plus
-		// periodic CROSSTIES. The ties are a second, much wider line whose dash
-		// is SHORTER than its width (dasharray units are multiples of
-		// line-width), so each dash is wider-than-long and reads as a
-		// perpendicular tie straddling the spine — the standard railway hatch.
-		// Cool-grey keeps it distinct from roads (brown) and trails (green).
-		{
-			id: "v4-rail",
-			type: "line",
-			source: RAW_SOURCE,
-			"source-layer": "roads",
-			filter: ["==", ["get", "kind"], "rail"],
-			layout: { "line-cap": "butt", "line-join": "round" },
-			paint: {
-				"line-color": RAIL_LINE,
-				"line-width": [
-					"interpolate",
-					["linear"],
-					["zoom"],
-					6,
-					0.55,
-					12,
-					0.95,
-					16,
-					1.25,
-				],
-			},
-		} as mapboxgl.LayerSpecification,
-		{
-			id: "v4-rail-ties",
-			type: "line",
-			source: RAW_SOURCE,
-			"source-layer": "roads",
-			filter: ["==", ["get", "kind"], "rail"],
-			layout: { "line-cap": "butt", "line-join": "round" },
-			paint: {
-				"line-color": RAIL_LINE,
-				// ~3.5x the spine width; short dash + big gap → one crosstie every
-				// ~3 tie-widths along the rail.
-				"line-width": [
-					"interpolate",
-					["linear"],
-					["zoom"],
-					6,
-					2.0,
-					12,
-					3.4,
-					16,
-					4.4,
-				],
-				"line-dasharray": [0.3, 2.6],
-			},
-		} as mapboxgl.LayerSpecification,
-
-	];
+        // ── 3) TRAILS + RAIL ─────────────────────────────────────────────────
+        // PATH — sage-green + a fine dash so a footpath or logging track reads as
+        // a trail, NOT a road. Same width as roads.
+        {
+            id: "v4-path",
+            type: "line",
+            source: RAW_SOURCE,
+            "source-layer": "roads",
+            filter: ["==", ["get", "kind"], "path"],
+            layout: { "line-cap": "round", "line-join": "round" },
+            paint: {
+                "line-color": PATH_LINE,
+                "line-width": ROAD_WIDTH,
+                "line-dasharray": [1.5, 1.5],
+            },
+        } as mapboxgl.LayerSpecification,
+        // RAIL — a PROPER railway, not a dotted line: a thin solid SPINE plus
+        // periodic CROSSTIES. The ties are a second, much wider line whose dash
+        // is SHORTER than its width (dasharray units are multiples of
+        // line-width), so each dash is wider-than-long and reads as a
+        // perpendicular tie straddling the spine — the standard railway hatch.
+        // Cool-grey keeps it distinct from roads (brown) and trails (green).
+        {
+            id: "v4-rail",
+            type: "line",
+            source: RAW_SOURCE,
+            "source-layer": "roads",
+            filter: ["==", ["get", "kind"], "rail"],
+            layout: { "line-cap": "butt", "line-join": "round" },
+            paint: {
+                "line-color": RAIL_LINE,
+                "line-width": [
+                    "interpolate",
+                    ["linear"],
+                    ["zoom"],
+                    6,
+                    0.55,
+                    12,
+                    0.95,
+                    16,
+                    1.25,
+                ],
+            },
+        } as mapboxgl.LayerSpecification,
+        {
+            id: "v4-rail-ties",
+            type: "line",
+            source: RAW_SOURCE,
+            "source-layer": "roads",
+            filter: ["==", ["get", "kind"], "rail"],
+            layout: { "line-cap": "butt", "line-join": "round" },
+            paint: {
+                "line-color": RAIL_LINE,
+                // ~3.5x the spine width; short dash + big gap → one crosstie every
+                // ~3 tie-widths along the rail.
+                "line-width": [
+                    "interpolate",
+                    ["linear"],
+                    ["zoom"],
+                    6,
+                    2.0,
+                    12,
+                    3.4,
+                    16,
+                    4.4,
+                ],
+                "line-dasharray": [0.3, 2.6],
+            },
+        } as mapboxgl.LayerSpecification,
+    ];
 }
 
 /** Every layer id this module owns, for the page's visibility toggles and for
  *  teardown. Derived from `wallLayers()` so it CANNOT drift from the stack —
  *  the old page hand-maintained a parallel list and it went stale. */
 export function wallLayerIds(): string[] {
-	return wallLayers().map((l) => l.id);
+    return wallLayers().map((l) => l.id);
 }

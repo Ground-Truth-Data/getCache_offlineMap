@@ -198,11 +198,11 @@ never remote. **Even if the rendering tech changes** and it would be trivially
 easy to hand the map a remote URL: **DON'T.** ([[offline-map-laws]])
 
 **Tier 1 — what makes it worthwhile (the 5 laws):**
-1. **Constant presence** — a downloaded area is visible at EVERY zoom, identically. NEVER appears/disappears at a zoom threshold. **The test is whether features are DROPPED, not how the data is stored.** Serving the *planet's* pyramid fails, because its low-zoom tiles omit minor roads by design.
+1. **Constant presence** — a downloaded AREA is visible at EVERY zoom; it never appears/disappears at a zoom threshold, and the DATA on disk is never thinned. **Rendering may hold back detail at low zoom** — since 5 Sep 2026 minor roads draw from `SHALLOW_MINOR_Z` (z7, `wallStyle.ts`) and fade in over half a level; highways and major roads draw at every zoom. Chris chose this after measuring the tile worker at 1.4 GB with every small road in a state on screen (327 MB after). The old reading ("every road at every zoom") is retired; do not restore it. Serving the *planet's* pyramid still fails, because its low-zoom tiles DROP the data, not just the drawing.
 2. **Jagged frontier** — render the real stair-stepped tile-edge shape; never smooth/mask it to a circle. The imperfection is the trust signal.
 3. **No blink on refine** — stays continuously visible through any representation change; no one-frame gap, no vector↔raster swap.
 4. **Colours are the user's** — never invent/tune a hex; ask. ([[dont-change-colours-without-permission]])
-5. **RAM scales with the SCREEN, not the download.** Held by viewport cull + disk LRU only. **Zoom-culling is BANNED** (it breaks law 1).
+5. **RAM scales with the SCREEN, not the download.** Held by viewport cull + disk LRU + the low-zoom detail gate in law 1. Parsed vector tiles cost ~10× their on-disk bytes, so a screen full of full-detail cells IS the download in RAM — that was the 800 MB–2 GB defect.
    **How to measure it — the panel is not enough.** `performance.memory` is **main-thread only**, and on this route the Workers hold more than the page — that is why the 800 MB defect hid for weeks. Use **DevTools → Memory → "Total JS heap size"**, or the VM-instances list per worker. For a growth bug, use **Allocation sampling sorted by Self size** — never a snapshot Summary ([[profile-allocation-not-snapshot-summary]]).
    **Run-to-run variance is ±100–200 MB with no code change.** Repeat the unchanged config at least once before believing an A/B.
 
@@ -407,8 +407,9 @@ high-res imagery is a *replacement* for the satellite, not a new layer (§3c).
   MapLibre emits zero `mapboxgl-` classes; the map still renders, so a smoke
   test passes — only the controls are unstyled and in the wrong corner.
 - **No serving the PLANET `.pmtiles` pyramid to the map** — its low-zoom tiles
-  drop minor features, so zooming pops them in/out (breaks Law 1). The rule is
-  about *lossy* pyramids, not about tiles. ([[offline-map-laws]])
+  DROP minor features from the data. Our own low-zoom gate keeps the data and
+  only delays drawing it (law 1). The rule is about *lossy* pyramids, not
+  about tiles. ([[offline-map-laws]])
 - **No `geojson` source for the wall map, ever again.** It re-parses and
   re-indexes the whole dataset on every `setData` and retains the index for the
   source's lifetime, inside the renderer's worker where `performance.memory`
