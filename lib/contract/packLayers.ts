@@ -38,31 +38,31 @@
 
 /** One source-layer the pack carries, and which of its features survive. */
 export interface PackLayerRule {
-	/** The feature attribute the allowlist is matched against. Omitted = `kind`. */
-	readonly key?: string;
-	/** Feature values (of `key`) that ship. Omitted = the WHOLE layer ships. */
-	readonly kinds?: readonly string[];
-	/** One line for a human reading a debug report. */
-	readonly why: string;
+    /** The feature attribute the allowlist is matched against. Omitted = `kind`. */
+    readonly key?: string;
+    /** Feature values (of `key`) that ship. Omitted = the WHOLE layer ships. */
+    readonly kinds?: readonly string[];
+    /** One line for a human reading a debug report. */
+    readonly why: string;
 }
 
 export const PACK_LAYERS: Readonly<Record<string, PackLayerRule>> = {
-	roads: {
-		why: "every road, path and rail line — nothing dropped by kind (one blob, drawn at every zoom)",
-	},
-	water: {
-		kinds: ["water", "lake", "river", "canal"],
-		why: "lake / pond polygons and river + canal lines; streams dropped (50 kB of sub-pixel creeks)",
-	},
-	places: {
-		key: "kind_detail",
-		kinds: ["city", "town", "village", "hamlet"],
-		why: "town labels — Protomaps v4 files city/town/village/hamlet under kind_detail, kind is always `locality`",
-	},
-	pois: {
-		kinds: ["hospital", "camp_site"],
-		why: "the two icons the map draws — a handful of points per disc",
-	},
+    roads: {
+        why: "every road, path and rail line — nothing dropped by kind (one blob, drawn at every zoom)",
+    },
+    water: {
+        kinds: ["water", "lake", "river", "canal"],
+        why: "lake / pond polygons and river + canal lines; streams dropped (50 kB of sub-pixel creeks)",
+    },
+    places: {
+        key: "kind_detail",
+        kinds: ["city", "town", "village", "hamlet"],
+        why: "town labels — Protomaps v4 files city/town/village/hamlet under kind_detail, kind is always `locality`",
+    },
+    pois: {
+        kinds: ["hospital", "camp_site"],
+        why: "the two icons the map draws — a handful of points per disc",
+    },
 };
 
 /** The source-layer names the pack keeps, in table order. */
@@ -70,38 +70,42 @@ export const PACK_LAYER_NAMES: readonly string[] = Object.keys(PACK_LAYERS);
 
 /**
  * THE SHALLOW (z6) TIER's keep-set — the pack's own layers with roads thinned
- * to the vehicle network. Worker-side only (the phone never filters the shallow
- * tile; it paints what arrives), but it lives in the contract so the debug
- * report and any future phone-side assertion read the same truth.
+ * to highways and major roads. Worker-side only (the phone never filters the
+ * shallow tile; it paints what arrives), but it lives in the contract so the
+ * debug report and any future phone-side assertion read the same truth.
  *
- * ⚠️ WHY ROADS GET A RULE HERE. The direction2.3 tier shipped the archive's own
- * z6 tile verbatim, and the archive's z6 is generalized down to major roads —
- * MEASURED on screen (1 Sep 2026): sparser than the base map already drawn
- * beneath it, so the tier added nothing at camera z6–z7. The z6 tile is now
- * BUILT from the disc's z13 reads, where density is ours to choose: highway →
- * minor ships (every road a driver can take), service/track/path/footway/
- * cycleway and rail drop (sub-pixel clutter in a ~600 km tile).
+ * The shallow wall is CONTEXT BETWEEN BLOBS: highways, major roads, water.
+ * Small roads live only inside a pin's disc (Chris, 5 Sep 2026). A z6 tile
+ * spans ~600 km; with minor_road in it the phone parsed a province of
+ * driveways and the tile worker sat at 1.4 GB. The phone stopped drawing them
+ * (wallStyle.ts MINOR_ROAD_Z) — this rule stops shipping them, so the bytes
+ * never cross the wire or get decoded.
+ *
+ * ⛔ THE DISC TILE IS NOT THINNED HERE, AND CANNOT BE. The disc is ONE z8 tile
+ * per cell overzoomed to every deeper level (blob.ts BLOB_ZOOMS) — the same
+ * bytes paint z8 and z14, so dropping minor_road from it removes the small
+ * roads at z11+ too. Thinning the disc below z11 at the source needs a second
+ * disc tier in its own namespace and source, like `shallow/`; until then the
+ * phone's minzoom gate is the only lever for disc zooms.
  */
 export const SHALLOW_LAYER_RULES: Readonly<Record<string, PackLayerRule>> = {
-	...PACK_LAYERS,
-	roads: {
-		// ⛔ THE ARCHIVE'S OWN VOCABULARY — `major_road`/`minor_road`, never the
-		// short "major"/"minor": those matched NOTHING (there is no "medium" in
-		// Protomaps at all), so the built z6 shipped highways alone and the
-		// low-zoom quadratino read as a few statali with no secondaries and no
-		// brown mesh. Measured 2 Sep 2026; the fix rode pv48.
-		kinds: ["highway", "major_road", "minor_road"],
-		why: "vehicle network only, in the ARCHIVE vocabulary (*_road) — the built z6 is denser than the base map, sparser than the z8 disc",
-	},
+    ...PACK_LAYERS,
+    roads: {
+        // ⛔ THE ARCHIVE'S OWN VOCABULARY — `major_road`, never the short
+        // "major": that matched NOTHING (there is no "medium" in Protomaps at
+        // all), so the built z6 shipped highways alone. Measured 2 Sep 2026.
+        kinds: ["highway", "major_road"],
+        why: "highways + major roads only, in the ARCHIVE vocabulary (*_road) — small roads ship only inside the z8 disc",
+    },
 };
 
 /** One thing a style layer reads out of the pack. */
 export interface PackRead {
-	readonly layer: string;
-	/** Attribute key the style filters on. Omitted = `kind`. */
-	readonly key?: string;
-	/** Values the style filters for. Omitted = it reads the whole layer. */
-	readonly kinds?: readonly string[];
+    readonly layer: string;
+    /** Attribute key the style filters on. Omitted = `kind`. */
+    readonly key?: string;
+    /** Values the style filters for. Omitted = it reads the whole layer. */
+    readonly kinds?: readonly string[];
 }
 
 /**
@@ -111,18 +115,18 @@ export interface PackRead {
  * `kind_detail:"city"` gets `false`, which is exactly the mismatch that hid.
  */
 export function packShips(read: PackRead): boolean {
-	const rule = PACK_LAYERS[read.layer];
-	if (!rule) return false;
-	if (!rule.kinds) return true;
-	if (!read.kinds) return false; // style wants the whole layer, pack ships a subset
-	if ((read.key ?? "kind") !== (rule.key ?? "kind")) return false;
-	return read.kinds.every((k) => rule.kinds!.includes(k));
+    const rule = PACK_LAYERS[read.layer];
+    if (!rule) return false;
+    if (!rule.kinds) return true;
+    if (!read.kinds) return false; // style wants the whole layer, pack ships a subset
+    if ((read.key ?? "kind") !== (rule.key ?? "kind")) return false;
+    return read.kinds.every((k) => rule.kinds!.includes(k));
 }
 
 /** `roads (all)`, `pois kind∈{hospital,camp_site}` — for reports. */
 export function describePackLayer(layer: string): string {
-	const rule = PACK_LAYERS[layer];
-	if (!rule) return `${layer} (NOT shipped)`;
-	if (!rule.kinds) return `${layer} (all)`;
-	return `${layer} ${rule.key ?? "kind"}∈{${rule.kinds.join(",")}}`;
+    const rule = PACK_LAYERS[layer];
+    if (!rule) return `${layer} (NOT shipped)`;
+    if (!rule.kinds) return `${layer} (all)`;
+    return `${layer} ${rule.key ?? "kind"}∈{${rule.kinds.join(",")}}`;
 }
