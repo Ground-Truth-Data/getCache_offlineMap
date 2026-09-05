@@ -177,44 +177,21 @@
          *  eye/crow stack; the fixture route has no CrowSwitch to render. */
         mapPorts,
         /**
-         * WHERE THE DEV CHROME GOES. The panels' DATA is this component's, so they
+         * WHERE THE DEV RAILS GO. The panels' DATA is this component's, so they
          * stay owned here; their PLACE is the host's. A page hands in an element —
-         * the content box of an EphemeralCard / EphemeralDock from `$rig/dev` — and
-         * the nodes move into it, wiring, state and scoped styles intact.
+         * the content box of an EphemeralDock from `$rig/dev` — and the nodes
+         * move into it, wiring, state and scoped styles intact. No dock, no
+         * rail: the docks only exist under `vite dev`, so this is also the
+         * production gate.
          */
-        debugHost,
         railLeftHost,
         railRightHost,
     }: {
         hostPorts?: HostPorts;
         mapPorts?: MapHostPorts;
-        debugHost?: HTMLElement;
         railLeftHost?: HTMLElement;
         railRightHost?: HTMLElement;
     } = $props();
-
-    /**
-     * THE DEBUG PANELS. One boolean, one button. Nothing navigates, so the map is
-     * never rebuilt, the camera cannot jump, and no pin can vanish. Sticky across
-     * reloads; open when nothing is stored.
-     */
-    const PANELS_KEY = "rt_offline_panels";
-    function readPanels(): boolean {
-        try {
-            return localStorage.getItem(PANELS_KEY) !== "0";
-        } catch {
-            // codestyle-allow-swallow: no storage (SSR / private mode) → default open.
-            return true;
-        }
-    }
-    let showPanels = $state(readPanels());
-    $effect(() => {
-        try {
-            localStorage.setItem(PANELS_KEY, showPanels ? "1" : "0");
-        } catch {
-            // codestyle-allow-swallow: storage refused → the toggle still works this session.
-        }
-    });
 
     /** THE PORTS, RESOLVED ONCE. The bake service, the marker loop and the blob
      *  panel all read this, so they cannot disagree about what the data is. */
@@ -704,7 +681,7 @@
 <div class="stage" style="--grab-cursor: url({grabCursorUrl});">
     <!-- LEFT: what this SESSION is doing (meter) and how it is set (config).
 	     RIGHT: what is on DISK (blobs), full height — it is the long list. -->
-    {#if showPanels}
+    {#if railLeftHost}
         <aside class="rail left" use:portal={railLeftHost}>
             <OfflineWorkMeter
                 docked
@@ -731,16 +708,6 @@
     {/if}
 
     <div class="phone">
-        <!-- ⛔ INSIDE THE PHONE, not fixed to the viewport: fixed positioning put it
-        		     under the parent's nav bar, unclickable. -->
-        <button
-            type="button"
-            class="debug-toggle"
-            use:portal={debugHost}
-            class:on={showPanels}
-            aria-pressed={showPanels}
-            onclick={() => (showPanels = !showPanels)}>debug</button
-        >
         {#if mapError}
             <div class="map-error">
                 <p>Map unavailable</p>
@@ -797,7 +764,7 @@
     </div>
 
     <!-- RIGHT RAIL — ONE component, mirroring the left. -->
-    {#if showPanels}
+    {#if railRightHost}
         <aside class="rail right" use:portal={railRightHost}>
             <OfflineBlobPanel
                 places={ports.places()}
@@ -809,32 +776,6 @@
 </div>
 
 <style>
-    .debug-toggle {
-        position: absolute;
-        /* The phone's top edge sits UNDER the parent's nav (67px on rapper).
-		   Clear it, or the button is clickable but half-hidden. Left, because
-		   the eye/crow stack owns the top-right corner. */
-        top: 40px;
-        left: 12px;
-        z-index: 50;
-        padding: 4px 12px;
-        border: 1px solid #555;
-        border-radius: 999px;
-        background: rgb(0 0 0 / 0.78);
-        color: #ddd;
-        font:
-            12px/1.5 ui-monospace,
-            SFMono-Regular,
-            Menlo,
-            monospace;
-        cursor: pointer;
-    }
-    .debug-toggle.on {
-        background: #e8b923;
-        border-color: #e8b923;
-        color: #111;
-    }
-
     :global(html),
     :global(body) {
         margin: 0;
