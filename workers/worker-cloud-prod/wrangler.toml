@@ -14,13 +14,16 @@ rules = [
 ]
 
 # ⛔ NEVER create tiles-prod / tiles-dev by hand in the Cloudflare dashboard — `custom_domain = true` won't adopt an existing record; deploy fails with code 100117 and there is no --force (delete the record, then deploy).
+# `remote = true`: `wrangler dev` runs the Worker on this machine but reads the
+# REAL bucket — there is no local copy of the planet, so no local simulator.
+# Needs `wrangler login` (or CLOUDFLARE_API_TOKEN with R2 read).
 [[r2_buckets]]
 binding = "TILES"
 bucket_name = "offline-tiles"
+remote = true
 
 # ⚠️ PMTILES_KEY / PACK_PMTILES_KEY must match the uploaded object key in the
-# bucket — a mismatch silently reads as "no tiles". Comma-separated list allowed;
-# `wrangler dev` overrides these with the generated .dev.vars (setupLocalTiles.sh).
+# bucket — a mismatch silently reads as "no tiles".
 [vars]
 PMTILES_KEY = "planet.pmtiles"
 PACK_PMTILES_KEY = "planet.pmtiles"

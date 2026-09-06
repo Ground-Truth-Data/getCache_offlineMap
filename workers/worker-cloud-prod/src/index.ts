@@ -38,12 +38,9 @@ const PACK_BUILD = "v35-shallow-z6-built";
 interface Env {
   /** R2 bucket binding (see wrangler.toml [[r2_buckets]]). */
   TILES: R2Bucket;
-  /** Object key(s) of the .pmtiles archive the /{z}/{x}/{y}.pbf tile route reads.
-   *  Comma-separated list allowed — local dev serves several bbox samples
-   *  (.dev.vars, written by setupLocalTiles.sh) where prod has one planet archive. */
+  /** Object key of the .pmtiles archive the /{z}/{x}/{y}.pbf tile route reads. */
   PMTILES_KEY: string;
-  /** Object key(s) of the .pmtiles archive the /pack downloader route reads.
-   *  Same comma-separated list rule as PMTILES_KEY. */
+  /** Object key of the .pmtiles archive the /pack downloader route reads. */
   PACK_PMTILES_KEY: string;
   /** NASA FIRMS Area API key for /fires. A Worker SECRET (`wrangler secret put
    *  FIRMS_MAP_KEY`), never a [vars] entry — it must never reach the app bundle. */
@@ -143,9 +140,6 @@ function hospitalsIndex(): ReturnType<typeof parseHospitalsPack> {
   hospitalsParsed ??= parseHospitalsPack(hospitalsPack);
   return hospitalsParsed;
 }
-
-const archiveKeys = (v: string): string[] =>
-  v.split(",").map((s) => s.trim()).filter(Boolean);
 
 /**
  * Edge-cache key version for /fires. See the long note at the cache-key build
@@ -385,48 +379,20 @@ export default {
         // pure logic over the reader. Time the header fetch + the build for X-Diag.
         const stats: ReadStats = { reads: 0, bytes: 0 };
         const tH = Date.now();
-        // First archive whose own bounds contain the pin wins.
-        // ⛔ a pin outside every archive's bounds must FAIL LOUD, never build an
-        // empty pack — 200-OK-empty is indistinguishable from "no roads here" and
-        // gets edge-cached immutable. Local dev serves bbox SAMPLES (see
-        // setupLocalTiles.sh), so this is the guard that says "wrong sample", not
-        // "no data". Second occurrence of this bug class: the Firenze seed, then
-        // the northern-BC seed with every fixture pin outside it (31 Aug 2026).
-        let archive: PMTiles | undefined;
-        const coverages: string[] = [];
-        for (const key of archiveKeys(env.PACK_PMTILES_KEY)) {
-          const candidate = new PMTiles(
-            new R2Source(env.TILES, key, stats),
-            cache,
-            decompress,
-          );
-          const header = await candidate.getHeader(); // surface a bad archive as a thrown error → 502
-          if (
-            lng >= header.minLon && lng <= header.maxLon &&
-            lat >= header.minLat && lat <= header.maxLat
-          ) {
-            archive = candidate;
-            break;
-          }
-          coverages.push(
-            `${key} covers ${header.minLon},${header.minLat} → ${header.maxLon},${header.maxLat}`,
-          );
-        }
-        if (archive === undefined) {
-          return new Response(
-            `Pin ${lng},${lat} is outside every archive's coverage:\n` +
-              coverages.map((c) => `  ${c}`).join("\n") +
-              `\nLocal dev serves sample extracts — add or widen a bbox in ` +
-              `setupLocalTiles.sh and restart, or switch the CONFIG panel to a cloud tier.`,
-            { status: 422, headers: CORS_HEADERS },
-          );
-        }
+        const archive = new PMTiles(
+          new R2Source(env.TILES, env.PACK_PMTILES_KEY, stats),
+          cache,
+          decompress,
+        );
+        await archive.getHeader(); // surface a bad archive as a thrown error → 502
         const tLoop = Date.now();
         pack = await buildPack(archive, lng, lat, corridor, diag);
         diag.r2Reads = stats.reads;
         diag.r2Bytes = stats.bytes;
         diag.headerMs = tLoop - tH;
         diag.loopMs = Date.now() - tLoop;
+
+        
         // Gzip the body ourselves, but DON'T set Content-Encoding: gzip. If we
         // advertise the encoding, Cloudflare's edge auto-compresses ON TOP (the
         // body arrives double-gzipped and the browser only inflates one layer →
@@ -547,33 +513,32 @@ export default {
     const x = Number(match[2]);
     const y = Number(match[3]);
 
-    // First archive that holds the tile wins (several bbox samples locally,
-    // one planet archive in prod).
+    const archive = new PMTiles(
+      new R2Source(env.TILES, env.PMTILES_KEY),
+      cache,
+      decompress,
+    );
+
+    // Validate the archive is readable up front → a clear 502 instead of a confusing 204.
+    try {
+      await archive.getHeader();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return new Response(
+        `Failed to read PMTiles archive ${env.PMTILES_KEY}: ${message}`,
+        { status: 502, headers: CORS_HEADERS },
+      );
+    }
+
     let tile: RangeResponse | undefined;
-    for (const key of archiveKeys(env.PMTILES_KEY)) {
-      const archive = new PMTiles(new R2Source(env.TILES, key), cache, decompress);
-
-      // Validate the archive is readable up front → a clear 502 instead of a confusing 204.
-      try {
-        await archive.getHeader();
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return new Response(`Failed to read PMTiles archive ${key}: ${message}`, {
-          status: 502,
-          headers: CORS_HEADERS,
-        });
-      }
-
-      try {
-        tile = await archive.getZxy(z, x, y);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return new Response(`Tile lookup failed: ${message}`, {
-          status: 500,
-          headers: CORS_HEADERS,
-        });
-      }
-      if (tile !== undefined) break;
+    try {
+      tile = await archive.getZxy(z, x, y);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return new Response(`Tile lookup failed: ${message}`, {
+        status: 500,
+        headers: CORS_HEADERS,
+      });
     }
 
     // Missing tile -> 204 so the map renderer overzooms cleanly instead of logging 404 noise.
