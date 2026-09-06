@@ -17,6 +17,8 @@ export type PinKey =
     | "atv"
     | "muster"
     | "home"
+    | "poop"
+    | "tree"
     | "red"
     | "orange"
     | "yellow"
@@ -82,6 +84,9 @@ export const ICONS: readonly IconRow[] = [
         path: `${PIN_DIR}/pin_muster_point_sm.webp`,
     },
     { name: "home", pin: "glyph", path: `${PIN_DIR}/pin_home_sm.webp` },
+    // Baked by tools/makeEmojiPins.mjs — the one emoji that earned a fixed tile.
+    { name: "poop", pin: "glyph", path: `${PIN_DIR}/pin_emoji_poop_sm.webp` },
+    { name: "tree", pin: "glyph", path: `${PIN_DIR}/pin_tree_sm.webp` },
     { name: "pin", pin: "glyph", path: `${PIN_DIR}/pin_default_sm.webp` },
     { name: "red", pin: "rainbow", path: `${PIN_DIR}/1pin_red_sm.webp` },
     { name: "orange", pin: "rainbow", path: `${PIN_DIR}/2pin_orange_sm.webp` },
