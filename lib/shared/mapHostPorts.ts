@@ -66,7 +66,7 @@ export interface MapHostFeature {
 		| null;
 	overlayLabels: MapHostOverlayLabel[] | null;
 	featureSource: string | null;
-	isRetreever: string;
+	madeWith: string;
 	createdAt: string;
 	lastTouched: string;
 }

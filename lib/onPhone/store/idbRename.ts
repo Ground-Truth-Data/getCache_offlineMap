@@ -334,8 +334,14 @@ export interface TableRename {
 	from: string;
 	/** New table id. A populated destination always wins. */
 	to: string;
-	/** Optional per-row FK cell rename applied while moving THIS table. */
-	cell?: { from: string; to: string };
+	/** Optional per-row cell rename applied while moving THIS table. With
+	 *  `from === to` the table stays and only the cell is rewritten in place.
+	 *  `value` maps one old cell value to a new one (a renamed sentinel). */
+	cell?: {
+		from: string;
+		to: string;
+		value?: { from: unknown; to: unknown };
+	};
 }
 
 export async function renameQaTablesInIdb(
@@ -370,21 +376,35 @@ export async function renameQaTablesInIdb(
 						| { k: string; v: Record<string, Record<string, unknown>> }
 						| undefined;
 					if (!rec) return;
+					const rows = rec.v ?? {};
+					const moveCell = (): number => {
+						if (!cell) return 0;
+						let n = 0;
+						for (const row of Object.values(rows)) {
+							if (row && typeof row === "object" && cell.from in row) {
+								const r = row as Record<string, unknown>;
+								const v = r[cell.from];
+								r[cell.to] =
+									cell.value && v === cell.value.from ? cell.value.to : v;
+								delete r[cell.from];
+								n++;
+							}
+						}
+						return n;
+					};
+					if (from === to) {
+						// Same table: rewrite the record in place, never delete it.
+						if (moveCell() > 0) {
+							os.put({ k: to, v: rows });
+							moved++;
+						}
+						return;
+					}
 					const existing = os.get(to);
 					existing.onsuccess = () => {
 						// A populated destination record wins (never clobber newer data) — drop the stale old-name record.
 						if (!existing.result) {
-							const rows = rec.v ?? {};
-							if (cell) {
-								for (const row of Object.values(rows)) {
-									if (row && typeof row === "object" && cell.from in row) {
-										(row as Record<string, unknown>)[cell.to] = (
-											row as Record<string, unknown>
-										)[cell.from];
-										delete (row as Record<string, unknown>)[cell.from];
-									}
-								}
-							}
+							moveCell();
 							os.put({ k: to, v: rows });
 							moved++;
 						}

@@ -24,6 +24,12 @@ export interface PhotoSource {
     url(z: number, x: number, y: number): string;
 }
 
+// TODO more rows, all open-licence aerial orthophotos, keyless unless noted:
+// Netherlands PDOK (CC0, 8 cm) · France IGN BD ORTHO (20 cm) · Spain PNOA (25 cm)
+// · Switzerland swisstopo SWISSIMAGE (10 cm) · Austria basemap.at · Finland NLS
+// (free key) · Poland geoportal · Czechia ČÚZK · New Zealand LINZ (free key).
+// Canada has none nationally; BC is a patchy WMS. Each is one row plus a probe
+// of its tile scheme and a box. Parked 7 Sep 2026.
 export const PHOTO_SOURCES: readonly PhotoSource[] = [
     {
         // USGS Imagery Only: NAIP aerial photography, ~1 m/px, public domain, no key; 404 outside the US.
