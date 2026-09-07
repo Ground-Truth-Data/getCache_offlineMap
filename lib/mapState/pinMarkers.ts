@@ -37,46 +37,65 @@ const CLUSTER_PIN_PIXEL_RATIO = 10;
 const CLUSTER_COUNT_SIZE = 13;
 const CLUSTER_COUNT_OFFSET_EM = -2.05;
 
-// A tiny pin beside the count: the count says how many, the pin says of what.
-// The head holds three characters, so from 100 up the pin goes and the number
-// takes the head alone.
+// A small pin beside the count: the count says how many, the pin says of
+// what. The two share the head like characters — count left, pin right,
+// both further out at two digits — and the head holds three, so from 100 up
+// the pin goes and the number takes the head alone.
 const CLUSTER_GLYPH_LAYER = "rt-pin-clusters-glyph";
-const CLUSTER_GLYPH_SIZE = 0.28; // of the 30×42 cluster pin
-const CLUSTER_GLYPH_MAX = 99; // last count that still gets the glyph
-const CLUSTER_GLYPH_GAP = 2; // px between count and glyph
+const CLUSTER_GLYPH_ICON = "rt-cluster-glyph";
+const CLUSTER_GLYPH_SRC = "/mobileAssets/pin_library_small/pin_default_sm.webp";
+const CLUSTER_GLYPH_INK_H = 10; // px on screen, about the count's height
+const CLUSTER_GLYPH_DY = 1; // px the pin sits below the count's centre
+const CLUSTER_GLYPH_MAX = 99; // last count that still gets the pin
+const CLUSTER_GLYPH_GAP = 3; // px between count and pin
 const CLUSTER_DIGIT_PX = 7.4; // one digit's width at CLUSTER_COUNT_SIZE
-// The pair (count + gap + glyph) is centred on the head, so the count moves
+// The art is 630×859 with the ink in a 413×584 box, centred 3.5 px right and
+// 16.5 px above the frame's centre; at this ratio the frame is 30 CSS px
+// wide at icon-size 1.
+const CLUSTER_GLYPH_PIXEL_RATIO = 21;
+const CLUSTER_GLYPH_INK = { w: 19.67, h: 27.8, cx: 0.17, cy: -0.79 };
+const CLUSTER_GLYPH_SIZE = CLUSTER_GLYPH_INK_H / CLUSTER_GLYPH_INK.h;
+const CLUSTER_GLYPH_W = CLUSTER_GLYPH_INK.w * CLUSTER_GLYPH_SIZE;
+// The pair (count + gap + pin) is centred on the head, so the count moves
 // left by half of what sits to its right — the same shift for 1 or 2 digits.
-const CLUSTER_GLYPH_W = 30 * CLUSTER_GLYPH_SIZE;
 const CLUSTER_COUNT_PAIRED_X_EM =
     -(CLUSTER_GLYPH_GAP + CLUSTER_GLYPH_W) / 2 / CLUSTER_COUNT_SIZE;
-// icon-offset is scaled by icon-size, so divide the CSS px through.
+// icon-offset is scaled by icon-size, so divide the CSS px through; the ink
+// correction is already in icon-size units.
 const clusterGlyphOffset = (digits: number): [number, number] => [
-    (digits * CLUSTER_DIGIT_PX + CLUSTER_GLYPH_GAP) / 2 / CLUSTER_GLYPH_SIZE,
-    (CLUSTER_COUNT_OFFSET_EM * CLUSTER_COUNT_SIZE) / CLUSTER_GLYPH_SIZE,
+    (digits * CLUSTER_DIGIT_PX + CLUSTER_GLYPH_GAP) / 2 / CLUSTER_GLYPH_SIZE -
+        CLUSTER_GLYPH_INK.cx,
+    (CLUSTER_COUNT_OFFSET_EM * CLUSTER_COUNT_SIZE + CLUSTER_GLYPH_DY) /
+        CLUSTER_GLYPH_SIZE -
+        CLUSTER_GLYPH_INK.cy,
 ];
 
 // When two pins become one. Mapbox clusters on the integer zoom below the
 // one on screen, so this radius reads as anything from 1× to 2× on screen:
 // the pin art is ~29 px wide, and 15 lets pins nearly touch before they merge.
 const CLUSTER_RADIUS = 15;
-const clusterPinLoading = new WeakSet<MapboxMap>();
-function loadClusterPin(map: MapboxMap): void {
-    if (map.hasImage(CLUSTER_ICON) || clusterPinLoading.has(map)) return;
-    clusterPinLoading.add(map);
+const clusterImagesLoading = new WeakMap<MapboxMap, Set<string>>();
+function loadClusterImage(map: MapboxMap, id: string, src: string, pixelRatio: number): void {
+    const loading = clusterImagesLoading.get(map) ?? new Set<string>();
+    clusterImagesLoading.set(map, loading);
+    if (map.hasImage(id) || loading.has(id)) return;
+    loading.add(id);
     const img = new Image();
     img.onload = () => {
-        clusterPinLoading.delete(map);
+        loading.delete(id);
         // The map can be torn down before the image lands; hasImage on a removed map throws.
         try {
-            if (!map.hasImage(CLUSTER_ICON))
-                map.addImage(CLUSTER_ICON, img, { pixelRatio: CLUSTER_PIN_PIXEL_RATIO });
+            if (!map.hasImage(id)) map.addImage(id, img, { pixelRatio });
         } catch {
             /* map gone */
         }
     };
-    img.onerror = () => clusterPinLoading.delete(map);
-    img.src = CLUSTER_PIN_SRC;
+    img.onerror = () => loading.delete(id);
+    img.src = src;
+}
+function loadClusterPin(map: MapboxMap): void {
+    loadClusterImage(map, CLUSTER_ICON, CLUSTER_PIN_SRC, CLUSTER_PIN_PIXEL_RATIO);
+    loadClusterImage(map, CLUSTER_GLYPH_ICON, CLUSTER_GLYPH_SRC, CLUSTER_GLYPH_PIXEL_RATIO);
 }
 
 // Captions are PINS ONLY — a plot's plaque number is its identity and it NEVER gets a name caption.
@@ -352,7 +371,7 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                     ["<=", ["get", "point_count"], CLUSTER_GLYPH_MAX],
                 ],
                 layout: {
-                    "icon-image": CLUSTER_ICON,
+                    "icon-image": CLUSTER_GLYPH_ICON,
                     "icon-size": CLUSTER_GLYPH_SIZE,
                     "icon-anchor": "center",
                     "icon-offset": [
