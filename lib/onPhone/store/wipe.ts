@@ -42,7 +42,9 @@ const BLOCKED_GRACE_MS = 3000;
 /** How long to let in-flight IndexedDB transactions (short: a put batch or key probe) drain after stopping the bake service. */
 const IN_FLIGHT_GRACE_MS = 400;
 
-export async function wipeOfflineData(): Promise<WipeResult> {
+export async function wipeOfflineData(
+	names: readonly string[] = WIPE_DBS,
+): Promise<WipeResult> {
 	console.warn("[wipe] ── starting ──");
 	const existing = new Set<string>();
 	// `databases()` is not in older Safari; absent means we just try them all.
@@ -57,12 +59,13 @@ export async function wipeOfflineData(): Promise<WipeResult> {
 	}
 
 	const deleted: Record<string, "gone" | "blocked" | "absent"> = {};
-	for (const name of WIPE_DBS) {
+	for (const name of names) {
 		if (existing.size > 0 && !existing.has(name)) {
 			deleted[name] = "absent";
 			continue;
 		}
-		if (name === "gc-offlineTiles") {
+		// The count opens the DB versionless, which CREATES it when absent — count only what the catalogue proved is there.
+		if (name === "gc-offlineTiles" && existing.has(name)) {
 			try {
 				console.warn(`[wipe] tiles on disk before: ${await countTiles()}`);
 			} catch {

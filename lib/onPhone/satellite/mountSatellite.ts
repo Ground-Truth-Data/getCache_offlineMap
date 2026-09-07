@@ -120,10 +120,13 @@ export function createSatelliteMount(
     insertBefore: string = SAT_INSERT_BEFORE,
 ): SatelliteMount {
     const mountedSat = new Set<string>();
+    // A display() resumed after dispose() would touch a removed map (its style is null); the flag stops it.
+    let disposed = false;
     // Per-key object-URL registry — createObjectURL pins the blob in memory until revoked; without this, unmount strands it (steady RAM climb).
     const satUrls = new Map<string, string>();
 
     const mountSat = (key: string, blob: Blob, bounds: Bounds): void => {
+        if (disposed) return;
         const id = satLayerId(key);
         const existing = map.getSource(id) as
             | maplibregl.ImageSource
@@ -207,9 +210,9 @@ export function createSatelliteMount(
         // Read-only — getSatImageByKey is a pure IndexedDB read; the app-wide bake service is the only thing that fetches.
         async display(center: [number, number]): Promise<void> {
             const key = satImageKey(center);
-            if (mountedSat.has(key)) return;
+            if (disposed || mountedSat.has(key)) return;
             const img = await getSatImageByKey(key);
-            if (img) mountSat(key, img.blob, img.bounds);
+            if (img && !disposed) mountSat(key, img.blob, img.bounds);
         },
         async reconcile(
             camera: Bounds,
@@ -223,6 +226,7 @@ export function createSatelliteMount(
             for (const key of [...mountedSat]) if (!keep.has(key)) unmount(key);
             let shown = 0;
             for (const c of mount) {
+                if (disposed) break;
                 await this.display(c);
                 if (mountedSat.has(satImageKey(c))) shown++;
             }
@@ -231,6 +235,7 @@ export function createSatelliteMount(
         unmount,
         mounted: () => mountedSat,
         dispose(): void {
+            disposed = true;
             for (const u of satUrls.values()) URL.revokeObjectURL(u);
             satUrls.clear();
             mountedSat.clear();

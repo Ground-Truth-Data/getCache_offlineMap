@@ -7,7 +7,7 @@ export interface UrlCamera {
 }
 
 /** Rough sanity — a swapped pair usually lands outside these. */
-function validLatLng(lat: number, lng: number): boolean {
+export function validLatLng(lat: number, lng: number): boolean {
 	return (
 		Number.isFinite(lat) &&
 		Number.isFinite(lng) &&
