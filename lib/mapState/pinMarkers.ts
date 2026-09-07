@@ -22,11 +22,21 @@ import { overlayVisibility } from "./overlayVisibility.svelte";
 
 type PinMarker = { key: string; pinTypeKey: string; marker: mapboxgl.Marker };
 
-// NATIVE Mapbox clustering (stock pattern): one GeoJSON source w/ cluster:true; unclustered pins render as DOM markers, and WHICH ones are unclustered is read back via querySourceFeatures so the two views can never disagree.
+// NATIVE Mapbox clustering (stock pattern): a GeoJSON source per kind w/ cluster:true; unclustered pins render as DOM markers, and WHICH ones are unclustered is read back via querySourceFeatures so the two views can never disagree.
 const CLUSTER_SOURCE = "rt-pin-clusters";
 const CLUSTER_LAYER = "rt-pin-clusters-circle";
 const CLUSTER_COUNT_LAYER = "rt-pin-clusters-count";
 const CLUSTER_ICON = "rt-cluster-pin";
+// Plots cluster in their OWN source, so a plot and a pin standing close never
+// merge into each other: pins bubble as a teardrop, plots as a mega plaque —
+// the plot pin's black-and-gold square, bigger, with the count where the
+// number goes.
+const PLOT_CLUSTER_SOURCE = "rt-plot-clusters";
+const PLOT_CLUSTER_LAYER = "rt-plot-clusters-plaque";
+const PLOT_CLUSTER_COUNT_LAYER = "rt-plot-clusters-count";
+const PLOT_CLUSTER_ICON = "rt-cluster-plaque";
+const PLOT_PLAQUE = { w: 36, h: 26, radius: 7, border: 2 }; // CSS px
+const PLOT_CLUSTER_COUNT_SIZE = 14;
 
 // A cluster is a blank pin of the app's own art with the count in gold, at the
 // 30×40 the DOM pins wear (MapDrawControls' .map-pin-marker) — it reads as
@@ -138,9 +148,34 @@ function loadClusterImage(
     img.onerror = () => loading.delete(id);
     img.src = src;
 }
+// Drawn, not an asset: two rounded rects come out crisp at any
+// devicePixelRatio, where a shrunk webp reads as jaggies.
+function makePlaqueImage(): { image: ImageData; pixelRatio: number } | null {
+    const dpr = window.devicePixelRatio || 1;
+    const { w, h, radius, border } = PLOT_PLAQUE;
+    const c = document.createElement("canvas");
+    c.width = Math.round(w * dpr);
+    c.height = Math.round(h * dpr);
+    const g = c.getContext("2d");
+    if (!g) return null;
+    g.scale(dpr, dpr);
+    const inset = border / 2;
+    g.beginPath();
+    g.roundRect(inset, inset, w - border, h - border, radius);
+    g.fillStyle = "#1a1a1a";
+    g.fill();
+    g.lineWidth = border;
+    g.strokeStyle = "#ffd700";
+    g.stroke();
+    return { image: g.getImageData(0, 0, c.width, c.height), pixelRatio: dpr };
+}
 function loadClusterPin(map: MapboxMap): void {
     loadClusterImage(map, CLUSTER_ICON, CLUSTER_PIN_SRC, CLUSTER_PIN_PIXEL_RATIO);
     loadClusterImage(map, CLUSTER_GLYPH_ICON, CLUSTER_GLYPH_SRC, CLUSTER_GLYPH_PIXEL_RATIO, CLUSTER_GLYPH_SIZE);
+    if (!map.hasImage(PLOT_CLUSTER_ICON)) {
+        const plaque = makePlaqueImage();
+        if (plaque) map.addImage(PLOT_CLUSTER_ICON, plaque.image, { pixelRatio: plaque.pixelRatio });
+    }
 }
 
 // Captions are PINS ONLY — a plot's plaque number is its identity and it NEVER gets a name caption.
@@ -339,7 +374,13 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
     }
 
     // Skip-if-already-on-top guard is required — moveLayer fires styledata itself, so without it this becomes an infinite loop when called from styledata.
-    const CLUSTER_STACK = [CLUSTER_LAYER, CLUSTER_COUNT_LAYER, CLUSTER_GLYPH_LAYER];
+    const CLUSTER_STACK = [
+        CLUSTER_LAYER,
+        CLUSTER_COUNT_LAYER,
+        CLUSTER_GLYPH_LAYER,
+        PLOT_CLUSTER_LAYER,
+        PLOT_CLUSTER_COUNT_LAYER,
+    ];
     function hoistClusterLayers(map: MapboxMap): void {
         if (CLUSTER_STACK.some((id) => !map.getLayer(id))) return;
         const ids = map.getStyle()?.layers?.map((l) => l.id) ?? [];
@@ -352,8 +393,9 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
 
     // Idempotent — setStyle (basemap swap) wipes all custom sources/layers, so this must re-run and re-create them every sync.
     function ensureClusterLayers(map: MapboxMap): void {
-        if (!map.getSource(CLUSTER_SOURCE)) {
-            map.addSource(CLUSTER_SOURCE, {
+        for (const id of [CLUSTER_SOURCE, PLOT_CLUSTER_SOURCE]) {
+            if (map.getSource(id)) continue;
+            map.addSource(id, {
                 type: "geojson",
                 data: { type: "FeatureCollection", features: [] },
                 cluster: true,
@@ -430,37 +472,76 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                 },
             });
         }
+        if (!map.getLayer(PLOT_CLUSTER_LAYER)) {
+            map.addLayer({
+                id: PLOT_CLUSTER_LAYER,
+                type: "symbol",
+                source: PLOT_CLUSTER_SOURCE,
+                filter: ["has", "point_count"],
+                layout: {
+                    "icon-image": PLOT_CLUSTER_ICON,
+                    "icon-anchor": "center",
+                    "icon-allow-overlap": true,
+                    "icon-ignore-placement": true,
+                },
+            });
+        }
+        if (!map.getLayer(PLOT_CLUSTER_COUNT_LAYER)) {
+            map.addLayer({
+                id: PLOT_CLUSTER_COUNT_LAYER,
+                type: "symbol",
+                source: PLOT_CLUSTER_SOURCE,
+                filter: ["has", "point_count"],
+                layout: {
+                    "text-field": ["get", "point_count_abbreviated"],
+                    "text-font": deps.getOffline()
+                        ? ["Noto Sans Regular"]
+                        : ["DIN Pro Bold", "Arial Unicode MS Bold"],
+                    "text-size": PLOT_CLUSTER_COUNT_SIZE,
+                    "text-allow-overlap": true,
+                    "text-ignore-placement": true,
+                },
+                paint: {
+                    "text-color": "#ffd700",
+                },
+            });
+        }
         hoistClusterLayers(map);
         if (!handlersInstalled) {
             handlersInstalled = true;
             // Re-hoist on every styledata (not just once) — other installers (grid, draw layers, overlays) add layers whenever THEY like, and a layer added after our last hoist paints over the bubbles.
             map.on("styledata", () => hoistClusterLayers(map));
             // Tap a bubble → ease to the zoom where it splits (stock behaviour).
-            map.on("click", CLUSTER_LAYER, (e) => {
-                const f = map.queryRenderedFeatures(e.point, {
-                    layers: [CLUSTER_LAYER],
-                })[0];
-                const clusterId = f?.properties?.cluster_id as number | undefined;
-                const src = map.getSource(CLUSTER_SOURCE) as
-                    | mapboxgl.GeoJSONSource
-                    | undefined;
-                if (clusterId == null || !src) return;
-                src.getClusterExpansionZoom(clusterId, (err, zoom) => {
-                    if (err || zoom == null) return;
-                    const center = (f.geometry as GeoJSON.Point).coordinates as [
-                        number,
-                        number,
-                    ];
-                    if (!isFiniteCoord(center as unknown)) return;
-                    map.easeTo({ center, zoom });
+            for (const [layerId, sourceId] of [
+                [CLUSTER_LAYER, CLUSTER_SOURCE],
+                [PLOT_CLUSTER_LAYER, PLOT_CLUSTER_SOURCE],
+            ] as const) {
+                map.on("click", layerId, (e) => {
+                    const f = map.queryRenderedFeatures(e.point, {
+                        layers: [layerId],
+                    })[0];
+                    const clusterId = f?.properties?.cluster_id as number | undefined;
+                    const src = map.getSource(sourceId) as
+                        | mapboxgl.GeoJSONSource
+                        | undefined;
+                    if (clusterId == null || !src) return;
+                    src.getClusterExpansionZoom(clusterId, (err, zoom) => {
+                        if (err || zoom == null) return;
+                        const center = (f.geometry as GeoJSON.Point).coordinates as [
+                            number,
+                            number,
+                        ];
+                        if (!isFiniteCoord(center as unknown)) return;
+                        map.easeTo({ center, zoom });
+                    });
                 });
-            });
-            map.on("mouseenter", CLUSTER_LAYER, () => {
-                map.getCanvas().style.cursor = "pointer";
-            });
-            map.on("mouseleave", CLUSTER_LAYER, () => {
-                map.getCanvas().style.cursor = "";
-            });
+                map.on("mouseenter", layerId, () => {
+                    map.getCanvas().style.cursor = "pointer";
+                });
+                map.on("mouseleave", layerId, () => {
+                    map.getCanvas().style.cursor = "";
+                });
+            }
             // Tap the open map → fold any fanned stack back up; marker taps stopPropagation so they never reach this handler.
             map.on("click", () => {
                 if (expandedStack) {
@@ -478,7 +559,10 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                 });
             };
             map.on("sourcedata", (e) => {
-                if (e.sourceId === CLUSTER_SOURCE && e.isSourceLoaded) {
+                if (
+                    (e.sourceId === CLUSTER_SOURCE || e.sourceId === PLOT_CLUSTER_SOURCE) &&
+                    e.isSourceLoaded
+                ) {
                     scheduleReconcile();
                 }
             });
@@ -594,19 +678,26 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
 
         // Every pin goes through native clustering — a handful close together reads as one pin with a count until you zoom in. The selected pin is pulled out so it always stands alone, and the system tiles marker never bubbles.
         const selKey = deps.getSelectedKey();
-        const clusterFeed: typeof pins = [];
+        const pinFeed: typeof pins = [];
+        const plotFeed: typeof pins = [];
         forcedSingleKeys = new Set();
         for (const p of pins) {
             const t = (p.properties?.pinTypeKey as string) ?? "pin";
             const k = p.properties?.mapFeatureKey as string | undefined;
-            if (t !== "tiles" && k !== selKey) clusterFeed.push(p);
-            else if (k) forcedSingleKeys.add(k);
+            if (t === "tiles" || k === selKey) {
+                if (k) forcedSingleKeys.add(k);
+            } else if (t.startsWith("plot:")) plotFeed.push(p);
+            else pinFeed.push(p);
         }
         ensureClusterLayers(map);
         lastPins = pins;
         (map.getSource(CLUSTER_SOURCE) as mapboxgl.GeoJSONSource).setData({
             type: "FeatureCollection",
-            features: clusterFeed,
+            features: pinFeed,
+        });
+        (map.getSource(PLOT_CLUSTER_SOURCE) as mapboxgl.GeoJSONSource).setData({
+            type: "FeatureCollection",
+            features: plotFeed,
         });
         reconcileSingles();
     }
@@ -616,17 +707,20 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
         const map = getMap();
         if (!map || !mapStore.ready) return;
         if (!Number.isFinite(map.getZoom())) return;
-        if (!map.getSource(CLUSTER_SOURCE)) return;
+        const sources = [CLUSTER_SOURCE, PLOT_CLUSTER_SOURCE];
+        if (sources.some((id) => !map.getSource(id))) return;
         // Not yet re-clustered → keep the current markers; the sourcedata listener re-runs this the moment the source settles.
-        if (!map.isSourceLoaded(CLUSTER_SOURCE)) return;
+        if (sources.some((id) => !map.isSourceLoaded(id))) return;
         const pins = lastPins;
         // Unclustered = features without point_count; querySourceFeatures only sees loaded viewport tiles, so off-screen pins simply keep no marker.
         const singleKeys = new Set<string>();
-        for (const f of map.querySourceFeatures(CLUSTER_SOURCE, {
-            filter: ["!", ["has", "point_count"]],
-        })) {
-            const k = f.properties?.mapFeatureKey as string | undefined;
-            if (k) singleKeys.add(k);
+        for (const id of sources) {
+            for (const f of map.querySourceFeatures(id, {
+                filter: ["!", ["has", "point_count"]],
+            })) {
+                const k = f.properties?.mapFeatureKey as string | undefined;
+                if (k) singleKeys.add(k);
+            }
         }
         // Feature pins + the selected pin never cluster — they're not in the clustered source at all, so add them back as always-wanted singles.
         for (const k of forcedSingleKeys) singleKeys.add(k);
