@@ -12,14 +12,14 @@ function satelliteTileUrl(z: number, x: number, y: number): string {
 }
 
 /** z14 is EOX Sentinel-2's sharp ceiling (~10 m/px) — z15 only upsamples into blur, verified; don't raise it. */
-const BAKE_ZOOM = 14;
+export const BAKE_ZOOM = 14;
 
 /** Imagery tiles fetched at once. See the pool call for why 16, not 6 or 60. */
 const SAT_FETCH_CONCURRENCY = 16;
 /** Satellite-photo radius (km); exported so the offline page can space LINE samples to keep discs overlapping into a continuous ribbon. */
 export const BAKE_RADIUS_KM = 2;
 /** Canvas width in px — the fixed photo resolution (image only ever scales); 1536 keeps it crisp without a huge blob. */
-const CANVAS_W = 1536;
+export const CANVAS_W = 1536;
 
 const DB_NAME = "gc-offlineSatellite";
 const STORE = "images";
