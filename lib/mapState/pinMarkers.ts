@@ -122,9 +122,10 @@ const clusterGlyphOffset = (digits: number): [number, number] => [
 // one on screen, so this radius reads as anything from 1× to 2× on screen:
 // the pin art is ~29 px wide, and 15 lets pins nearly touch before they merge.
 const CLUSTER_RADIUS = 15;
-// The plaque with its ears is ~50 px wide, so plots merge sooner than pins
-// or two plaques would sit on each other at the half zooms between splits.
-const PLOT_CLUSTER_RADIUS = 30;
+// Plots are what a surveyor came to see, so they merge LATE: at 20 they get
+// to one or two body widths apart on screen before joining. Two merged
+// plaques can brush at the half zooms between splits; that is the trade.
+const PLOT_CLUSTER_RADIUS = 20;
 const clusterImagesLoading = new WeakMap<MapboxMap, Set<string>>();
 // The sprite atlas has no mipmaps: a 300 px source drawn at 30 px is sampled
 // one pixel in ten and reads as jaggies. Halve on a canvas down to the size

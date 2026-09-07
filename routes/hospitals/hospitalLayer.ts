@@ -8,7 +8,7 @@
  */
 
 import type maplibregl from "maplibre-gl";
-import hospitalPinUrl from "$parent/siblings/getCache_OnlineMap/lib/assets/mobileAssets/hospitalPin.webp";
+import hospitalPinUrl from "./hospitalPin.webp";
 import { isMaplibreMap, popupCtor } from "../../lib/shared/rendererOf";
 import { distKm } from "../fires/fireRelevance";
 import {

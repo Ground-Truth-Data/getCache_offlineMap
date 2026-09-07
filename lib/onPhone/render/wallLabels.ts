@@ -26,7 +26,7 @@ import type * as mapboxgl from "maplibre-gl";
 import { glyphStack } from "../../shared/glyphStack";
 
 import { RAW_SOURCE } from "../roads/rawWallProtocol";
-import hospitalPinUrl from "$parent/siblings/getCache_OnlineMap/lib/assets/mobileAssets/hospitalPin.webp";
+import hospitalPinUrl from "../../../routes/hospitals/hospitalPin.webp";
 
 /** Warm off-white TOWN labels — the loud ones. */
 const LABEL_COLOR = "#ece7da";

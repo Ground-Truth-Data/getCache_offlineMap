@@ -15,7 +15,6 @@
     "$parent/siblings/getCache_OfflineMap/lib/shared/hostPorts",
     "$parent/siblings/getCache_OfflineMap/lib/shared/verboseLog",
     "$parent/siblings/getCache_OnlineMap/lib/areaLabels",
-    "$parent/siblings/getCache_OnlineMap/lib/assets/mobileAssets/hospitalPin.webp",
     "$parent/siblings/getCache_OnlineMap/lib/assets/mobileAssets/tracks_goldV3.webp",
     "$parent/siblings/getCache_OnlineMap/lib/coord",
     "$parent/siblings/getCache_OnlineMap/lib/mapDraw",
