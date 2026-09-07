@@ -117,6 +117,7 @@ export function photoCullPlan(
 export function createSatelliteMount(
     map: maplibregl.Map,
     onMounted?: () => void,
+    insertBefore: string = SAT_INSERT_BEFORE,
 ): SatelliteMount {
     const mountedSat = new Set<string>();
     // Per-key object-URL registry — createObjectURL pins the blob in memory until revoked; without this, unmount strands it (steady RAM climb).
@@ -183,8 +184,8 @@ export function createSatelliteMount(
                     ],
                 },
             } as mapboxgl.LayerSpecification,
-            // Under the wall-map roads, so streets draw on top of the photo — wallStyle owns that ordering rule.
-            map.getLayer(SAT_INSERT_BEFORE) ? SAT_INSERT_BEFORE : undefined,
+            // Under the roads, so streets draw on top of the photo — the style owns that ordering rule.
+            map.getLayer(insertBefore) ? insertBefore : undefined,
         );
         mountedSat.add(key);
         onMounted?.();

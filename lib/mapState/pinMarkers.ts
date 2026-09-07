@@ -75,7 +75,49 @@ const clusterGlyphOffset = (digits: number): [number, number] => [
 // the pin art is ~29 px wide, and 15 lets pins nearly touch before they merge.
 const CLUSTER_RADIUS = 15;
 const clusterImagesLoading = new WeakMap<MapboxMap, Set<string>>();
-function loadClusterImage(map: MapboxMap, id: string, src: string, pixelRatio: number): void {
+// The sprite atlas has no mipmaps: a 300 px source drawn at 30 px is sampled
+// one pixel in ten and reads as jaggies. Halve on a canvas down to the size
+// the screen will show, so the atlas draws the bitmap 1:1.
+function shrinkForScreen(
+    img: HTMLImageElement,
+    pixelRatio: number,
+    iconSize: number,
+): { image: ImageData; pixelRatio: number } | null {
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.max(1, Math.round((img.naturalWidth / pixelRatio) * iconSize * dpr));
+    const h = Math.max(1, Math.round((img.naturalHeight / pixelRatio) * iconSize * dpr));
+    let src: CanvasImageSource = img;
+    let sw = img.naturalWidth;
+    let sh = img.naturalHeight;
+    while (sw / 2 >= w && sh / 2 >= h) {
+        const c = document.createElement("canvas");
+        c.width = Math.round(sw / 2);
+        c.height = Math.round(sh / 2);
+        const g = c.getContext("2d");
+        if (!g) return null;
+        g.imageSmoothingQuality = "high";
+        g.drawImage(src, 0, 0, c.width, c.height);
+        src = c;
+        sw = c.width;
+        sh = c.height;
+    }
+    const out = document.createElement("canvas");
+    out.width = w;
+    out.height = h;
+    const g = out.getContext("2d");
+    if (!g) return null;
+    g.imageSmoothingQuality = "high";
+    g.drawImage(src, 0, 0, w, h);
+    // the layer's icon-size still applies on top, so it is folded into the ratio
+    return { image: g.getImageData(0, 0, w, h), pixelRatio: dpr * iconSize };
+}
+function loadClusterImage(
+    map: MapboxMap,
+    id: string,
+    src: string,
+    pixelRatio: number,
+    iconSize = 1,
+): void {
     const loading = clusterImagesLoading.get(map) ?? new Set<string>();
     clusterImagesLoading.set(map, loading);
     if (map.hasImage(id) || loading.has(id)) return;
@@ -85,7 +127,10 @@ function loadClusterImage(map: MapboxMap, id: string, src: string, pixelRatio: n
         loading.delete(id);
         // The map can be torn down before the image lands; hasImage on a removed map throws.
         try {
-            if (!map.hasImage(id)) map.addImage(id, img, { pixelRatio });
+            if (map.hasImage(id)) return;
+            const small = shrinkForScreen(img, pixelRatio, iconSize);
+            if (small) map.addImage(id, small.image, { pixelRatio: small.pixelRatio });
+            else map.addImage(id, img, { pixelRatio });
         } catch {
             /* map gone */
         }
@@ -95,7 +140,7 @@ function loadClusterImage(map: MapboxMap, id: string, src: string, pixelRatio: n
 }
 function loadClusterPin(map: MapboxMap): void {
     loadClusterImage(map, CLUSTER_ICON, CLUSTER_PIN_SRC, CLUSTER_PIN_PIXEL_RATIO);
-    loadClusterImage(map, CLUSTER_GLYPH_ICON, CLUSTER_GLYPH_SRC, CLUSTER_GLYPH_PIXEL_RATIO);
+    loadClusterImage(map, CLUSTER_GLYPH_ICON, CLUSTER_GLYPH_SRC, CLUSTER_GLYPH_PIXEL_RATIO, CLUSTER_GLYPH_SIZE);
 }
 
 // Captions are PINS ONLY — a plot's plaque number is its identity and it NEVER gets a name caption.
