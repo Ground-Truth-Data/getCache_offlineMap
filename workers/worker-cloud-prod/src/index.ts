@@ -16,6 +16,7 @@ import {
 import { buildPack } from "./packBuilder";
 import {
   cellKeysForDisc,
+  HOSPITAL_MAX_KM,
   HOSPITAL_RADIUS_KM,
   type HospitalEntry,
   hospitalsCollection,
@@ -29,7 +30,7 @@ import hospitalsPack from "./hospitalsWorld.v1.bin";
 /** Edge-cache buster for /hospitals — the bundled pack has no object key, so
  *  this const plays HOSPITALS_KEY's old role. Bump it with every re-bake
  *  (bakeHospitals.mjs prints the value to use). */
-const HOSPITALS_BUILD = "v1-209173-20260901";
+const HOSPITALS_BUILD = "v1-209173-20260907";
 
 /** Bump whenever the PACK CONTENTS change. Part of the edge cache key, so a
  *  new build can never be masked by a year-old immutable cache entry. */
@@ -182,6 +183,7 @@ const EXPOSED_HEADERS = [
   "X-Diag",
   "X-Fetched-At",
   "X-Sources-Ok",
+  "X-Radius-Km",
 ].join(", ");
 
 const CORS_HEADERS: Record<string, string> = {
@@ -431,7 +433,7 @@ export default {
       });
     }
 
-    // ── /hospitals?lng=&lat= — WORLD hospitals within 200 km of a point ──
+    // ── /hospitals?lng=&lat=&km= — WORLD hospitals within km (default 200, max 500) of a point ──
     //
     // Serves the online map's safety layer from the pack BUNDLED with this
     // Worker (see hospitals.ts for why neither R2 nor planet.pmtiles is the
@@ -446,13 +448,21 @@ export default {
           headers: CORS_HEADERS,
         });
       }
+      const kmRaw = url.searchParams.get("km");
+      const km = kmRaw === null ? HOSPITAL_RADIUS_KM : Math.round(Number(kmRaw));
+      if (!Number.isFinite(km) || km < 1 || km > HOSPITAL_MAX_KM) {
+        return new Response(`Bad Request — km must be 1..${HOSPITAL_MAX_KM}`, {
+          status: 400,
+          headers: CORS_HEADERS,
+        });
+      }
       // Snap like /fires: nearby users share one cached answer; 0.25° is
       // immaterial against a 200 km radius.
       const snap = (v: number): string => (Math.round(v * 4) / 4).toFixed(2);
       const cacheUrl = new URL(url.toString());
       // HOSPITALS_BUILD is in the KEY — a re-bake mints a fresh key space
-      // instead of waiting out a TTL (the /fires lesson).
-      cacheUrl.search = `?build=${HOSPITALS_BUILD}&lng=${snap(lng)}&lat=${snap(lat)}`;
+      // instead of waiting out a TTL (the /fires lesson). km is its own token: a 400 km ask must never be served a 200 km answer.
+      cacheUrl.search = `?build=${HOSPITALS_BUILD}&lng=${snap(lng)}&lat=${snap(lat)}&km=${km}`;
       const hospCacheKey = new Request(cacheUrl.toString(), { method: "GET" });
       const hospEdge = caches.default;
       const hospHit = await hospEdge.match(hospCacheKey);
@@ -466,12 +476,12 @@ export default {
       try {
         const { index, dataOrigin } = hospitalsIndex();
         const cellArrays: HospitalEntry[][] = [];
-        for (const k of cellKeysForDisc(lng, lat, index.cellDeg, HOSPITAL_RADIUS_KM)) {
+        for (const k of cellKeysForDisc(lng, lat, index.cellDeg, km)) {
           const span = index.cells[k];
           if (!span) continue; // open ocean / empty cell
           cellArrays.push(readCellEntries(hospitalsPack, dataOrigin, span));
         }
-        hospBody = JSON.stringify(hospitalsCollection(cellArrays, lng, lat));
+        hospBody = JSON.stringify(hospitalsCollection(cellArrays, lng, lat, km));
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         // 502, never an empty 200 — "no hospitals near you" is the most
@@ -485,6 +495,8 @@ export default {
       const hospHeaders = {
         ...CORS_HEADERS,
         "Content-Type": "application/json",
+        // The radius actually served — the phone stores THIS, never the number it asked for, so an older Worker ignoring ?km can't leave a 200 km disc labelled 400.
+        "X-Radius-Km": String(km),
         // Immutable is safe: the answer only changes with a re-bake, and a
         // re-bake bumps HOSPITALS_BUILD, which is in the cache key above.
         "Cache-Control": "public, max-age=31536000, immutable",
@@ -503,7 +515,7 @@ export default {
 
     const match = TILE_PATH.exec(url.pathname);
     if (match === null) {
-      return new Response("Not Found — expected /{z}/{x}/{y}.pbf, /pack?lng=&lat=, /fires?lng=&lat=, or /hospitals?lng=&lat=", {
+      return new Response("Not Found — expected /{z}/{x}/{y}.pbf, /pack?lng=&lat=, /fires?lng=&lat=, or /hospitals?lng=&lat=&km=", {
         status: 404,
         headers: CORS_HEADERS,
       });

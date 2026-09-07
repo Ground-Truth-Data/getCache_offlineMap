@@ -34,9 +34,10 @@ export const PHOTO_SOURCES: readonly PhotoSource[] = [
             [-170, 51, -129, 72],
             [-161, 18.5, -154, 22.5],
         ],
-        // z15 is ~2.4 m/px, the same grain as the 1536 canvas, so nothing fetched is thrown away. z16 shows single trees for four times the tiles and twice the photo (1.6 MB down, 325 KB) — not worth it on a phone.
+        // z15 is ~2.4 m/px; z16 shows single trees for four times the tiles and twice the photo (1.6 MB down, 325 KB) — not worth it on a phone.
         zoom: 15,
-        canvasPx: 1536,
+        // 1024 over 4 km is 3.9 m/px, softer than the source but still 2.5× the satellite's grain, and ~60% smaller than 1536 (a city square 290 KB → ~110 KB).
+        canvasPx: 1024,
         // aerial detail compresses worse than satellite blur: a city square is 290 KB at 0.75, marsh 28 KB; 0.6 takes a quarter off and the fourth panel of the sheet showed no loss on a phone
         quality: 0.6,
         url: (z, x, y) =>

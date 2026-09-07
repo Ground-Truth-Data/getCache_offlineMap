@@ -9,6 +9,8 @@
 // ~200k reads), and the pois layer drops the emergency tag.
 
 export const HOSPITAL_RADIUS_KM = 200;
+/** The widest disc a phone may ask for — the map's own wall, so a bigger ask is a bug, not a bigger answer. */
+export const HOSPITAL_MAX_KM = 500;
 
 /** Pack format — same header dialect as /pack (packBuilder.ts serializePack):
  *  [uint32 LE indexLen][index JSON][cell JSON blobs, concatenated].
@@ -124,11 +126,12 @@ export function hospitalsCollection(
   cellArrays: HospitalEntry[][],
   lng: number,
   lat: number,
+  km: number = HOSPITAL_RADIUS_KM,
 ): { type: "FeatureCollection"; features: HospitalFeature[] } {
   const features: HospitalFeature[] = [];
   for (const entries of cellArrays) {
     for (const e of entries) {
-      if (haversineKm(lat, lng, e[1], e[0]) > HOSPITAL_RADIUS_KM) continue;
+      if (haversineKm(lat, lng, e[1], e[0]) > km) continue;
       const properties: HospitalFeature["properties"] = { name: e[2] };
       if (e.length > 3 && typeof e[3] === "string") properties.emergency = e[3];
       if (e.length > 4 && typeof e[4] === "string") properties.phone = e[4];
