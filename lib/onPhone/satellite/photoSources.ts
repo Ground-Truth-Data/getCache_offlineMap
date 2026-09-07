@@ -19,6 +19,8 @@ export interface PhotoSource {
     zoom: number;
     /** canvas width in px across 2 × BAKE_RADIUS_KM */
     canvasPx: number;
+    /** WebP quality 0–1; detailed sources need less of it than smooth ones */
+    quality: number;
     url(z: number, x: number, y: number): string;
 }
 
@@ -32,9 +34,11 @@ export const PHOTO_SOURCES: readonly PhotoSource[] = [
             [-170, 51, -129, 72],
             [-161, 18.5, -154, 22.5],
         ],
-        zoom: 16,
-        // 2048 px over 4 km is ~2 m/px: half the source, four times EOX's pixels. Keeping it all needs 4096, a 64 MB canvas in the bake worker.
-        canvasPx: 2048,
+        // z15 is ~2.4 m/px, the same grain as the 1536 canvas, so nothing fetched is thrown away. z16 shows single trees for four times the tiles and twice the photo (1.6 MB down, 325 KB) — not worth it on a phone.
+        zoom: 15,
+        canvasPx: 1536,
+        // aerial detail compresses worse than satellite blur: a city square is 290 KB at 0.75, marsh 28 KB; 0.6 takes a quarter off and the fourth panel of the sheet showed no loss on a phone
+        quality: 0.6,
         url: (z, x, y) =>
             `https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/${z}/${y}/${x}`,
     },
@@ -44,6 +48,7 @@ export const PHOTO_SOURCES: readonly PhotoSource[] = [
         boxes: [],
         zoom: 14,
         canvasPx: 1536,
+        quality: 0.75,
         url: (z, x, y) =>
             `https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2020_3857/default/g/${z}/${y}/${x}.jpg`,
     },

@@ -2,7 +2,13 @@
 // satBakeWorker.ts — the satellite compositor, off the UI thread; falls back to the main thread in satelliteImage.ts where OffscreenCanvas/convertToBlob aren't available.
 
 type TileDraw = { url: string; dx: number; dy: number; dw: number; dh: number };
-type BakeReq = { id: number; tiles: TileDraw[]; w: number; h: number };
+type BakeReq = {
+	id: number;
+	tiles: TileDraw[];
+	w: number;
+	h: number;
+	quality: number;
+};
 type BakeRes = { id: number; blob: Blob | null; loaded: number; fetched: number };
 
 // ⚠️ Sized in ENTRIES but the cost is in BYTES (a z14 tile is ~262 KB decoded, a ~37× expansion from its ~7 KB wire size) — if tiles get bigger (z15, @2x, RGBA16) this number must come DOWN, not stay put. 48 × 262 KB ≈ 12 MB.
@@ -46,7 +52,7 @@ function loadTile(url: string, onFetch: () => void): Promise<ImageBitmap | null>
 }
 
 self.onmessage = async (e: MessageEvent<BakeReq>): Promise<void> => {
-	const { id, tiles, w, h } = e.data;
+	const { id, tiles, w, h, quality } = e.data;
 	let loaded = 0;
 	let fetched = 0;
 	const post = (blob: Blob | null): void => {
@@ -81,7 +87,7 @@ self.onmessage = async (e: MessageEvent<BakeReq>): Promise<void> => {
 		return;
 	}
 	try {
-		post(await canvas.convertToBlob({ type: "image/webp", quality: 0.75 }));
+		post(await canvas.convertToBlob({ type: "image/webp", quality }));
 	} catch {
 		post(null);
 	}

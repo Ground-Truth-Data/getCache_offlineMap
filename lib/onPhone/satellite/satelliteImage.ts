@@ -32,6 +32,9 @@ export interface SatImage {
 	bakeVersion?: number;
 	/** PhotoSource name the pixels came from; absent on photos baked before there was a choice (EOX). */
 	source?: string;
+	/** the row's zoom and canvas at bake time — the registry can change under a stored photo */
+	zoom?: number;
+	canvasPx?: number;
 }
 
 const idb = makeKeyedIdbStore<SatImage>({ dbName: DB_NAME, storeName: STORE });
@@ -65,7 +68,14 @@ export async function getAllSatImages(): Promise<{ key: string; img: SatImage }[
 
 /** Per-area photo METADATA (size + bake version, never pixels) — cursor-streamed via getAllProjected so peak heap is one photo, not all of them. */
 export async function satImageMeta(): Promise<
-	{ key: string; bytes: number; bakeVersion?: number; source?: string }[]
+	{
+		key: string;
+		bytes: number;
+		bakeVersion?: number;
+		source?: string;
+		zoom?: number;
+		canvasPx?: number;
+	}[]
 > {
 	const [keys, meta] = await Promise.all([
 		idb.keys(),
@@ -73,6 +83,8 @@ export async function satImageMeta(): Promise<
 			bytes: v.blob.size,
 			bakeVersion: v.bakeVersion,
 			source: v.source,
+			zoom: v.zoom,
+			canvasPx: v.canvasPx,
 		})),
 	]);
 	return keys.map((k, i) => ({ key: k, ...meta[i] }));
@@ -218,6 +230,7 @@ function compositeInWorker(
 	tiles: TileDraw[],
 	w: number,
 	h: number,
+	quality: number,
 ): Promise<BakeRes | null> {
 	const wk = getBakeWorker();
 	if (!wk) return Promise.resolve(null);
@@ -238,7 +251,7 @@ function compositeInWorker(
 				resolve(r);
 			});
 		}
-		wk.postMessage({ id, tiles, w, h });
+		wk.postMessage({ id, tiles, w, h, quality });
 	}).finally(() => {
 		scheduleBakeWorkerTeardown();
 	});
@@ -363,7 +376,7 @@ async function bakeFrom(
 	let loaded = 0; // how many of the disc's tiles actually drew onto the canvas
 
 	if (offscreenSupported()) {
-		const res = await compositeInWorker(tileDraw, W, H);
+		const res = await compositeInWorker(tileDraw, W, H, src.quality);
 		if (res?.blob) {
 			blob = res.blob;
 			fetched = res.fetched;
@@ -392,7 +405,7 @@ async function bakeFrom(
 		if (!loaded) return null;
 		// WEBP, not PNG or JPEG — must keep the alpha channel for the jagged mask (LAW 2); WebP cuts the blob ~70% vs PNG. Older iOS WKWebView (<17) silently falls back to PNG, which is fine (blob.type stays honest).
 		blob = await new Promise<Blob | null>((res) =>
-			canvas.toBlob((b) => res(b), "image/webp", 0.75),
+			canvas.toBlob((b) => res(b), "image/webp", src.quality),
 		);
 		fetched = mtFetched;
 	}
@@ -411,5 +424,7 @@ async function bakeFrom(
 		bounds: [cw, cs, ce, cn],
 		bakeVersion: BAKE_VERSION,
 		source: src.name,
+		zoom: src.zoom,
+		canvasPx: src.canvasPx,
 	};
 }
