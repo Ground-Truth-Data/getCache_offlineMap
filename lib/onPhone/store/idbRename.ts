@@ -7,8 +7,15 @@ async function dbExists(name: string): Promise<boolean> {
 		}
 	} catch {
 	}
-	// No indexedDB.databases() support (older Firefox) — bias to true so we never accidentally create a store-less DB.
+	// No indexedDB.databases() support (older Firefox) — bias to true; the open below cannot create anyway.
 	return true;
+}
+
+/** A versionless open CREATES an empty, store-less database when the name is absent. Aborting the upgrade that creation would run leaves nothing behind, so a probe can never poison a name the real owner opens later. */
+function neverCreate(req: IDBOpenDBRequest): void {
+	req.onupgradeneeded = () => {
+		req.transaction?.abort();
+	};
 }
 
 /** Does a database of this name exist AND hold at least one record? */
@@ -16,6 +23,7 @@ async function dbHasData(name: string, store: string): Promise<boolean> {
 	if (!(await dbExists(name))) return false;
 	return new Promise((resolve) => {
 		const req = indexedDB.open(name);
+		neverCreate(req);
 		req.onsuccess = () => {
 			const db = req.result;
 			if (!db.objectStoreNames.contains(store)) {
@@ -50,6 +58,7 @@ async function readAll(
 	if (!(await dbExists(name))) return [];
 	return new Promise((resolve) => {
 		const req = indexedDB.open(name);
+		neverCreate(req);
 		req.onsuccess = () => {
 			const db = req.result;
 			if (!db.objectStoreNames.contains(store)) {
@@ -123,6 +132,7 @@ async function deleteIfShell(name: string, store: string): Promise<void> {
 	if (!(await dbExists(name))) return;
 	const isShell = await new Promise<boolean>((resolve) => {
 		const req = indexedDB.open(name);
+		neverCreate(req);
 		req.onsuccess = () => {
 			const db = req.result;
 			const missing = !db.objectStoreNames.contains(store);
@@ -202,6 +212,7 @@ export async function cloneEntireIdbDatabase(
 		if (!(await dbExists(name))) return null;
 		return new Promise((resolve) => {
 			const req = indexedDB.open(name);
+			neverCreate(req);
 			req.onsuccess = () => resolve(req.result);
 			req.onerror = () => resolve(null);
 			req.onblocked = () => resolve(null);
@@ -337,6 +348,7 @@ export async function renameQaTablesInIdb(
 		if (!(await dbExists(dbName))) return;
 		const db = await new Promise<IDBDatabase | null>((resolve) => {
 			const req = indexedDB.open(dbName);
+			neverCreate(req);
 			req.onsuccess = () => resolve(req.result);
 			req.onerror = () => resolve(null);
 			req.onblocked = () => resolve(null);
