@@ -1,6 +1,6 @@
 import * as Sentry from "@sentry/sveltekit";
 import type { Feature } from "geojson";
-import mapboxgl from "mapbox-gl";
+import type mapboxgl from "mapbox-gl";
 import type { Map as MapboxMap } from "mapbox-gl";
 import { getAreaLabelRects } from "$parent/siblings/getCache_OnlineMap/lib/areaLabels";
 import { isFiniteCoord } from "$parent/siblings/getCache_OnlineMap/lib/safeMap";
@@ -26,41 +26,57 @@ type PinMarker = { key: string; pinTypeKey: string; marker: mapboxgl.Marker };
 const CLUSTER_SOURCE = "rt-pin-clusters";
 const CLUSTER_LAYER = "rt-pin-clusters-circle";
 const CLUSTER_COUNT_LAYER = "rt-pin-clusters-count";
-const CLUSTER_ICON = "rt-cluster-bubble";
+const CLUSTER_ICON = "rt-cluster-pin";
 
-// Canvas-drawn (not a GL circle layer) because GL circle layers can't dash a stroke.
-const CLUSTER_ICON_SIZE = 32; // CSS px (icon bounding box)
-function drawClusterIcon(): ImageData | null {
-    const scale = 2; // crisp on retina; addImage gets pixelRatio: 2
-    const px = CLUSTER_ICON_SIZE * scale;
-    const canvas = document.createElement("canvas");
-    canvas.width = px;
-    canvas.height = px;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    ctx.scale(scale, scale);
-    const c = CLUSTER_ICON_SIZE / 2;
-    const gold = "#f0c040";
-    ctx.beginPath();
-    ctx.arc(c, c, c - 1, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(240, 192, 64, 0.3)";
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(c, c, c - 1, 0, Math.PI * 2);
-    ctx.setLineDash([2.75, 2.75]);
-    ctx.lineWidth = 1.25;
-    ctx.strokeStyle = "rgba(240, 192, 64, 0.8)";
-    ctx.stroke();
-    // Nominally the plaques' 1.25px border; bumped to 1.6 — the GL-scaled canvas softens it, so 1.25 read thinner/dimmer than the plaques' CSS border.
-    ctx.setLineDash([]);
-    ctx.beginPath();
-    ctx.arc(c, c, c - 4.5, 0, Math.PI * 2);
-    ctx.fillStyle = "#1a1a1a";
-    ctx.fill();
-    ctx.lineWidth = 1.6;
-    ctx.strokeStyle = gold;
-    ctx.stroke();
-    return ctx.getImageData(0, 0, px, px);
+// A cluster is a blank pin of the app's own art with the count in gold, at the
+// 30×40 the DOM pins wear (MapDrawControls' .map-pin-marker) — it reads as
+// "pins here", not a coin. 300×420 source → 30×42 CSS px at this ratio.
+const CLUSTER_PIN_SRC = "/mobileAssets/pin_library_small/pin_blank_emoji_sm.webp";
+const CLUSTER_PIN_PIXEL_RATIO = 10;
+// Where the count sits: the head of the pin, in ems of CLUSTER_COUNT_SIZE above the point.
+const CLUSTER_COUNT_SIZE = 13;
+const CLUSTER_COUNT_OFFSET_EM = -2.05;
+
+// A tiny pin beside the count: the count says how many, the pin says of what.
+// The head holds three characters, so from 100 up the pin goes and the number
+// takes the head alone.
+const CLUSTER_GLYPH_LAYER = "rt-pin-clusters-glyph";
+const CLUSTER_GLYPH_SIZE = 0.28; // of the 30×42 cluster pin
+const CLUSTER_GLYPH_MAX = 99; // last count that still gets the glyph
+const CLUSTER_GLYPH_GAP = 2; // px between count and glyph
+const CLUSTER_DIGIT_PX = 7.4; // one digit's width at CLUSTER_COUNT_SIZE
+// The pair (count + gap + glyph) is centred on the head, so the count moves
+// left by half of what sits to its right — the same shift for 1 or 2 digits.
+const CLUSTER_GLYPH_W = 30 * CLUSTER_GLYPH_SIZE;
+const CLUSTER_COUNT_PAIRED_X_EM =
+    -(CLUSTER_GLYPH_GAP + CLUSTER_GLYPH_W) / 2 / CLUSTER_COUNT_SIZE;
+// icon-offset is scaled by icon-size, so divide the CSS px through.
+const clusterGlyphOffset = (digits: number): [number, number] => [
+    (digits * CLUSTER_DIGIT_PX + CLUSTER_GLYPH_GAP) / 2 / CLUSTER_GLYPH_SIZE,
+    (CLUSTER_COUNT_OFFSET_EM * CLUSTER_COUNT_SIZE) / CLUSTER_GLYPH_SIZE,
+];
+
+// When two pins become one. Mapbox clusters on the integer zoom below the
+// one on screen, so this radius reads as anything from 1× to 2× on screen:
+// the pin art is ~29 px wide, and 15 lets pins nearly touch before they merge.
+const CLUSTER_RADIUS = 15;
+const clusterPinLoading = new WeakSet<MapboxMap>();
+function loadClusterPin(map: MapboxMap): void {
+    if (map.hasImage(CLUSTER_ICON) || clusterPinLoading.has(map)) return;
+    clusterPinLoading.add(map);
+    const img = new Image();
+    img.onload = () => {
+        clusterPinLoading.delete(map);
+        // The map can be torn down before the image lands; hasImage on a removed map throws.
+        try {
+            if (!map.hasImage(CLUSTER_ICON))
+                map.addImage(CLUSTER_ICON, img, { pixelRatio: CLUSTER_PIN_PIXEL_RATIO });
+        } catch {
+            /* map gone */
+        }
+    };
+    img.onerror = () => clusterPinLoading.delete(map);
+    img.src = CLUSTER_PIN_SRC;
 }
 
 // Captions are PINS ONLY — a plot's plaque number is its identity and it NEVER gets a name caption.
@@ -259,17 +275,15 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
     }
 
     // Skip-if-already-on-top guard is required — moveLayer fires styledata itself, so without it this becomes an infinite loop when called from styledata.
+    const CLUSTER_STACK = [CLUSTER_LAYER, CLUSTER_COUNT_LAYER, CLUSTER_GLYPH_LAYER];
     function hoistClusterLayers(map: MapboxMap): void {
-        if (!map.getLayer(CLUSTER_LAYER) || !map.getLayer(CLUSTER_COUNT_LAYER)) return;
+        if (CLUSTER_STACK.some((id) => !map.getLayer(id))) return;
         const ids = map.getStyle()?.layers?.map((l) => l.id) ?? [];
-        if (
-            ids[ids.length - 2] === CLUSTER_LAYER &&
-            ids[ids.length - 1] === CLUSTER_COUNT_LAYER
-        ) {
+        const top = ids.slice(-CLUSTER_STACK.length);
+        if (CLUSTER_STACK.every((id, i) => top[i] === id)) {
             return; // already on top — do NOT re-move (styledata loop guard)
         }
-        map.moveLayer(CLUSTER_LAYER);
-        map.moveLayer(CLUSTER_COUNT_LAYER);
+        for (const id of CLUSTER_STACK) map.moveLayer(id);
     }
 
     // Idempotent — setStyle (basemap swap) wipes all custom sources/layers, so this must re-run and re-create them every sync.
@@ -280,15 +294,11 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                 data: { type: "FeatureCollection", features: [] },
                 cluster: true,
                 clusterMaxZoom: 14,
-                // clusterRadius 25 (~25px): the stock 50 merged clearly-separate pins too early (killed status dots); 20 let plaques visibly overlap before merging.
-                clusterRadius: 25,
+                clusterRadius: CLUSTER_RADIUS,
             });
         }
-        // setStyle wipes custom images too — hasImage guard keeps this idempotent like the layer adds below.
-        if (!map.hasImage(CLUSTER_ICON)) {
-            const img = drawClusterIcon();
-            if (img) map.addImage(CLUSTER_ICON, img, { pixelRatio: 2 });
-        }
+        // setStyle wipes custom images too — loadClusterPin re-checks hasImage, so this stays idempotent like the layer adds below.
+        loadClusterPin(map);
         if (!map.getLayer(CLUSTER_LAYER)) {
             map.addLayer({
                 id: CLUSTER_LAYER,
@@ -296,8 +306,9 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                 source: CLUSTER_SOURCE,
                 filter: ["has", "point_count"],
                 layout: {
-                    // Bubble is ONE fixed size, must NOT grow with count — graduated sizes previously ballooned busy blocks into a wall of fat coins.
+                    // ONE fixed size, must NOT grow with count — graduated sizes previously ballooned busy blocks into a wall of fat coins.
                     "icon-image": CLUSTER_ICON,
+                    "icon-anchor": "bottom",
                     "icon-allow-overlap": true,
                 },
             });
@@ -314,13 +325,44 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                     "text-font": deps.getOffline()
                         ? ["Noto Sans Regular"]
                         : ["DIN Pro Bold", "Arial Unicode MS Bold"],
-                    "text-size": 12,
+                    "text-size": CLUSTER_COUNT_SIZE,
+                    "text-offset": [
+                        "case",
+                        ["<=", ["get", "point_count"], CLUSTER_GLYPH_MAX],
+                        ["literal", [CLUSTER_COUNT_PAIRED_X_EM, CLUSTER_COUNT_OFFSET_EM]],
+                        ["literal", [0, CLUSTER_COUNT_OFFSET_EM]],
+                    ],
                     "text-allow-overlap": true,
                 },
                 paint: {
                     "text-color": "#f0c040",
                     "text-halo-color": "rgba(0, 0, 0, 0.9)",
                     "text-halo-width": 0.8,
+                },
+            });
+        }
+        if (!map.getLayer(CLUSTER_GLYPH_LAYER)) {
+            map.addLayer({
+                id: CLUSTER_GLYPH_LAYER,
+                type: "symbol",
+                source: CLUSTER_SOURCE,
+                filter: [
+                    "all",
+                    ["has", "point_count"],
+                    ["<=", ["get", "point_count"], CLUSTER_GLYPH_MAX],
+                ],
+                layout: {
+                    "icon-image": CLUSTER_ICON,
+                    "icon-size": CLUSTER_GLYPH_SIZE,
+                    "icon-anchor": "center",
+                    "icon-offset": [
+                        "case",
+                        ["<", ["get", "point_count"], 10],
+                        ["literal", clusterGlyphOffset(1)],
+                        ["literal", clusterGlyphOffset(2)],
+                    ],
+                    "icon-allow-overlap": true,
+                    "icon-ignore-placement": true,
                 },
             });
         }
@@ -486,14 +528,14 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
         // Duplicate audit is scoped to ONE survey — different surveys sharing a baked `plot:N` is EXPECTED (merges into 1..N, not flagged); same survey sharing one is a real bug.
         auditDuplicatePlotPins(pins);
 
-        // Only numbered plots go through native clustering — feature pins never bubble (always-on DOM markers), and the selected pin is pulled out too so it always stands alone.
+        // Every pin goes through native clustering — a handful close together reads as one pin with a count until you zoom in. The selected pin is pulled out so it always stands alone, and the system tiles marker never bubbles.
         const selKey = deps.getSelectedKey();
         const clusterFeed: typeof pins = [];
         forcedSingleKeys = new Set();
         for (const p of pins) {
             const t = (p.properties?.pinTypeKey as string) ?? "pin";
             const k = p.properties?.mapFeatureKey as string | undefined;
-            if (t.startsWith("plot:") && k !== selKey) clusterFeed.push(p);
+            if (t !== "tiles" && k !== selKey) clusterFeed.push(p);
             else if (k) forcedSingleKeys.add(k);
         }
         ensureClusterLayers(map);
