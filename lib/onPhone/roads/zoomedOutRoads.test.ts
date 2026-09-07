@@ -1,6 +1,8 @@
 // ⚠️ Roads must draw when the camera is above the stored zoom — keysForAddress must match by real geometric containment, not exact z/x/y string equality, or a zoomed-out camera reads zero roads.
 // NOTE: the ANCESTOR (z5) cases below exercise the lookup's depth only — since RAW_MIN_Z === BLOB_MIN_Z the protocol can no longer be asked a shallower address; the branch stays as defense-in-depth.
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { keysForAddress } from "./pinTileLookup";
 import {
 	RAW_MAX_Z,
@@ -102,22 +104,43 @@ describe("the SHALLOW tier is wired to its OWN source — never the disc", () =>
 		expect(layer!.maxzoom).toBe(BLOB_MIN_Z);
 	});
 
-	it("wallLayers paints the tier's WATER too — fill and line, same window", () => {
-		// The z6 tile has carried water since direction2.4 (the pack rule rides
-		// along unchanged), but until these layers existed nothing asked for it:
-		// v4-water-* read the disc only, silent under BLOB_MIN_Z — rivers and
-		// lakes were IN the tile and off the screen (2026-09-02, second gap).
-		for (const id of ["v4-water-fill-shallow", "v4-water-line-shallow"]) {
+	it("the shallow tier draws NO water — water is the disc's, from WATER_Z only", () => {
+		// Chris, 5 Sep 2026: "water only past z10". The z6 tile still CARRIES
+		// water (the pack rule rides along unchanged) but nothing paints it any
+		// more: v4-water-fill/line-shallow were deleted with "always on". Below
+		// WATER_Z the map is highways, major roads and photos. ⛔ READ THE
+		// CONSTANT FROM THE SOURCE — a hard-coded 10 stops testing anything the
+		// day the dial moves.
+		const src = readFileSync(
+			fileURLToPath(new URL("../render/wallStyle.ts", import.meta.url)),
+			"utf8",
+		);
+		const m = /const WATER_Z = (\d+);/.exec(src);
+		if (!m) throw new Error("WATER_Z not found in wallStyle.ts — did it get renamed?");
+		const WATER_Z = Number(m[1]);
+		// water lives INSIDE the disc's span, never in the shallow window
+		expect(WATER_Z).toBeGreaterThanOrEqual(BLOB_MIN_Z);
+
+		for (const id of ["v4-water-fill", "v4-water-line"]) {
 			const layer = wallLayers().find((l) => l.id === id);
 			expect(layer, id).toBeDefined();
-			expect(layer!.source).toBe(SHALLOW_SOURCE);
-			expect(layer!["source-layer"]).toBe("water");
-			expect(layer!.minzoom).toBe(SHALLOW_Z);
-			expect(layer!.maxzoom).toBe(BLOB_MIN_Z);
+			expect(layer!.source, id).toBe(RAW_SOURCE);
+			expect(layer!["source-layer"], id).toBe("water");
+			expect(layer!.minzoom, id).toBe(WATER_Z);
 		}
-		const fill = wallLayers().find((l) => l.id === "v4-water-fill-shallow")!;
+		const fill = wallLayers().find((l) => l.id === "v4-water-fill")!;
 		expect(fill.filter).toEqual(["==", ["geometry-type"], "Polygon"]);
-		const line = wallLayers().find((l) => l.id === "v4-water-line-shallow")!;
+		const line = wallLayers().find((l) => l.id === "v4-water-line")!;
 		expect(line.filter).toEqual(["==", ["geometry-type"], "LineString"]);
+
+		// ⛔ no water layer may read the shallow source, under any id — the
+		// retired v4-water-*-shallow pair must not creep back in.
+		const shallowWater = wallLayers().filter(
+			(l) =>
+				l.source === SHALLOW_SOURCE &&
+				(l as { "source-layer"?: string })["source-layer"] === "water",
+		);
+		expect(shallowWater.map((l) => l.id)).toEqual([]);
+		expect(wallLayers().some((l) => /water.*shallow/.test(l.id))).toBe(false);
 	});
 });
