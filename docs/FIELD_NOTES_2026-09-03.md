@@ -12,7 +12,7 @@ checked off).
 
 The 1% squares are too faint. Raise the opacity noticeably (start around 0.05
 and eyeball from there — `wallStyle.ts` `v4-blob-grid-fill`, test asserts the
-value per BRANCH_NOTES).
+value).
 
 Two aesthetic notes from Chris:
 - **The overlap blur is the best part** — where two pins' boxes overlap and the
@@ -33,10 +33,11 @@ pv48 bake of the same spot before assuming.
 
 ## 3. Fires red on worker-local-dev
 
-`/fires` returns 500 locally — no `FIRMS_MAP_KEY` on a laptop. Fine if that's
-the accepted local story, but then the rail should say "no fire key locally",
-not a generic red err. (Cloud-dev is fixed: the secret was missing on
-offline-tiles-dev, set 3 Sep — `/fires` now 200s there.)
+`/fires` returns 500 on a laptop without `FIRMS_MAP_KEY` (a gitignored
+`workers/worker-local-dev/.dev.vars` carries it on Chris's machine; a fresh
+clone has none). Fine if that's the accepted local story, but then the rail
+should say "no fire key locally", not a generic red err. Cloud-dev has had
+the secret since 3 Sep.
 
 ## 4. Hospitals have no pin-card
 
@@ -71,52 +72,9 @@ floated, in Chris's words, roughly:
   (Direction2.2's in-memory key set is a *set of keys*, cheap — this is about
   decoded tile/image payloads.)
 
-Measured 3 Sep (Claude driving `__rtMap` on a fresh tab, 430 areas on disk):
-- **The merged-read memo is the big remaining pot**: `mergedTiles` LRU in
-  packDownload.ts caps at 512 *entries*, no byte bound — z13 road tiles run
-  100s of KB, so worst case is 100 MB+ of ArrayBuffers that only rotate out on
-  overflow or wipe, never on zoom-out. Deliberate (it unfroze gestures) — the
-  "throw it away like Google" candidate is exactly here: byte-bound it, or purge
-  entries whose addresses leave the viewport.
-- Satellite decoded-tile caches are already capped sanely (48 tiles ≈ 12 MB
-  each, main thread + bake worker).
-
-**LANDED 3 Sep afternoon (`716c4f6`) — pull before touching the map page.**
-The other measured hoard — one permanent satellite source per baked pin, 326
-sources / 348 layers on the map at once, zoom-out freeing nothing — is fixed:
-photos are now VIEWPORT-MOUNTED. **Superseded 4 Sep by DeepMoire's two-ring
-cull** (`mountSatellite.ts` `photoCullPlan`/`reconcile()`, merged `7f83afd`):
-the page hands the viewport bounds and anchors to `reconcile()`, which mounts
-the photos in the inner ring, keeps the outer ring warm and unmounts the rest.
-The z10 floor and the ≤16 cap from the 3 Sep version are gone. The focused
-(just-dropped) pin is still pinned so paintWatch can green its row.
-
-**LANDED 5 Sep (`2f17f0c`, `77f2a92`) — the roads, not the photos, were the
-big pot.** The tile worker (DevTools "Select JavaScript VM instance", NOT the
-in-app rail, which reads the main thread only) held 1.4 GB at z6 and 2.3 GB at
-z9 over a carpet of 440 merged discs: a disc tile carries every driveway at
-full detail whatever its zoom, so with small roads drawn RAM scales with the
-GROUND on screen. Small roads now draw only inside a disc and only from
-`MINOR_ROAD_Z = 11` (`wallStyle.ts`); the shallow wall's small-road layer is
-DELETED; trails from z12. The permanent demo blob at the map home is deleted,
-and a blob whose pin is gone is pruned on the next pass. Law 1 in
-OFFLINE_PLAN.md is rewritten — "every road at every zoom" is retired, do not
-restore it. Server-side thinning of z8–z10 disc tiles is next (needs a
-PACK_FORMAT_VERSION bump after deploy). Photos mount from `SAT_MIN_Z = 10`
-only (`mountSatellite.ts`), fading in over the half level above it — at z7
-every baked photo was a 60 px grey smudge over the roads.
-
-**LANDED 3 Sep evening: `maxTileCacheSize: 2` on the map constructor**
-(offlineMapInit.ts). Chris's DevTools showed the REAL hoard was never on the
-main thread: MapLibre's worker VM held 1.7 GB (2.1 GB total JS heap) while
-the in-app rail — which reads main-thread `performance.memory` only — said
-450 MB. Uncapped, MapLibre's off-screen tile cache sizes itself to ~5 zoom
-levels of viewport tiles PER SOURCE, and every low-zoom road tile here is the
-merge of ALL areas on disk (tens of MB each, retained raw+parsed in the
-worker). Cached tiles only save a re-parse — IDB re-reads are ~1 ms — so the
-cap costs a little pan-back parsing and bounds the hoard. The deeper issue
-stands for the pack pipeline: low-zoom tile PAYLOADS scale with total areas
-on disk, not with the viewport (thin/simplify at z≤8, tippecanoe-style).
+Still open: server-side thinning of z8–z10 disc tiles — low-zoom tile PAYLOADS
+scale with total areas on disk, not with the viewport (thin/simplify at z≤8,
+tippecanoe-style; needs a PACK_FORMAT_VERSION bump after deploy).
 
 ## 6b. WIPE while the app is open reports "blocked"
 
@@ -131,8 +89,7 @@ unhandled promise.
 
 `npx biome check lib/worker/worker-local-dev/roads` fails on main: the new
 direction2 files are tab-indented (repo rule is spaces/4 — root `biome.json`)
-and there are two unused imports (`packDownload.ts` `cellTileKey`,
-`areaArrives.test.ts` line 4). One `biome check --write` pass, but run it over
+and there is an unused import (`areaArrives.test.ts` line 4). One `biome check --write` pass, but run it over
 **all three `lib/worker` tier twins in the same commit** so the copies stay
 identical. Left for you rather than fixed here to avoid reformat churn under
 your feet.

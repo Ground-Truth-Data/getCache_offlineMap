@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Populate static/mobileAssets/ for this child's demo.
+# Populate static/mobileAssets/worldBase for this child's demo — the one asset too big for git.
+# Everything else the child draws is IMPORTED from lib/assets/ and travels with it.
 # Fails loud — no silent fallbacks.
 set -euo pipefail
 
 DEST="${1:-static/mobileAssets}"
-NEEDED=(worldBase getcache_DT_bg.webp pin_library_small hand_phoneV3.webp fire_icon.webp fire_intensity)
+NEEDED=(worldBase)
 
 # ⚠️ HERE must derive from this script's location — never the caller's cwd or a home directory.
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

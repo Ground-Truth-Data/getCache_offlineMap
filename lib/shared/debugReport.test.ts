@@ -1,4 +1,4 @@
-/** Proves the report surfaces "correct bytes in the WRONG BOX" — OFFLINE_MAP_SPEC.md §8: every test here must be red-on-bug. */
+/** Proves the report surfaces "correct bytes in the WRONG BOX" — OFFLINE_PLAN.md acceptance tests: every test here must be red-on-bug. */
 import { describe, expect, it } from "vitest";
 import { BLOB_TILE_Z, cellBox, cellOf } from "../contract/grid";
 import { geometryFor } from "./debugReport";

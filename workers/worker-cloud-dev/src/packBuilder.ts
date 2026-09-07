@@ -15,7 +15,7 @@ import {
 
 // The measured bugs behind this file's invariants (the 50 km key bug, the
 // deleted roads budget and ring pyramid, the clip and PNG detours) are written
-// up in workers/PACK_HISTORY.md. Inline comments carry only what a reader
+// up in docs/OFFLINE_HISTORY.md. Inline comments carry only what a reader
 // needs at the line.
 
 // ── the layer keep-set ───────────────────────────────────────────────────────

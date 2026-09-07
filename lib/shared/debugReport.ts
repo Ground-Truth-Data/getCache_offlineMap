@@ -4,7 +4,7 @@
  *
  * ⛔ WHY GEOMETRY, NOT JUST BYTES
  *
- * OFFLINE_MAP_SPEC.md §9 rule 4: "Every offline bug this project has had was
+ * OFFLINE_PLAN.md engineering rule 4: "Every offline bug this project has had was
  * the same shape: correct bytes in the wrong box. Feature counts and byte
  * totals all looked healthy throughout." So a report that says `64 KB · 3,286
  * features` is worthless on its own — that is exactly what the 45 km, 27.9 km

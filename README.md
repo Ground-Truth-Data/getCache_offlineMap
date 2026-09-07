@@ -36,8 +36,10 @@ cd <folder> && npm install && npm run dev
 
 That git-clones this repo beside a copied `rapper/` and writes `rapper/.env`
 (`VITE_TILES_HOST=https://tiles-prod.getcache.org` + `VITE_TILES_DEV_HOST`).
-The ~50 MB basemap ships in this repo (`mobileAssets/`, proprietary — see
-`mobileAssets/LICENSE.md`); the first `npm run dev` copies it into place.
+The ~50 MB basemap is NOT in git — `mobileAssets/` holds only `LICENSE.md`
+(proprietary terms); `fetchAssets.sh` copies it from a local
+`ReTreever/static/mobileAssets` or downloads the `assets-v1` release tarball
+into `static/mobileAssets/`.
 No key, no account, no npm login. `getCache_OfflineMap/` is a real clone:
 edit, branch, push and open PRs from inside it.
 
@@ -51,21 +53,21 @@ missing or wrong — the console says so on the first line
 `/` lands on the offline map too — see `hooks.ts`. The debug rails are a
 toggle on the map itself, not a second URL. One view, one address.
 
-The Cloudflare Worker that serves tiles lives in this repo at `worker/`. To
-run it locally: `cd worker && npm run dev:local`, then pick the `worker-local-dev`
+The Cloudflare Worker that serves tiles lives in this repo at
+`workers/worker-local-dev/` (`worker-cloud-dev/` and `worker-cloud-prod/` are
+the copies each cloud tier runs). To run it locally:
+`cd workers/worker-local-dev && npm run dev`, then pick the `worker-local-dev`
 tier in the map's CONFIG panel (`lib/worker/README.md`).
-
-Repos:
-
-- [offline map GitHub](https://github.com/Ground-Truth-Data/getCache_offlineMap)
-- [rapper GitHub](https://github.com/Ground-Truth-Data/rapper)
 
 ## What this is
 
 An offline map. It downloads map tiles and satellite photos for areas around
 pins, stores them in the browser's IndexedDB, and renders them (MapLibre GL)
 with no network. Tiles come from a Cloudflare Worker; satellite photos from
-EOX Sentinel-2.
+EOX Sentinel-2. Since 6 Sep 2026 the map Get Cache opens (`OFFLINE_MAP_ROUTE`,
+`lib/mapState/lastMapRoute.svelte.ts`) is V10 in
+`ReTreever/src/routes/(getcache)/app/offlinev10/` (its `README.md` and
+`../OFFLINE_STACK.md`); this engine is served at `/app/offline`, by URL only.
 
 **The debugger IS the map.** Same component, one `cards` prop, panels beside it.
 Instruments attached to a stand-in produce confident wrong answers.
@@ -74,9 +76,9 @@ Instruments attached to a stand-in produce confident wrong answers.
 
 | Layer | Source | Always on? | Radius per pin |
 |---|---|---|---|
-| Vector roads — plus water, town labels, hospital/campsite POIs, all in the same blob | One Cloudflare R2 bucket (`offline-tiles`) holding a full-planet OpenStreetMap extract (`planet.pmtiles`); the Worker in `worker/` range-reads it and serves one `/pack` blob per pin | yes | 30 km (`lib/contract/grid.ts`) |
+| Vector roads — plus water, town labels, hospital/campsite POIs, all in the same blob | One Cloudflare R2 bucket (`offline-tiles`) holding a full-planet OpenStreetMap extract (`planet.pmtiles`); the Worker in `workers/worker-local-dev/` range-reads it and serves one `/pack` blob per pin | highways and major roads yes; small roads and water only inside a disc from z11 / z10 (`MINOR_ROAD_Z`, `WATER_Z` in `lib/onPhone/render/wallStyle.ts`, 5 Sep 2026) | 30 km (`lib/contract/grid.ts`) |
 | Satellite photo | EOX Sentinel-2 cloudless (public WMTS, no key, ~10 m/px), baked on the phone | yes | 2 km per photo; photos along a line overlap into a ribbon (`lib/onPhone/satellite/satelliteImage.ts`) |
-| Fires | NASA FIRMS — VIIRS on NOAA-20, NOAA-21 and Suomi-NPP, last 48 h, proxied through the same Worker's `/fires` route so the API key stays a Worker secret | **not yet** — fetch/store runs, render is Known broken #5 | 500 km (`lib/shared/fireContract.ts`) |
+| Fires | NASA FIRMS — VIIRS on NOAA-20, NOAA-21 and Suomi-NPP, last 48 h, proxied through the same Worker's `/fires` route so the API key stays a Worker secret | yes — `attachFireLayer` (`lib/onPhone/render/fireLayer.ts`, since 31 Aug 2026); what is still open is Known broken #4 | 500 km (`lib/shared/fireContract.ts`) |
 
 Everything lands in IndexedDB under a 1 GB budget (`OFFLINE_BUDGET_BYTES`)
 and renders with no network.
@@ -86,9 +88,11 @@ and renders with no network.
 A blob is the jagged disc of data around a pin: satellite photo at the
 centre, vector roads out to the edge. The bar, in order:
 
-1. **Always on.** Nothing appears or disappears as you zoom. One radius, one
-   packed zoom level (overzoomed above it) — a second radius was tried three
-   times and always reads as a phantom shape (`lib/contract/roadBlob.ts`).
+1. **One radius.** One packed zoom level, overzoomed above it — a second radius
+   was tried three times and always reads as a phantom shape
+   (`lib/contract/roadBlob.ts`). Drawing holds detail back: small roads and
+   trails from `MINOR_ROAD_Z` (11), water from `WATER_Z` (10), highways and
+   major roads at every zoom (`lib/onPhone/render/wallStyle.ts`).
 2. **Arrive fast.** The dl badge is a stopwatch from *asked* to *painted on
    screen* — that number is the score, never bytes on disk or an open port.
 3. **Render fast, stay small in RAM.** Speed vs memory is the standing
@@ -130,19 +134,15 @@ watched while it runs. Do not propose renaming it or a second "shared map" repo.
 |---|---|
 | The map component | `lib/OfflineMapPage.svelte` |
 | Fires engine (v1 + v2 + masks) | `routes/fires/` — read `routes/fires/docs/FIRES.md` before touching v2 |
-| Fires Worker half | `lib/worker/firesWorker.ts` — `worker/src/index.ts` imports it relatively |
-| Tile Worker (Cloudflare, R2) | `worker/` — `worker/README.md` |
+| Fires Worker half | `lib/worker/firesWorker.ts` — `workers/worker-local-dev/src/index.ts` imports it relatively |
+| Tile Worker (Cloudflare, R2) | `workers/worker-local-dev/` — `workers/worker-local-dev/README.md`; `worker-cloud-dev/`, `worker-cloud-prod/` are the deployed twins |
 | Worker client (tiers, `/pack` download, fires fetch) | `lib/worker/` — `lib/worker/README.md` |
-| Offline map docs (plan, spec, history) | `docs/` — start at `docs/README.md` |
-| Fires docs | `routes/fires/docs/` |
-| Map assets (basemap, pins, `fire_icon.webp`, `fire_intensity/`) | `mobileAssets/` (committed, proprietary — `mobileAssets/LICENSE.md`); `fetchAssets.sh` copies it to the serving dir |
+| Docs — this repo is PUBLIC: no secret, account or endpoint in any of them | `docs/OFFLINE_PLAN.md` (plan, laws, rules, acceptance tests), `docs/OFFLINE_HISTORY.md` (dead ends), `docs/FIELD_NOTES_*.md` (Chris↔contractor), `routes/fires/docs/FIRES.md`. In the parent: `ReTreever/src/lib/mobile/docs/{mapDocs,CLOUD_REGISTRY,TODO}.md`, `ReTreever/src/lib/mobile/offline/MEMORY_FINDINGS.md` (memory receipts) |
+| Map art (pins, `fire_icon.webp`, `fire_intensity/`, `pdf_maps_icon.webp`) | `lib/assets/` — committed, imported by URL (`import x from "../assets/….webp"`), never a `/mobileAssets/` string |
+| Basemap (`worldBase`, ~50 MB) | `static/mobileAssets/worldBase/` (gitignored — `fetchAssets.sh` fills it from ReTreever or the release tarball; only `mobileAssets/LICENSE.md` is committed) |
 | Storage, bake service, renderer, roads, satellite | `lib/onPhone/` |
 | Tile contract (byte-identical to `workers/worker-local-dev/src/`) | `lib/contract/` |
-| `assetRegion`, `anchors`, `mapKeepOut`, `rendererOf`, `pinDrift`, `ensureMapboxGuards` | `lib/shared/` |
-| Places index + reference | `lib/places/` |
-| `MapPopoverShell`, `mapPopoverGeom`, `measureFormat`, the debug panels | `lib/panels/` |
-| `MapLegend`, `SnakeRuler`, `DrawPalette`, `SelfCoordPill`, `TrackingStrip`, `MapTopControls`, `FeatureMapPopover`, `PlotMapPopoverV2` | `lib/mapUi/` |
-| `mapViewport`, `lastMapRoute`, `onlineMapHitchState`, `overlayVisibility`, `overlayOpacity`, `mapFraming`, `overlayManager`, `pinMarkers`, `vertexDrag`, `tracking`, `userLocation` | `lib/mapState/` |
+| Shared helpers, places index, debug panels, map UI components, map state stores | `lib/shared/`, `lib/places/`, `lib/panels/`, `lib/mapUi/`, `lib/mapState/` |
 | Engine door — `HostPorts` | `lib/shared/hostPorts.ts` — ReTreever's implementation: `ReTreever/src/lib/mobile/offline/host/retreeverPorts.ts` |
 | Map-UI door — `MapHostPorts { store, ui, gps, scenes?, q704? }` | `lib/shared/mapHostPorts.ts` — ReTreever's implementation: `ReTreever/src/lib/mobile/offline/host/retreeverMapPorts.ts` |
 
@@ -184,30 +184,22 @@ the online child.
 2. **NO PROGRESS DURING A BAKE.** ~8 s per area, ~39 areas — about 5 minutes of
    black rectangle. "Still downloading" and "broken" look identical.
 
-3. **COVERAGE NEVER EVICTS BELOW 1 GB** (`OFFLINE_BUDGET_BYTES`), and stores
-   no pin or map identity — areas from deleted pins accumulate forever and are
-   unattributable. A real session showed 392 areas across the continent while
-   the map was over Ontario.
-
-4. **DEAD EXPORTS.** Written, exported, never called: `setCoverageMirror`,
+3. **DEAD EXPORTS.** Written, exported, never called: `setCoverageMirror`,
    `parseCellKey`, `tileHoldsRadius`, `idbDeleteMany`,
-   `offlineDownloadGateStats`, `wallLabelLayers`, and the whole of
-   `lib/shared/mapboxErrorCapture.ts`. Wire or delete.
+   `offlineDownloadGateStats`. Wire or delete.
 
-5. **FIRES RENDER IS A NO-OP.** The Fires switch renders and clicks but its
-   `ids` array is empty (`lib/onPhone/render/wallLegend.ts`) — no fire layer is
-   mounted, so the CONFIG row shows dead with a "not yet" tag. The fetch/store
-   half runs (`FIRE_REFRESH_ENABLED = true` in `lib/shared/bakeFlags.ts`), and
-   `routes/fires/v2/fireLayerV2.ts` exists but nothing imports it yet. Also:
-   the Worker's `/fires` route needs a NASA FIRMS Area API key (a Worker
-   secret; free at firms.modaps.eosdis.nasa.gov) — a fresh local Worker has
-   none, so expect `/fires` to fail until you add one with
-   `wrangler secret put`. Done = that switch turns real fire features on and
-   off. Hospitals and Places are NOT in this bucket — they already ride in the
+4. **FIRES V2 IS UNWIRED.** `attachFireLayer` (`lib/onPhone/render/fireLayer.ts`)
+   paints v1 from the bake's cache and the Fires row in `wallLegend.ts` carries
+   its ids; `routes/fires/v2/fireLayerV2.ts` is written, tested and imported by
+   nothing (`routes/fires/docs/FIRES.md`). The Worker's `/fires` route needs a
+   NASA FIRMS key (free at firms.modaps.eosdis.nasa.gov): `wrangler secret put
+   FIRMS_MAP_KEY` on the cloud tiers, a gitignored
+   `workers/worker-local-dev/.dev.vars` locally — without one a fresh local
+   Worker 500s on `/fires`. Hospitals and Places are NOT in this bucket — they already ride in the
    `/pack` blob per pin (see `lib/contract/packLayers.ts`); a row reading
    "dl Ns · 0 in view" means the download worked and the area simply has none.
 
-6. **THE WORKER TRUSTS EVERYONE.** Every request to `tiles-prod` is anonymous —
+5. **THE WORKER TRUSTS EVERYONE.** Every request to `tiles-prod` is anonymous —
    the app has no more standing than a stranger's `curl`, so a third party
    could build their own service on the tile Worker. Add a shared token: the
    client sends a header read from `rapper/.env` (beside `VITE_TILES_HOST`),
@@ -216,7 +208,7 @@ the online child.
    token and freeloaders go dark while the app updates. Build and test it
    against `worker-local-dev`; no Cloudflare account needed.
 
-7. **THE MAP UI HAS NO HOST HERE.** Nothing in this repo mounts `lib/mapUi/` or
+6. **THE MAP UI HAS NO HOST HERE.** Nothing in this repo mounts `lib/mapUi/` or
    `lib/mapState/` — only ReTreever does, through `retreeverMapPorts.ts`. Five
    of them (`SnakeRuler`, `userLocation`, `vertexDrag`, `overlayManager`,
    `pinMarkers`) import `getCache_OnlineMap`, so they need that sibling

@@ -13,14 +13,12 @@ fires fetch.
 |---|---|---|---|
 | prod | `worker-cloud-prod` | `tiles-prod.getcache.org` | `./deployProduction.sh` in `workers/worker-cloud-prod/` (asks to confirm) |
 | dev | `worker-cloud-dev` | `tiles-dev.getcache.org` | `./deployDev.sh` in `workers/worker-cloud-dev/` — same R2 bucket, so a prod/dev difference is always CODE, never data |
-| local | `worker-local-dev` | `tiles-local.getcache.org:8787` → 127.0.0.1 | `npm run dev:local` in `workers/worker-local-dev/` — no Cloudflare account needed |
+| local | `worker-local-dev` | `tiles-local.getcache.org:8787` → 127.0.0.1 | `npm run dev` in `workers/worker-local-dev/` — no Cloudflare account needed |
 
 `GET /pack?lng=&lat=` returns a map pack; `GET /{z}/{x}/{y}.pbf` a tile.
 
-- ⛔ prod and dev hostnames are made by `wrangler deploy` (`custom_domain = true`).
-  Never create them by hand in the dashboard — the deploy then fails (100117)
-  and there is no `--force`. `tiles-local` is the one hand-made DNS record
-  (A → 127.0.0.1, DNS-only); nothing else will ever create it.
+- ⛔ `tiles-local` is the one hand-made DNS record (A → 127.0.0.1, DNS-only);
+  prod/dev records come from `wrangler deploy` — see the Worker README.
 - ⛔ No prod/dev host is baked into this child — `routes/+layout.svelte` calls
   `configureTilesFromEnv()`, which reads `VITE_TILES_HOST` / `VITE_TILES_DEV_HOST`
   from the `.env` beside vite's root (`rapper/.env`, written by `npm create`).

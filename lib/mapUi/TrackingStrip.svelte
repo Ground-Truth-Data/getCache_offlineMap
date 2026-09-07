@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { MapHostPorts } from "../shared/mapHostPorts";
+import tracksIconUrl from "$parent/siblings/getCache_OnlineMap/lib/assets/mobileAssets/tracks_goldV3.webp";
 
 let {
     ports,
@@ -16,7 +17,7 @@ let {
     <button class="tracking-strip" onclick={onStop} title="Stop tracking">
         <ports.ui.Icon name="close" size={22} />
         <span class="tracking-strip__label">TRACKING</span>
-        <ports.ui.MaskedIcon src="/mobileAssets/tracks_goldV3.webp" size={30} color="var(--color-accent)" />
+        <ports.ui.MaskedIcon src={tracksIconUrl} size={30} color="var(--color-accent)" />
     </button>
 {/if}
 

@@ -1,4 +1,4 @@
-/** ⚠️ Import boundary test — OFFLINE_MAP_SPEC.md §9 rule 5. Don't import outside the allow-list below or this fails. */
+/** ⚠️ Import boundary test — OFFLINE_PLAN.md engineering rule 5. Don't import outside the allow-list below or this fails. */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";

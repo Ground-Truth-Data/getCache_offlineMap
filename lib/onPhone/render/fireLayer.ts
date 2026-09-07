@@ -7,6 +7,12 @@
  * `fires` port). Never fetches — the bake owns downloads.
  */
 import maplibregl from "maplibre-gl";
+import fireIconUrl from "../../assets/fire_icon.webp";
+import fireIntensity1 from "../../assets/fire_intensity/1-fire_intensity.webp";
+import fireIntensity2 from "../../assets/fire_intensity/2-fire_intensity.webp";
+import fireIntensity3 from "../../assets/fire_intensity/3-fire_intensity.webp";
+import fireIntensity4 from "../../assets/fire_intensity/4-fire_intensity.webp";
+import fireIntensity5 from "../../assets/fire_intensity/5-fire_intensity.webp";
 
 import {
     fireEntriesNear,
@@ -65,7 +71,7 @@ const OUTLINE_MIN_ZOOM = 13;
 const FIRE_DOT = "#b36940";
 const FIRE_HOT = "#d18a5e";
 const FIRE_ICON = "rt-fire-flame";
-const FIRE_ICON_URL = "/mobileAssets/fire_icon.webp";
+const FIRE_ICON_URL = fireIconUrl;
 
 const EMPTY: GeoJSON.FeatureCollection = {
     type: "FeatureCollection",
@@ -289,9 +295,16 @@ function esc(s: string): string {
 
 // Artwork ring, one file per level, gold → red. The "N of 5" text beside it is
 // the accessible carrier; the ring is the at-a-glance echo.
+const INTENSITY_ICONS = [
+    fireIntensity1,
+    fireIntensity2,
+    fireIntensity3,
+    fireIntensity4,
+    fireIntensity5,
+];
 function intensityIconSrc(level: number): string {
     const lvl = Math.min(5, Math.max(1, Math.round(level)));
-    return `/mobileAssets/fire_intensity/${lvl}-fire_intensity.webp`;
+    return INTENSITY_ICONS[lvl - 1];
 }
 
 // True red and true green: orange would blend into the fire palette. Red-up /

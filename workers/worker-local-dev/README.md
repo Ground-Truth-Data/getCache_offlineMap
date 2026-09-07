@@ -51,13 +51,13 @@ the dev Worker; Cloudflare then enforces the prod/dev split.
 4. ⚠️ The object key must equal `PMTILES_KEY` / `PACK_PMTILES_KEY` in
    `wrangler.toml` — a mismatch reads as "no tiles", no error.
 
-## Test
+## The three folders
 
-```bash
-curl -s "https://tiles-prod.getcache.org/8/40/88.pbf" -o tile.pbf && ls -la tile.pbf   # a few KB
-curl -s -o /dev/null -w "%{http_code}\n" "https://tiles-prod.getcache.org/8/0/0.pbf"   # 204, open ocean
-curl -s "https://tiles-prod.getcache.org/pack?lng=-76.84&lat=42.75" | wc -c              # ~340 KB
-```
+Edit only here. `../worker-cloud-dev/` and `../worker-cloud-prod/` are the
+copies that match what `tiles-dev` and `tiles-prod` are running: their deploy
+scripts sync this folder into them, then deploy. A cloud folder differing from
+this one means "not deployed yet" — that gap is its whole message. Never
+delete or merge them (`lib/worker/workerEnvironments.test.ts` fails).
 
 ## Cost
 

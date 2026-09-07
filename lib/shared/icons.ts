@@ -1,8 +1,26 @@
 // icons.ts — the icon file for the whole mobile app. ONE list, ICONS: name + path (pin rows also carry their section). Add an icon = add a row, never a second file.
 
+import pdfMapsIcon from "../assets/pdf_maps_icon.webp";
+import tracksIcon from "$parent/siblings/getCache_OnlineMap/lib/assets/mobileAssets/tracks_goldV3.webp";
+import cacheIconUrl from "$gc/assets/cache_icon.webp";
+
 const DIR = "/mobileAssets";
-/** Where the pin artwork lives — ReTreever's inbox half and the emoji plate both build paths from it. */
-export const PIN_DIR = "/mobileAssets/pin_library_small";
+
+// The pin artwork travels WITH this child: imported, never a leading-slash URL, so the bundler emits it under whichever tier (or solo scaffold) serves the page.
+const PIN_LIBRARY = "../assets/pin_library_small";
+const PIN_URLS = import.meta.glob("../assets/pin_library_small/*.webp", {
+    eager: true,
+    query: "?url",
+    import: "default",
+}) as Record<string, string>;
+
+/** The served URL of one file in the pin library. Throws at module init on a name that is not on disk — a typo here must not become a 404 in front of a user. */
+export function pinLibraryUrl(file: string): string {
+    const url = PIN_URLS[`${PIN_LIBRARY}/${file}`];
+    if (!url)
+        throw new Error(`icons.ts: no ${file} in lib/assets/pin_library_small`);
+    return url;
+}
 
 // A map pin's name — saved into features/shared files by this string, so the set is a stable contract.
 export type PinKey =
@@ -58,52 +76,72 @@ export type PinRow = IconRow & { name: PinKey; pin: "glyph" | "rainbow" };
 
 export const ICONS: readonly IconRow[] = [
     // Row order = display order (feeds the quick-pick row too); "pin" sits LAST as the default every feature starts with.
-    { name: "truck", pin: "glyph", path: `${PIN_DIR}/pin_truck_sm.webp` },
-    { name: "cache", pin: "glyph", path: `${PIN_DIR}/pin_cache_sm.webp` },
-    { name: "atv", pin: "glyph", path: `${PIN_DIR}/pin_atv_sm.webp` },
-    { name: "bear", pin: "glyph", path: `${PIN_DIR}/pin_bear_sm.webp` },
+    { name: "truck", pin: "glyph", path: pinLibraryUrl("pin_truck_sm.webp") },
+    { name: "cache", pin: "glyph", path: pinLibraryUrl("pin_cache_sm.webp") },
+    { name: "atv", pin: "glyph", path: pinLibraryUrl("pin_atv_sm.webp") },
+    { name: "bear", pin: "glyph", path: pinLibraryUrl("pin_bear_sm.webp") },
     {
         name: "heli",
         pin: "glyph",
-        path: `${PIN_DIR}/pin_helicopter_sm.webp`,
+        path: pinLibraryUrl("pin_helicopter_sm.webp"),
     },
     {
         name: "crossing",
         pin: "glyph",
-        path: `${PIN_DIR}/pin_crossing_good_sm.webp`,
+        path: pinLibraryUrl("pin_crossing_good_sm.webp"),
     },
     {
         name: "noCrossing",
         pin: "glyph",
-        path: `${PIN_DIR}/pin_crossing_bad_sm.webp`,
+        path: pinLibraryUrl("pin_crossing_bad_sm.webp"),
     },
-    { name: "warning", pin: "glyph", path: `${PIN_DIR}/pin_warn_sm.webp` },
+    { name: "warning", pin: "glyph", path: pinLibraryUrl("pin_warn_sm.webp") },
     {
         name: "muster",
         pin: "glyph",
-        path: `${PIN_DIR}/pin_muster_point_sm.webp`,
+        path: pinLibraryUrl("pin_muster_point_sm.webp"),
     },
-    { name: "home", pin: "glyph", path: `${PIN_DIR}/pin_home_sm.webp` },
+    { name: "home", pin: "glyph", path: pinLibraryUrl("pin_home_sm.webp") },
     // Baked by tools/makeEmojiPins.mjs — the one emoji that earned a fixed tile.
-    { name: "poop", pin: "glyph", path: `${PIN_DIR}/pin_emoji_poop_sm.webp` },
-    { name: "tree", pin: "glyph", path: `${PIN_DIR}/pin_tree_sm.webp` },
-    { name: "pin", pin: "glyph", path: `${PIN_DIR}/pin_default_sm.webp` },
-    { name: "red", pin: "rainbow", path: `${PIN_DIR}/1pin_red_sm.webp` },
-    { name: "orange", pin: "rainbow", path: `${PIN_DIR}/2pin_orange_sm.webp` },
-    { name: "yellow", pin: "rainbow", path: `${PIN_DIR}/3pin_yellow_sm.webp` },
-    { name: "green", pin: "rainbow", path: `${PIN_DIR}/4pin_green_sm.webp` },
-    { name: "blue", pin: "rainbow", path: `${PIN_DIR}/5pin_blue_sm.webp` },
-    { name: "purple", pin: "rainbow", path: `${PIN_DIR}/6pin_purple_sm.webp` },
+    {
+        name: "poop",
+        pin: "glyph",
+        path: pinLibraryUrl("pin_emoji_poop_sm.webp"),
+    },
+    { name: "tree", pin: "glyph", path: pinLibraryUrl("pin_tree_sm.webp") },
+    { name: "pin", pin: "glyph", path: pinLibraryUrl("pin_default_sm.webp") },
+    { name: "red", pin: "rainbow", path: pinLibraryUrl("1pin_red_sm.webp") },
+    {
+        name: "orange",
+        pin: "rainbow",
+        path: pinLibraryUrl("2pin_orange_sm.webp"),
+    },
+    {
+        name: "yellow",
+        pin: "rainbow",
+        path: pinLibraryUrl("3pin_yellow_sm.webp"),
+    },
+    {
+        name: "green",
+        pin: "rainbow",
+        path: pinLibraryUrl("4pin_green_sm.webp"),
+    },
+    { name: "blue", pin: "rainbow", path: pinLibraryUrl("5pin_blue_sm.webp") },
+    {
+        name: "purple",
+        pin: "rainbow",
+        path: pinLibraryUrl("6pin_purple_sm.webp"),
+    },
     { name: "map", path: `${DIR}/blockHeart_sm2.webp` },
     { name: "box", path: `${DIR}/box_icon_V9.webp` },
-    { name: "cacheGroup", path: `${DIR}/cache_icon.webp` },
+    { name: "cacheGroup", path: cacheIconUrl },
     { name: "tally", path: `${DIR}/cent_icon_plain_v3_gold.webp` },
     { name: "poly", path: `${DIR}/poly_icon.webp` },
     { name: "line", path: `${DIR}/line_icon.webp` },
     // GPS breadcrumb tracks — same art as the TRACKS drawer tile. A track is NOT a line; never gets line_icon.
-    { name: "track", path: `${DIR}/tracks_goldV3.webp` },
-    { name: "pdf", path: `${DIR}/pdf_maps_icon.webp` },
-    { name: "tiles", path: `${DIR}/pin_library_small/pin_tiles_sm.webp` },
+    { name: "track", path: tracksIcon },
+    { name: "pdf", path: pdfMapsIcon },
+    { name: "tiles", path: pinLibraryUrl("pin_tiles_sm.webp") },
     // Animated webps are single self-animating files, NOT frame folders — built from a sibling frame folder by scripts/rebuild-anime-webp.sh <name>. Edit the frames, rerun the script, or the app keeps showing the old file forever.
     // The gold quality glyph — inbox rows, plot popovers, the Quality tab.
     { name: "quality", path: `${DIR}/animations/quality_icon.webp` },
@@ -161,7 +199,7 @@ export function parsePinKey(raw: unknown): PinKey | null {
 export const EMOJI_PIN_PREFIX = "emoji:";
 
 /** The blank gold pin an emoji is composited onto. Not in ICONS — never selectable on its own, only as an emoji's backing plate. */
-export const EMOJI_PIN_PLATE = `${PIN_DIR}/pin_blank_emoji_sm.webp`;
+export const EMOJI_PIN_PLATE = pinLibraryUrl("pin_blank_emoji_sm.webp");
 
 /** The emoji character in an emoji:<char> key, or null otherwise — the mirror of parsePinKey; together they're exhaustive over user-pickable pins. */
 export function parseEmojiPin(raw: unknown): string | null {

@@ -5,22 +5,12 @@ import {
 import { kmBetween, kmToDegSpan } from "../../shared/kmGeo";
 import { migrateIdbDatabase } from "../store/idbRename";
 import { makeKeyedIdbStore } from "../store/keyedIdbStore";
-
-/** EOX Sentinel-2 (s2cloudless), `{z}/{y}/{x}` order. */
-function satelliteTileUrl(z: number, x: number, y: number): string {
-	return `https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2020_3857/default/g/${z}/${y}/${x}.jpg`;
-}
-
-/** z14 is EOX Sentinel-2's sharp ceiling (~10 m/px) — z15 only upsamples into blur, verified; don't raise it. */
-export const BAKE_ZOOM = 14;
+import { type PhotoSource, photoSourcesFor } from "./photoSources";
 
 /** Imagery tiles fetched at once. See the pool call for why 16, not 6 or 60. */
 const SAT_FETCH_CONCURRENCY = 16;
 /** Satellite-photo radius (km); exported so the offline page can space LINE samples to keep discs overlapping into a continuous ribbon. */
 export const BAKE_RADIUS_KM = 2;
-/** Canvas width in px — the fixed photo resolution (image only ever scales); 1536 keeps it crisp without a huge blob. */
-export const CANVAS_W = 1536;
-
 const DB_NAME = "gc-offlineSatellite";
 const STORE = "images";
 if (typeof indexedDB !== "undefined") {
@@ -40,6 +30,8 @@ export interface SatImage {
 	bounds: Bounds;
 	/** See BAKE_VERSION. Absent on legacy records → treated as stale → re-bake. */
 	bakeVersion?: number;
+	/** PhotoSource name the pixels came from; absent on photos baked before there was a choice (EOX). */
+	source?: string;
 }
 
 const idb = makeKeyedIdbStore<SatImage>({ dbName: DB_NAME, storeName: STORE });
@@ -73,13 +65,14 @@ export async function getAllSatImages(): Promise<{ key: string; img: SatImage }[
 
 /** Per-area photo METADATA (size + bake version, never pixels) — cursor-streamed via getAllProjected so peak heap is one photo, not all of them. */
 export async function satImageMeta(): Promise<
-	{ key: string; bytes: number; bakeVersion?: number }[]
+	{ key: string; bytes: number; bakeVersion?: number; source?: string }[]
 > {
 	const [keys, meta] = await Promise.all([
 		idb.keys(),
 		idb.getAllProjected((v) => ({
 			bytes: v.blob.size,
 			bakeVersion: v.bakeVersion,
+			source: v.source,
 		})),
 	]);
 	return keys.map((k, i) => ({ key: k, ...meta[i] }));
@@ -269,7 +262,7 @@ function scheduleBakeWorkerTeardown(): void {
 	}, BAKE_WORKER_IDLE_MS);
 }
 
-/** Bake the masked satellite photo for a centre (idempotent). Fast path: OffscreenCanvas worker; fallback: main-thread canvas (older iOS). Returns null only if no tiles loaded. */
+/** Bake the masked satellite photo for a centre (idempotent). Sources are tried in registry order; one that draws nothing hands over to the next. Returns null only if none drew. */
 export async function bakeSatelliteImage(
 	center: [number, number],
 ): Promise<SatImage | null> {
@@ -281,8 +274,23 @@ export async function bakeSatelliteImage(
 	if (typeof navigator !== "undefined" && navigator.onLine === false)
 		return existing ?? null;
 
+	for (const src of photoSourcesFor(center[0], center[1])) {
+		const out = await bakeFrom(src, center);
+		if (out) {
+			await idb.put(key, out);
+			return out;
+		}
+	}
+	return existing ?? null;
+}
+
+/** One source's bake. Fast path: OffscreenCanvas worker; fallback: main-thread canvas (older iOS). Null when fewer than 40% of the disc's tiles drew — a 404 border, a throttle, lie-fi. */
+async function bakeFrom(
+	src: PhotoSource,
+	center: [number, number],
+): Promise<SatImage | null> {
 	const [clng, clat] = center;
-	const z = BAKE_ZOOM;
+	const z = src.zoom;
 	const { dLat, dLng } = kmToDegSpan(BAKE_RADIUS_KM, clat);
 	const xMin = lngToTileX(clng - dLng, z);
 	const xMax = lngToTileX(clng + dLng, z);
@@ -331,7 +339,7 @@ export async function bakeSatelliteImage(
 	const yTop = mercY(cn);
 	const yExt = yTop - mercY(cs);
 	const xExt = ((ce - cw) * Math.PI) / 180;
-	const W = CANVAS_W;
+	const W = src.canvasPx;
 	const H = Math.max(1, Math.round((W * yExt) / xExt));
 
 	// Pre-compute pixel positions for every tile (same coords for worker + fallback).
@@ -341,7 +349,7 @@ export async function bakeSatelliteImage(
 		const dx = Math.floor(xf(t.w));
 		const dy = Math.floor(yf(t.n));
 		return {
-			url: satelliteTileUrl(z, t.x, t.y),
+			url: src.url(z, t.x, t.y),
 			dx,
 			dy,
 			// Snap to whole px + round size up 1 px so adjacent tiles overlap (no plaid).
@@ -393,12 +401,15 @@ export async function bakeSatelliteImage(
 
 	// COVERAGE GUARD: do NOT store a mostly-empty disc as "the satellite" — <40% of the disc drawn means a failed/throttled fetch, not a legitimate photo, so the bake fails and the reconcile retries later instead of poisoning the area.
 	const minTiles = Math.max(1, Math.ceil(tileGeo.length * 0.4));
-	if (loaded < minTiles) return existing ?? null;
+	if (loaded < minTiles) return null;
 
 	// Charge only REAL network fetches against the session download guard, not total tile count — the shared cache means reused tiles don't touch the network, so counting them overstates cost.
 	if (fetched > 0) noteSatelliteTiles(fetched);
 	// The bounds are the CROP box — the same box the pixels were drawn into.
-	const out: SatImage = { blob, bounds: [cw, cs, ce, cn], bakeVersion: BAKE_VERSION };
-	await idb.put(key, out);
-	return out;
+	return {
+		blob,
+		bounds: [cw, cs, ce, cn],
+		bakeVersion: BAKE_VERSION,
+		source: src.name,
+	};
 }

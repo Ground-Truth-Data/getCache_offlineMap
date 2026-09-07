@@ -21,7 +21,7 @@ describe("the blob's shape", () => {
 	});
 
 	it("⚠️ the stored zoom IS the shallowest zoom the blob is visible at", () => {
-		// ⚠️ MapLibre only overzooms UP — the stored zoom is a hard floor, below it the map is blank silently; z8 because one tile must hold the whole radius (~112km at lat 44 vs 60km diameter); ⚠️ the user asked for "stop at 5" and this does not deliver it (needs the shallow IMAGE tier in EXPLAINER.md).
+		// ⚠️ MapLibre only overzooms UP — the stored zoom is a hard floor, below it the map is blank silently; z8 because one tile must hold the whole radius (~112km at lat 44 vs 60km diameter); ⚠️ the user asked for "stop at 5" and this does not deliver it (the shallow z6 tier, SHALLOW_Z, covers z6–z8).
 		expect(BLOB_MIN_Z).toBe(8);
 	});
 

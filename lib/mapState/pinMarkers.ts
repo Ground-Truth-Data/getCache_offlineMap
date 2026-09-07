@@ -13,6 +13,8 @@ import {
     parsePinKey,
     pinAssetPath,
 } from "../shared/icons";
+import clusterPinUrl from "../assets/pin_library_small/pin_blank_emoji_sm.webp";
+import clusterGlyphUrl from "../assets/pin_library_small/pin_default_sm.webp";
 import { mount } from "svelte";
 import type {
     MapHostPorts,
@@ -37,11 +39,46 @@ const PLOT_CLUSTER_COUNT_LAYER = "rt-plot-clusters-count";
 const PLOT_CLUSTER_ICON = "rt-cluster-plaque";
 const PLOT_PLAQUE = { w: 36, h: 26, radius: 7, border: 2 }; // CSS px
 const PLOT_CLUSTER_COUNT_SIZE = 14;
+// Home slots. A plot bubble and a pin bubble on the same spot would stack, so
+// plots sit just LEFT of the point and pins just RIGHT, shoulder to shoulder
+// with the coordinate between them. A bubble marks an area, not a spot, so
+// the half-width shift costs nothing. CSS px at the point.
+const PLOT_SLOT_X = -(PLOT_PLAQUE.w / 2) - 1;
+const PIN_SLOT_X = 16;
+// The plaque wears the plot pin's ears, summed: each ear counts the member
+// plots with that condition. Same order and colours as StatusDots.svelte —
+// under hugs the corner, the others fan left, absent ears close the gap.
+const PLOT_EARS = [
+    { key: "under", icon: "rt-ear-under", cssVar: "--rt-q704-under", fallback: "#ec6c9c", glyph: "\u2212" },
+    { key: "over", icon: "rt-ear-over", cssVar: "--rt-q704-over", fallback: "#3fb6c8", glyph: "+" },
+    { key: "fault", icon: "rt-ear-fault", cssVar: "--rt-q704-fault", fallback: "#f0463a", glyph: "" },
+] as const;
+const PLOT_EAR = { d: 14, ring: 1.25, gap: 2.5, textSize: 9 }; // CSS px
+// Ear centre for the corner slot, relative to the plaque's centre: perched
+// above-and-outside the top-right corner like the DOM ears.
+const PLOT_EAR_X0 = PLOT_SLOT_X + PLOT_PLAQUE.w / 2 - PLOT_EAR.d / 2 + 2;
+const PLOT_EAR_Y = -(PLOT_PLAQUE.h / 2) - PLOT_EAR.d / 2 + 3;
+type Expr = mapboxgl.ExpressionSpecification;
+// Slot = how many earlier ears this cluster shows; `scale` converts px to the
+// property's unit (1 for icon-offset, text-size for text-offset ems).
+function earOffset(i: number, scale: number): Expr {
+    const at = (slot: number): Expr => [
+        "literal",
+        [(PLOT_EAR_X0 - slot * (PLOT_EAR.d + PLOT_EAR.gap)) / scale, PLOT_EAR_Y / scale],
+    ];
+    if (i === 0) return at(0);
+    const slot: Expr = [
+        "+",
+        0,
+        ...PLOT_EARS.slice(0, i).map((e): Expr => ["case", [">", ["get", e.key], 0], 1, 0]),
+    ];
+    return ["case", ["==", slot, 0], at(0), ["==", slot, 1], at(1), at(2)];
+}
 
 // A cluster is a blank pin of the app's own art with the count in gold, at the
 // 30×40 the DOM pins wear (MapDrawControls' .map-pin-marker) — it reads as
 // "pins here", not a coin. 300×420 source → 30×42 CSS px at this ratio.
-const CLUSTER_PIN_SRC = "/mobileAssets/pin_library_small/pin_blank_emoji_sm.webp";
+const CLUSTER_PIN_SRC = clusterPinUrl;
 const CLUSTER_PIN_PIXEL_RATIO = 10;
 // Where the count sits: the head of the pin, in ems of CLUSTER_COUNT_SIZE above the point.
 const CLUSTER_COUNT_SIZE = 13;
@@ -53,7 +90,7 @@ const CLUSTER_COUNT_OFFSET_EM = -2.05;
 // the pin goes and the number takes the head alone.
 const CLUSTER_GLYPH_LAYER = "rt-pin-clusters-glyph";
 const CLUSTER_GLYPH_ICON = "rt-cluster-glyph";
-const CLUSTER_GLYPH_SRC = "/mobileAssets/pin_library_small/pin_default_sm.webp";
+const CLUSTER_GLYPH_SRC = clusterGlyphUrl;
 const CLUSTER_GLYPH_INK_H = 10; // px on screen, about the count's height
 const CLUSTER_GLYPH_DY = 1; // px the pin sits below the count's centre
 const CLUSTER_GLYPH_MAX = 99; // last count that still gets the pin
@@ -68,12 +105,13 @@ const CLUSTER_GLYPH_SIZE = CLUSTER_GLYPH_INK_H / CLUSTER_GLYPH_INK.h;
 const CLUSTER_GLYPH_W = CLUSTER_GLYPH_INK.w * CLUSTER_GLYPH_SIZE;
 // The pair (count + gap + pin) is centred on the head, so the count moves
 // left by half of what sits to its right — the same shift for 1 or 2 digits.
+const CLUSTER_COUNT_X_EM = PIN_SLOT_X / CLUSTER_COUNT_SIZE;
 const CLUSTER_COUNT_PAIRED_X_EM =
-    -(CLUSTER_GLYPH_GAP + CLUSTER_GLYPH_W) / 2 / CLUSTER_COUNT_SIZE;
+    CLUSTER_COUNT_X_EM - (CLUSTER_GLYPH_GAP + CLUSTER_GLYPH_W) / 2 / CLUSTER_COUNT_SIZE;
 // icon-offset is scaled by icon-size, so divide the CSS px through; the ink
 // correction is already in icon-size units.
 const clusterGlyphOffset = (digits: number): [number, number] => [
-    (digits * CLUSTER_DIGIT_PX + CLUSTER_GLYPH_GAP) / 2 / CLUSTER_GLYPH_SIZE -
+    (PIN_SLOT_X + (digits * CLUSTER_DIGIT_PX + CLUSTER_GLYPH_GAP) / 2) / CLUSTER_GLYPH_SIZE -
         CLUSTER_GLYPH_INK.cx,
     (CLUSTER_COUNT_OFFSET_EM * CLUSTER_COUNT_SIZE + CLUSTER_GLYPH_DY) /
         CLUSTER_GLYPH_SIZE -
@@ -84,6 +122,9 @@ const clusterGlyphOffset = (digits: number): [number, number] => [
 // one on screen, so this radius reads as anything from 1× to 2× on screen:
 // the pin art is ~29 px wide, and 15 lets pins nearly touch before they merge.
 const CLUSTER_RADIUS = 15;
+// The plaque with its ears is ~50 px wide, so plots merge sooner than pins
+// or two plaques would sit on each other at the half zooms between splits.
+const PLOT_CLUSTER_RADIUS = 30;
 const clusterImagesLoading = new WeakMap<MapboxMap, Set<string>>();
 // The sprite atlas has no mipmaps: a 300 px source drawn at 30 px is sampled
 // one pixel in ten and reads as jaggies. Halve on a canvas down to the size
@@ -169,12 +210,48 @@ function makePlaqueImage(): { image: ImageData; pixelRatio: number } | null {
     g.stroke();
     return { image: g.getImageData(0, 0, c.width, c.height), pixelRatio: dpr };
 }
+type PlotStatus = { under: boolean; over: boolean; fault: boolean };
+// Matches PlotMapPopover's maths: rose '−' = under spot count, teal '+' = excess trees, red dot = quality fault — all independent, any combination.
+function plotStatus(plot: { planted: number | null; spots: number | null; excess: number | null; faults: string[] } | null): PlotStatus {
+    return {
+        under: Math.max(0, (plot?.spots ?? 0) - (plot?.planted ?? 0)) > 0,
+        over: (plot?.excess ?? 0) > 0,
+        fault: (plot?.faults.length ?? 0) > 0,
+    };
+}
+function makeEarImage(color: string): { image: ImageData; pixelRatio: number } | null {
+    const dpr = window.devicePixelRatio || 1;
+    const { d, ring } = PLOT_EAR;
+    const size = d + ring * 2;
+    const c = document.createElement("canvas");
+    c.width = Math.round(size * dpr);
+    c.height = Math.round(size * dpr);
+    const g = c.getContext("2d");
+    if (!g) return null;
+    g.scale(dpr, dpr);
+    g.beginPath();
+    g.arc(size / 2, size / 2, d / 2 + ring / 2, 0, Math.PI * 2);
+    g.fillStyle = color;
+    g.fill();
+    g.lineWidth = ring;
+    g.strokeStyle = "#1a1a1a";
+    g.stroke();
+    return { image: g.getImageData(0, 0, c.width, c.height), pixelRatio: dpr };
+}
 function loadClusterPin(map: MapboxMap): void {
     loadClusterImage(map, CLUSTER_ICON, CLUSTER_PIN_SRC, CLUSTER_PIN_PIXEL_RATIO);
     loadClusterImage(map, CLUSTER_GLYPH_ICON, CLUSTER_GLYPH_SRC, CLUSTER_GLYPH_PIXEL_RATIO, CLUSTER_GLYPH_SIZE);
     if (!map.hasImage(PLOT_CLUSTER_ICON)) {
         const plaque = makePlaqueImage();
         if (plaque) map.addImage(PLOT_CLUSTER_ICON, plaque.image, { pixelRatio: plaque.pixelRatio });
+    }
+    for (const ear of PLOT_EARS) {
+        if (map.hasImage(ear.icon)) continue;
+        const color =
+            getComputedStyle(document.documentElement).getPropertyValue(ear.cssVar).trim() ||
+            ear.fallback;
+        const img = makeEarImage(color);
+        if (img) map.addImage(ear.icon, img.image, { pixelRatio: img.pixelRatio });
     }
 }
 
@@ -380,6 +457,7 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
         CLUSTER_GLYPH_LAYER,
         PLOT_CLUSTER_LAYER,
         PLOT_CLUSTER_COUNT_LAYER,
+        ...PLOT_EARS.map((e) => `${PLOT_CLUSTER_SOURCE}-ear-${e.key}`),
     ];
     function hoistClusterLayers(map: MapboxMap): void {
         if (CLUSTER_STACK.some((id) => !map.getLayer(id))) return;
@@ -400,7 +478,13 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                 data: { type: "FeatureCollection", features: [] },
                 cluster: true,
                 clusterMaxZoom: 14,
-                clusterRadius: CLUSTER_RADIUS,
+                clusterRadius: id === PLOT_CLUSTER_SOURCE ? PLOT_CLUSTER_RADIUS : CLUSTER_RADIUS,
+                // Each plot carries its ears as 0/1 (sync stamps them); the cluster sums them into "how many members have this".
+                ...(id === PLOT_CLUSTER_SOURCE && {
+                    clusterProperties: Object.fromEntries(
+                        PLOT_EARS.map((e) => [e.key, ["+", ["get", e.key]]]),
+                    ),
+                }),
             });
         }
         // setStyle wipes custom images too — loadClusterPin re-checks hasImage, so this stays idempotent like the layer adds below.
@@ -415,6 +499,7 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                     // ONE fixed size, must NOT grow with count — graduated sizes previously ballooned busy blocks into a wall of fat coins.
                     "icon-image": CLUSTER_ICON,
                     "icon-anchor": "bottom",
+                    "icon-offset": [PIN_SLOT_X, 0],
                     "icon-allow-overlap": true,
                 },
             });
@@ -436,7 +521,7 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                         "case",
                         ["<=", ["get", "point_count"], CLUSTER_GLYPH_MAX],
                         ["literal", [CLUSTER_COUNT_PAIRED_X_EM, CLUSTER_COUNT_OFFSET_EM]],
-                        ["literal", [0, CLUSTER_COUNT_OFFSET_EM]],
+                        ["literal", [CLUSTER_COUNT_X_EM, CLUSTER_COUNT_OFFSET_EM]],
                     ],
                     "text-allow-overlap": true,
                 },
@@ -481,6 +566,7 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                 layout: {
                     "icon-image": PLOT_CLUSTER_ICON,
                     "icon-anchor": "center",
+                    "icon-offset": [PLOT_SLOT_X, 0],
                     "icon-allow-overlap": true,
                     "icon-ignore-placement": true,
                 },
@@ -498,6 +584,7 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                         ? ["Noto Sans Regular"]
                         : ["DIN Pro Bold", "Arial Unicode MS Bold"],
                     "text-size": PLOT_CLUSTER_COUNT_SIZE,
+                    "text-offset": [PLOT_SLOT_X / PLOT_CLUSTER_COUNT_SIZE, 0],
                     "text-allow-overlap": true,
                     "text-ignore-placement": true,
                 },
@@ -506,6 +593,34 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                 },
             });
         }
+        PLOT_EARS.forEach((ear, i) => {
+            const id = `${PLOT_CLUSTER_SOURCE}-ear-${ear.key}`;
+            if (map.getLayer(id)) return;
+            map.addLayer({
+                id,
+                type: "symbol",
+                source: PLOT_CLUSTER_SOURCE,
+                filter: ["all", ["has", "point_count"], [">", ["get", ear.key], 0]],
+                layout: {
+                    "icon-image": ear.icon,
+                    "icon-anchor": "center",
+                    "icon-offset": earOffset(i, 1),
+                    "icon-allow-overlap": true,
+                    "icon-ignore-placement": true,
+                    "text-field": ["concat", ear.glyph, ["to-string", ["get", ear.key]]],
+                    "text-font": deps.getOffline()
+                        ? ["Noto Sans Regular"]
+                        : ["DIN Pro Bold", "Arial Unicode MS Bold"],
+                    "text-size": PLOT_EAR.textSize,
+                    "text-offset": earOffset(i, PLOT_EAR.textSize),
+                    "text-allow-overlap": true,
+                    "text-ignore-placement": true,
+                },
+                paint: {
+                    "text-color": "#1a1a1a",
+                },
+            });
+        });
         hoistClusterLayers(map);
         if (!handlersInstalled) {
             handlersInstalled = true;
@@ -686,8 +801,18 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
             const k = p.properties?.mapFeatureKey as string | undefined;
             if (t === "tiles" || k === selKey) {
                 if (k) forcedSingleKeys.add(k);
-            } else if (t.startsWith("plot:")) plotFeed.push(p);
-            else pinFeed.push(p);
+            } else if (t.startsWith("plot:")) {
+                const st = plotStatus(k ? (ports.q704?.plotByGpsKey(k) ?? null) : null);
+                plotFeed.push({
+                    ...p,
+                    properties: {
+                        ...p.properties,
+                        under: st.under ? 1 : 0,
+                        over: st.over ? 1 : 0,
+                        fault: st.fault ? 1 : 0,
+                    },
+                });
+            } else pinFeed.push(p);
         }
         ensureClusterLayers(map);
         lastPins = pins;
@@ -793,22 +918,17 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
             const isSel = pm.key === selKey;
             el.classList.toggle("map-pin-plot--selected", isSel);
             // pm.key = plot row's gpsFeatureKey → plotByGpsKey resolves the live row, re-checked every sync() so edits/re-flows show live; ports.q704 absent on hosts without inspections → null → baked label.
-            const plot = (ports.q704?.plotByGpsKey(pm.key) ?? null) as {
-                displayNo?: number | string | null;
-            } | null;
+            const plot = ports.q704?.plotByGpsKey(pm.key) ?? null;
             // Label is the plot's per-MAP rank (plot.displayNo), NOT the frozen `plot:N` baked at drop time — re-flows as surveys merge/delete; falls back to baked `plot:N` only if unresolved.
             const numEl = el.querySelector(".map-pin-plot__num");
             if (numEl) {
                 const n = String(plot?.displayNo || pm.pinTypeKey.slice(5));
                 numEl.textContent = isSel ? `Plot ${n}` : n;
             }
-            // Status badges match PlotMapPopover's maths: rose '−' = under spot count, teal '+' = excess trees, red dot = quality fault — all independent, any combination.
-            const hasFault = (plot?.faults.length ?? 0) > 0;
-            const under = Math.max(0, (plot?.spots ?? 0) - (plot?.planted ?? 0));
-            const over = plot?.excess ?? 0;
-            el.classList.toggle("map-pin-plot--under", under > 0);
-            el.classList.toggle("map-pin-plot--over", over > 0);
-            el.classList.toggle("map-pin-plot--fault", hasFault);
+            const st = plotStatus(plot);
+            el.classList.toggle("map-pin-plot--under", st.under);
+            el.classList.toggle("map-pin-plot--over", st.over);
+            el.classList.toggle("map-pin-plot--fault", st.fault);
         }
 
         // SELECTION OVERRIDE — any selected pin lifts above the dim veil (owned by MapDrawControls). Toggled every reconcile so deselecting restores everything.

@@ -14,6 +14,9 @@ import {
 } from "../mapState/overlayOpacity.svelte";
 // overlayPortal and createEyeToggle are ports.ui.*.
 import type { MapHostPorts } from "../shared/mapHostPorts";
+import fireIconUrl from "../assets/fire_icon.webp";
+import pdfMapsIconUrl from "../assets/pdf_maps_icon.webp";
+import pinDefaultUrl from "../assets/pin_library_small/pin_default_sm.webp";
 
 let {
 	ports,
@@ -102,7 +105,7 @@ const fireDark = $derived(eyeToggle.isSettledOff(fireOn, FIRE_ROW.kind));
 					<div class="legend-toggle legend-toggle--slider" class:is-off={dark}>
 						{#if entry.kind === "pdf"}
 							<span class="legend-swatch legend-swatch--pdf" style:--swatch-color={entry.color}>
-								<img class="legend-swatch-img" src="/mobileAssets/pdf_maps_icon.webp" alt="" />
+								<img class="legend-swatch-img" src={pdfMapsIconUrl} alt="" />
 							</span>
 						{:else}
 							<span class="legend-swatch legend-swatch--fill" style:--swatch-color={entry.color}></span>
@@ -147,7 +150,7 @@ const fireDark = $derived(eyeToggle.isSettledOff(fireOn, FIRE_ROW.kind));
 					>
 						<span class="legend-swatch legend-swatch--{entry.swatch}" style:--swatch-color={entry.color}>
 							{#if entry.swatch === "plot"}<span class="legend-plot-n">1</span>
-							{:else if entry.swatch === "pin"}<img class="legend-swatch-img" src="/mobileAssets/pin_library_small/pin_default_sm.webp" alt="" />
+							{:else if entry.swatch === "pin"}<img class="legend-swatch-img" src={pinDefaultUrl} alt="" />
 							{/if}
 						</span>
 						<span class="legend-label">{entry.label}</span>
@@ -170,7 +173,7 @@ const fireDark = $derived(eyeToggle.isSettledOff(fireOn, FIRE_ROW.kind));
 				onclick={() => toggleKind(FIRE_ROW.kind)}
 			>
 				<span class="legend-swatch legend-swatch--fire" style:--swatch-color={FIRE_ROW.color}>
-					<img class="legend-swatch-img" src="/mobileAssets/fire_icon.webp" alt="" />
+					<img class="legend-swatch-img" src={fireIconUrl} alt="" />
 				</span>
 				<span class="legend-label">{FIRE_ROW.label}</span>
 				<img class="legend-eye" src={eyeToggle.srcFor(fireOn, FIRE_ROW.kind)} alt="" aria-hidden="true" />

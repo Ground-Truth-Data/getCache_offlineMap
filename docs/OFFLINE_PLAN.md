@@ -17,9 +17,13 @@ Most of this document is about terrain, because that is where the hard
 engineering is. Don't read that as fires being secondary — they are the reason
 somebody opens this app on a bad day.
 
-**Engine: MapLibre GL JS**, for THIS ROUTE ONLY. The online map (`/map`) stays
+**Engine: MapLibre GL JS**, for THIS ROUTE ONLY. The online map (`/app/map`) stays
 on **Mapbox** and must not be converted — it needs Mapbox-only features (globe
 projection, `setTerrain`, `setFog`, `mapbox://` styles). Both renderers ship.
+Since 6 Sep 2026 the map Get Cache opens is V10 (`OFFLINE_MAP_ROUTE =
+/app/offlinev10`, `ReTreever/src/routes/(getcache)/app/offlinev10/`, whole z10
+planet tiles, stack doc `../OFFLINE_STACK.md` beside it); the engine this plan
+describes stays at `/app/offline`, URL only.
 
 **Why the offline map diverged:** it must hand the renderer tiles read from
 local storage. Mapbox's hook for that, `addTileProvider`, is `@experimental
@@ -89,14 +93,15 @@ key let two pins share one square and serve each other's roads. The satellite
 never had that bug because it was keyed `${lng},${lat}` from day one —
 **key to the thing, not to the grid it happens to sit on.** The contract
 (`lib/contract/{grid,blob,geo,roadBlob,packLayers}.ts`) is byte-identical to
-`worker/src/`; `grid.lockstep.test.ts` fails if they drift. **Change the tile
+`workers/worker-local-dev/src/`; `grid.lockstep.test.ts` fails if they drift. **Change the tile
 scheme = change both copies.**
 
 ⚠️ **Below `BLOB_TILE_Z` the map is silently blank** — MapLibre overzooms up,
-never down. The render floor `RAW_MIN_Z` is deliberately separate from the
-storage level. The real fix is a shallow zoom-out tier (an IMAGE, placed by GPS
-bounds like the satellite), not yet built. Don't fix it by lowering the
-constant, and never with a road *picture* at the vector zooms — the deleted road
+never down. The render floor `RAW_MIN_Z` equals `BLOB_MIN_Z` (direction2 killed the
+below-z8 stretch). The disc's floor is covered by the shallow z6 tier
+(`SHALLOW_Z` in `grid.ts`, `v4-roads-shallow` in `wallStyle.ts`, its own
+`rtraw://shallow` store) — highways, major roads and water only, z6 to z8.
+Don't fix it by lowering the constant, and never with a road *picture* at the vector zooms — the deleted road
 raster cost ~70 MB/device and drew lines 8× a real road's width
 (`purgeRoadRasters.ts` still drops its orphaned databases on boot).
 
@@ -147,23 +152,15 @@ per-area, and rendered from cache when there isn't. The **map** still renders
 only on-device bytes; the fetch is the same user-driven downloader path on a
 much shorter clock.
 
-⚠️ **The viewer never fetches.** `/offline` is a pure VIEWER and the
-app-wide `bakeService` owns every download, so the fire layer — when it lands
-(no `attachFireLayer` exists yet; the Fires switch in `wallLegend.ts` has an
-empty `ids`) — mounts with `canFetch: false`. A second downloader would
-double-fetch and fight over the same cache entries.
+⚠️ **The viewer never fetches.** The map renders only on-device bytes and the
+`bakeService` owns every download, so the fire layer (`attachFireLayer` in
+`lib/onPhone/render/fireLayer.ts`, its ids in `wallLegend.ts`) never fetches —
+it paints what the bake stored. A second downloader would double-fetch and
+fight over the same cache entries.
 
-### 🔬 Fire refresh — the bisect is over
-
-`FIRE_REFRESH_ENABLED` in `lib/shared/bakeFlags.ts` gates `refreshFires` in
-`bakeService.svelte.ts`; it is back to `true` since the `unionHotspots`
-box-reject fix (30 Aug 2026). Fire has TWO halves (render + fetch/store); any
-future bisect must disable both or it measures nothing.
-State: [`../routes/fires/docs/FIRES.md`](../routes/fires/docs/FIRES.md).
-
-Why it matters: **fire v1 measured ~4,000 MB and 119% CPU on an idle page**;
-disabling only that layer took the same page to 963 MB. Every memory number in
-these docs was taken with fires OFF, so none proves anything about fire cost.
+`FIRE_REFRESH_ENABLED` (`lib/shared/bakeFlags.ts`) gates `refreshFires`. Fire has
+TWO halves (render + fetch/store); a bisect must disable both or it measures
+nothing. Every memory number in these docs was taken with fires OFF.
 
 **Fire v2 is written and tested but NOT wired in**, and its Worker route does
 not exist yet: [`FIRES.md`](../routes/fires/docs/FIRES.md).
@@ -223,7 +220,7 @@ The safety layers cut across all three tiers and are governed above.
 | **2** | **Cloud globe basemap (wall map)** | The planet's OSM vector tiles as one Protomaps `.pmtiles` on R2; the Worker packs the area's slice; the phone stores it and serves it locally (LAW 0). The roads/water you see. | **Shipping — THE offline map** |
 | **3** | **Cloud bake + supplement** | Bake each area once in the cloud, a central registry so nothing is built/sent twice, better-than-default data per area. | **Vision — design only** |
 
-Layers 1 and 2 ship as ONE route, `/offline`. The blob debug panel
+Layers 1 and 2 ship as ONE route, `/app/offline`. The blob debug panel
 (`OfflineBlobPanel`) inspects on-device storage.
 
 ---
@@ -245,11 +242,11 @@ Layers 1 and 2 ship as ONE route, `/offline`. The blob debug panel
 
 ### Reconcile — the self-healing guarantee
 
-**The reconcile runs APP-WIDE, not on the offline page.** It lives in
-`lib/onPhone/bake/bakeService.svelte.ts`, started once from the Get Cache
-layout, so a feature's blob downloads the moment it's created/touched regardless
-of which mini-app is open. **`/offline` is a pure VIEWER**: it mounts blobs
-already on disk and NEVER bakes or downloads; the service tells the viewer
+**The reconcile lives in `lib/onPhone/bake/bakeService.svelte.ts`.** Until
+6 Sep 2026 the Get Cache layout started it app-wide; since then the layout
+starts V10's `blobService` instead, and `OfflineMapPage.svelte` starts this
+service on mount, so it runs only while `/app/offline` is open. The map itself
+still renders only what is on disk; the service tells the panels
 (`subscribeOfflineBake`) when new blobs land.
 
 The registry dedups overlapping pins to one area, enforces the storage budget
@@ -309,7 +306,7 @@ decides WHERE the 1 GB line falls. Being briefly over 1 GB is fine.
   **Cloudflare R2** in the `offline-tiles` bucket. The phone never reads it
   directly — it calls the Worker's `/pack` endpoint, which reads edge-side via
   its R2 binding. Worker source, deploy and the three tiers
-  (prod/dev/local): [`../worker/README.md`](../worker/README.md); client half:
+  (prod/dev/local): [`../workers/worker-local-dev/README.md`](../workers/worker-local-dev/README.md); client half:
   [`../lib/worker/README.md`](../lib/worker/README.md).
 - **Freshness = a snapshot.** Each build is frozen at its date — fine for a
   basemap. No per-user sync, no cache invalidation.
@@ -422,17 +419,131 @@ high-res imagery is a *replacement* for the satellite, not a new layer (§3c).
   route (selection highlight, coverage overlay) hold a handful of features.
 - **No tile pyramid for the satellite** — it swaps tiles + vanishes below its
   min zoom.
-- **No zoom-culling** ([[offline-map-constant-presence-no-zoom-culling]]).
 - **Jagged frontier stays raw** ([[offline-map-no-smoothing-jagged-boundary]]).
 - **Colours are the user's** ([[dont-change-colours-without-permission]]).
 - **No caching provider satellite** (Esri/Mapbox/Google) for offline — see §3c.
+
+## Getting the pin in the middle — settled, read twice
+
+**Do NOT centre the DATA on the pin. Centre the CAMERA (`map.setCenter(pin)`)
+and make the data a SUPERSET that fully contains the pin's box.** Assert
+CONTAINMENT, never centring (test A3). A shipped box of ~46 km reach a few
+hundred metres off-centre is the correct answer: the offset is the tile grid,
+and every road sits on its true coordinates. **Kilometres = a bug. Metres =
+working.** Four attempts that failed: ship the tile the pin falls in (45 km
+off); send the cell centre to the server (blob built 63 km west — a cache key
+may be derived from the request, never replace it); rasterise to a pin-centred
+PNG (centred, but no restyling and blurs); clip vectors to the box (cuts every
+boundary road into an arc). Roads tens of km away AFTER all this is the
+shared-key collision below, not centring.
+
+## Storage rules (phone)
+
+- **The key is the pin:** `pin/<lng.5>,<lat.5>/<z>/<x>/<y>` (`grid.ts`
+  `pinTileKey`). A bare `z/x/y` is a world grid square that two pins share.
+- **One address can have several owners — return them all and merge** by byte
+  concatenation (a vector tile is a repeated `layers` message). Returning the
+  nearest owner alone drew half a map.
+- **Never persist a 0-byte tile** — MapLibre's worker throws `Unimplemented
+  type: 4` on every render pass, forever. Reject at the write boundary.
+- **Never parse a key with `key.split("/")`** — a pin key yields `NaN`
+  geometry without throwing. One `parseTileAddress()` that returns `null`.
+- **Never let a read latch** into a permanent miss.
+
+## Renderer rules (phone)
+
+- A tile source has one URL template and three integers — **there is nowhere
+  to put a pin**; the protocol handler resolves `z/x/y` back to owners itself.
+  Two tiers, two templates: `rtraw://disc/{z}/{x}/{y}` (z8+) and
+  `rtraw://shallow/{z}/{x}/{y}` (the z6 tier, its own store).
+- **MapLibre caches 404s — a tile that misses once is never re-asked.** After
+  tiles land, call the source's `setTiles([url])` on a retry ladder (400 ms /
+  1.5 s / 4 s), and make the "asked N, found 0" detector trigger it. This is
+  the "worked for months and then didn't" pattern.
+- MapLibre overzooms up, never down: a source with `minzoom: 8` is silently
+  blank below z8.
+
+## Worker traps
+
+- **The build ID must be in the edge cache key** — entries are `immutable`;
+  without it a deploy replays old bytes and looks like a no-op.
+- **Gzip the body yourself, but do NOT set `Content-Encoding: gzip`** — the
+  edge compresses on top and the browser inflates one layer into garbage.
+- A cold build takes ~56–66 s; a client timeout under ~150 s is a coin flip.
+- Emit build ID, cache HIT/MISS and timing headers, listed in
+  `Access-Control-Expose-Headers` or JS never sees them.
+
+## Bake service rules
+
+- **Budget the thing the USER does (bake an area), never what the code does
+  (issue a request).** A tripped breaker is terminal for the session; twice a
+  request-counting cap tripped in ordinary use. Test that the cap fits ~300
+  pins re-baking.
+- **A spinner needs a watchdog the watched process cannot skip or reset:** on
+  the same ticker that draws the number, one-way, capped (~30 s); work
+  continues silently after.
+
+## Acceptance tests — the ONLY definition of done
+
+Bytes downloaded, tiles on disk, layers added, features counted and manifest
+boxes are all PROXIES. Prove every test red-on-bug.
+
+- **A1 — Roads are visible.** Drop a pin, wait, count road-coloured canvas pixels.
+- **A2 — At every zoom.** A1 at z6, z8, z12 and z16 on the same pin.
+- **A3 — Around the pin.** The pin's box is CONTAINED in what shipped, all four sides.
+- **A4 — Two adjacent pins both draw fully** (~30 km apart, shared addresses).
+- **A5 — Airplane mode.** Bake, go offline, hard-reload, roads still draw.
+- **A6 — Late arrival.** Drop a pin, don't touch the map; roads appear on
+  their own — the cached-404 regression, the most valuable test here.
+- **A7 — Imported pins.** Import a file with pins never visited; all get data.
+
+## Engineering rules
+
+1. **DevTools first** — read live state, never predict it.
+2. **Never verify one layer and declare the chain fixed.**
+3. **Fail loud. No silent fallbacks** — a read returning null, a swallowing
+   catch, a NaN into geometry, a "retry next pass" on a latched guard.
+4. **Instrument WHERE, not just HOW MUCH.** Every offline bug was correct
+   bytes in the wrong box; report per pin the blob's corners, reach in km and
+   offset from the pin, and never another pin's data as this pin's.
+5. **Keep the import graph small.** The old `/offline` route pulled 175 files
+   / 53,675 lines for ~8,600 of map. The map imports no app UI, stores or
+   utilities; a file-budget test enforces it.
+6. **One definition of shared constants** — radius and key format are shared
+   byte-for-byte between Worker and phone, with a drift test.
+
+## Testing — wipe the store first
+
+Old blobs from every previous session make every reading meaningless (a real
+session showed Juticalpa, Honduras under an Ontario anchor; the ruler read
+40 km). **WIPE THE STORE. BAKE ONE BLOB. LOOK AT IT** — everything: tiles,
+satellite, coverage records. Never plug new code into a dirty map, never trust
+`querySourceFeatures` as proof (it cannot see shape, position or leftovers),
+never report "verified" until the user has looked.
+
+## Two measured facts (2026-08-18)
+
+- **The archive thins roads as you zoom out:** at z9 and z10 only
+  `major_road`/`highway` exist; z12 and z15 have minor roads. No filter can add
+  back a road never stored at that level — hence ONE stored level, overzoomed.
+- **Tiles are squares, discs are round:** a z9 tile (55 km) kept by a grazing
+  corner dragged roads 78 km past the rim; a z1 tile once shipped half the
+  planet. Whole tiles ship as a superset by design; the grid must be fine
+  enough that the square-vs-circle error stays small.
+
+## Open items
+
+- `debugReport.ts` still emits five timestamps per layer (`askedAt`,
+  `arrivedAt`, `drawnAt`, `transitMs`, `paintLagMs`). Chris's ask (30 Aug
+  2026): ONE number, `toScreenMs = drawnAt − askedAt`, `null` when never
+  painted (never 0, never green by default), keep `reason` for the null case.
+  Fires load for both the person's location and the last-touched pin — two
+  rows, `fires@me` and `fires@pin`.
 
 ---
 
 ## Cross-links
 
-- Design rationale + the acceptance tests (§8) and engineering rules (§9):
-  [`OFFLINE_MAP_SPEC.md`](./OFFLINE_MAP_SPEC.md)
 - Dead ends already walked: [`OFFLINE_HISTORY.md`](./OFFLINE_HISTORY.md)
 - **The fire layer:** [`FIRES.md`](../routes/fires/docs/FIRES.md)
 - Measured memory receipts: [`MEMORY_FINDINGS.md`](../../ReTreever/src/lib/mobile/offline/MEMORY_FINDINGS.md)

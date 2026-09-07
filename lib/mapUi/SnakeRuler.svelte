@@ -5,6 +5,7 @@ import { iconPath } from "../shared/icons";
 import handShovelCursor from "$gc/assets/hand_shovel_cursor.webp";
 import handShovelCursorRight from "$gc/assets/hand_shovel_cursor_right.webp";
 import handShovelCursor100 from "$gc/assets/hand_shovel_cursor_100.webp";
+import pinDefaultUrl from "../assets/pin_library_small/pin_default_sm.webp";
 import type { Feature } from "geojson";
 import mapboxgl from "mapbox-gl";
 import type { Map as MapboxMap } from "mapbox-gl";
@@ -1028,7 +1029,7 @@ $effect(() => {
             </button>
             <button class="measure-btn measure-x" onclick={discard} title="Discard" aria-label="Discard measurement">&#x2715;</button>
             <button class="measure-btn measure-save" onclick={savePoint} title="Save pin">
-                <img class="measure-pin-ic" src="/mobileAssets/pin_library_small/pin_default_sm.webp" alt="" />
+                <img class="measure-pin-ic" src={pinDefaultUrl} alt="" />
                 Save
             </button>
             <button class="measure-btn measure-plot" class:at-self={seedAtSelf} onclick={dropPlot} title={seedAtSelf ? "Drop a plot AT your location (proof you were here)" : "Drop a Quality 704 plot here"}>
