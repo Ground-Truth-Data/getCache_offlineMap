@@ -66,18 +66,16 @@ file picker for a new one. Tapping one opens the workspace.
 ### 2. The workspace — the screen that matters
 
 The hard part is that a phone is small and you need both the sheet and the map.
-Three layouts are plausible; **pick one, justify it in a comment, build it:**
 
-- **Stacked** — PDF top half, map bottom half. Both always visible. Simplest,
-  and each pane is small.
-- **Toggle** — one pane full-screen, a big switch flips between them. Each pane
-  is large; the user loses the visual pairing across the flip.
-- **Swipe pair** — full-screen panes side by side, swipe between. Between the
-  other two.
+**DECIDED — build it STACKED: PDF top half, map bottom half, both always
+visible.** Chris settled this on 8 Sep 2026. Seeing both halves at once is what
+makes the numbered pairing legible, and the cost — each pane is small — is
+bought back by letting either pane expand temporarily while the user works in
+it. Do not spend time re-evaluating a full-screen toggle or a swipe pair;
+they were considered and rejected for losing the pairing.
 
-Stacked is the recommended default: seeing both halves is what makes the
-pairing legible, and pane size can be bought back by letting either pane
-expand temporarily.
+How the stack behaves is yours: the split ratio, whether a pane expands on
+touch, and what the expand gesture is.
 
 **In each pane:**
 - Free pan and pinch-zoom, independent per pane. Zooming in to place a point
@@ -232,7 +230,7 @@ device, offline.
 4. Build the two-pane point-pairing UI first, with the transform stubbed. The
    interaction is the risk; the maths is solved.
 
-## Open questions to settle with Chris before building
+## Open question to settle with Chris before building
 
-- Which layout: stacked, toggle, or swipe pair?
-- Can an already-placed sheet be re-opened and corrected later?
+- Can an already-placed sheet be re-opened and corrected later, or is
+  placement one-shot?
