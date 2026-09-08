@@ -14,6 +14,7 @@
 
 import { FIRE_RADIUS_KM } from "../../lib/shared/fireContract";
 import { needsFireDisc } from "../../lib/shared/liveAnchor";
+import { passQueue } from "../../lib/shared/passQueue";
 import { fetchAreaFires } from "../../lib/worker/worker-local-dev/fires/fireFetch";
 import {
 	FIRE_TTL_MS,
@@ -44,15 +45,15 @@ export function fireKey(lng: number, lat: number): string {
 }
 
 let pausedUntil = 0;
-let running: Promise<number> | null = null;
 
-/** Fetch a fire disc for every centre that no fresh disc covers. Returns how many discs landed. One pass at a time; a second ask joins the running one. */
+/** Centres ride the queue as their cache keys — primitives, so a re-ask dedupes. */
+const askQueue = passQueue<string>((keys) =>
+	pass(keys.map((k) => k.split(",").map(Number) as unknown as LngLat)),
+);
+
+/** Fetch a fire disc for every centre that no fresh disc covers. Returns how many discs landed. One pass at a time; a centre asked for mid-pass gets the next one. */
 export function refreshFires(centres: readonly LngLat[]): Promise<number> {
-	if (running) return running;
-	running = pass(centres).finally(() => {
-		running = null;
-	});
-	return running;
+	return askQueue(centres.map(([lng, lat]) => fireKey(lng, lat)));
 }
 
 async function pass(centres: readonly LngLat[]): Promise<number> {
@@ -110,9 +111,16 @@ export function startFireService(opts: FireServiceOptions): () => void {
 			/* already running — the first start's stop owns shutdown */
 		};
 	const refresh = (centres?: readonly LngLat[]): void => {
-		void (centres
+		// Fired from timers, visibility and online events — there is no caller
+		// to hand a rejection to, so `void` alone leaves an unhandled one when
+		// the Worker is unreachable. Fires are best-effort: log and let the
+		// next tick retry.
+		(centres
 			? refreshFires(centres)
-			: Promise.resolve(opts.centres()).then(refreshFires));
+			: Promise.resolve(opts.centres()).then(refreshFires)
+		).catch((e) => {
+			console.warn("[fires] refresh failed", e);
+		});
 	};
 	const all = (): void => refresh();
 	const visible = (): void => {

@@ -55,6 +55,37 @@ describe("the hospital pass", () => {
 		]);
 	});
 
+
+	it("⛔ THE TRACTOR BUG: an anchor asked for mid-pass still gets its disc", async () => {
+		// Two anchors 85 ms apart is the real case (Rosedale, 7 Sep 2026). Here the
+		// first fetch is held open so the second ask lands mid-pass — the old latch
+		// dropped it, and the anchor waited for a retry timer to sweep it up.
+		let release!: () => void;
+		const held = new Promise<void>((r) => {
+			release = r;
+		});
+		let first = true;
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => {
+				if (first) {
+					first = false;
+					await held;
+				}
+				return ok();
+			}),
+		);
+
+		const a = refreshHospitals([PENTICTON]);
+		const b = refreshHospitals([WINNIPEG]);
+		release();
+		await Promise.all([a, b]);
+
+		expect((await allDiscs()).map((d) => d.key).sort()).toEqual(
+			[hospitalKey(...PENTICTON), hospitalKey(...WINNIPEG)].sort(),
+		);
+	});
+
 	it("a fresh disc is kept — nothing is fetched", async () => {
 		const fetch = vi.fn(async () => ok());
 		vi.stubGlobal("fetch", fetch);

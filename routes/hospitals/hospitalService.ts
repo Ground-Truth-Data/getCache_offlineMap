@@ -11,6 +11,7 @@
  * — this package names no host of its own.
  */
 
+import { passQueue } from "../../lib/shared/passQueue";
 import { hospitalsUrl } from "../../lib/worker/worker-local-dev/tilesHost";
 import {
 	allDiscs,
@@ -63,15 +64,15 @@ export async function fetchHospitals(
 }
 
 let pausedUntil = 0;
-let running: Promise<number> | null = null;
 
-/** Fetch a disc for every centre no fresh disc covers. Returns how many landed. One pass at a time; a second ask joins the running one. */
+/** Anchors ride the queue as their disc keys — primitives, so a re-ask dedupes. */
+const askQueue = passQueue<string>((keys) =>
+	pass(keys.map((k) => k.split(",").map(Number) as unknown as LngLat)),
+);
+
+/** Fetch a disc for every centre no fresh disc covers. Returns how many landed. One pass at a time; an anchor asked for mid-pass gets the next one. */
 export function refreshHospitals(centres: readonly LngLat[]): Promise<number> {
-	if (running) return running;
-	running = pass(centres).finally(() => {
-		running = null;
-	});
-	return running;
+	return askQueue(centres.map(([lng, lat]) => hospitalKey(lng, lat)));
 }
 
 async function pass(centres: readonly LngLat[]): Promise<number> {
@@ -121,13 +122,19 @@ export function startHospitalService(opts: HospitalServiceOptions): () => void {
 			/* already running — the first start's stop owns shutdown */
 		};
 	const all = (): void => {
-		void refreshHospitals(opts.anchors());
+		// Same as the fires pass: driven by events, not by a caller, so a
+		// bare `void` turns an unreachable Worker into an unhandled rejection.
+		refreshHospitals(opts.anchors()).catch((e) => {
+			console.warn("[hospitals] refresh failed", e);
+		});
 	};
 	const visible = (): void => {
 		if (document.visibilityState === "visible") all();
 	};
 	const offWanted = onHospitalsWanted((centres) => {
-		void refreshHospitals(centres);
+		refreshHospitals(centres).catch((e) => {
+			console.warn("[hospitals] wanted-pass failed", e);
+		});
 	});
 	const offAnchors = opts.onAnchorsChanged?.(all) ?? (() => undefined);
 	window.addEventListener("online", all);
