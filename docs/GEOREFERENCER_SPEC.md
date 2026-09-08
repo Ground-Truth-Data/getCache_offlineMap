@@ -119,7 +119,7 @@ than three, least-squares over all of them.
 **Do not write this from scratch.** The solver already exists, audited
 8 Sep 2026:
 
-- `ReTreever/src/lib/mobile/utils/geoPdfBounds.ts` (606 lines) —
+- `lib/geoPdf/geoPdfBounds.ts` (604 lines, in THIS repo) —
   `fitPageToGeoAffine()` fits a mean-centred least-squares affine through
   GCPs and rejects a fit whose reprojection error exceeds
   `max(30 m, 1% of the page diagonal)`. `applyPageToGeo()` transforms a page
@@ -165,28 +165,28 @@ made it. Do not add a "manually georeferenced" branch to the render path.
 The intent is that this code belongs in this repo, not ReTreever. An audit ran
 8 Sep 2026; **the answer is already known, so do not re-derive it.**
 
-### Moves cleanly — ~1,434 lines, zero forbidden aliases
+### Already moved — it is in THIS repo
 
-Take these four files (plus their tests) as your first commit. All are pure
-logic; between them they import only `pdf-lib` and `pdfjs-dist`.
+Moved out of ReTreever on 8 Sep 2026 and DELETED there, so exactly one copy
+exists. It lives in `lib/geoPdf/`:
 
-| File (under `ReTreever/src/lib/mobile/utils/`) | Lines | What |
+| File | Lines | What |
 |---|---|---|
-| `geoPdfBounds.ts` | 606 | the whole georef core — `/VP` parsing, GCP extraction, `fitPageToGeoAffine`, `applyPageToGeo` |
-| `geoPdfBounds.test.ts` | 453 | its tests — synthesises PDFs with pdf-lib |
-| `pdfHasAnyGeoref.test.ts` | 85 | georef-presence sniff tests |
-| `rasterizePdf.ts` | 120 | pdf.js page-1 → WebP; no georef maths. Carries one Vite `?url` idiom |
+| `geoPdfBounds.ts` | 604 | the georef core — `/VP` parsing, GCP extraction, `fitPageToGeoAffine`, `applyPageToGeo` |
+| `geoPdfBounds.test.ts` | 453 | 23 tests, synthesises PDFs with pdf-lib |
+| `pdfHasAnyGeoref.test.ts` | 85 | georef-presence sniff, 4 tests |
+| `rasterizePdf.ts` | 120 | pdf.js page-1 → WebP |
 | `pdfTextLabels.ts` | 170 | projects PDF text through the affine → `OverlayLabel[]` |
 
-`pdfTextLabels.ts` needs `devlog.ts` and `reportSwallowed.ts` moved with it —
-both relative imports, both trivial. **Check those two for `$lib` before you
-commit them.**
+`pdfTextLabels.ts` needed ReTreever's `devlog` and `reportSwallowed`. A child
+may not import a parent, so they are now **injected ports** —
+`setLabelPorts({ devlog, reportSwallowed })`, both optional. Extraction runs
+identically with no host attached; it just stays quiet. Use that pattern for
+anything else the host owns.
 
-⚠️ **One thing breaks when you move `geoPdfBounds.ts`:**
-`getCache_mapTools/mapImporter.svelte.ts:91` dynamically imports
-`$lib/mobile/utils/geoPdfBounds`. Rewrite it to
-`$parent/siblings/getCache_OfflineMap/lib/...` **in the same commit**, or the
-map's waiting box breaks silently.
+ReTreever and `getCache_mapTools` both reach it through
+`$parent/siblings/getCache_OfflineMap/lib/geoPdf/…`. `pdf-lib` and `pdfjs-dist`
+are declared in this repo's `package.json` and `deps.json`.
 
 ### Cannot move without surgery — leave alone
 
@@ -254,7 +254,7 @@ silently returns to the map), or hold your own copy once you have taken it.
 
 1. `npm run dev` in ReTreever, open `http://getcache.localhost:5173/app/georef`
    — the blank page is already there and already has the phone, header, footer.
-2. Read `ReTreever/src/lib/mobile/utils/geoPdfBounds.ts` and its tests.
+2. Read `lib/geoPdf/geoPdfBounds.ts` and its tests — in this repo.
    Understand what already solves the maths before writing any.
 3. Read `getCache_OfflineMap/routes/offline/+page.svelte` for the child-route
    shape, and `getCache_OfflineMap/lib/` for how this child organises code.
