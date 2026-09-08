@@ -111,7 +111,15 @@ export function wallLabelLayers(
 				],
 			],
 			layout: {
-				"text-field": ["coalesce", ["get", "name"], ["get", "name:en"], ""],
+				// `name` is the LOCAL script, so asking for it first renders a
+				// Ge'ez or Cyrillic town as tofu in a Latin-only glyph set.
+				// `name:en` first instead: on Latin ground the two agree
+				// (Protomaps omits `name:en` where it would just repeat
+				// `name`), so French and Latin-written Cree are unaffected,
+				// and `name` still catches everything with no English form.
+				// Style expressions cannot test script — the JS side does
+				// that in places.ts; this is the same intent, coarser.
+				"text-field": ["coalesce", ["get", "name:en"], ["get", "name"], ""],
 				"text-font": glyphStack(map as never),
 				// Size by KIND (population_rank is often absent on villages and
 				// hamlets): city biggest, hamlet smallest. Robust either way.

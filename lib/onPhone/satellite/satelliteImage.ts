@@ -5,7 +5,11 @@ import {
 import { kmBetween, kmToDegSpan } from "../../shared/kmGeo";
 import { migrateIdbDatabase } from "../store/idbRename";
 import { makeKeyedIdbStore } from "../store/keyedIdbStore";
-import { type PhotoSource, photoSourcesFor } from "./photoSources";
+import {
+	isBestPhotoSource,
+	type PhotoSource,
+	photoSourcesFor,
+} from "./photoSources";
 
 /** Imagery tiles fetched at once. See the pool call for why 16, not 6 or 60. */
 const SAT_FETCH_CONCURRENCY = 16;
@@ -282,7 +286,14 @@ export async function bakeSatelliteImage(
 	const key = satImageKey(center);
 	const existing = await idb.get(key);
 	// Serve the cache ONLY when its geometry stamp is current — a stale photo (older bounds math) renders clipped to a fraction, so it's a MISS → re-bake.
-	if (existing && existing.bakeVersion === BAKE_VERSION) return existing;
+	// A photo from a row that has since been beaten is a miss too: without this a
+	// sharper source added to the registry only ever reaches ground nobody saved yet.
+	if (
+		existing &&
+		existing.bakeVersion === BAKE_VERSION &&
+		isBestPhotoSource(existing.source, center[0], center[1])
+	)
+		return existing;
 	// OFFLINE: skip re-bake — every tile fetch would fail and trip the session breaker (within ~30 min of airplane-mode use); keep showing a stale photo (better than blank) for the next ONLINE reconcile to heal.
 	if (typeof navigator !== "undefined" && navigator.onLine === false)
 		return existing ?? null;

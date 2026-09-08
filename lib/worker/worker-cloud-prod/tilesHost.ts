@@ -83,6 +83,12 @@ export function tileUrl(z: number, x: number, y: number): string | null {
 	return h === null ? null : `${h}/${z}/${x}/${y}.pbf`;
 }
 
+/** One z/x/y satellite tile. Goes through our Worker, never MapTiler direct — the key is theirs to spend and stays on the Worker. */
+export function satelliteTileUrl(z: number, x: number, y: number): string | null {
+	const h = tilesHost();
+	return h === null ? null : `${h}/satellite/${z}/${x}/${y}.jpg`;
+}
+
 /** The /hospitals disc around one anchor — km is the ask AND the wall (routes/hospitals/hospitalCache.ts). */
 export function hospitalsUrl(
 	lng: number,

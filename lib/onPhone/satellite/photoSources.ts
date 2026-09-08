@@ -8,6 +8,7 @@
  * tiles only upsample; the canvas is sized to keep what the source has.
  */
 
+import { satelliteTileUrl } from "../../worker/worker-local-dev/tilesHost";
 import type { Bounds } from "./satelliteImage";
 
 export interface PhotoSource {
@@ -50,6 +51,20 @@ export const PHOTO_SOURCES: readonly PhotoSource[] = [
             `https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/${z}/${y}/${x}`,
     },
     {
+        // MapTiler satellite-v2: 1–2 m/px worldwide (Maxar), down to 8 cm where a
+        // country's aerial survey exists. Paid, per-account; the key is the
+        // Worker's, so the URL below is ours and never api.maptiler.com.
+        name: "MapTiler",
+        boxes: [],
+        // z16 is ~1.2 m/px at 45° — the Maxar global floor. Deeper only upsamples
+        // outside the countries with aerial cover, and every tile is a paid request.
+        zoom: 16,
+        // 512px source tiles, so the same 4 km wants twice the canvas USGS does.
+        canvasPx: 2048,
+        quality: 0.7,
+        url: (z, x, y) => satelliteTileUrl(z, x, y) ?? "",
+    },
+    {
         // EOX Sentinel-2 cloudless: 10 m/px, the whole planet. z14 is its sharp ceiling — z15 only upsamples into blur, verified; don't raise it.
         name: "EOX",
         boxes: [],
@@ -60,6 +75,24 @@ export const PHOTO_SOURCES: readonly PhotoSource[] = [
             `https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2020_3857/default/g/${z}/${y}/${x}.jpg`,
     },
 ];
+
+/**
+ * Is a photo already from the best row available where it sits? A stored photo
+ * names the row that drew it, so adding a sharper row ahead of that one makes
+ * every photo behind it stale — which is what re-bakes the fleet onto new
+ * imagery without a sweep or a version bump.
+ *
+ * An unnamed photo predates the registry (EOX-only), so it is never best.
+ */
+export function isBestPhotoSource(
+    name: string | undefined,
+    lng: number,
+    lat: number,
+): boolean {
+    if (name === undefined) return false;
+    const rows = photoSourcesFor(lng, lat);
+    return rows.length > 0 && rows[0].name === name;
+}
 
 /** The rows to try for a pin, in order. Never empty: the world row is always last. */
 export function photoSourcesFor(lng: number, lat: number): PhotoSource[] {

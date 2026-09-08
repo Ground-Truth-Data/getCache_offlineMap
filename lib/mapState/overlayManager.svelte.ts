@@ -191,8 +191,10 @@ export function createOverlayManager(
 						});
 					}
 					// Wait for the WebP to actually PAINT before hiding the waiting box — hiding on addMapOverlay's resolve (source added, image still decoding) flashes blank basemap.
+					// Watch THIS slot's source: the bare id belongs to overlay 0 only, and it is already loaded by the time a second sheet mounts, so no sourcedata ever fires for it and the box strands until the guard.
 					void import("$parent/siblings/getCache_OnlineMap/lib/mobMapWaitingBox").then(
-						({ hideWaitingBoxOnceRendered }) => hideWaitingBoxOnceRendered(m),
+						({ hideWaitingBoxOnceRendered }) =>
+							hideWaitingBoxOnceRendered(m, overlay.imageSourceId(slot)),
 					);
 				}
 			}
@@ -344,6 +346,16 @@ export function createOverlayManager(
 				({ hideWaitingBox }) => {
 					const map = getMap();
 					if (map) hideWaitingBox(map);
+				},
+			);
+		},
+		hideWaitingSoon() {
+			const m = getMap();
+			if (!m) return;
+			void import("$parent/siblings/getCache_OnlineMap/lib/mobMapWaitingBox").then(
+				({ hideWaitingBoxOnceRendered }) => {
+					const map = getMap();
+					if (map) hideWaitingBoxOnceRendered(map, OVERLAY_SOURCE_ID);
 				},
 			);
 		},

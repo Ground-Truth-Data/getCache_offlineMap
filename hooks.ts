@@ -2,7 +2,7 @@ import type { Reroute } from "@sveltejs/kit";
 
 // ⚠️ keep DEFAULT in step with this child's defaultPath in $rig/childRegistry.ts — nav and the printed url read it.
 // ⚠️ list dev endpoints in SERVED — an unlisted path collapses to DEFAULT, so fetch("/api/…") gets the map page's HTML with a 200.
-const SERVED: string[] = [];
+const SERVED: string[] = ["/georef"];
 const DEFAULT = "/offline";
 
 // Both tiers mount this child under /app; a solo install serves it flat. The

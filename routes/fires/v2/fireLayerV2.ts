@@ -69,7 +69,12 @@ const FIRE_HOT = "#d18a5e";
  *  legible at a glance. */
 const FIRE_OUTLINE_RED = "#d9422b";
 
-/** The flame glyph, registered by the host map's icon loader under this name. */
+/** The flame glyph, registered by the host map's icon loader under this name.
+ *  ⚠️ WHOEVER MOUNTS THIS OWES IT THE IMAGE. V2 has no host yet, so nothing
+ *  registers `rt-fire-flame` for it; a symbol layer whose icon is absent draws
+ *  NOTHING and logs one warning, so this fails silent-ish if wired up as is.
+ *  V1 registers it on `styleimagemissing` (the only signal that survives a
+ *  style swap wiping the image registry) — copy that, not a load-once call. */
 const FIRE_ICON = "rt-fire-flame";
 
 const EMPTY_FC: GeoJSON.FeatureCollection = {

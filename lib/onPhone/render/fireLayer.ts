@@ -490,6 +490,14 @@ export function attachFireLayer(
 
     const onStyle = (): void => void paint();
     map.on("style.load", onStyle);
+    // The renderer is the only thing that knows the image is gone: `addImage`
+    // is async, so a style swap landing between the load and the resolve wipes
+    // it with no event we already listen for, and the symbol layer then renders
+    // nothing forever. Asking the renderer beats tracking it ourselves.
+    const onMissing = (e: { id: string }): void => {
+        if (e.id === FIRE_ICON) ensureFireIcon(map, isLive);
+    };
+    map.on("styleimagemissing", onMissing);
     void paint();
 
     // ── Tap a flame → the honest card. Tap a cluster → its SUMMARY, never a
@@ -580,6 +588,7 @@ export function attachFireLayer(
         map.off("click", FIRE_LAYER_IDS.cluster, onCluster);
         map.off("click", FIRE_LAYER_IDS.clusterIcon, onCluster);
         map.off("style.load", onStyle);
+        map.off("styleimagemissing", onMissing);
     };
     handle.repaint = (): void => void paint();
     return handle as FireLayerHandle;

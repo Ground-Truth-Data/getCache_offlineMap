@@ -36,6 +36,23 @@ const HOSPITALS_BUILD = "v1-209173-20260907";
  *  new build can never be masked by a year-old immutable cache entry. */
 const PACK_BUILD = "v35-shallow-z6-built";
 
+/** Edge-cache buster for /satellite. Bump when the upstream tileset id changes,
+ *  or a year of immutable entries would keep serving the old imagery. */
+const SATELLITE_BUILD = "satellite-v2";
+
+/** MapTiler serves to z22, but their own pyramid thins out long before that
+ *  outside cities; past this the client should overzoom rather than spend
+ *  sessions on tiles that carry no new detail. */
+const SATELLITE_MAX_Z = 20;
+
+const SATELLITE_PATH = /^\/satellite\/(\d{1,2})\/(\d{1,7})\/(\d{1,7})\.jpg$/;
+
+/** satellite-v2 is already a 512px tileset (tiles.json says scale 2), so the
+ *  @2x suffix 404s here — the client must declare tileSize 512 instead. */
+function satelliteUrl(key: string, z: number, x: number, y: number): string {
+  return `https://api.maptiler.com/tiles/satellite-v2/${z}/${x}/${y}.jpg?key=${key}`;
+}
+
 interface Env {
   /** R2 bucket binding (see wrangler.toml [[r2_buckets]]). */
   TILES: R2Bucket;
@@ -46,6 +63,10 @@ interface Env {
   /** NASA FIRMS Area API key for /fires. A Worker SECRET (`wrangler secret put
    *  FIRMS_MAP_KEY`), never a [vars] entry — it must never reach the app bundle. */
   FIRMS_MAP_KEY: string;
+  /** MapTiler Cloud key for /satellite. A Worker SECRET (`wrangler secret put
+   *  MAPTILER_KEY`) — the licence is per-account, so a key in the bundle is a
+   *  key anyone can spend. */
+  MAPTILER_KEY: string;
 }
 
 /**
@@ -184,6 +205,7 @@ const EXPOSED_HEADERS = [
   "X-Fetched-At",
   "X-Sources-Ok",
   "X-Radius-Km",
+  "X-Tile-Source",
 ].join(", ");
 
 const CORS_HEADERS: Record<string, string> = {
@@ -513,9 +535,78 @@ export default {
       });
     }
 
+    // ── /satellite/{z}/{x}/{y}.jpg — MapTiler imagery, key held here ──
+    const sat = SATELLITE_PATH.exec(url.pathname);
+    if (sat !== null) {
+      const z = Number(sat[1]);
+      const x = Number(sat[2]);
+      const y = Number(sat[3]);
+      if (z > SATELLITE_MAX_Z) {
+        return new Response(`Bad Request — z must be 0..${SATELLITE_MAX_Z}`, {
+          status: 400,
+          headers: CORS_HEADERS,
+        });
+      }
+      const span = 2 ** z;
+      if (x >= span || y >= span) {
+        return new Response(`Bad Request — x,y must be 0..${span - 1} at z${z}`, {
+          status: 400,
+          headers: CORS_HEADERS,
+        });
+      }
+      if (!env.MAPTILER_KEY) {
+        // Fail LOUD, like /fires. A blank basemap that looks merely "not loaded
+        // yet" would send a crew out on tiles that are never coming.
+        return new Response(
+          "MAPTILER_KEY is not configured on this Worker (wrangler secret put MAPTILER_KEY)",
+          { status: 500, headers: CORS_HEADERS },
+        );
+      }
+
+      const satCacheUrl = new URL(url.toString());
+      satCacheUrl.search = `?build=${SATELLITE_BUILD}`;
+      const satCacheKey = new Request(satCacheUrl.toString(), { method: "GET" });
+      const satEdge = caches.default;
+      const satHit = await satEdge.match(satCacheKey);
+      if (satHit) {
+        return request.method === "HEAD"
+          ? new Response(null, { status: 200, headers: satHit.headers })
+          : satHit;
+      }
+
+      let body: ArrayBuffer;
+      try {
+        const upstream = await fetch(satelliteUrl(env.MAPTILER_KEY, z, x, y));
+        if (!upstream.ok) {
+          throw new Error(`MapTiler responded ${upstream.status}`);
+        }
+        body = await upstream.arrayBuffer();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return new Response(`Satellite fetch failed: ${message}`, {
+          status: 502,
+          headers: CORS_HEADERS,
+        });
+      }
+
+      const satHeaders = {
+        ...CORS_HEADERS,
+        "Content-Type": "image/jpeg",
+        "X-Tile-Source": "maptiler",
+        "Cache-Control": "public, max-age=31536000, immutable",
+      };
+      ctx.waitUntil(
+        satEdge.put(satCacheKey, new Response(body, { status: 200, headers: satHeaders })),
+      );
+      return new Response(request.method === "HEAD" ? null : body, {
+        status: 200,
+        headers: satHeaders,
+      });
+    }
+
     const match = TILE_PATH.exec(url.pathname);
     if (match === null) {
-      return new Response("Not Found — expected /{z}/{x}/{y}.pbf, /pack?lng=&lat=, /fires?lng=&lat=, or /hospitals?lng=&lat=&km=", {
+      return new Response("Not Found — expected /{z}/{x}/{y}.pbf, /satellite/{z}/{x}/{y}.jpg, /pack?lng=&lat=, /fires?lng=&lat=, or /hospitals?lng=&lat=&km=", {
         status: 404,
         headers: CORS_HEADERS,
       });
