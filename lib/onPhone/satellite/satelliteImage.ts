@@ -103,6 +103,56 @@ export function satImageKey(c: [number, number]): string {
 	return `${c[0].toFixed(4)},${c[1].toFixed(4)}`;
 }
 
+/**
+ * How close to an existing photo's CENTRE a new centre must be to reuse it
+ * rather than bake its own. Well inside BAKE_RADIUS_KM, so the reused photo
+ * genuinely covers the new spot with room to spare — a centre 1.9 km away is
+ * technically "inside" the old disc but sits on its very edge, where the mask
+ * fades and there is no imagery beyond.
+ */
+export const PHOTO_REUSE_KM = 1;
+
+/** Parse a key back to the centre it was made from; null if it isn't one. */
+function centerOfKey(key: string): [number, number] | null {
+	const [lng, lat] = key.split(",").map(Number);
+	return Number.isFinite(lng) && Number.isFinite(lat) ? [lng, lat] : null;
+}
+
+/**
+ * A photo already on disk whose ground covers this centre, or null.
+ *
+ * THE KEY DEDUPS AT ~11 m; A PHOTO COVERS 2 km. Those two numbers were never
+ * related, so ten plots 100 m apart minted ten near-identical photos of one
+ * stand. Identity is the asking POINT; coverage is the GROUND — this asks the
+ * second question, which is the one that decides whether a download is needed.
+ *
+ * Keys only (`idb.keys()`), never blobs: loading every photo to compare them
+ * is what OOM-crashed the tab at 613 MB.
+ */
+export async function photoCovering(
+	center: [number, number],
+): Promise<SatImage | undefined> {
+	const exact = await getSatImageByKey(satImageKey(center));
+	if (exact) return exact;
+	let bestKey: string | null = null;
+	let bestKm = PHOTO_REUSE_KM;
+	for (const key of await idb.keys()) {
+		const c = centerOfKey(key);
+		if (!c) continue;
+		const km = kmBetween(center, c);
+		if (km <= bestKm) {
+			bestKm = km;
+			bestKey = key;
+		}
+	}
+	if (!bestKey) return undefined;
+	const near = await getSatImageByKey(bestKey);
+	// A neighbour from a beaten source is not a reason to skip a better bake.
+	return near && isBestPhotoSource(near.source, center[0], center[1])
+		? near
+		: undefined;
+}
+
 function lngToTileX(lng: number, z: number): number {
 	return Math.floor(((lng + 180) / 360) * 2 ** z);
 }
@@ -294,6 +344,11 @@ export async function bakeSatelliteImage(
 		isBestPhotoSource(existing.source, center[0], center[1])
 	)
 		return existing;
+	// Nothing at THIS key, but a photo within PHOTO_REUSE_KM already shows this
+	// ground. Reuse it and fetch nothing: a stand of plots is dozens of centres
+	// metres apart, and baking each one downloads the same imagery again.
+	const covering = await photoCovering(center);
+	if (covering) return covering;
 	// OFFLINE: skip re-bake — every tile fetch would fail and trip the session breaker (within ~30 min of airplane-mode use); keep showing a stale photo (better than blank) for the next ONLINE reconcile to heal.
 	if (typeof navigator !== "undefined" && navigator.onLine === false)
 		return existing ?? null;
