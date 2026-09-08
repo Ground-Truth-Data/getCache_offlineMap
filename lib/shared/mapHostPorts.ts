@@ -168,6 +168,19 @@ export interface MapUiPorts {
 		play(on: boolean, key?: string): void;
 		destroy(): void;
 	};
+	/** The eye that blinks ONCE and then acts — a button, not a switch, so it
+	 *  has no on/off to read back. BlobsDock's "see this blob on the map". */
+	createEyeBlink(): {
+		srcFor(key?: string): string;
+		blinkThen(action: () => void, key?: string): Promise<void>;
+		destroy(): void;
+	};
+	/** MaskedIcon's multi-frame sibling: predecodes every frame up front so a
+	 *  blink does not flash on its first play. Takes `frames`, which MaskedIcon
+	 *  has no prop for — they are not interchangeable. */
+	MaskedFrameIcon: Component<Record<string, unknown>>;
+	/** Every frame srcFor() can emit, for MaskedFrameIcon's predecode. */
+	eyeAllFrames: string[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

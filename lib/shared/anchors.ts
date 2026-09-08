@@ -34,7 +34,8 @@ function featureCenter(geom: GeoJSON.Geometry | undefined): Pt | null {
 // consecutive discs OVERLAP into one ribbon and never leave a gap.
 //
 // ⚠️ THE DISC IS THE ROAD DISC, NOT THE PHOTO DISC. A line bakes a CORRIDOR:
-// roads only, no photo at all (`if (corridor) return` in bakeService). This
+// roads only, no photo at all (the blob engine queues a corridor's anchors
+// with `photo: false`, which is the whole of what "corridor" means). This
 // was BAKE_RADIUS_KM * 1.6 = 3.2 km — the spacing that keeps 2 km SATELLITE
 // discs touching, on the one geometry that never fetches one. An 86 km line
 // took ~28 anchors where 5 cover the same ground; the extra 23 deduped
@@ -111,7 +112,37 @@ export function isBlobAnchor(_f: {
 	return true;
 }
 
-/** The offline-coverage anchors for ANY feature — a LIST, since one blob isn't enough for long geometry (see file header for per-type rules). Callers iterating a feature collection should gate on {@link isBlobAnchor} first. */
+/**
+ * THE CEILING. No feature earns more than this many blobs, whatever its shape
+ * or point count. At 30 km a blob is ~50 MB of roads, so ten is ~500 MB — half
+ * a 1 GB budget on ONE feature, which is already generous.
+ *
+ * This is what makes an import of unknown provenance safe: a traced river with
+ * 40,000 vertices, a survey line across a province, a polygon with hundreds of
+ * points. The import still succeeds and the feature still draws in full — only
+ * the offline baking is capped, so the failure mode is "less map saved", never
+ * a refused file or a blown budget.
+ */
+export const MAX_ANCHORS_PER_FEATURE = 10;
+
+/**
+ * Thin a list down to the ceiling, keeping it SPREAD over the whole geometry.
+ *
+ * Evenly, never the first ten: a 2000 km line would otherwise bake its first
+ * 300 km densely and leave everything past that with no map at all. Thinned,
+ * the coverage is sparser but reaches both ends. Ends are always kept — they
+ * are where someone actually starts and finishes.
+ */
+function thinToCeiling(pts: Pt[]): Pt[] {
+	if (pts.length <= MAX_ANCHORS_PER_FEATURE) return pts;
+	const out: Pt[] = [];
+	const step = (pts.length - 1) / (MAX_ANCHORS_PER_FEATURE - 1);
+	for (let i = 0; i < MAX_ANCHORS_PER_FEATURE; i++)
+		out.push(pts[Math.round(i * step)]);
+	return out;
+}
+
+/** The offline-coverage anchors for ANY feature — a LIST, since one blob isn't enough for long geometry (see file header for per-type rules), capped at {@link MAX_ANCHORS_PER_FEATURE}. Callers iterating a feature collection should gate on {@link isBlobAnchor} first. */
 export function anchorsOf(f: {
 	geometry: GeoJSON.Feature | null;
 	overlayBounds: [number, number, number, number] | null;
@@ -134,19 +165,19 @@ export function anchorsOf(f: {
 		case "Point":
 			return [g.coordinates as Pt];
 		case "MultiPoint":
-			return g.coordinates as Pt[];
+			return thinToCeiling(g.coordinates as Pt[]);
 		case "LineString":
-			return sampleLineAnchors(g.coordinates as Pt[]);
+			return thinToCeiling(sampleLineAnchors(g.coordinates as Pt[]));
 		case "MultiLineString":
 			// Wrapped, never bare: `flatMap` passes the INDEX as the second
 			// argument, which would land in `stepKm` and space part 1 at 1 km.
-			return (g.coordinates as Pt[][]).flatMap((part) =>
-				sampleLineAnchors(part),
+			return thinToCeiling(
+				(g.coordinates as Pt[][]).flatMap((part) => sampleLineAnchors(part)),
 			);
 		case "Polygon":
 			return polygonAnchor(g.coordinates as Pt[][]);
 		case "MultiPolygon":
-			return (g.coordinates as Pt[][][]).flatMap(polygonAnchor);
+			return thinToCeiling((g.coordinates as Pt[][][]).flatMap(polygonAnchor));
 		default: {
 			const c = featureCenter(g);
 			return c ? [c] : [];

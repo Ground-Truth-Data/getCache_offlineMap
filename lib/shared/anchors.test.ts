@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { anchorsOf, type Pt } from "./anchors";
+import { anchorsOf, MAX_ANCHORS_PER_FEATURE, type Pt } from "./anchors";
 import { GRID_RADIUS_KM } from "../contract/grid";
 import { kmBetween } from "./kmGeo";
 
@@ -42,8 +42,10 @@ describe("a line is sampled along it, spaced to the ROAD disc", () => {
     it("keeps consecutive road discs overlapping — a ribbon, never a gap", () => {
         const got = anchorsOf(line(PEACE_RIVER));
         for (let i = 1; i < got.length; i++)
-            expect(kmBetween(got[i - 1], got[i])).toBeLessThan(
-                GRID_RADIUS_KM * 2,
+            // 2x the radius is where discs merely TOUCH — a spacing bug passes
+            // that. The ribbon rule is 1.6x, so assert what the code claims.
+            expect(kmBetween(got[i - 1], got[i])).toBeLessThanOrEqual(
+                GRID_RADIUS_KM * 1.6 + 0.001,
             );
     });
 
@@ -109,5 +111,56 @@ describe("the other geometries keep their own rules", () => {
                 overlayBounds: [-118, 56, -116, 57],
             } as Parameters<typeof anchorsOf>[0]),
         ).toHaveLength(4);
+    });
+});
+
+describe("the ceiling — no import blows the budget", () => {
+    /** A degenerate import: a line traced with a vertex every few metres. */
+    const dense = (n: number): Pt[] =>
+        Array.from({ length: n }, (_, i) => [-117 + i * 0.5, 56] as Pt);
+
+    it("caps a huge line at MAX_ANCHORS_PER_FEATURE", () => {
+        expect(anchorsOf(line(dense(4000)))).toHaveLength(
+            MAX_ANCHORS_PER_FEATURE,
+        );
+    });
+
+    it("spreads the cap over the WHOLE line, keeping both ends", () => {
+        const pts = dense(4000);
+        const got = anchorsOf(line(pts));
+        expect(got[0]).toEqual(pts[0]);
+        expect(got[got.length - 1]).toEqual(pts[pts.length - 1]);
+        // evenly spread, not the first ten: every gap is within a hair of the
+        // mean, so no stretch of the line is left with nothing.
+        const gaps = got.slice(1).map((p, i) => kmBetween(got[i], p));
+        const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+        for (const g of gaps) expect(Math.abs(g - mean) / mean).toBeLessThan(0.1);
+    });
+
+    it("leaves a line under the ceiling untouched", () => {
+        expect(anchorsOf(line(PEACE_RIVER)).length).toBeLessThan(
+            MAX_ANCHORS_PER_FEATURE,
+        );
+    });
+
+    it("caps a MultiPolygon's centroids too — one per part, but never past the ceiling", () => {
+        const box = (x: number): Pt[][] => [
+            [
+                [x, 56],
+                [x + 0.1, 56],
+                [x + 0.1, 56.1],
+                [x, 56.1],
+                [x, 56],
+            ],
+        ];
+        const many = Array.from({ length: 40 }, (_, i) => box(-117 + i * 0.3));
+        expect(
+            anchorsOf(
+                feat({
+                    type: "MultiPolygon",
+                    coordinates: many,
+                } as GeoJSON.Geometry),
+            ),
+        ).toHaveLength(MAX_ANCHORS_PER_FEATURE);
     });
 });

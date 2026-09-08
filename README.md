@@ -111,21 +111,17 @@ centre, vector roads out to the edge. The bar, in order:
 
 ## THE ONE RULE
 
-There is ONE offline map component:
+This child holds no map component. The live offline map is V10, and it lives
+in ReTreever (`src/routes/(getcache)/app/offlinev10/`); what remains here are
+the pieces V10 imports — the layer renderers, the stores, the worker contract,
+the fire and hospital passes — plus `/georef`, the one route this child still
+serves end to end.
 
-```
-getCache_OfflineMap/lib/OfflineMapPage.svelte
-```
-
-Everything renders THAT FILE. Not a copy, not a "shared base", not a wrapper
-with logic in it. Reach it through the `$parent` alias:
+Reach anything here through the `$parent` alias, never a relative climb:
 
 ```ts
-import OfflineMap from "$parent/siblings/getCache_OfflineMap/lib/OfflineMapPage.svelte";
+import { attachFireLayer } from "$parent/siblings/getCache_OfflineMap/lib/onPhone/render/fireLayer";
 ```
-
-A route file is a mount: the import and `<OfflineMap />`. Map code outside
-that component is the bug this project spent a day removing.
 
 **Do NOT use a symlink.** SvelteKit follows it, but the child's internal
 relative imports then trip rapper's `noEscapePlugin` guard. The alias is the
@@ -140,7 +136,7 @@ watched while it runs. Do not propose renaming it or a second "shared map" repo.
 
 | What | Where |
 |---|---|
-| The map component | `lib/OfflineMapPage.svelte` |
+| The live map (V10) — in the PARENT, not here | `ReTreever/src/routes/(getcache)/app/offlinev10/` |
 | Fires engine (v1 + v2 + masks) | `routes/fires/` — read `routes/fires/docs/FIRES.md` before touching v2 |
 | Fires Worker half | `lib/worker/firesWorker.ts` — `workers/worker-local-dev/src/index.ts` imports it relatively |
 | Tile Worker (Cloudflare, R2) | `workers/worker-local-dev/` — `workers/worker-local-dev/README.md`; `worker-cloud-dev/`, `worker-cloud-prod/` are the deployed twins |

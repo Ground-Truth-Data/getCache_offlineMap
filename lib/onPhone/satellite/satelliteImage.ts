@@ -27,7 +27,7 @@ if (typeof indexedDB !== "undefined") {
 export type Bounds = [number, number, number, number]; // [w,s,e,n]
 
 /** Geometry stamp — BUMP whenever bake geometry changes (radius/zoom/canvas/mercator math) or a stale mis-bounded photo stays pinned forever, never healing. */
-export const BAKE_VERSION = 6; // 6 = PIN-CENTRED CROP — this bump triggers a fleet-wide re-bake (expect an EOX rate-limit backoff).
+export const BAKE_VERSION = 7; // 7 = FULL-RESOLUTION CANVAS — this bump triggers a fleet-wide re-bake (expect an EOX rate-limit backoff).
 
 export interface SatImage {
 	blob: Blob;

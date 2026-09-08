@@ -44,6 +44,15 @@ describe("photo sources", () => {
         expect(isBestPhotoSource(undefined, 0, 0)).toBe(false);
     });
 
+    it("no row asks for a canvas a phone cannot allocate", () => {
+        // the bug: canvasPx 4096 is 16.8 MP, over WebKit's ~16.7 MP ceiling — the
+        // phone returned a blank canvas rather than an error, so pins baked NO
+        // photo at all and the failure looked like a missing tile
+        for (const s of PHOTO_SOURCES) {
+            expect((s.canvasPx * s.canvasPx) / 1e6).toBeLessThanOrEqual(12);
+        }
+    });
+
     it("each row's canvas keeps roughly half its source's pixels, never more than the source has", () => {
         for (const s of PHOTO_SOURCES) {
             // metres per source pixel at z, mid-latitudes ≈ 40075 km / 256 / 2^z × cos 45°

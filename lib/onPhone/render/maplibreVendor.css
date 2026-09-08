@@ -1,2 +1,0 @@
-/* Always import this file, never `maplibre-gl/dist/maplibre-gl.css` directly — layer(vendor) keeps our unlayered .maplibregl-* overrides winning without !important. */
-@import "maplibre-gl/dist/maplibre-gl.css" layer(vendor);

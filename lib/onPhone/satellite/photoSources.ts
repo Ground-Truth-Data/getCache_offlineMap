@@ -57,11 +57,17 @@ export const PHOTO_SOURCES: readonly PhotoSource[] = [
         name: "MapTiler",
         boxes: [],
         // z16 is ~1.2 m/px at 45° — the Maxar global floor. Deeper only upsamples
-        // outside the countries with aerial cover, and every tile is a paid request.
+        // outside the countries with aerial cover, and z17 needs ~515 tiles per
+        // photo: over the 400 bake cap AND 3.5x the paid sessions.
         zoom: 16,
-        // 512px source tiles, so the same 4 km wants twice the canvas USGS does.
-        canvasPx: 2048,
-        quality: 0.7,
+        // 3072 keeps ~1.5x what 2048 did (which threw away two thirds of the
+        // detail the z16 tiles carry and read as blur next to MapTiler's viewer).
+        // Not 4096: 4096² is 16.8 MP, over WebKit's ~16.7 MP canvas ceiling, and
+        // the phone answers an oversized canvas with a blank photo, not an error.
+        canvasPx: 3072,
+        // 0.82, not 0.7: this is the LAST encode of pixels nothing will sharpen
+        // again, so the usual "detail hides artefacts" logic runs backwards here.
+        quality: 0.82,
         url: (z, x, y) => satelliteTileUrl(z, x, y) ?? "",
     },
     {
@@ -75,6 +81,21 @@ export const PHOTO_SOURCES: readonly PhotoSource[] = [
             `https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2020_3857/default/g/${z}/${y}/${x}.jpg`,
     },
 ];
+
+/**
+ * WebKit refuses a canvas over ~16.7 megapixels, and refuses it by handing back a
+ * blank one — a row asking for more yields no photo at all, on phones only. 12 MP
+ * leaves room for the non-square crop a pin near the poles produces.
+ */
+const MAX_CANVAS_MP = 12;
+
+for (const src of PHOTO_SOURCES) {
+	if ((src.canvasPx * src.canvasPx) / 1e6 > MAX_CANVAS_MP) {
+		throw new Error(
+			`PhotoSource "${src.name}" asks for ${src.canvasPx}px² (${((src.canvasPx * src.canvasPx) / 1e6).toFixed(1)} MP) — over the ${MAX_CANVAS_MP} MP a phone canvas can hold; it would bake blank.`,
+		);
+	}
+}
 
 /**
  * Is a photo already from the best row available where it sits? A stored photo

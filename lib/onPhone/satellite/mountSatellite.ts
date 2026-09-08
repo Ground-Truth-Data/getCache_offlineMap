@@ -48,15 +48,19 @@ export function satLayerId(key: string): string {
 
 /** Camera zoom below which NO photo mounts. The floor was z10 when a photo
  *  covered 30 km and read as a "Kleenex stain" over the roads; at 2 km it is
- *  a few pixels instead, so the old arithmetic no longer bites and the floor
- *  came down to z6.5 (Chris, 8 Sep 2026 — measured, no memory rise).
+ *  a few pixels instead, so the old arithmetic no longer bites.
+ *
+ *  z6.5 was tried and walked back: it holds most of the store on screen at
+ *  once, and the session that ran there peaked at 543 MB with 12 frame
+ *  stalls. z7.5 keeps the low-zoom photos that made the change worth making
+ *  and stops one level short of the whole-store camera.
  *
  *  ⚠️ THE CULL IS WHAT MAKES THIS SAFE, NOT THE FLOOR. Cost scales with the
  *  photos actually ON SCREEN, and the two-ring cull bounds that; the floor
- *  only stops the pointless case. Going lower again means checking the RAM
+ *  only stops the pointless case. Going lower again means measuring RAM
  *  under a camera holding MOST of the store, not just one more level.
  *  Photos fade in over the half level above this, so crossing it eases. */
-export const SAT_MIN_Z = 6.5;
+export const SAT_MIN_Z = 7.5;
 /** How far above SAT_MIN_Z a photo takes to reach full opacity. */
 const SAT_FADE_SPAN = 0.5;
 /** Cross-fade on mount/unmount, ms — long enough to read as an ease, short
