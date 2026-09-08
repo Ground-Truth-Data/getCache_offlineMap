@@ -2,6 +2,10 @@ import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+	configureTilesHost,
+	setWorkerTarget,
+} from "../../lib/worker/worker-local-dev/tilesHost";
+import {
 	allDiscs,
 	deleteDisc,
 	hospitalCollection,
@@ -30,6 +34,10 @@ function ok(): Response {
 
 beforeEach(async () => {
 	vi.useRealTimers();
+	// PIN THE TIER and give it a host — the pass asks tilesHost() for the URL, and
+	// nothing is baked in: an unconfigured tier answers null and the pass refuses.
+	setWorkerTarget("worker-cloud-prod");
+	configureTilesHost("https://tiles.example.test");
 	for (const d of await allDiscs()) await deleteDisc(d.key);
 });
 

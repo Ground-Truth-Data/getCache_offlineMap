@@ -24,6 +24,9 @@ vi.mock("./fireCache", () => ({
 	isFresh: (e: { fetchedAt: number }) => Date.now() - e.fetchedAt < 5 * 60_000,
 }));
 const { FIRE_RETRY_MS, fireKey, refreshFires } = await import("./fireService");
+const { configureTilesHost, setWorkerTarget } = await import(
+	"../../lib/worker/worker-local-dev/tilesHost"
+);
 
 const PENTICTON: [number, number] = [-119.5937, 49.4991];
 const body = JSON.stringify({
@@ -44,6 +47,10 @@ function ok(): Response {
 }
 
 beforeEach(() => {
+	// PIN THE TIER and give it a host — fetchAreaFires asks tilesHost() for the URL,
+	// and nothing is baked in: an unconfigured tier answers null and it refuses.
+	setWorkerTarget("worker-cloud-prod");
+	configureTilesHost("https://tiles.example.test");
 	cache.clear();
 	coverage.length = 0;
 	writes.length = 0;

@@ -142,7 +142,7 @@ export const ICONS: readonly IconRow[] = [
     { name: "box", path: `${DIR}/box_icon_V9.webp` },
     { name: "cacheGroup", path: cacheIconUrl },
     { name: "tally", path: `${DIR}/cent_icon_plain_v3_gold.webp` },
-    { name: "poly", path: `${DIR}/poly_icon.webp` },
+    { name: "poly", path: `${DIR}/blockHeart_sm2.webp` },
     { name: "line", path: `${DIR}/line_icon.webp` },
     // GPS breadcrumb tracks — same art as the TRACKS drawer tile. A track is NOT a line; never gets line_icon.
     { name: "track", path: tracksIcon },

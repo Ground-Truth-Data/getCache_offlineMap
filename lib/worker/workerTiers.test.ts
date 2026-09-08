@@ -26,9 +26,9 @@ describe("worker tiers", () => {
 		expect(m.packUrl()).toBeNull();
 	});
 
-	it("defaults to worker-local-dev in a dev build — a shipped phone is locked to production by the !DEV early return, not by this constant", async () => {
+	it("defaults to worker-cloud-dev in a dev build — a shipped phone is locked to production by the !DEV early return, not by this constant", async () => {
 		const m = await import("./worker-local-dev/tilesHost");
-		expect(m.DEFAULT_TARGET).toBe("worker-local-dev");
+		expect(m.DEFAULT_TARGET).toBe("worker-cloud-dev");
 	});
 
 	it("only a human click moves the target — the machine-fallback mode is gone", async () => {
@@ -38,7 +38,7 @@ describe("worker tiers", () => {
 			setItem: (k: string, v: string) => void store.set(k, v),
 		});
 		const m = await import("./worker-local-dev/tilesHost");
-		// no override written → the local-first default holds, even with every worker down
+		// no override written → the cloud-dev default holds, even with every worker down
 		expect(m.getWorkerTarget()).toBe(m.DEFAULT_TARGET);
 		// ⛔ the old `{ fallback: true }` second parameter must stay deleted — it let boot
 		// code auto-select production, which billed the maintainer's R2 on fresh installs

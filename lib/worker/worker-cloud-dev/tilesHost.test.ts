@@ -3,13 +3,14 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-	DEFAULT_TARGET,
-	LOCAL_DEV_HOST,
+	configureTilesDevHost,
 	configureTilesHost,
+	DEFAULT_TARGET,
+	firesUrl,
 	getWorkerTarget,
+	LOCAL_DEV_HOST,
 	packUrl,
 	setWorkerTarget,
-	firesUrl,
 	tilesHost,
 } from "./tilesHost";
 
@@ -23,14 +24,19 @@ beforeEach(() => {
 });
 
 describe("worker target", () => {
-	it("defaults to worker-local-dev in a dev build, with no stored override", () => {
-		// the developer's own machine is the starting tier (Chris, 31 Aug 2026);
-		// a SHIPPED build never reads DEFAULT_TARGET — the !DEV early return in
+	it("defaults to worker-cloud-dev in a dev build, with no stored override", () => {
+		// the always-up cloud dev worker is the starting tier (Chris, 7 Sep 2026):
+		// it runs prod's code on prod's bucket, so an experiment cannot reach a
+		// shipped build, and it does not die with a closed terminal. A SHIPPED
+		// build never reads DEFAULT_TARGET — the !DEV early return in
 		// getWorkerTarget() locks phones to production, and the gating test
 		// below is what protects that.
-		expect(DEFAULT_TARGET).toBe("worker-local-dev");
-		expect(getWorkerTarget()).toBe("worker-local-dev");
-		expect(tilesHost()).toBe(LOCAL_DEV_HOST);
+		expect(DEFAULT_TARGET).toBe("worker-cloud-dev");
+		expect(getWorkerTarget()).toBe("worker-cloud-dev");
+		// null until the app configures it — nothing is baked in.
+		expect(tilesHost()).toBeNull();
+		configureTilesDevHost("https://tiles-dev.example.test");
+		expect(tilesHost()).toBe("https://tiles-dev.example.test");
 	});
 
 	it("switches every URL together — no split-brain", () => {
@@ -56,7 +62,8 @@ describe("worker target", () => {
 	it("ignores a corrupt or hostile stored value", () => {
 		sessionStorage.setItem("rt_worker_target", "https://evil.example.com");
 		expect(getWorkerTarget()).toBe(DEFAULT_TARGET);
-		expect(tilesHost()).toBe(LOCAL_DEV_HOST);
+		// a stored origin is never a host — the default tier's own host answers, or null
+		expect(tilesHost()).not.toBe("https://evil.example.com");
 	});
 
 	it("the override is gated on import.meta.env.DEV in BOTH directions", () => {

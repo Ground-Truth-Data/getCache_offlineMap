@@ -37,7 +37,10 @@ beforeEach(async () => {
 	urls = [];
 	gate = [];
 	// A host must be configured or there's no request to observe (configureTilesHost) — imported dynamically because afterEach's vi.resetModules() would otherwise leave a stale copy holding the config.
-	const { configureTilesHost } = await import("../tilesHost");
+	const { configureTilesHost, setWorkerTarget } = await import("../tilesHost");
+	// PIN THE TIER — configureTilesHost only answers for worker-cloud-prod, and the
+	// dev-build default is a different tier (whose host this test never sets).
+	setWorkerTarget("worker-cloud-prod");
 	configureTilesHost("https://tiles.example.test");
 	vi.stubGlobal(
 		"fetch",

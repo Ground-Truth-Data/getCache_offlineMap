@@ -31,11 +31,13 @@ export function hostFor(t: WorkerTarget): string | null {
 	return configuredHost;
 }
 
-// ⚠️ DEV BUILDS START ON THE DEVELOPER'S OWN MACHINE (Chris, 31 Aug 2026:
-// "point at the local one that's broken and he can fix it"). A shipped build
-// never reads this — getWorkerTarget()'s !DEV early return hard-locks phones
-// to production; THAT line is the safety, not this constant.
-export const DEFAULT_TARGET: WorkerTarget = "worker-local-dev";
+// ⚠️ DEV BUILDS START ON THE CLOUD DEV WORKER (Chris, 7 Sep 2026 — replacing the
+// local-first default of 31 Aug: local answers only while a terminal stays open,
+// and a dead target reads as a broken app). It runs the same code as prod on the
+// same bucket, so an experiment here can never reach a shipped build. A shipped
+// build never reads this — getWorkerTarget()'s !DEV early return hard-locks
+// phones to production; THAT line is the safety, not this constant.
+export const DEFAULT_TARGET: WorkerTarget = "worker-cloud-dev";
 
 // ⛔ override exists only in a DEV build — import.meta.env.DEV is compile-time, so this branch is dead code on a phone.
 const OVERRIDE_KEY = "rt_worker_target";

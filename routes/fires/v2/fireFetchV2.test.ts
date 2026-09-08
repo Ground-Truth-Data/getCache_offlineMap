@@ -8,7 +8,10 @@ vi.mock("../../../lib/onPhone/store/downloadGuard", () => ({
 	guardPackDownload: vi.fn(),
 }));
 
-import { configureTilesHost } from "../../../lib/worker/worker-local-dev/tilesHost";
+import {
+	configureTilesHost,
+	setWorkerTarget,
+} from "../../../lib/worker/worker-local-dev/tilesHost";
 
 // literal, not imported — host is module state set at boot, and a child may not import $lib.
 const TILES_HOST = "https://tiles-prod.getcache.org";
@@ -72,6 +75,9 @@ function lastInit(): { signal?: AbortSignal; headers?: Record<string, string> } 
 
 // must run in beforeEach, not once at module load — without it every test below dies on "no tiles host configured" (real 27 Aug 2026 failure), and module resets between files could leave a later test with a null host.
 beforeEach(() => {
+	// PIN THE TIER — configureTilesHost answers for worker-cloud-prod only, and the
+	// dev-build default is a different tier (whose host this test never sets).
+	setWorkerTarget("worker-cloud-prod");
 	configureTilesHost(TILES_HOST);
 	vi.unstubAllGlobals();
 });

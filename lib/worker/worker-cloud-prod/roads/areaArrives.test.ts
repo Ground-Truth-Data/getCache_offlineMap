@@ -40,7 +40,10 @@ beforeEach(async () => {
 	urls = [];
 	gate = [];
 	// ⚠️ Imported dynamically — afterEach calls vi.resetModules(), which would otherwise leave a stale copy holding the config while packDownload.ts reads a fresh, unconfigured one.
-	const { configureTilesHost } = await import("../tilesHost");
+	const { configureTilesHost, setWorkerTarget } = await import("../tilesHost");
+	// PIN THE TIER — configureTilesHost only answers for worker-cloud-prod, and the
+	// dev-build default is a different tier (whose host this test never sets).
+	setWorkerTarget("worker-cloud-prod");
 	configureTilesHost("https://tiles.example.test");
 	vi.stubGlobal(
 		"fetch",
