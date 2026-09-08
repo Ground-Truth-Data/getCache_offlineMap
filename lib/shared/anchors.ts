@@ -1,10 +1,10 @@
 /**
  * anchors.ts — canonical "where does a feature get offline blobs" map, shared by the reconcile (`/mobile/offlinev4`) and the debug array (`/app/debug/blobs/array`).
- * Point → one blob at the point. Line → sampled ALONG it (`sampleLineAnchors`), a ribbon not one midpoint. Polygon → ONE blob at centroid (`polygonAnchor`), deters huge polys. PDF/overlay → a blob at each of the four `overlayBounds` corners.
+ * Point → one blob at the point. Line → sampled ALONG it (`sampleLineAnchors`) every LINE_STEP_KM, a ribbon not one midpoint. Polygon → ONE blob at centroid (`polygonAnchor`), deters huge polys. PDF/overlay → a blob at each of the four `overlayBounds` corners.
  * Overlap is expected — anchors dedup downstream by `satImageKey`, tile discs share one global deduped pile, nothing bakes twice.
  */
 import { kmBetween } from "./kmGeo";
-import { BAKE_RADIUS_KM } from "../onPhone/satellite/satelliteImage";
+import { GRID_RADIUS_KM } from "../contract/grid";
 
 export type Pt = [number, number];
 
@@ -30,11 +30,26 @@ function featureCenter(geom: GeoJSON.Geometry | undefined): Pt | null {
 	return [(box.w + box.e) / 2, (box.s + box.n) / 2];
 }
 
-// LINE sampling step: satellite disc is BAKE_RADIUS_KM-radius (~6km wide); stepping ~1.6× the radius makes consecutive discs OVERLAP into one continuous ribbon (never a gap).
-const LINE_SAMPLE_STEP_KM = BAKE_RADIUS_KM * 1.6;
+// The step is 1.6× the radius of the disc it must keep continuous, so
+// consecutive discs OVERLAP into one ribbon and never leave a gap.
+//
+// ⚠️ THE DISC IS THE ROAD DISC, NOT THE PHOTO DISC. A line bakes a CORRIDOR:
+// roads only, no photo at all (`if (corridor) return` in bakeService). This
+// was BAKE_RADIUS_KM * 1.6 = 3.2 km — the spacing that keeps 2 km SATELLITE
+// discs touching, on the one geometry that never fetches one. An 86 km line
+// took ~28 anchors where 5 cover the same ground; the extra 23 deduped
+// downstream, so they cost passes through reconcile rather than bytes, and
+// the ribbon was no tighter for them.
+//
+// If a line ever earns photos, this becomes a per-disc choice again — the
+// ribbon rule (1.6× radius) is the part that holds either way.
+const LINE_STEP_KM = GRID_RADIUS_KM * 1.6;
 
-/** Walk a polyline, drop an anchor at the start, every LINE_SAMPLE_STEP_KM, and at the end — overlapping anchors dedup downstream by `satImageKey` (tile discs by the global tile pile). */
-function sampleLineAnchors(coords: Pt[]): Pt[] {
+/** Walk a polyline, drop an anchor at the start, every `stepKm`, and at the end — overlapping anchors dedup downstream by `satImageKey` (tile discs by the global tile pile). */
+function sampleLineAnchors(
+	coords: Pt[],
+	stepKm: number = LINE_STEP_KM,
+): Pt[] {
 	const pts = (coords ?? []).filter(
 		(p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]),
 	) as Pt[];
@@ -48,8 +63,8 @@ function sampleLineAnchors(coords: Pt[]): Pt[] {
 		const segKm = kmBetween(a, b);
 		if (segKm === 0) continue;
 		let t0 = 0; // fraction of THIS segment already consumed
-		while (acc + (1 - t0) * segKm >= LINE_SAMPLE_STEP_KM) {
-			const t = t0 + (LINE_SAMPLE_STEP_KM - acc) / segKm;
+		while (acc + (1 - t0) * segKm >= stepKm) {
+			const t = t0 + (stepKm - acc) / segKm;
 			out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
 			t0 = t;
 			acc = 0;
@@ -123,7 +138,11 @@ export function anchorsOf(f: {
 		case "LineString":
 			return sampleLineAnchors(g.coordinates as Pt[]);
 		case "MultiLineString":
-			return (g.coordinates as Pt[][]).flatMap(sampleLineAnchors);
+			// Wrapped, never bare: `flatMap` passes the INDEX as the second
+			// argument, which would land in `stepKm` and space part 1 at 1 km.
+			return (g.coordinates as Pt[][]).flatMap((part) =>
+				sampleLineAnchors(part),
+			);
 		case "Polygon":
 			return polygonAnchor(g.coordinates as Pt[][]);
 		case "MultiPolygon":

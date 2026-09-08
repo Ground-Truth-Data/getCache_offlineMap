@@ -1,6 +1,7 @@
 // icons.ts — the icon file for the whole mobile app. ONE list, ICONS: name + path (pin rows also carry their section). Add an icon = add a row, never a second file.
 
 import pdfMapsIcon from "../assets/pdf_maps_icon.webp";
+import backupIcon from "../assets/backup_icon.webp";
 import tracksIcon from "$parent/siblings/getCache_OnlineMap/lib/assets/mobileAssets/tracks_goldV3.webp";
 import cacheIconUrl from "$gc/assets/cache_icon.webp";
 
@@ -60,6 +61,7 @@ export type IconName =
     | "tiles"
     | "quality"
     | "qualityWhite"
+    | "backup"
     | "cleanCache"
     | "handPointLeft"
     | "handPointRight";
@@ -147,6 +149,9 @@ export const ICONS: readonly IconRow[] = [
     // GPS breadcrumb tracks — same art as the TRACKS drawer tile. A track is NOT a line; never gets line_icon.
     { name: "track", path: tracksIcon },
     { name: "pdf", path: pdfMapsIcon },
+    // A snapshot of the whole device, not one of the things inside it —
+    // the arrow into the tray is what separates it from the map/block glyphs.
+    { name: "backup", path: backupIcon },
     { name: "tiles", path: pinLibraryUrl("pin_tiles_sm.webp") },
     // Animated webps are single self-animating files, NOT frame folders — built from a sibling frame folder by scripts/rebuild-anime-webp.sh <name>. Edit the frames, rerun the script, or the app keeps showing the old file forever.
     // The gold quality glyph — inbox rows, plot popovers, the Quality tab.

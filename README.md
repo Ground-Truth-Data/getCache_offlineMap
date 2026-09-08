@@ -21,7 +21,7 @@ I made an [explainer video about the “blobs”](https://youtu.be/ksRR6UpchDc).
  Very basically I want the "blobs" to be 1) Always on (nothing appears or disapears as you zoom in or out, like satelite images but just the minimal vectored roads) 2) tiles should arrive fast as possible 3) tiles should render fast as possible
 
 [What blobs are meant to look like](https://drive.google.com/file/d/1oriasZR-0QLkTWlDmD74hvC07HX9tGMt/view?usp=sharing)
-You can see it has a jagged circle/radius of satellite images and vector roads around it. 3km and 30km respectively. Vector “roads” tiles come from a Cloudflare R2 bucket and processed by a cloudflare worker (you run a local worker to test tho ); satellite photos from EOX Sentinel-2. Fire data comes from the [NASA FIRMS API](https://firms.modaps.eosdis.nasa.gov/api).
+You can see it has a jagged circle/radius of satellite images and vector roads around it. 3km and 30km respectively. Vector “roads” tiles come from a Cloudflare R2 bucket and processed by a cloudflare worker (you run a local worker to test tho ); satellite photos come from whichever imagery source is sharpest where the pin sits — US aerial, MapTiler worldwide, or EOX Sentinel-2 as the free fallback. Fire data comes from the [NASA FIRMS API](https://firms.modaps.eosdis.nasa.gov/api).
 
 It downloads map tiles and satellite photos, stores them in the browser's IndexedDB, and renders them with no network. 
 Let me know if you have any questions.
@@ -59,12 +59,20 @@ the copies each cloud tier runs). To run it locally:
 `cd workers/worker-local-dev && npm run dev`, then pick the `worker-local-dev`
 tier in the map's CONFIG panel (`lib/worker/README.md`).
 
+**No keys are needed to work on this.** The default tier is `worker-cloud-dev`,
+already deployed and already holding every key. A local Worker without a
+`.dev.vars` still serves roads; only `/satellite` and `/fires` 500 there, and
+photos fall through to EOX automatically — blurrier, never blank. If you want
+those two routes locally, put a gitignored `workers/worker-local-dev/.dev.vars`
+with `MAPTILER_KEY=` and `FIRMS_MAP_KEY=` (ask Chris for the MapTiler one — the
+licence is per-account; FIRMS is free at firms.modaps.eosdis.nasa.gov).
+
 ## What this is
 
 An offline map. It downloads map tiles and satellite photos for areas around
 pins, stores them in the browser's IndexedDB, and renders them (MapLibre GL)
 with no network. Tiles come from a Cloudflare Worker; satellite photos from
-EOX Sentinel-2. Since 6 Sep 2026 the map Get Cache opens (`OFFLINE_MAP_ROUTE`,
+the imagery registry in `lib/onPhone/satellite/photoSources.ts`. Since 6 Sep 2026 the map Get Cache opens (`OFFLINE_MAP_ROUTE`,
 `lib/mapState/lastMapRoute.svelte.ts`) is V10 in
 `ReTreever/src/routes/(getcache)/app/offlinev10/` (its `README.md` and
 `../OFFLINE_STACK.md`); this engine is served at `/app/offline`, by URL only.
@@ -77,7 +85,7 @@ Instruments attached to a stand-in produce confident wrong answers.
 | Layer | Source | Always on? | Radius per pin |
 |---|---|---|---|
 | Vector roads — plus water, town labels, hospital/campsite POIs, all in the same blob | One Cloudflare R2 bucket (`offline-tiles`) holding a full-planet OpenStreetMap extract (`planet.pmtiles`); the Worker in `workers/worker-local-dev/` range-reads it and serves one `/pack` blob per pin | highways and major roads yes; small roads and water only inside a disc from z11 / z10 (`MINOR_ROAD_Z`, `WATER_Z` in `lib/onPhone/render/wallStyle.ts`, 5 Sep 2026) | 30 km (`lib/contract/grid.ts`) |
-| Satellite photo | EOX Sentinel-2 cloudless (public WMTS, no key, ~10 m/px), baked on the phone | yes | 2 km per photo; photos along a line overlap into a ribbon (`lib/onPhone/satellite/satelliteImage.ts`) |
+| Satellite photo | The first row in `lib/onPhone/satellite/photoSources.ts` whose box holds the pin, baked on the phone: **USGS** NAIP aerial (~1 m/px, US only, no key) → **MapTiler** satellite-v2 (~1–2 m/px worldwide, paid, proxied through the Worker's `/satellite` route so the key stays a Worker secret) → **EOX** Sentinel-2 cloudless (~10 m/px, public, no key). A row that yields nothing hands over to the next, so a pin is never left blank | yes | 2 km per photo; photos along a line overlap into a ribbon (`lib/onPhone/satellite/satelliteImage.ts`) |
 | Fires | NASA FIRMS — VIIRS on NOAA-20, NOAA-21 and Suomi-NPP, last 48 h, proxied through the same Worker's `/fires` route so the API key stays a Worker secret | yes — `attachFireLayer` (`lib/onPhone/render/fireLayer.ts`, since 31 Aug 2026); what is still open is Known broken #4 | 500 km (`lib/shared/fireContract.ts`) |
 
 Everything lands in IndexedDB under a 1 GB budget (`OFFLINE_BUDGET_BYTES`)

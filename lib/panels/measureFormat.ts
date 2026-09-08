@@ -1,4 +1,4 @@
-// Shared number formatting for on-map measurement readouts — used by BOTH the Snake Ruler (snakeRuler/SnakeRuler.svelte) and the line/polygon draw tool (lineLabels.ts, MapDrawControls); keep rounding conventions in sync so totals + subtotals round identically.
+// Shared number formatting for on-map measurement readouts — used by BOTH the Snake Ruler (mapUi/SnakeRuler.svelte) and the line/polygon draw tool (MapDrawControls); keep rounding conventions in sync so totals + subtotals round identically.
 
 /** Insert thousands separators into the integer part of a numeric string. */
 export function commas(s: string): string {

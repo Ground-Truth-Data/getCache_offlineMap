@@ -60,8 +60,15 @@ obvious which half of the pair you owe next.
 ## Screens
 
 ### 1. Pick a PDF
-List of PDFs already imported to this device that lack georeferencing. Plus a
-file picker for a new one. Tapping one opens the workspace.
+
+**Usually this screen is skipped.** The planter arrives from the "PDF not
+georeferenced" notice, which parks the file they just picked and hands it
+straight over — see "How the file arrives" below. Re-picking a file they
+already chose is the step people abandon in a cutblock.
+
+The screen still exists for the other two ways in: a sheet being re-opened for
+correction, and a direct visit to `/app/georef` with nothing parked. Show the
+PDFs already on this device that lack georeferencing, plus a file picker.
 
 ### 2. The workspace — the screen that matters
 
@@ -219,6 +226,30 @@ device, offline.
 
 ---
 
+## How the file arrives
+
+The notice's button navigates to `/app/georef`, and the PDF itself is handed
+over out-of-band — a `File` cannot ride in a URL.
+
+`ReTreever/src/lib/mobile/import/pending.ts` is the slot, and it already
+existed for the KML/KMZ hand-off; the georeferencer reuses it rather than
+adding a second mechanism. `importPdf.ts` calls `parkPendingImport(file)` at
+the moment it decides the PDF has no georeferencing.
+
+On arrival:
+
+- `peekPendingImport()` — look without consuming, to decide whether you have a
+  file to work on.
+- `takePendingImport()` — claim it once you are committed.
+
+**The slot can be empty**, and that is normal, not an error: a direct visit, a
+reload, or a re-opened sheet all arrive with nothing parked. Fall back to the
+picker, never to a crash or a blank screen.
+
+⚠️ Module state does not survive a full page reload. If the planter reloads on
+your screen the file is gone — handle it the way the KML route does (it
+silently returns to the map), or hold your own copy once you have taken it.
+
 ## Where to start
 
 1. `npm run dev` in ReTreever, open `http://getcache.localhost:5173/app/georef`
@@ -230,7 +261,19 @@ device, offline.
 4. Build the two-pane point-pairing UI first, with the transform stubbed. The
    interaction is the risk; the maths is solved.
 
-## Open question to settle with Chris before building
+## Re-opening — DECIDED, and it shapes what you store
 
-- Can an already-placed sheet be re-opened and corrected later, or is
-  placement one-shot?
+**A placed sheet can be re-opened and corrected later.** Chris settled this on
+8 Sep 2026: someone who doesn't like how it landed fixes it themself instead of
+emailing about it.
+
+The consequence is a storage one, so decide it now rather than retrofitting:
+**persist the control points, not only the computed corners.** Re-opening has
+to restore the numbered pairs so the user nudges the one bad point instead of
+starting over. The corner quad stays the render contract; the GCPs are the
+document behind it.
+
+Where they live is yours to propose — alongside the overlay's own cell is the
+obvious candidate — but they must survive an app restart, and a sheet saved
+before this feature existed (no stored GCPs) must still open for re-placement
+from scratch rather than erroring.
