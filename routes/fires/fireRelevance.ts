@@ -44,10 +44,18 @@ export interface RelevantHotspot extends FireHotspot {
 }
 
 /**
- * ⚠️ ANCHORS are deliberately capped and deduped — enough of them turns the wall back into the continent-of-dots bug it was built to kill.
- * MAX_FIRE_ANCHORS bounds how many stakes you can hold; ANCHOR_MERGE_KM collapses anchors whose discs would overlap (three pins on one block are ONE place).
+ * ⛔ TWO anchors, never more: where you ARE, and the ONE place you touched last.
+ *
+ * This was 3, paired with a caller that fed every feature touched in 30 days.
+ * That is the Winnemucca bug — 48 blobs across seven states, so a pin in Utah
+ * touched two days ago held a slot and admitted a fire 1,300 km from the user.
+ * Enough anchors turn the wall back into the continent-of-dots it exists to kill,
+ * and "recently" is not the rule: the LAST touched thing is.
+ *
+ * ANCHOR_MERGE_KM still collapses the two when they are effectively one place
+ * (you are standing on the block you last touched).
  */
-export const MAX_FIRE_ANCHORS = 3;
+export const MAX_FIRE_ANCHORS = 2;
 
 /** Anchors closer together than this collapse into one — their 500km discs overlap so far the second adds no ground, only cost. */
 export const ANCHOR_MERGE_KM = 200;
