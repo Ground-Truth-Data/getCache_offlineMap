@@ -48,6 +48,8 @@ export type PinKey =
 export type IconName =
     | PinKey
     | "map"
+    | "block"
+    | "project"
     | "box"
     | "cacheGroup"
     | "tally"
@@ -132,7 +134,11 @@ export const ICONS: readonly IconRow[] = [
         pin: "rainbow",
         path: pinLibraryUrl("6pin_purple_sm.webp"),
     },
-    { name: "map", path: `${DIR}/blockHeart_sm2.webp` },
+    { name: "map", path: `${DIR}/map_icon_v2_sm.webp` },
+    // Deliberately unlike the organic map/poly/line outlines: a block is an
+    // administrative unit, not a drawn shape, so it must never read as one.
+    { name: "block", path: `${DIR}/block_icon_sm.webp` },
+    { name: "project", path: `${DIR}/project_icon_sm.webp` },
     { name: "box", path: `${DIR}/box_icon_V9.webp` },
     { name: "cacheGroup", path: cacheIconUrl },
     { name: "tally", path: `${DIR}/cent_icon_plain_v3_gold.webp` },
