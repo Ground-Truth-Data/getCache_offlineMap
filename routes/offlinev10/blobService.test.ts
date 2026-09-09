@@ -140,6 +140,37 @@ describe("blob service", () => {
 		stop();
 	});
 
+	it("a corridor bakes even when it was drawn before the service started", async () => {
+		// A line is imported, THEN the offline page opens — the ordinary case,
+		// since nobody imports a route while staring at the blob dock. The
+		// age gate exists to stop 440 old PINS baking 2 GB of photos; a
+		// corridor is roads-only and capped at ten anchors, so age was never
+		// the risk it was written for.
+		const list = [{ anchors: [PENTICTON], lastTouched: ago(), corridor: true }];
+		const { ports, listening } = fakePorts(() => list);
+		const stop = startBlobService(ports);
+		expect(listening()).toBe(true);
+		await tick();
+		expect(downloads).toEqual([PENTICTON]);
+		release?.();
+		await tick();
+		await tick();
+		expect(disk.map((r) => r.photo)).toEqual([false]);
+		stop();
+	});
+
+	it("an old pin is still skipped — the age gate only lifts for corridors", async () => {
+		const list = [{ anchors: [PENTICTON], lastTouched: ago(), corridor: false }];
+		const { ports, listening } = fakePorts(() => list);
+		const stop = startBlobService(ports);
+		// a start that returned the no-op stop would make the assertion below
+		// pass without the engine ever running
+		expect(listening()).toBe(true);
+		await tick();
+		expect(downloads).toEqual([]);
+		stop();
+	});
+
 	it("one download at a time, in order; the same spot is never queued twice; disk wins", async () => {
 		const events: string[] = [];
 		const off = onBlob((e) => events.push(e.kind));

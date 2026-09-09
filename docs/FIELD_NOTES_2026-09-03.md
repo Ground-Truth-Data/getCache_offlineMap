@@ -31,21 +31,7 @@ beyond its native resolution (a ~2 km photo stretched across z16), and did
 anything change the raster's maxzoom/resampling? Compare an old bake vs a fresh
 pv48 bake of the same spot before assuming.
 
-## 3. Fires red on worker-local-dev
-
-`/fires` returns 500 on a laptop without `FIRMS_MAP_KEY` (a gitignored
-`workers/worker-local-dev/.dev.vars` carries it on Chris's machine; a fresh
-clone has none). Fine if that's the accepted local story, but then the rail
-should say "no fire key locally", not a generic red err. Cloud-dev has had
-the secret since 3 Sep.
-
-## 4. Hospitals have no pin-card
-
-Hospital markers render, but tapping one shows no card/callout like other pins
-get. Feature ask, not a bug. "Could be faster" too — hospitals rode the same
-26s cloud-dev download as labels in Chris's session.
-
-## 5. Download stopwatch: ~2 s of dead air before it counts
+## 3. Download stopwatch: ~2 s of dead air before it counts
 
 The dl badge sits at 0 for about two seconds after a pin drops, THEN starts
 counting, and totals push 10 s. Two separate questions:
@@ -56,7 +42,7 @@ counting, and totals push 10 s. Two separate questions:
   ~10 s. The gap between "bytes landed" and "painted" was 5.7 s for the
   satellite (`paintLagMs: 5729`). The paint lag looks like the bigger fish.
 
-## 6. Memory: peaks past 1.2 GB
+## 4. Memory: peaks past 1.2 GB
 
 Peak 806 MB main-thread (avg ~330 MB) in the first session; a later session the
 same day hit **1222 MB** (avg 601 MB) on worker-local-dev around z8. The rail's
@@ -76,16 +62,13 @@ Still open: server-side thinning of z8–z10 disc tiles — low-zoom tile PAYLOA
 scale with total areas on disk, not with the viewport (thin/simplify at z≤8,
 tippecanoe-style; needs a PACK_FORMAT_VERSION bump after deploy).
 
-## 6b. WIPE while the app is open reports "blocked"
+## 4b. WIPE surfaces as an unhandled rejection
 
-Pressing WIPE with the map running throws an unhandled rejection: `wipe
-blocked: {"gc-offlineTiles":"blocked", "gc-offlineSatellite":"blocked", …}` —
-`indexedDB.deleteDatabase` blocks while the page and its workers hold open
-connections. Wipe should close connections first (or reload into a
-`?wipe` boot path), and the rejection should surface as a toast, not an
-unhandled promise.
+`wipe.ts` now closes connections and waits out `onblocked`, so the delete
+lands. What is left is presentation: a genuinely blocked wipe still `throw`s
+(`wipe.ts:132`) instead of surfacing as a toast.
 
-## 7. Lint drift on the new roads files (DeepMoire, quick)
+## 5. Lint drift on the new roads files (DeepMoire, quick)
 
 `npx biome check lib/worker/worker-local-dev/roads` fails on main: the new
 direction2 files are tab-indented (repo rule is spaces/4 — root `biome.json`)
@@ -94,7 +77,7 @@ and there is an unused import (`areaArrives.test.ts` line 4). One `biome check -
 identical. Left for you rather than fixed here to avoid reformat churn under
 your feet.
 
-## 8. Process note
+## 6. Process note
 
 Chris isn't editing the same files while DeepMoire is moving fast — this doc is
 the handoff channel. DeepMoire: work from `main` (the direction2 merge + a

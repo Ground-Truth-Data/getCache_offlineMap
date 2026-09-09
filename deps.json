@@ -39,6 +39,7 @@
 		"@protomaps/basemaps",
 		"@sentry/sveltekit",
 		"@sveltejs/kit",
+		"@sveltejs/vite-plugin-svelte",
 		"@turf/turf",
 		"fake-indexeddb/auto",
 		"fflate",
@@ -61,7 +62,8 @@
 		"svelte/easing",
 		"svelte/reactivity",
 		"svelte/transition",
-		"vitest"
+		"vitest",
+		"vitest/config"
 	],
 	"channel": "./lib/shared/",
 	"_channel_why": "THE CHANNEL. One door to the host. The child names the channel, never the host tier. A host wires its real implementation in; the wrapper wires a fixture. Anything the channel does not provide comes back null and the child renders nothing rather than crashing. Every $-import outside this prefix is a SECOND DOOR and hitch_test.sh reports it. CHANGED IN RAPPER PHASE 1: this used to name $parent/siblings/mapShared/ — a folder SHARED by every child. mapShared is gone; its modules went DOWN into the children that actually used them, so the channel is now a path INSIDE this child and travels with it when the child is lifted.",

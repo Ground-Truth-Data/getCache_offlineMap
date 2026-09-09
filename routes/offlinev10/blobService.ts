@@ -167,12 +167,18 @@ let stop: (() => void) | null = null;
  * Watch the app's places: a pin dropped or moved from now on gets its blob,
  * the pins that were already there do not — 440 pins is 2 GB.
  *
- * A corridor (a line, a polygon) bakes here too, at each of its anchors, with
- * NO photo — roads are what you follow a line for, and a photo per anchor is
- * what makes long geometry expensive. It used to be skipped here entirely and
- * deferred to a bake path that nothing on this page ever started, so a line
- * got no offline map at all; `anchorsOf` caps a feature at ten anchors, which
- * is what makes baking them safe.
+ * A corridor (a line, a polygon, a plot) bakes here too, at each of its
+ * anchors, with NO photo — roads are what you follow a line for, and a photo
+ * per anchor is what makes long geometry expensive.
+ *
+ * THE AGE GATE DOES NOT APPLY TO A CORRIDOR. `since` is stamped when this
+ * starts, so it means "newer than this page", not "not yet baked" — a line
+ * imported before the page opened would never bake, which is every line,
+ * since nobody imports a route while watching the blob dock. The gate guards
+ * against 440 old PINS costing 2 GB in photos; a corridor takes no photo and
+ * `anchorsOf` caps it at ten anchors, so it was never what the gate was for.
+ * Re-baking is free either way: `queueBlob` returns early on a spot already
+ * on disk, which is the real "have I got this?" answer.
  */
 export function startBlobService(ports: HostPorts): () => void {
 	if (stop)
@@ -193,7 +199,7 @@ export function startBlobService(ports: HostPorts): () => void {
 		for (const p of ports.places()) {
 			for (const [lng, lat] of p.anchors) {
 				now.set(regionId(lng, lat), [lng, lat]);
-				if (p.lastTouched > since)
+				if (p.corridor || p.lastTouched > since)
 					void queueBlob(lng, lat, { photo: !p.corridor });
 			}
 		}
