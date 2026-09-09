@@ -36,6 +36,7 @@ const CLUSTER_ICON = "rt-cluster-pin";
 const PLOT_CLUSTER_SOURCE = "rt-plot-clusters";
 const PLOT_CLUSTER_LAYER = "rt-plot-clusters-plaque";
 const PLOT_CLUSTER_COUNT_LAYER = "rt-plot-clusters-count";
+const PLOT_CLUSTER_PCT_LAYER = "rt-plot-clusters-pct";
 const PLOT_CLUSTER_ICON = "rt-cluster-plaque";
 const PLOT_PLAQUE = { w: 40, h: 34, radius: 8, border: 2 }; // CSS px
 const PLOT_CLUSTER_COUNT_SIZE = 14;
@@ -222,11 +223,23 @@ function makePlaqueImage(): { image: ImageData; pixelRatio: number } | null {
 // which would let a 1-spot plot outvote a 20-spot one. `satisfactory` is the
 // host's own identity (derivePlot: planted − excess − faults), rebuilt here
 // from the port's fields because the port hands over the parts, not the total.
+// The count above is gold, so no band may be gold — two gold lines in one
+// plaque read as one number wrapped, not as "how many" over "how good".
 const PLOT_QUALITY_BANDS = [
     { min: 90, color: "#3fb6c8" },
-    { min: 75, color: "#ffd700" },
+    { min: 75, color: "#e8e4d6" },
     { min: 0, color: "#ec6c9c" },
 ] as const;
+// The bands as a step over the same Σsat/Σspots the label divides.
+function pctBandColor(): Expr {
+    const pct: Expr = ["*", 100, ["/", ["get", "sat"], ["get", "spots"]]];
+    const out: unknown[] = ["case"];
+    for (const b of PLOT_QUALITY_BANDS.slice(0, -1)) {
+        out.push([">=", pct, b.min], b.color);
+    }
+    out.push(PLOT_QUALITY_BANDS[PLOT_QUALITY_BANDS.length - 1].color);
+    return out as Expr;
+}
 function plotQuality(
     plot: { planted: number | null; spots: number | null; excess: number | null; faults: string[] } | null,
 ): { sat: number; spots: number } {
@@ -367,6 +380,35 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
     let expandedStack: string | null = null; // coordKey the user fanned open
     let stackByFeature = new Map<string, string>(); // featureKey → coordKey
     let openStacks = new Set<string>(); // coordKeys rendered fanned right now
+    // A merged plot plaque the user opened in place. Its members are pulled
+    // out of the bubble and fanned around the centre it was drawn at, WITHOUT
+    // a zoom change — the camera stays where the surveyor put it.
+    // Held by member keys, not cluster_id: ids are re-minted on every re-tile,
+    // so an id would go stale the first time the map moved a pixel.
+    let expandedCluster: { at: [number, number]; keys: Set<string> } | null = null;
+
+    // getClusterLeaves is async and paged; ask for far more than a bubble can
+    // hold so one call is always the whole membership.
+    const EXPAND_MAX = 200;
+    function expandCluster(
+        src: mapboxgl.GeoJSONSource,
+        clusterId: number,
+        at: [number, number],
+    ): void {
+        src.getClusterLeaves(clusterId, EXPAND_MAX, 0, (err, leaves) => {
+            if (err || !leaves) return;
+            const keys = new Set<string>();
+            for (const l of leaves) {
+                const k = l.properties?.mapFeatureKey as string | undefined;
+                if (k) keys.add(k);
+            }
+            if (keys.size < 2) return;
+            expandedCluster = { at, keys };
+            // sync() is what carries the `open` flag into the source, and only
+            // that hides the bubble the members are stepping out of.
+            sync();
+        });
+    }
 
     function setStackBadge(el: HTMLElement, n: number | null): void {
         const inner = el.querySelector(".map-pin-plot__inner");
@@ -419,11 +461,57 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
         setStackLeg(el, 0, null);
     }
 
+    // An opened plaque's members sit at their REAL coordinates, which at this
+    // zoom are a few pixels apart — the reason they merged. Fan them onto a
+    // ring around the bubble's centre so each is separately readable and
+    // tappable, with a leg back to where it truly is. Screen-space offsets
+    // only: no coordinate is ever moved, so nothing here can corrupt data.
+    function layoutExpandedCluster(map: MapboxMap): void {
+        if (!expandedCluster) return;
+        const members = pinMarkers.filter((pm) => expandedCluster?.keys.has(pm.key));
+        if (members.length < 2) return;
+        const origin = map.project(expandedCluster.at);
+        const n = members.length;
+        const R = Math.min(90, 34 + n * 6);
+        // Order the ring by each member's true bearing from the centre, so a
+        // plot ends up on the side of the fan it actually lies on and the legs
+        // never cross. Sorted by bearing rather than key: a fan whose legs
+        // cross tells the surveyor the wrong thing about where a plot is.
+        const withAngle = members.map((pm) => {
+            const here = map.project(pm.marker.getLngLat());
+            return { pm, here, bearing: Math.atan2(here.y - origin.y, here.x - origin.x) };
+        });
+        withAngle.sort((a, b) =>
+            a.bearing === b.bearing ? (a.pm.key < b.pm.key ? -1 : 1) : a.bearing - b.bearing,
+        );
+        withAngle.forEach(({ pm, here }, i) => {
+            const el = pm.marker.getElement();
+            const ang = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+            // The member's own pixel position is the anchor the offset is
+            // measured FROM, so every member lands ON the ring regardless of
+            // how near the centre it truly sits — the one at the centre would
+            // otherwise stay there, buried under the legs.
+            const dx = Math.round(origin.x + R * Math.cos(ang) - here.x);
+            const dy = Math.round(origin.y + R * Math.sin(ang) - here.y);
+            pm.marker.setOffset([dx, dy]);
+            el.classList.remove(
+                "map-pin-plot--stack-rep",
+                "map-pin-plot--stack-hidden",
+            );
+            el.classList.add("map-pin-plot--stack-out");
+            setStackBadge(el, null);
+            setStackLeg(el, dx, dy);
+        });
+    }
+
     // Groups plot markers by exact coordinate → collapsed (badge rep) or fanned (offset circle + leg); runs every reconcile so zoom/cluster churn never leaves a stale fan.
     function layoutStacks(selKey: string | null): void {
         const groups = new Map<string, PinMarker[]>();
         for (const pm of pinMarkers) {
             if (!pm.pinTypeKey.startsWith("plot:")) continue;
+            // A member of an opened plaque is laid out by the cluster fan; letting
+            // the coincidence fan claim it too would leave two offsets fighting.
+            if (expandedCluster?.keys.has(pm.key)) continue;
             const ll = pm.marker.getLngLat();
             const ck = `${ll.lng.toFixed(STACK_DECIMALS)},${ll.lat.toFixed(STACK_DECIMALS)}`;
             const arr = groups.get(ck);
@@ -484,6 +572,7 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
         CLUSTER_GLYPH_LAYER,
         PLOT_CLUSTER_LAYER,
         PLOT_CLUSTER_COUNT_LAYER,
+        PLOT_CLUSTER_PCT_LAYER,
         ...PLOT_EARS.map((e) => `${PLOT_CLUSTER_SOURCE}-ear-${e.key}`),
     ];
     function hoistClusterLayers(map: MapboxMap): void {
@@ -496,6 +585,18 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
         for (const id of CLUSTER_STACK) map.moveLayer(id);
     }
 
+    // The opened bubble must not sit on top of the plots it just released.
+    // The members carry an `open` flag (sync stamps it) which the cluster SUMS
+    // like the ears do, so the bubble holding them can recognise itself with
+    // no position match and no cluster_id — ids are re-minted on every re-tile,
+    // so anything keyed to one would flash the plaque back mid-pan.
+    const PLAQUE_LAYERS = () => [
+        PLOT_CLUSTER_LAYER,
+        PLOT_CLUSTER_COUNT_LAYER,
+        PLOT_CLUSTER_PCT_LAYER,
+        ...PLOT_EARS.map((e) => `${PLOT_CLUSTER_SOURCE}-ear-${e.key}`),
+    ];
+
     // Idempotent — setStyle (basemap swap) wipes all custom sources/layers, so this must re-run and re-create them every sync.
     function ensureClusterLayers(map: MapboxMap): void {
         for (const id of [CLUSTER_SOURCE, PLOT_CLUSTER_SOURCE]) {
@@ -507,10 +608,16 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                 clusterMaxZoom: 14,
                 clusterRadius: id === PLOT_CLUSTER_SOURCE ? PLOT_CLUSTER_RADIUS : CLUSTER_RADIUS,
                 // Each plot carries its ears as 0/1 (sync stamps them); the cluster sums them into "how many members have this".
+                // sat/spots sum the same way, and the plaque divides them — summing the two terms and dividing ONCE is what makes the merged % a true weighted quality rather than an average of averages.
                 ...(id === PLOT_CLUSTER_SOURCE && {
-                    clusterProperties: Object.fromEntries(
-                        PLOT_EARS.map((e) => [e.key, ["+", ["get", e.key]]]),
-                    ),
+                    clusterProperties: {
+                        ...Object.fromEntries(
+                            PLOT_EARS.map((e) => [e.key, ["+", ["get", e.key]]]),
+                        ),
+                        sat: ["+", ["get", "sat"]],
+                        spots: ["+", ["get", "spots"]],
+                        open: ["+", ["get", "open"]],
+                    },
                 }),
             });
         }
@@ -589,7 +696,7 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                 id: PLOT_CLUSTER_LAYER,
                 type: "symbol",
                 source: PLOT_CLUSTER_SOURCE,
-                filter: ["has", "point_count"],
+                filter: ["all", ["has", "point_count"], ["==", ["get", "open"], 0]],
                 layout: {
                     "icon-image": PLOT_CLUSTER_ICON,
                     "icon-anchor": "center",
@@ -604,19 +711,70 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                 id: PLOT_CLUSTER_COUNT_LAYER,
                 type: "symbol",
                 source: PLOT_CLUSTER_SOURCE,
-                filter: ["has", "point_count"],
+                filter: ["all", ["has", "point_count"], ["==", ["get", "open"], 0]],
                 layout: {
                     "text-field": ["get", "point_count_abbreviated"],
                     "text-font": deps.getOffline()
                         ? ["Noto Sans Regular"]
                         : ["DIN Pro Bold", "Arial Unicode MS Bold"],
                     "text-size": PLOT_CLUSTER_COUNT_SIZE,
-                    "text-offset": [PLOT_SLOT_X / PLOT_CLUSTER_COUNT_SIZE, 0],
+                    // Count rides high only when a % sits under it; a cluster of
+                    // uncounted plots keeps the number centred rather than
+                    // hanging over an empty half.
+                    "text-offset": [
+                        "case",
+                        [">", ["get", "spots"], 0],
+                        [
+                            "literal",
+                            [
+                                PLOT_SLOT_X / PLOT_CLUSTER_COUNT_SIZE,
+                                PLOT_CLUSTER_COUNT_DY / PLOT_CLUSTER_COUNT_SIZE,
+                            ],
+                        ],
+                        ["literal", [PLOT_SLOT_X / PLOT_CLUSTER_COUNT_SIZE, 0]],
+                    ],
                     "text-allow-overlap": true,
                     "text-ignore-placement": true,
                 },
                 paint: {
                     "text-color": "#ffd700",
+                },
+            });
+        }
+        if (!map.getLayer(PLOT_CLUSTER_PCT_LAYER)) {
+            map.addLayer({
+                id: PLOT_CLUSTER_PCT_LAYER,
+                type: "symbol",
+                source: PLOT_CLUSTER_SOURCE,
+                // No spots = nothing counted yet in this bubble; a "0%" there
+                // would read as a failed block rather than an unvisited one.
+                filter: [
+                    "all",
+                    ["has", "point_count"],
+                    ["==", ["get", "open"], 0],
+                    [">", ["get", "spots"], 0],
+                ],
+                layout: {
+                    // Whole numbers only — a decimal is false precision at this
+                    // size, and the word "quality" never fits or belongs here.
+                    "text-field": [
+                        "concat",
+                        ["to-string", ["round", ["*", 100, ["/", ["get", "sat"], ["get", "spots"]]]]],
+                        "%",
+                    ],
+                    "text-font": deps.getOffline()
+                        ? ["Noto Sans Regular"]
+                        : ["DIN Pro Bold", "Arial Unicode MS Bold"],
+                    "text-size": PLOT_CLUSTER_PCT_SIZE,
+                    "text-offset": [
+                        PLOT_SLOT_X / PLOT_CLUSTER_PCT_SIZE,
+                        PLOT_CLUSTER_PCT_DY / PLOT_CLUSTER_PCT_SIZE,
+                    ],
+                    "text-allow-overlap": true,
+                    "text-ignore-placement": true,
+                },
+                paint: {
+                    "text-color": pctBandColor(),
                 },
             });
         }
@@ -627,7 +785,12 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                 id,
                 type: "symbol",
                 source: PLOT_CLUSTER_SOURCE,
-                filter: ["all", ["has", "point_count"], [">", ["get", ear.key], 0]],
+                filter: [
+                    "all",
+                    ["has", "point_count"],
+                    ["==", ["get", "open"], 0],
+                    [">", ["get", ear.key], 0],
+                ],
                 layout: {
                     "icon-image": ear.icon,
                     "icon-anchor": "center",
@@ -653,7 +816,11 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
             handlersInstalled = true;
             // Re-hoist on every styledata (not just once) — other installers (grid, draw layers, overlays) add layers whenever THEY like, and a layer added after our last hoist paints over the bubbles.
             map.on("styledata", () => hoistClusterLayers(map));
-            // Tap a bubble → ease to the zoom where it splits (stock behaviour).
+            // Tap a bubble → pins ease to the zoom where it splits (stock
+            // behaviour); PLOTS open in place instead. A surveyor tapping a
+            // merged plaque wants to see which plots are in it, not to lose
+            // the frame they had — expanding keeps the camera exactly where
+            // they put it and fans the members around the bubble.
             for (const [layerId, sourceId] of [
                 [CLUSTER_LAYER, CLUSTER_SOURCE],
                 [PLOT_CLUSTER_LAYER, PLOT_CLUSTER_SOURCE],
@@ -667,12 +834,17 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                         | mapboxgl.GeoJSONSource
                         | undefined;
                     if (clusterId == null || !src) return;
+                    const center = (f.geometry as GeoJSON.Point).coordinates as [
+                        number,
+                        number,
+                    ];
+                    if (sourceId === PLOT_CLUSTER_SOURCE) {
+                        if (!isFiniteCoord(center as unknown)) return;
+                        expandCluster(src, clusterId, center);
+                        return;
+                    }
                     src.getClusterExpansionZoom(clusterId, (err, zoom) => {
                         if (err || zoom == null) return;
-                        const center = (f.geometry as GeoJSON.Point).coordinates as [
-                            number,
-                            number,
-                        ];
                         if (!isFiniteCoord(center as unknown)) return;
                         map.easeTo({ center, zoom });
                     });
@@ -684,11 +856,16 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                     map.getCanvas().style.cursor = "";
                 });
             }
-            // Tap the open map → fold any fanned stack back up; marker taps stopPropagation so they never reach this handler.
+            // Tap the open map → fold any fanned stack or expanded cluster back up; marker taps stopPropagation so they never reach this handler.
             map.on("click", () => {
-                if (expandedStack) {
+                if (expandedStack || expandedCluster) {
+                    const wasExpanded = expandedCluster !== null;
                     expandedStack = null;
-                    reconcileSingles();
+                    expandedCluster = null;
+                    // Closing must clear the `open` flag too, or the bubble the
+                    // members fold back into stays hidden.
+                    if (wasExpanded) sync();
+                    else reconcileSingles();
                 }
             });
             // Coalesced to ONE run per animation frame — sourcedata fires PER TILE (dozens of times during a pan), and querySourceFeatures is expensive; the unclustered set only needs to be right once, at the end of the burst.
@@ -793,6 +970,7 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
         for (const pm of pinMarkers) pm.marker.remove();
         pinMarkers = [];
         expandedStack = null;
+        expandedCluster = null;
         stackByFeature = new Map();
         openStacks = new Set();
     }
@@ -841,6 +1019,7 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                         fault: st.fault ? 1 : 0,
                         sat: q.sat,
                         spots: q.spots,
+                        open: k && expandedCluster?.keys.has(k) ? 1 : 0,
                     },
                 });
             } else pinFeed.push(p);
@@ -880,6 +1059,18 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
         }
         // Feature pins + the selected pin never cluster — they're not in the clustered source at all, so add them back as always-wanted singles.
         for (const k of forcedSingleKeys) singleKeys.add(k);
+        // An expanded plaque's members are still clustered as far as the source
+        // is concerned; they get markers anyway, and the bubble they came from
+        // is hidden below. Once the members re-split on their own (zoom in) the
+        // expansion has nothing left to do and folds itself away.
+        if (expandedCluster) {
+            let stillMerged = false;
+            for (const k of expandedCluster.keys) {
+                if (!singleKeys.has(k)) stillMerged = true;
+                singleKeys.add(k);
+            }
+            if (!stillMerged) expandedCluster = null;
+        }
 
         const wantKeys = singleKeys;
 
@@ -970,6 +1161,7 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
         }
 
         layoutStacks(selKey);
+        layoutExpandedCluster(map);
 
         placeCaptions(map, selKey);
     }
