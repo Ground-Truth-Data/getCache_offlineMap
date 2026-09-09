@@ -203,6 +203,17 @@ easy to hand the map a remote URL: **DON'T.** ([[offline-map-laws]])
    **How to measure it — the panel is not enough.** `performance.memory` is **main-thread only**, and on this route the Workers hold more than the page — that is why the 800 MB defect hid for weeks. Use **DevTools → Memory → "Total JS heap size"**, or the VM-instances list per worker. For a growth bug, use **Allocation sampling sorted by Self size** — never a snapshot Summary ([[profile-allocation-not-snapshot-summary]]).
    **Run-to-run variance is ±100–200 MB with no code change.** Repeat the unchanged config at least once before believing an A/B.
 
+**LAW 8 — PACK SIZE IS A PRODUCT DECISION, AND IT IS FIXED.** Offline is an
+INSURANCE POLICY, not the daily-driver map. A planter downloads it once and
+mostly never opens it, so a fatter pack is a real cost paid by every user on
+every download to fix a memory spike only some of them ever see. **Do not trade
+download size for runtime memory.** If a change makes the pack meaningfully
+bigger, it is the wrong change — go find another one.
+
+**Overzoom is ACCEPTED, and it is what makes law 8 affordable.** The wall map
+does not need a tile at every zoom; MapLibre stretching a z13 tile across
+z14–z16 is fine and looks fine. Jumping between layers is allowed.
+
 **Tier 2 — process laws:**
 6. **Reuse the tool chrome — NEVER rebuild it.** A new offline version = duplicate the route + keep the same component imports + swap ONLY the base/data layer. ([[offline-reuse-tool-chrome-never-rebuild]])
 7. **Verify with TESTS, never eyeballs.** A law that matters gets a test that fails the build when it's violated.
