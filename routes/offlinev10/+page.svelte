@@ -21,7 +21,7 @@ import { type SatelliteMount, createSatelliteMount, satLayerId } from "../../lib
 import { NiceScaleBarControl } from "$parent/siblings/getCache_OnlineMap/lib/mapScaleBar";
 import EphemeralDock from "$rig/dev/EphemeralDock.svelte";
 import type { Component } from "svelte";
-import { soloFireOrigins } from "../../lib/shared/soloPorts";
+import { soloFireOrigins, soloHostPorts, soloMapPorts } from "../../lib/shared/soloPorts";
 import type { HostPorts } from "../../lib/shared/hostPorts";
 import type { MapHostPorts } from "../../lib/shared/mapHostPorts";
 import type { Map as MapboxMap } from "mapbox-gl";
@@ -88,9 +88,19 @@ let measureEvent = $state<{ lng: number; lat: number; n: number } | null>(null);
  * walls read their anchors from `mapPorts.store.allMaps` — live fix plus ground
  * touched in 30 days, the same set the online map uses.
  */
-let { mapPorts, places, MapDrawControls, fireOrigins = soloFireOrigins }: {
-	mapPorts: MapHostPorts;
-	places: HostPorts;
+let {
+	mapPorts = soloMapPorts(),
+	places = soloHostPorts(),
+	MapDrawControls,
+	fireOrigins = soloFireOrigins,
+}: {
+	/** OPTIONAL: a host with no Get Cache app behind it (rapper, a bare
+	 *  `npm create` install) supplies none, and the solo bundle is the honest
+	 *  empty answer rather than a stand-in. Required once made the page throw
+	 *  on `ports.scenes` before any of the child's own optional-port guards
+	 *  could run. */
+	mapPorts?: MapHostPorts;
+	places?: HostPorts;
 	/** The shared tool drawer — ruler, draw palette, locate, grid, tracks. It
 	 *  lives in a PRIVATE repo this one may not import, so the host hands it in.
 	 *  OPTIONAL: an open-core host has no drawer to give, and the map is whole
