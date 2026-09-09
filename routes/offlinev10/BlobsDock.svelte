@@ -9,7 +9,7 @@
 import { onDestroy, onMount } from "svelte";
 import type { MapUiPorts } from "../../lib/shared/mapHostPorts";
 import { FOLLOW_MARGIN_KM } from "./follow";
-import { BUDGET_MB } from "./budget";
+import { blobBytes, BUDGET_MB } from "./budget";
 import { placeLabel } from "./places";
 import {
 	planPhotoDedup,
@@ -104,6 +104,7 @@ async function tidyPhotos(): Promise<void> {
 }
 /** Tiles and photos together — the figure the budget is measured against. */
 const used = $derived(bytes + photoTotal);
+const rowBytes = (r: Region): number => blobBytes(r.bytes, photoOf(r)?.bytes);
 const broken = $derived(regions.filter((r) => (missing[r.id] ?? 0) > 0).length);
 const nameOf = (r: Region): string => (r.place ? placeLabel(r.place) : r.id);
 const secs = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
@@ -199,7 +200,7 @@ onMount(() => {
 						<button class="eye" aria-label="see this blob on the map" title="see on map" onclick={() => eyeBlink.blinkThen(() => onFly(r), r.id)}>
 							<ui.MaskedFrameIcon src={eyeBlink.srcFor(r.id)} frames={ui.eyeAllFrames} size={23} color="var(--rt-yellow, #ffd700)" />
 						</button>
-						<span class="bytes">{mb(r.bytes)}</span>
+						<span class="bytes">{mb(rowBytes(r))}</span>
 						<button class="x" onclick={() => onDelete(r.id)} disabled={busy} title="delete this blob">✕</button>
 					</div>
 					<div class="layers">

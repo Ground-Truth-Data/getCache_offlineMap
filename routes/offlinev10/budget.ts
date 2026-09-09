@@ -27,6 +27,16 @@ export function budgetBytes(): number {
 	return budgetMb() * 1048576;
 }
 
+/**
+ * What one blob costs on disk: its roads AND its photo. A photo often
+ * outweighs the roads it covers, so a figure that counts tiles alone
+ * understates the row — and the row's own sub-lines, which do show both,
+ * then visibly fail to add up to their own header.
+ */
+export function blobBytes(tileBytes: number, photoBytes = 0): number {
+	return tileBytes + photoBytes;
+}
+
 export function setBudgetMb(mb: number): void {
 	if (!import.meta.env.DEV) return;
 	try {

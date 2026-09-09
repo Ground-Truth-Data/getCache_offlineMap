@@ -217,7 +217,7 @@ export function buildStyle(origin: string): StyleSpecification {
 			paint: {
 				"line-color": GOLD,
 				"line-opacity": fade(0.85),
-				"line-width": 0.75,
+				"line-width": 0.5,
 			},
 		},
 	];
