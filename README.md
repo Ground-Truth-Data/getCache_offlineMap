@@ -9,13 +9,24 @@ Here are the repos you can see yourself:
 [offline map GitHub](https://github.com/Ground-Truth-Data/getCache_offlineMap) ·
 [rapper GitHub](https://github.com/Ground-Truth-Data/rapper)
 
-Also to setup can simply run:
+## Running it
+
 ```bash
-npm create --min-release-age=0 @retreever/rapper@latest rapper -- --getCache_OfflineMap
+git clone https://github.com/Ground-Truth-Data/getCache_offlineMap
+cd getCache_offlineMap
+cp .env.example .env      # then fill in VITE_TILES_HOST — ask me for the dev worker
+npm install
+npm run dev
 ```
-(`--min-release-age=0` is needed while the package is under a week old — npm
-hides fresh versions by default and reports `ENOVERSIONS`, as if nothing were
-published. The component name is case-sensitive.)
+
+Then open <http://localhost:5173/offlinev10>.
+
+That is the whole setup. `_rapper/` and `_siblings/` in here are the app shell
+and the online map's shared code, committed alongside so a clone is a complete
+app — they are generated, so change them upstream rather than in place.
+
+Without `VITE_TILES_HOST` the satellite layer still draws but no vector roads
+ever download, which looks like a bug rather than missing configuration.
 
 I made an [explainer video about the “blobs”](https://youtu.be/ksRR6UpchDc).
  Very basically I want the "blobs" to be 1) Always on (nothing appears or disapears as you zoom in or out, like satelite images but just the minimal vectored roads) 2) tiles should arrive fast as possible 3) tiles should render fast as possible
