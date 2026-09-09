@@ -37,8 +37,14 @@ const PLOT_CLUSTER_SOURCE = "rt-plot-clusters";
 const PLOT_CLUSTER_LAYER = "rt-plot-clusters-plaque";
 const PLOT_CLUSTER_COUNT_LAYER = "rt-plot-clusters-count";
 const PLOT_CLUSTER_ICON = "rt-cluster-plaque";
-const PLOT_PLAQUE = { w: 36, h: 26, radius: 7, border: 2 }; // CSS px
+const PLOT_PLAQUE = { w: 40, h: 34, radius: 8, border: 2 }; // CSS px
 const PLOT_CLUSTER_COUNT_SIZE = 14;
+// Two stacked lines inside the plaque: how many plots, and how good they are.
+// The count keeps the gold it always had; the % wears its band colour, so the
+// plaque answers "is this block in trouble" before it is ever tapped.
+const PLOT_CLUSTER_COUNT_DY = -6; // CSS px from the plaque's centre
+const PLOT_CLUSTER_PCT_SIZE = 11;
+const PLOT_CLUSTER_PCT_DY = 8;
 // Home slots. A plot bubble and a pin bubble on the same spot would stack, so
 // plots sit just LEFT of the point and pins just RIGHT, shoulder to shoulder
 // with the coordinate between them. A bubble marks an area, not a spot, so
@@ -210,6 +216,26 @@ function makePlaqueImage(): { image: ImageData; pixelRatio: number } | null {
     g.strokeStyle = "#ffd700";
     g.stroke();
     return { image: g.getImageData(0, 0, c.width, c.height), pixelRatio: dpr };
+}
+// FS 704 planting quality: satisfactory trees over plantable spots, summed
+// across the members — Σsat/Σspots, never a mean of per-plot percentages,
+// which would let a 1-spot plot outvote a 20-spot one. `satisfactory` is the
+// host's own identity (derivePlot: planted − excess − faults), rebuilt here
+// from the port's fields because the port hands over the parts, not the total.
+const PLOT_QUALITY_BANDS = [
+    { min: 90, color: "#3fb6c8" },
+    { min: 75, color: "#ffd700" },
+    { min: 0, color: "#ec6c9c" },
+] as const;
+function plotQuality(
+    plot: { planted: number | null; spots: number | null; excess: number | null; faults: string[] } | null,
+): { sat: number; spots: number } {
+    const spots = plot?.spots ?? 0;
+    if (!plot || spots <= 0 || plot.planted == null) return { sat: 0, spots: 0 };
+    return {
+        sat: Math.max(0, plot.planted - (plot.excess ?? 0) - plot.faults.length),
+        spots,
+    };
 }
 type PlotStatus = { under: boolean; over: boolean; fault: boolean };
 // Matches PlotMapPopover's maths: rose '−' = under spot count, teal '+' = excess trees, red dot = quality fault — all independent, any combination.
@@ -803,7 +829,9 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
             if (t === "tiles" || k === selKey) {
                 if (k) forcedSingleKeys.add(k);
             } else if (t.startsWith("plot:")) {
-                const st = plotStatus(k ? (ports.q704?.plotByGpsKey(k) ?? null) : null);
+                const row = k ? (ports.q704?.plotByGpsKey(k) ?? null) : null;
+                const st = plotStatus(row);
+                const q = plotQuality(row);
                 plotFeed.push({
                     ...p,
                     properties: {
@@ -811,6 +839,8 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                         under: st.under ? 1 : 0,
                         over: st.over ? 1 : 0,
                         fault: st.fault ? 1 : 0,
+                        sat: q.sat,
+                        spots: q.spots,
                     },
                 });
             } else pinFeed.push(p);
