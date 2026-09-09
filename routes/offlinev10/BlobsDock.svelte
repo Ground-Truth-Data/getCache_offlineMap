@@ -11,6 +11,10 @@ import type { MapUiPorts } from "../../lib/shared/mapHostPorts";
 import { FOLLOW_MARGIN_KM } from "./follow";
 import { BUDGET_MB } from "./budget";
 import { placeLabel } from "./places";
+import {
+	planPhotoDedup,
+	runPhotoDedup,
+} from "../../lib/onPhone/satellite/photoDedup";
 import { PHOTO_SPEC, type PhotoInfo, photoKey, photoSourceFor } from "./satellite";
 import type { Kept, Region } from "./store";
 
@@ -80,6 +84,24 @@ const specOf = (r: Region): { name: string; zoom: number; canvasPx: number } => 
 const eyeBlink = ui.createEyeBlink();
 onDestroy(() => eyeBlink.destroy());
 const photoTotal = $derived(Object.values(photos).reduce((a, b) => a + b.bytes, 0));
+
+// Photos baked before the reuse rule: duplicates of ground a neighbour photo
+// already covers. Only ever shown when there are some to clear — a button
+// offering to delete nothing is noise.
+let dupes = $state(0);
+let tidying = $state(false);
+async function countDupes(): Promise<void> {
+	dupes = (await planPhotoDedup()).drop.length;
+}
+async function tidyPhotos(): Promise<void> {
+	tidying = true;
+	try {
+		await runPhotoDedup();
+		await countDupes();
+	} finally {
+		tidying = false;
+	}
+}
 /** Tiles and photos together — the figure the budget is measured against. */
 const used = $derived(bytes + photoTotal);
 const broken = $derived(regions.filter((r) => (missing[r.id] ?? 0) > 0).length);
@@ -112,6 +134,7 @@ onMount(() => {
 	navigator.storage?.estimate?.().then((e) => {
 		quota = e.quota ?? null;
 	});
+	void countDupes();
 });
 </script>
 
@@ -120,7 +143,7 @@ onMount(() => {
 		<span class="dev-card__title">offline blobs</span>
 		<span class="sum">
 			{regions.length} areas · {#if broken > 0}<span class="red">{broken} not whole</span><button class="repair" onclick={onRepairAll} disabled={busy} title="fetch every missing tile of every blob, one blob at a time">repair all</button><span>&nbsp;·&nbsp;</span>{/if}{tiles} tiles
-			<span class="dim">· {Object.keys(photos).length} photos · {kb(photoTotal)}</span>
+			<span class="dim">· {Object.keys(photos).length} photos · {kb(photoTotal)}</span>{#if dupes > 0}<button class="repair" onclick={tidyPhotos} disabled={busy || tidying} title="delete {dupes} photos of ground another photo already covers — roads are untouched">{tidying ? "tidying…" : `tidy ${dupes} dupes`}</button>{/if}
 		</span>
 		<button class="wipe" onclick={onWipe} disabled={busy}>WIPE</button>
 	</div>

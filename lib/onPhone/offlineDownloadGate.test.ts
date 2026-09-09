@@ -1,5 +1,5 @@
 /** Soft cellular download gate: never prompts on WiFi; cellular prompts every +100MB; Continue raises the bar; "per feature only" latches the session flag. */
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 let connType: "wifi" | "cellular" = "wifi";
 vi.mock("@capacitor/core", () => ({ Capacitor: { isNativePlatform: () => true } }));
@@ -20,6 +20,11 @@ const prompt = vi.fn(() => Promise.resolve(nextChoice));
 
 describe("offlineDownloadGate (soft cellular brake)", () => {
 	beforeAll(() => registerDownloadPrompt(prompt));
+	// These tests are ONE running narrative — the gate's byte total and its
+	// raised bar carry from case to case on purpose, since that accumulation
+	// IS the behaviour under test. Only the call log resets, so each case can
+	// say what IT triggered rather than counting every prompt since the top.
+	beforeEach(() => prompt.mockClear());
 
 	it("WiFi never prompts, even past 100 MB", async () => {
 		connType = "wifi";

@@ -28,12 +28,16 @@
     "svelte": "^5.19.0"
   },
   "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^4.0.4",
     "fake-indexeddb": "^6.2.5",
+    "svelte": "^5.19.0",
+    "vite": "^5.4.12",
     "vitest": "^2.1.9"
   },
   "scripts": {
     "test": "vitest run"
   },
+  "_why_vitest_config": "vitest.config.ts is NOT the build config the line below forbids. `.svelte.ts` files hold runes ($state), which are COMPILER syntax: unless the svelte plugin transforms them, they reach node as an undefined global and every test in the file dies with `$state is not defined` — 31 of them did, and a suite that is permanently 31-red teaches everyone to ignore it. The parent already ran these same files green through its own svelte() plugin, so the code was never broken, only the bare-clone runner. The plugin and svelte are devDependencies here for the reason in _why_pinned: they resolved only by workspace hoist, which is the same silent borrow that let the pbf break hide.",
   "_no_build_on_purpose": "A child ships no vite.config.ts. It is not an app; it is a folder a parent builds. That is why the escape/case guard is a VITE PLUGIN in each parent (unskippable: no build, no deploy) and a VITEST TEST here (portable: runs in a bare clone with no app around it). Same rule, two shapes, because a plugin needs a build to hook into and a child has none.",
   "_why_pinned": "Versions match what ReTreever runs, because that is the version the code was written and tested against. They were all \"*\" until 25 Aug 2026, which is not a constraint but a wish: the workspace install resolved pbf to 5.1.2, which dropped the default export, and the build died on `import Pbf from \"pbf\"`. Nested inside a parent the child silently borrowed the parent's version and the hole never showed. A child that is genuinely portable has to state what it needs."
 }
