@@ -1,0 +1,118 @@
+/* Row shell — single source of truth for the pill-in-a-track row (shared by Get Cache CacheRowList + Quality704 RowPill). Do not re-declare these selectors in a component's scoped <style>; add only component-specific modifiers there. */
+/* Geometry is load-bearing: track overhang + the card's 2px margins/width:calc seat the pill; the container needs ≥0.7rem left / 0.5rem right padding or the overhang clips. */
+
+.row-drag-surface {
+	padding: 0;
+	margin: 0;
+	pointer-events: auto;
+	touch-action: manipulation;
+	cursor: grab;
+	width: 100%;
+	display: block;
+	box-sizing: border-box;
+}
+
+/* Drag-surface swipe feedback is the GOLD WASH (::after in CacheRowList) — no inset ring/border here. */
+
+.row-wrapper {
+	position: relative;
+	overflow: visible;
+	outline: none;
+	border: none;
+	box-shadow: none;
+	/* flow-root = BFC — fixes the "track lost its 4px groove" bug (without it, the pill's margins collapse through the wrapper). Get Cache's row gets this for free as a flex item; here it's explicit. */
+	display: flow-root;
+	padding: 0;
+	margin: 0;
+	width: 100%;
+}
+
+/* Border #1 — the track groove the pill sits in. */
+.row-track {
+	position: absolute;
+	top: -2px;
+	bottom: -2px;
+	left: -0.6rem;
+	right: -0.4rem;
+	border-radius: 1.4rem;
+	background: #666;
+	border: 2px solid #666;
+	pointer-events: none;
+	z-index: 0;
+}
+
+/* Swipe colours: bagging=GOLD (right, unbagged), unbagging=ORANGE (left, bagged), wrong-way=RED, bagged-rest=GOLD tint. The drag-surface gold wash is separate — always gold, not the directional signal. */
+
+/* Bagged resting state — gold track tint; this is the "bagged" look, not a swipe state. */
+.row-track--bagged {
+	background: rgba(255, 215, 0, 0.35);
+	border-color: rgba(255, 215, 0, 0.5);
+	box-shadow: none;
+}
+
+/* unbagging (swipe LEFT from a bagged row) = ORANGE */
+.row-track--swiping-unbundle {
+	background: rgba(201, 122, 74, 0.5);
+	border-color: rgba(201, 122, 74, 0.7);
+}
+
+/* bagging up (swipe RIGHT) = GOLD */
+.row-track--swiping-bundle {
+	background: rgba(255, 215, 0, 0.5);
+	border-color: rgba(255, 215, 0, 0.7);
+}
+
+/* WRONG-WAY swipe = RED (un-bagged swiped left, or bagged swiped right). */
+.row-track--invalid-right,
+.row-track--invalid-left {
+	background: rgba(80, 20, 20, 0.6);
+	border-color: rgba(150, 40, 40, 0.5);
+}
+
+/* Borders #2+#3 — inset highlight ring + drop shadow. --row-pull drives the swipe offset, --row-rest the bagged resting position. */
+.row-card {
+	position: relative;
+	z-index: 1;
+	border-radius: 1.25rem;
+	padding: 0.45rem 0.15rem 0.45rem 0.25rem;
+	margin: 0 2px 0 calc(-0.6rem + 4px);
+	width: calc(100% - 10px);
+	background: var(--rt-bg-card);
+	box-shadow:
+		inset 0 0 0 1px var(--rt-highlight),
+		0 0 3px rgba(0, 0, 0, 0.35);
+	transform: translateX(calc(var(--row-rest, 0px) + var(--row-pull, 0px)));
+	transition:
+		background 250ms ease,
+		box-shadow 250ms ease,
+		transform var(--row-retract-ms, 0ms) cubic-bezier(0.22, 1, 0.36, 1);
+	will-change: transform;
+	-webkit-user-select: none;
+	user-select: none;
+	-webkit-touch-callout: none;
+}
+
+/* Bagged STATE = the row's shifted resting position (+ darker fill). */
+.row-card--bagged {
+	--row-rest: calc(10px + 0.6rem);
+	background: #2e2e2e;
+}
+
+/* Gold ring + lift — swipe/bag flourish, expressed as box-shadow so it never shifts layout. */
+.row-card--glow {
+	box-shadow:
+		0 0 0 2px var(--rt-yellow),
+		0 0 8px rgba(255, 215, 0, 0.4),
+		0 8px 28px rgba(0, 0, 0, 0.7),
+		0 3px 8px rgba(0, 0, 0, 0.5);
+}
+
+/* Unbagging: ring goes ORANGE not gold — higher specificity here beats the plain .row-card--glow. */
+.row-wrapper .row-track--swiping-unbundle + .row-card--glow {
+	box-shadow:
+		0 0 0 2px #c97a4a,
+		0 0 8px rgba(201, 122, 74, 0.4),
+		0 8px 28px rgba(0, 0, 0, 0.7),
+		0 3px 8px rgba(0, 0, 0, 0.5);
+}
+

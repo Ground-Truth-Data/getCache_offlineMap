@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="%paraglide.lang%" dir="%paraglide.textDirection%">
+	<head>
+		<meta charset="utf-8" />
+		<!-- No favicon here: rapper is a SURROGATE PARENT, so its identity
+		     is whichever child is mounted. +layout.svelte sets the icon and the
+		     tab title from the child registry. A fixed icon here would show
+		     rapper's mark on a Get Cache page. -->
+		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+			rel="stylesheet"
+		/>
+		%sveltekit.head%
+	</head>
+	<body class="antialiased" data-sveltekit-preload-data="hover">
+		<div style="display: contents">%sveltekit.body%</div>
+	</body>
+</html>
