@@ -1,5 +1,5 @@
-// ⚠️ failure MUST throw — an empty list on error renders as "no fires near you".
-// ⚠️ NEVER hang — an un-timed fetch on lie-fi has caused field failures; hence the AbortController timeout.
+// ⚠️ failure MUST throw — an empty list on network error reads as "no fires near you".
+// ⚠️ NEVER let a fetch hang — lie-fi leaves a bare fetch pending forever; hence the AbortController timeout.
 
 import { guardPackDownload } from "../../../onPhone/store/downloadGuard";
 import { firesUrl } from "../tilesHost";
@@ -94,7 +94,7 @@ export async function fetchAreaFires(
 			t,
 			c: toConfidence(f.properties?.c),
 			frp: Number.isFinite(f.properties?.frp) ? (f.properties?.frp as number) : 0,
-			// ⚠️ never default px to a number — "unknown footprint" and "footprint is 0" are different claims.
+			// ⚠️ never default px to 0 — "unknown" and "0" are different claims.
 			...(Number.isFinite(f.properties?.px)
 				? { px: f.properties?.px as number }
 				: {}),

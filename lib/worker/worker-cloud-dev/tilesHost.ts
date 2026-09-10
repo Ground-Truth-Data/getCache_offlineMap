@@ -42,6 +42,10 @@ export const DEFAULT_TARGET: WorkerTarget = "worker-cloud-dev";
 // ⛔ override exists only in a DEV build — import.meta.env.DEV is compile-time, so this branch is dead code on a phone.
 const OVERRIDE_KEY = "rt_worker_target";
 
+// ⚠️ Only a HUMAN click (sessionStorage) moves the target — no machine fallback.
+// One existed: it landed every fresh install on production whenever local was down,
+// hiding the local-first default and billing the maintainer's R2. Dead-and-selected
+// is a valid state — the panel shows the grey light and the dev starts the worker.
 export function getWorkerTarget(): WorkerTarget {
 	if (!import.meta.env.DEV) return "worker-cloud-prod";
 	try {

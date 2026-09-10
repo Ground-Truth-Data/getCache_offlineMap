@@ -8,6 +8,7 @@ import {
 	rangeBox,
 	rangeContains,
 	rangeTiles,
+	RADIUS_KM,
 	regionBox,
 	regionRange,
 	tileBox,
@@ -20,10 +21,17 @@ describe("regionRange", () => {
 	const r = regionRange(PIN.lng, PIN.lat);
 	const box = regionBox(PIN.lng, PIN.lat);
 
-	it("is 9–16 anchor tiles that together contain the 30 km box", () => {
-		const n = (r.x1 - r.x0 + 1) * (r.y1 - r.y0 + 1);
-		expect(n).toBeGreaterThanOrEqual(9);
-		expect(n).toBeLessThanOrEqual(16);
+	// The count follows from RADIUS_KM and the anchor grid, so it is derived
+	// here rather than written down: a hardcoded range silently becomes a
+	// second, stale spelling of the radius the moment the radius moves.
+	it("is the smallest whole-tile box containing the radius box", () => {
+		const span = (lo: number, hi: number, side: number) => {
+			expect(hi - lo + 1).toBeGreaterThanOrEqual(Math.ceil(side));
+			expect(hi - lo + 1).toBeLessThanOrEqual(Math.ceil(side) + 1);
+		};
+		const tiles = (2 * RADIUS_KM) / ((40075.016686 * Math.cos((PIN.lat * Math.PI) / 180)) / 2 ** ANCHOR_Z);
+		span(r.x0, r.x1, tiles);
+		span(r.y0, r.y1, tiles);
 		const b = rangeBox(r);
 		expect(b.w).toBeLessThanOrEqual(box.w);
 		expect(b.e).toBeGreaterThanOrEqual(box.e);

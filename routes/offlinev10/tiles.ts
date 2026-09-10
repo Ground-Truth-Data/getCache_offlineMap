@@ -1,16 +1,15 @@
 /**
  * Slippy-tile math for a blob cut on the tile grid. Pure, no DOM.
  *
- * A blob is every ANCHOR_Z tile the pin's 30 km box touches, the WHOLE
+ * A blob is every ANCHOR_Z tile the pin's RADIUS_KM box touches, the WHOLE
  * pyramid under each of them down to MAX_Z, and the parents above them up to
  * MIN_Z. From ANCHOR_Z down every zoom covers the same ground, so the
- * footprint drawn on the map is the footprint on disk. V10 cuts on z10
- * (~26 km tiles at lat 49): 9–16 of them per blob, ~80–105 km across, a few
- * MB. A parent tile is wider than the blob (z0 is the world), so it is
- * stored raw and clipped to the border when read — see protocol.ts.
+ * footprint drawn on the map is the footprint on disk. A parent tile is wider
+ * than the blob (z0 is the world), so it is stored raw and clipped to the
+ * border when read — see protocol.ts.
  */
 
-export const RADIUS_KM = 30;
+export const RADIUS_KM = 42;
 /** Shallowest zoom on disk: the top of the pyramid. z0..z9 is ~15 tiles, ~100 KB each, shared between blobs. */
 export const MIN_Z = 0;
 export const MAX_Z = 13;

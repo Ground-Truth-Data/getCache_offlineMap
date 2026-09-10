@@ -11,8 +11,8 @@ only the machinery changed.
 
 Two baked PNG `image` sources per area: a sharp satellite **core** (~10 km) + a
 wide transparent **line image** (roads/water to ~30 km), with one HARD SWAP at
-z13 to live satellite tiles + a vector mound. Two files survived the cull and
-still ship: `lib/onPhone/render/offlineBaseStyle.ts` and `offlineColors.ts`.
+z13 to live satellite tiles + a vector mound. One file survived the cull and
+still ships: `lib/onPhone/render/offlineColors.ts`.
 
 **Memory was the whole V2 saga.** The fix that mattered: mound geometry (~97k
 features) read from IndexedDB lazily on mount and dropped on unmount — never

@@ -14,7 +14,7 @@ kept by the host tier beside its own app routes.
 
 ## ⛓️ CONSTRAINTS
 
-🗜️ **30 km radius blobs.** Still the product rule — a blob is a superset of the 30 km box.
+🗜️ **`RADIUS_KM` radius blobs (42 km).** Still the product rule — a blob is a superset of that box.
 🗜️ **The gold border is the real border.** It is the edge of the tiles on disk, identical at every zoom.
 🗜️ Airplane mode changes nothing above z8 inside a blob.
 🗜️ Stock parts only: MapLibre, the Protomaps dark style, IndexedDB keyed by tile address.
@@ -23,12 +23,13 @@ kept by the host tier beside its own app routes.
 
 ## What a blob is
 
-The z10 tiles the pin's 60 km box touches (9–16 of them), and under each the
-whole pyramid z11..z13. Below z10 the bundled world base shows; the pyramid
-is silent there, which is the price of a small square. Every zoom therefore covers the same rectangle, so the
-gold border drawn from the z8 tile edges is where the data ends at z8 AND at
-z13. It fades out between z8 and z9.5, once the blob's own roads are on
-screen, the way the old ghost grid did.
+The z`ANCHOR_Z` tiles the pin's `RADIUS_KM` box touches, and under each the
+whole pyramid down to `MAX_Z`. Below the anchor the bundled world base shows;
+the pyramid is silent there, which is the price of a small square. Every zoom
+therefore covers the same rectangle, so the gold border drawn from the anchor
+tile edges is where the data ends at every zoom. It fades out by
+`BORDER_GONE_Z`, once the blob's own roads are on screen, the way the old
+ghost grid did.
 
 Tiles are stored once, keyed `z/x/y`; a second blob over the same ground
 fetches only what is missing; deleting a blob drops only tiles under no
@@ -153,7 +154,7 @@ diagonal. Every blob, not just the current one — doubling back over covered
 ground stays deep inside an old blob and nothing fires.
 
 Above 10 km of map ahead nothing happens. At 10 km or less the blob around
-the current position is queued through `queueBlob`: the same 30 km box on
+the current position is queued through `queueBlob`: the same `RADIUS_KM` box on
 whole z10 tiles a pin gets, so the new blob overlaps the old one and shares
 its tiles on disk (only the new ones are fetched — ~0.6 MB on a straight
 walk). The 10 km is slack on purpose: it fires while there is still map ahead

@@ -40,7 +40,8 @@ describe("the pin is the centre", () => {
 		expect(widthKm).toBeLessThan(61);
 		expect(heightKm).toBeGreaterThan(59);
 		expect(heightKm).toBeLessThan(61);
-		// Farthest corner of a 30 km box is the diagonal (~42 km).
+		// Farthest corner of a GRID_RADIUS_KM box is its diagonal, radius×√2.
+		// ⚠️ Unrelated to V10's RADIUS_KM, which now happens to be that number too.
 		expect(reachKm(b, CHELAN.lng, CHELAN.lat)).toBeLessThan(43);
 	});
 

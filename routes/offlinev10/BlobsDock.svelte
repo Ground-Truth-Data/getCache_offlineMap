@@ -11,6 +11,7 @@ import type { MapUiPorts } from "../../lib/shared/mapHostPorts";
 import { FOLLOW_MARGIN_KM } from "./follow";
 import { blobBytes, BUDGET_MB } from "./budget";
 import { placeLabel } from "./places";
+import { ANCHOR_Z, MAX_Z, MIN_Z, RADIUS_KM } from "./tiles";
 import {
 	planPhotoDedup,
 	runPhotoDedup,
@@ -169,7 +170,7 @@ onMount(() => {
 	{/if}
 	<button class="add" onclick={onAddHere} disabled={busy}>{busy ? "downloading…" : "+ blob at map centre"}</button>
 	<button class="add" onclick={onAddForPins} disabled={busy}>+ blobs for pins in view</button>
-	<div class="hint">or drop a pin · 30 km radius on whole z10 tiles · z0–z13</div>
+	<div class="hint">or drop a pin · {RADIUS_KM} km radius on whole z{ANCHOR_Z} tiles · z{MIN_Z}–z{MAX_Z}</div>
 	<div class="follow" class:low={follow !== null && follow.margin <= FOLLOW_MARGIN_KM}>
 		📡
 		{#if follow === null}

@@ -1,6 +1,13 @@
-# Offline Map — The Plan (start here)
+# Offline Map — Laws, Rules and History
 
-The single entry point for everything offline. The offline map lets Get Cache
+> ⚠️ **NOT the start here.** The map Get Cache opens is **V10** — start at
+> `routes/offlinev10/README.md`. This document was written for the retired
+> `/app/offline` engine (URL only), and its route-level detail describes that
+> engine, not the live one. It is kept for the parts that outlive it: the
+> **5 laws**, **LAW 8**, the **acceptance tests** and the **engineering rules**,
+> which V10 inherits.
+
+The reference for everything offline. The offline map lets Get Cache
 work with **no signal**: a downloaded area shows a satellite photo with roads +
 water drawn on it, over a dark **base map**, around the user's own pins/maps —
 plus the two **safety layers**, wildfires and hospitals.

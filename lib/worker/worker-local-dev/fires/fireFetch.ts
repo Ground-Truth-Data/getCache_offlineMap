@@ -40,6 +40,7 @@ function toConfidence(raw: unknown): FireHotspot["c"] {
 	return raw === "high" ? "high" : raw === "nominal" ? "nominal" : "low";
 }
 
+// ⚠️ guardPackDownload is the tile downloader's circuit-breaker too — a runaway bake loop can't hammer this endpoint.
 export async function fetchAreaFires(
 	lng: number,
 	lat: number,

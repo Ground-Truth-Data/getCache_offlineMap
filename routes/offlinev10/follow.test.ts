@@ -6,16 +6,16 @@ import {
 	marginKm,
 	moved,
 } from "./follow";
-import { rangeBox, regionRange } from "./tiles";
+import { RADIUS_KM, rangeBox, regionRange } from "./tiles";
 
 const PENTICTON: [number, number] = [-119.5937, 49.4991];
 
 describe("follow-me margin", () => {
-	it("a blob around the person leaves ~30 km or more on every side", () => {
+	it("a blob around the person leaves at least the radius on every side", () => {
 		const box = rangeBox(regionRange(...PENTICTON));
 		const m = marginKm(PENTICTON[0], PENTICTON[1], [box]);
-		expect(m).toBeGreaterThanOrEqual(30);
-		expect(m).toBeLessThan(60);
+		expect(m).toBeGreaterThanOrEqual(RADIUS_KM);
+		expect(m).toBeLessThan(2 * RADIUS_KM);
 	});
 
 	it("is distance to the nearest EDGE, so a corner is not further than an edge", () => {

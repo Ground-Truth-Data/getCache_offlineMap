@@ -1,6 +1,6 @@
 /**
- * ⛔ THE FIX IS A CROP, NOT A BOUNDS EDIT — shrinking only `bounds` squashes the image; canvas extent and stored bounds must both derive from the pin's box.
- * ⚠️ SAME ROOT CAUSE as the roads blob drawing off-centre: an extent snapped to a tile grid instead of to the pin.
+ * ⛔ THE FIX IS A CROP, NOT A BOUNDS EDIT — shrinking only `bounds` squashes the image; canvas extent and bounds both derive from the pin's box so they shrink together.
+ * ⚠️ SAME ROOT CAUSE as the roads blob drawing off-centre: an extent snapped to a tile grid instead of the pin.
  */
 import { describe, expect, it } from "vitest";
 import { kmToDegSpan } from "../../../shared/kmGeo";
@@ -52,7 +52,7 @@ function offsetM(
 }
 
 const ANCHORS: Array<[number, number]> = [
-	[-111.939, 44.4744], // the user's own test pin
+	[-111.939, 44.4744],
 	[-123.1, 49.25],
 	[0.0001, 0.0001],
 	[19.11, 17.55],
@@ -75,7 +75,7 @@ describe("the satellite photo is centred", () => {
 	});
 
 	it("the crop never expands past the fetched tiles", () => {
-		// cropping outward would show blank canvas — no imagery fetched there
+		// Cropping outward would show blank canvas where no imagery was fetched.
 		for (const [lng, lat] of ANCHORS) {
 			const b = tileGridBox(lng, lat, 2, 14);
 			const c = cropBox(lng, lat, 2, 14);
@@ -87,7 +87,7 @@ describe("the satellite photo is centred", () => {
 	});
 
 	it("⛔ the bake crops the CANVAS, not just the stored bounds", async () => {
-		// shrinking bounds alone squashes the image — both must derive from the same crop box
+		// ⚠️ shrinking bounds alone squashes the image — both must derive from the same crop box.
 		const { readFileSync } = await import("node:fs");
 		const { fileURLToPath } = await import("node:url");
 		const src = readFileSync(

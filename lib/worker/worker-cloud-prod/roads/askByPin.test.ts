@@ -1,6 +1,4 @@
-/**
- * ⛔ THE PACK URL MUST CARRY THE PIN, NOT THE CELL CENTRE. The cell-centre spelling was a cache-sharing optimisation that silently moved the data (the Worker builds 30 km around whatever point it's given) — measured 70 km off at a real pin. A cache key may be DERIVED from the request but must never REPLACE it.
- */
+// ⛔ a cache key may be DERIVED from the request, but must never REPLACE it — sending the cell centre instead of the pin silently moved the data 70km off in production.
 import { describe, expect, it } from "vitest";
 import { cellBox, cellOf, cellTileKey } from "../../../contract/grid";
 
@@ -29,11 +27,13 @@ describe("the pack is asked about the PIN", () => {
 		);
 		expect(src).toContain("const qLng = lng.toFixed(6);");
 		expect(src).toContain("const qLat = lat.toFixed(6);");
+		// The cell-centre spelling is the bug. It must not come back.
 		expect(src).not.toContain("(box.w + box.e) / 2");
 		expect(src).not.toContain("(box.s + box.n) / 2");
 	});
 
 	it("⛔ the cell centre is FAR from a pin near an edge — why it mattered", () => {
+		// documents the size of the error — if a future cell size ever makes this small, this threshold may need revisiting.
 		const [lng, lat] = PINS[0];
 		const b = cellBox(cellOf(lng, lat));
 		const off = km(lng, lat, (b.w + b.e) / 2, (b.s + b.n) / 2);
@@ -41,7 +41,7 @@ describe("the pack is asked about the PIN", () => {
 	});
 
 	it("the pin and the server agree on the storage key", () => {
-		// ⚠️ A mismatch here is a blank map with no error — this subsystem's signature failure.
+		// both sides derive the key from the SAME point — a mismatch here is a blank map with no error, this subsystem's signature failure.
 		for (const [lng, lat, name] of PINS) {
 			const clientKey = cellTileKey(cellOf(lng, lat));
 			const serverKey = cellTileKey(cellOf(Number(lng.toFixed(6)), Number(lat.toFixed(6))));
@@ -50,7 +50,7 @@ describe("the pack is asked about the PIN", () => {
 	});
 
 	it("rounding the URL to 6dp never moves the pin to another cell", () => {
-		// ⚠️ 6dp is ~11 cm — a pin on a cell boundary must not round across it, or client and server key differently.
+		// 6dp is ~11cm — a pin on a cell boundary must not round across it, or client and server would key differently.
 		for (const [lng, lat] of PINS) {
 			const exact = cellTileKey(cellOf(lng, lat));
 			const rounded = cellTileKey(

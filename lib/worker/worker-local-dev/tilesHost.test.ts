@@ -24,19 +24,24 @@ beforeEach(() => {
 });
 
 describe("worker target", () => {
-	it("defaults to worker-cloud-dev in a dev build, with no stored override", () => {
+	it("follows its own tier's default, with no stored override", () => {
 		// the always-up cloud dev worker is the starting tier (Chris, 7 Sep 2026):
 		// it runs prod's code on prod's bucket, so an experiment cannot reach a
 		// shipped build, and it does not die with a closed terminal. A SHIPPED
 		// build never reads DEFAULT_TARGET — the !DEV early return in
 		// getWorkerTarget() locks phones to production, and the gating test
 		// below is what protects that.
-		expect(DEFAULT_TARGET).toBe("worker-cloud-dev");
-		expect(getWorkerTarget()).toBe("worker-cloud-dev");
-		// null until the app configures it — nothing is baked in.
-		expect(tilesHost()).toBeNull();
+		// ⚠️ Asserted against DEFAULT_TARGET, not a literal: this file is shared
+		// byte-for-byte by all three tiers, and each names a different default.
+		expect(getWorkerTarget()).toBe(DEFAULT_TARGET);
+		// tilesHost() reads the slot the tier's own default names — the prod
+		// slot is the one beforeEach fills, the dev slot starts empty.
+		const prodTier = DEFAULT_TARGET === "worker-cloud-prod";
+		expect(tilesHost()).toBe(prodTier ? TEST_HOST : null);
 		configureTilesDevHost("https://tiles-dev.example.test");
-		expect(tilesHost()).toBe("https://tiles-dev.example.test");
+		expect(tilesHost()).toBe(
+			prodTier ? TEST_HOST : "https://tiles-dev.example.test",
+		);
 	});
 
 	it("switches every URL together — no split-brain", () => {

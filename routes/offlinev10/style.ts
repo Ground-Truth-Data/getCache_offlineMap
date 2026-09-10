@@ -25,6 +25,28 @@ export const PHOTO_INSERT_BEFORE = "water";
 /** Gold = commit, the app's own accent: the saved map's edge. */
 const GOLD = "#f5a119";
 
+/**
+ * Water's colour is a function of zoom, not a constant.
+ *
+ * Zoomed out, stock slate IS the ocean — the eye reads a big dark expanse as
+ * sea and never questions it. Zoomed in, that same slate sits at the same
+ * value as the road greys (#292929–#474747), so a creek in a gully reads as a
+ * track. So the slate holds while it is doing the ocean's job and turns blue
+ * only once water is a thing you follow, ramped across a zoom so it eases in.
+ */
+const WATER_FAR = DARK.water;
+const WATER_NEAR = "#2B3855";
+const WATER_SHIFT_Z = 13;
+const waterColor: ExpressionSpecification = [
+	"interpolate",
+	["linear"],
+	["zoom"],
+	WATER_SHIFT_Z,
+	WATER_FAR,
+	WATER_SHIFT_Z + 1,
+	WATER_NEAR,
+];
+
 /** The drawer's LEGEND card, in the shape MapLegend reads. */
 export const LEGEND = [
 	{ label: "Roads", color: DARK.major, swatch: "line" },
@@ -119,6 +141,18 @@ export function buildStyle(origin: string): StyleSpecification {
 		// Admin borders read as roads on a dark basemap — the online map hides
 		// them for the same reason (mapStyleNatural.ts).
 		.filter((l) => (l as { "source-layer"?: string })["source-layer"] !== "boundaries")
+		// ⚠️ AFTER fadeIn would fight it: fadeIn folds a layer's own zoom curve
+		// into the planet ramp, and only opacity curves are folded — colour is
+		// left alone, so this must be its own expression, set before the labels
+		// are excluded below.
+		.map((l) => {
+			if ((l as { "source-layer"?: string })["source-layer"] !== "water") return l;
+			if (l.type !== "fill" && l.type !== "line") return l;
+			const paint = (l as { paint?: Record<string, unknown> }).paint ?? {};
+			paint[l.type === "fill" ? "fill-color" : "line-color"] = waterColor;
+			(l as { paint?: Record<string, unknown> }).paint = paint;
+			return l;
+		})
 		.map(oneFont)
 		.map(fadeIn);
 

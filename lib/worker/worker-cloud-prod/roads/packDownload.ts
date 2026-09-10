@@ -21,14 +21,16 @@ import {
     shallowCellsFor,
     shallowTileKey,
 } from "../../../contract/grid";
-import { packUrl } from "../tilesHost";
+import { getWorkerTarget, packUrl } from "../tilesHost";
+import { noteCircuit } from "../../../shared/workMeter.svelte";
+import { satImageKey } from "../../../onPhone/satellite/satelliteImage";
 
-// ⚠️ bump on ANY pack wire/content change — edge cache is immutable, keyed by the full URL
+// ⚠️ bump on ANY pack wire/content change — edge cache keys by full URL, survives redeploys, never purged; bump only AFTER the deploy is live or the version is poisoned permanently
 // ⚠️ 46 is SKIPPED, never reuse it — poisoned by direction1's z6/z7 packs and the edge cache is immutable; 47 = the shallow z6 tier (fleet-wide re-download, intended rollout); 48 = shallow vocabulary fix (47's allowlist said "major"/"minor" which matched nothing, so z6 shipped highways alone — major_road/minor_road now ship, and baked pv47 pins re-download)
 // TODO 49 — the shallow z6 tier drops minor_road (SHALLOW_LAYER_RULES, 5 Sep 2026). Bump to 49 ONLY after the Worker carrying that rule is deployed, or the edge caches pv49 packs built by the old Worker.
 export const PACK_FORMAT_VERSION = 49;
 
-// renaming the DB wipes the pile → fleet-wide re-download
+// ⚠️ renaming the DB wipes every device's tile pile (fleet-wide re-bake); older rt-tiles* names are swept, never migrated
 export const DB_NAME = "gc-offlineTiles";
 const STORE = "tiles";
 // ⛔ the shallow z6 tier's OWN store — a z6 tile next to `pin/…` z8 keys in one
@@ -38,7 +40,7 @@ const STORE_SHALLOW = "shallowTiles";
 // v2: adds STORE_SHALLOW. Devices upgrade in place; no data moves.
 export const DB_VERSION = 2;
 
-// ⚠️ sweep must run AFTER the migration settles — the source is also a sweep match
+// ⚠️ sweep must run AFTER the migration settles — rt-tiles-v3 is both the source and a sweep match
 const TILES_MIGRATION_SOURCE = "rt-tiles-v3";
 if (typeof indexedDB !== "undefined") {
     void migrateIdbDatabase(TILES_MIGRATION_SOURCE, DB_NAME, STORE).then(() => {
@@ -56,13 +58,13 @@ if (typeof indexedDB !== "undefined") {
                         }
                     }
                 })
-                // codestyle-allow-swallow: stale-DB sweep retries next boot
+                // codestyle-allow-swallow: best-effort stale-DB sweep, retried next boot
                 .catch(() => {});
         }
     });
 }
 
-// ⚠️ don't add rows — projection of roadBlob.ts; change BLOB_RADIUS_KM / BLOB_ZOOMS and bump PACK_FORMAT_VERSION
+// ⚠️ DO NOT ADD ROWS — derived from roadBlob.ts; edit BLOB_RADIUS_KM / BLOB_ZOOMS, bump PACK_FORMAT_VERSION, and keep the Worker's rings in lockstep
 export const RINGS: ReadonlyArray<{ km: number; z: number }> = BLOB_ZOOMS.map(
     (z) => ({ km: BLOB_RADIUS_KM, z }),
 );
@@ -87,7 +89,7 @@ async function idbPutMany(
     items: Array<[string, ArrayBuffer]>,
     onStored?: (done: number) => void,
 ): Promise<void> {
-    // ⚠️ write boundary — a persisted 0-byte tile throws "Unimplemented type: 4" in Mapbox on every render
+    // ⚠️ never persist a 0-byte tile — Mapbox throws "Unimplemented type: 4" on every render pass until the DB is wiped
     items = items.filter(([, b]) => b.byteLength > 0);
     if (!items.length) return;
     const db = await openDb();
@@ -113,7 +115,27 @@ async function idbPutMany(
     db.close();
 }
 
-// codestyle-allow-blob-getall: on-demand /blobs stats only — never on a render path
+/** ⚠️ one transaction — a half-deleted area leaves a coverage record saying "gone" over tiles still on disk. */
+export async function idbDeleteMany(keys: readonly string[]): Promise<void> {
+    if (!keys.length) return;
+    const db = await openDb();
+    await new Promise<void>((resolve, reject) => {
+        // same key router as idbPutMany — shallow keys delete from their own store
+        const tx = db.transaction([STORE, STORE_SHALLOW], "readwrite");
+        for (const k of keys)
+            tx.objectStore(isShallowTileKey(k) ? STORE_SHALLOW : STORE).delete(
+                k,
+            );
+        tx.oncomplete = () => {
+            noteKeysDeleted(keys);
+            resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+}
+
+/** codestyle-allow-blob-getall: on-demand only (/blobs stats) — never on a render path. */
 async function idbEntries(): Promise<Array<[string, ArrayBuffer]>> {
     const db = await openDb();
     const out = await new Promise<Array<[string, ArrayBuffer]>>(
@@ -121,7 +143,7 @@ async function idbEntries(): Promise<Array<[string, ArrayBuffer]>> {
             const tx = db.transaction(STORE, "readonly");
             const store = tx.objectStore(STORE);
             const keysReq = store.getAllKeys();
-            // codestyle-allow-blob-getall: on-demand only, no render path reaches here
+            // codestyle-allow-blob-getall: on-demand only
             const valsReq = store.getAll();
             tx.oncomplete = () =>
                 resolve(
@@ -142,17 +164,16 @@ async function idbEntries(): Promise<Array<[string, ArrayBuffer]>> {
     return out;
 }
 
-// long-lived handle; idbGetTile runs per visible tile
+// ⚠️ one long-lived handle — idbGetTile runs per visible tile; open/close per call is ruinous
 let rawDb: IDBDatabase | null = null;
 
-// ⛔ a cached connection blocks deleteDatabase — any module caching an IDBDatabase must register here
+// ⚠️ a cached connection blocks deleteDatabase — every module caching an IDBDatabase MUST register here
 registerOfflineDbReset(() => {
     rawDb?.close();
     rawDb = null;
     invalidateTileCaches();
 });
 
-// ⛔ the latch only closes the handle — never make reads miss (see idbGetTile)
 registerWipeLatch({
     latch: () => {
         rawDb?.close();
@@ -166,7 +187,7 @@ registerWipeLatch({
 // A zoom gesture re-requests EVERY visible tile; re-listing all store keys and
 // re-merging each shared address on every read froze the UI 1–2 s with ~290 MB
 // memory spikes. These caches sit in front of IndexedDB, are maintained by the
-// write path (idbPutMany) and cleared on wipe/reset/purge.
+// write path (idbPutMany / idbDeleteMany) and cleared on wipe/reset/purge.
 
 /** Byte budget per tier: ~2 screens of z8 merges; a miss re-merges from IndexedDB, so this is latency, never data. */
 const MERGED_CACHE_BYTES = 48 * 1024 * 1024;
@@ -227,6 +248,17 @@ function noteKeysWritten(keys: readonly string[]): void {
     dropTilesFor(keys);
 }
 
+function noteKeysDeleted(keys: readonly string[]): void {
+    for (const k of keys) {
+        if (isShallowTileKey(k)) {
+            if (shallowKeysCache) shallowKeysCache.delete(k);
+        } else if (allKeysCache) {
+            allKeysCache.delete(k);
+        }
+    }
+    dropTilesFor(keys);
+}
+
 // ⚠️ runtime marker for the layer-merge path — once per address per session (a per-read line would spam every pan). Seeing `[roads] merged N pins` in DevTools proves the merged read path is LIVE in the running build (stale-build check, 2026-09-01 strips bug).
 const mergedReads = new Set<string>();
 const mergedCount = new Map<string, number>();
@@ -242,9 +274,9 @@ function noteMergedRead(tag: string): void {
 }
 
 /**
- * ⛔ merges EVERY owning pin into ONE layer-merged tile (byte-concat keeps only
- * the last same-named layer); null on miss — never another pin's bytes.
- * Memoized per address: a zoom gesture re-requests every visible tile, and
+ * ⚠️ returns ALL owners layer-merged into ONE tile (byte-concat would keep only
+ * the last same-named layer — one pin's roads would erase the other's); null on
+ * miss. Memoized per address: a zoom gesture re-requests every visible tile, and
  * re-merging each shared address per read froze the UI 1–2 s (2026-09-02).
  */
 export async function idbGetTileForAddress(
@@ -293,7 +325,7 @@ function computeTileForAddress(
             return parts[0];
         }
 
-        // ⛔ NOT byte-concat: every blob has a layer named `roads`, and the MVT parser indexes layers BY NAME — the LAST duplicate silently wins, so whole tile flips to one pin (the farthest) whenever another pin lands nearby: roads vanish and appear in axis-aligned strips along the two radius boxes (2026-09-01). Merge at the LAYER level instead — one `roads`, every owner's features, tags re-indexed into merged tables.
+        // ⛔ NOT byte-concat: every blob has a layer named `roads`, and the MVT parser indexes layers BY NAME — the LAST duplicate silently wins, so the whole tile flips to one pin (the farthest) whenever another pin lands nearby: roads vanish and appear in axis-aligned strips along the two radius boxes (2026-09-01). Merge at the LAYER level instead — one `roads`, every owner's features, tags re-indexed into merged tables.
         if (!mergedReads.has(addr)) {
             mergedReads.add(addr);
             noteMergedRead("roads");
@@ -322,10 +354,10 @@ function cacheMergedTile(
 }
 
 export async function idbGetTile(key: string): Promise<ArrayBuffer | null> {
-    // ⛔ don't gate reads on the wipe latch — a stuck latch makes every read a miss; fix wipes in wipe.ts
+    // ⚠️ never gate this read on the wipe latch — every read becomes a miss and the map silently draws nothing; fix a blocked wipe in wipe.ts
     if (!rawDb) {
         rawDb = await openDb();
-        // a version change can close the handle — drop it so the next read reopens
+        // a version change can close this out from under us — reopen on next read
         rawDb.onclose = () => {
             rawDb = null;
         };
@@ -336,13 +368,13 @@ export async function idbGetTile(key: string): Promise<ArrayBuffer | null> {
         try {
             tx = db.transaction(STORE, "readonly");
         } catch {
-            // stale connection — reopen next call
             rawDb = null;
             resolve(null);
             return;
         }
         const req = tx.objectStore(STORE).get(key);
         req.onsuccess = () => {
+            // never hand 0 bytes to the protobuf parser
             const b = req.result as ArrayBuffer | undefined;
             resolve(b?.byteLength ? b : null);
         };
@@ -453,7 +485,7 @@ export async function purgeEmptyTiles(): Promise<number> {
     return removed;
 }
 
-// ⚠️ must stay one-time — a recurring purge makes areas read un-fetched and feeds a download loop
+// ⚠️ must stay ONE-TIME — a recurring purge makes areas look un-fetched and feeds a purge → re-download loop forever
 const PURGE_FLAG = "rtV4EmptyTilesPurged";
 export async function purgeEmptyTilesOnce(): Promise<void> {
     try {
@@ -467,7 +499,7 @@ export async function purgeEmptyTilesOnce(): Promise<void> {
             );
         }
     } catch (err) {
-        // codestyle-allow-swallow: best-effort sweep; the read-side skip still applies
+        // codestyle-allow-swallow: best-effort one-time sweep; the read-side skip still applies
         console.warn(
             "[v4] empty-tile purge failed (read-side skip still applies)",
             err,
@@ -480,17 +512,20 @@ export interface DownloadResult {
     empty: number; // ocean/void tiles
     total: number;
     bytes: number;
+    /** X-Pack-Build */
     build?: string;
+    /** X-Pack-Cache: HIT | MISS */
     cache?: string;
+    /** X-Diag: reads, loopMs, outerKm */
     diag?: string;
 }
 
-// wire: [uint32 LE manifestLen][manifest JSON][tile bytes in manifest order]
+/** Pack wire format: [uint32 LE manifestLen][manifest JSON][tile bytes in manifest order]. */
 interface PackManifest {
     total: number;
     empty: number;
     tiles: Array<{ k: string; n: number }>;
-    // ⛔ renderer must use THIS box, not the tile's — MVT coords are relative to it; absent on old packs
+    /** ⛔ the renderer MUST use this box, not the tile's — MVT coords are relative to it; absent on old packs. */
     box?: { w: number; s: number; e: number; n: number };
 }
 
@@ -498,32 +533,52 @@ export async function downloadV4Area(
     lng: number,
     lat: number,
     onProgress?: (done: number, total: number) => void,
-    // corridor: Worker's &ring=corridor, a distinct edge-cache key
+    // `&ring=corridor` is a distinct edge-cache key — no PACK_FORMAT_VERSION bump needed
     corridor = false,
 ): Promise<DownloadResult> {
     guardPackDownload({ lng, lat });
     const ringParam = corridor ? "&ring=corridor" : "";
-    // ⛔ send the REAL pin, never the cell centre — the Worker builds the blob around whatever point it gets
+    // ⚠️ timeout must exceed the Worker's cold pack build (~66 s measured) — 60 s made the feature look broken
+    // ⛔ send the ACTUAL pin, never the cell centre — the Worker builds around whatever point it is given
     const qLng = lng.toFixed(6);
     const qLat = lat.toFixed(6);
-    // a null host would fetch "null?lng=…" and 404 — throw instead
+    // ⚠️ packUrl() is null until configureTilesHost() — interpolating it fetches "null?lng=…" and 404s
     const packEndpoint = packUrl();
     if (packEndpoint === null) {
         throw new Error(
             "[v4] no tiles host configured — call configureTilesHost(<origin>) at app boot before downloading a pack.",
         );
     }
-    // ⛔ timeout must exceed the Worker's cold pack build (~66 s measured) — 60 s made the feature look broken
-    const res = await fetch(
-        `${packEndpoint}?lng=${qLng}&lat=${qLat}&pv=${PACK_FORMAT_VERSION}${ringParam}`,
-        { signal: AbortSignal.timeout(150_000) },
-    );
+    // area-tagged so a background re-bake of an old pin can't repaint the new pin's lights
+    const wk = `worker:${getWorkerTarget()}`;
+    const area = satImageKey([lng, lat]);
+    const lit = (state: "transit" | "ok" | "err", note = "") => {
+        noteCircuit(wk, state, note, area);
+        noteCircuit("pack", state, note, area);
+    };
+    lit("transit");
+    let res: Response;
+    try {
+        res = await fetch(
+            `${packEndpoint}?lng=${qLng}&lat=${qLat}&pv=${PACK_FORMAT_VERSION}${ringParam}`,
+            { signal: AbortSignal.timeout(150_000) },
+        );
+    } catch (err) {
+        lit("err", err instanceof Error ? err.message : String(err));
+        throw err;
+    }
     if (!res.ok) {
+        // The body is the Worker speaking plainly (e.g. the 422 names the archive's
+        // coverage and the fix) — the circuit note must carry it, not just the bare
+        // statusText the debugger can't act on.
+        const body = (await res.text().catch(() => "")).slice(0, 200);
+        lit("err", `${res.status} ${body || res.statusText}`);
         throw new Error(
-            `[v4] pack fetch failed: ${res.status} ${res.statusText} — ${await res.text().catch(() => "")}`,
+            `[v4] pack fetch failed: ${res.status} ${res.statusText} — ${body}`,
         );
     }
-    // ⚠️ app-layer gzip, not Content-Encoding — inflate exactly one layer
+
+    // gzip is application-layer (not Content-Encoding) so the edge can't double-compress — inflate exactly once
     if (!res.body) throw new Error("[v4] pack response has no body");
     const buf = new Uint8Array(
         await new Response(
@@ -552,6 +607,10 @@ export async function downloadV4Area(
 
     onProgress?.(0, items.length);
     await idbPutMany(items, (done) => onProgress?.(done, items.length));
+    lit(
+        "ok",
+        `${items.length} tiles · ${(bytes / 1e6).toFixed(2)} MB · cache ${res.headers.get("x-pack-cache") ?? "?"}`,
+    );
 
     return {
         downloaded: items.length,
@@ -564,7 +623,7 @@ export async function downloadV4Area(
     };
 }
 
-// ⛔ one pack request per pin, never per cell — per-cell arrives fragmented and trips guardPackDownload
+// ⛔ ONE request per pin, never one per cell — per-cell fetching trips guardPackDownload and draws fragments
 
 export interface V4LayerStat {
     layer: string;
@@ -578,7 +637,7 @@ export function shallowAreaTileKeys(lng: number, lat: number): string[] {
 }
 
 export function areaTileKeys(lng: number, lat: number): string[] {
-    // ⛔ keyed by the PIN, not the bare cell — a shared cell key served one pin's roads to another
+    // ⛔ keyed by the PIN (pinTileKey) — a bare cell key served one pin's roads to another
     return cellsFor(lng, lat).map((c) => pinTileKey(lng, lat, c));
 }
 
@@ -592,7 +651,7 @@ export interface GeoBox {
 export interface V4TileIndex {
     // "z/x/y" -> { layerName: { features, bytes } }
     byTile: Record<string, Record<string, { features: number; bytes: number }>>;
-    // "z/x/y" -> the decoded geometry's real box, not the key's
+    /** "z/x/y" -> box the DECODED geometry really covers, not what the key implies */
     boxByTile: Record<string, GeoBox>;
     tiles: number;
 }
@@ -628,7 +687,7 @@ export function boxOfTileKey(key: string): GeoBox | null {
     return { w: lng(x), e: lng(x + 1), n: lat(y), s: lat(y + 1) };
 }
 
-/** Accepts `pin/<lng>,<lat>/z/x/y` and legacy `z/x/y`; null (never NaN) otherwise — callers MUST check. */
+/** Accepts `pin/<lng>,<lat>/z/x/y`, `shallow/<lng>,<lat>/z/x/y` and legacy `z/x/y`; returns null (never NaN) for anything else. */
 export function parseTileAddress(
     key: string,
 ): { z: number; x: number; y: number } | null {
@@ -649,12 +708,13 @@ export async function decodeV4TileLayerStats(): Promise<V4TileIndex> {
     const boxByTile: V4TileIndex["boxByTile"] = {};
     let tiles = 0;
     for (const [key, bytes] of await idbEntries()) {
+        // ⛔ keys are pin-addressed — splitting on "/" and taking the first three segments yields NaN
         const addr = parseTileAddress(key);
         if (!addr) continue;
         const { z, x, y } = addr;
         let vt: VectorTile;
         try {
-            // pbf@4 lacks the PbfReader type vector-tile's d.ts expects — boundary cast
+            // pbf@4 lacks the PbfReader type vector-tile's d.ts imports — boundary cast
             vt = new VectorTile(
                 new Pbf(
                     new Uint8Array(bytes),
@@ -700,18 +760,19 @@ export async function decodeV4TileLayerStats(): Promise<V4TileIndex> {
             };
         }
         byTile[key] = perLayer;
-        // no geometry → no box; Infinity sentinels must not leak
+        // Infinity sentinels must never leak out as coordinates
         if (Number.isFinite(w) && Number.isFinite(s2))
             boxByTile[key] = { w, s: s2, e, n: n2 };
     }
     return { byTile, boxByTile, tiles };
 }
 
+// ⚠️ verify tiles on disk — never trust a registry flag (DB rename / storage eviction leaves the flag behind)
 export async function areaTilesPresent(
     lng: number,
     lat: number,
 ): Promise<boolean> {
-    // ⚠️ exact — ALL cells on disk, never a registry flag or any-hit vote; a fuzzy probe let 232 areas stamp current while holding nothing
+    // ⚠️ EXACT, not any-hit — a fuzzy probe stamped 232 areas current while holding none of the new ring
     const keys = areaTileKeys(lng, lat);
     if (!keys.length) return false;
     const db = await openDb();
@@ -737,9 +798,9 @@ export async function areaTilesPresent(
 }
 
 /**
- * ⚠️ loaded ONCE into memory and maintained by the write path (idbPutMany) —
- * this runs per bake pass AND per tile read; open+getAllKeys+close per call was
- * the I/O storm behind the per-zoom freezes (2026-09-02).
+ * ⚠️ loaded ONCE into memory and maintained by the write path (idbPutMany /
+ * idbDeleteMany) — this runs per bake pass AND per tile read; open+getAllKeys
+ * +close per call was the I/O storm behind the per-zoom freezes (2026-09-02).
  * The returned Set is the LIVE cache — callers must not mutate it.
  */
 export async function getAllTileKeys(): Promise<Set<string>> {
@@ -863,7 +924,7 @@ export function areaTilesPresentIn(
     return keys.length > 0 && keys.every((k) => stored.has(k));
 }
 
-// ⛔ deliberately the same question as areaTilesPresent — the probe must check the shape the stamp promises
+// ⚠️ must ask the SAME question as areaTilesPresent — a looser adoption probe stamped areas current without the tiles
 export async function areaCentreCovered(
     lng: number,
     lat: number,
@@ -871,7 +932,7 @@ export async function areaCentreCovered(
     return areaTilesPresent(lng, lat);
 }
 
-// ⛔ rtwall:// and rtraw:// must pass through — a blocked "Tile" gets BLANK_PNG and the protobuf parser chokes
+// ⚠️ rtwall:// and rtraw:// MUST be listed — a blocked "Tile" gets BLANK_PNG fed to the protobuf parser
 const LOCAL_PREFIXES = [
     "blob:",
     "data:",
@@ -880,6 +941,7 @@ const LOCAL_PREFIXES = [
     "rtwall://",
     "rtraw://",
 ];
+// ⚠️ a false negative doesn't just block, it substitutes BLANK_PNG — must accept 127.0.0.1/localhost, https proxy, capacitor
 const isSameOrigin = (url: string): boolean => {
     if (typeof location === "undefined") return false;
     if (url.startsWith(`${location.origin}/`)) return true;
@@ -895,16 +957,17 @@ const isSameOrigin = (url: string): boolean => {
 };
 const BLANK_PNG =
     "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
-// ⚠️ only image requests may get BLANK_PNG — parsed resources (glyphs, tiles, JSON) get "" or Mapbox throws
+// ⚠️ only an image request may be answered with an image — a PNG handed to a parsed resource corrupts on every render pass
 const IMAGE_RESOURCES = new Set(["Image", "SpriteImage", "Tile"]);
 let blockedLogged = 0;
 
+/** ⚠️ a blocked non-image resource must get "" — a blocked glyph must NOT become a PNG. */
 export function v4TransformRequest(
     url: string,
     resourceType?: string,
 ): { url: string } {
-    // ⚠️ root-relative URLs must be absolutised — Mapbox's blob: worker can't resolve them and the tile fetch throws
     if (url.startsWith("/")) {
+        // ⚠️ must absolutise — Mapbox's worker is a blob: URL, so a root-relative tile URL throws there (fine on the main thread)
         return {
             url:
                 typeof location === "undefined"

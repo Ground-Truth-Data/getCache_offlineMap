@@ -1,7 +1,4 @@
-/**
- * These tests pin three things that must be true for a pin to show its 20 km: 1) EVERY cell is requested, not just the one under it. 2) They're requested IN PARALLEL. 3) A per-cell failure does NOT abort the area.
- * ⛔ NO NETWORK HERE — `fetch` is stubbed, this measures OUR orchestration only.
- */
+// ⛔ NO NETWORK HERE — fetch is stubbed; this measures OUR orchestration only, not the server's build time.
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cellTileKey, cellsFor } from "../../../contract/grid";
@@ -39,7 +36,7 @@ let gate: Array<() => void> = [];
 beforeEach(async () => {
 	urls = [];
 	gate = [];
-	// ⚠️ Imported dynamically — afterEach calls vi.resetModules(), which would otherwise leave a stale copy holding the config while packDownload.ts reads a fresh, unconfigured one.
+	// A host must be configured or there's no request to observe (configureTilesHost) — imported dynamically because afterEach's vi.resetModules() would otherwise leave a stale copy holding the config.
 	const { configureTilesHost, setWorkerTarget } = await import("../tilesHost");
 	// PIN THE TIER — configureTilesHost only answers for worker-cloud-prod, and the
 	// dev-build default is a different tier (whose host this test never sets).
@@ -49,7 +46,7 @@ beforeEach(async () => {
 		"fetch",
 		vi.fn(async (url: string) => {
 			urls.push(String(url));
-			// Hold every request open until released, so the parallel assertion below can see them all in flight at once.
+			// hold every request open until released, so the parallel assertion below can see them all in flight at once.
 			await new Promise<void>((r) => gate.push(r));
 			const key = PACK_KEY;
 			return new Response(await gzip(makePack(key)), {
@@ -72,7 +69,7 @@ function releaseAll(): void {
 
 describe("are the blobs coming?", () => {
 	it("⛔ ONE PIN = ONE REQUEST — never a fragment", async () => {
-		// ⚠️ A previous version fetched one blob PER CELL — nine requests landing at nine different times drew a disconnected fragment, and latched the session download guard after ~7 pins.
+		// THE LAW: one request per pin — per-cell fetches produced disconnected fragments and could latch the download guard after ~7 pins.
 		const { downloadV4Area } = await import("./packDownload");
 		const p = downloadV4Area(...ANCHOR);
 		await vi.waitFor(() => expect(urls.length).toBeGreaterThan(0));
@@ -82,6 +79,7 @@ describe("are the blobs coming?", () => {
 	});
 
 	it("the request carries the pin's own coordinates", async () => {
+		// the Worker reads the radius around the PIN, not a rounded cell centre — that would shift the data off the user.
 		const { downloadV4Area } = await import("./packDownload");
 		const p = downloadV4Area(...ANCHOR);
 		await vi.waitFor(() => expect(urls.length).toBeGreaterThan(0));
@@ -93,6 +91,7 @@ describe("are the blobs coming?", () => {
 	});
 
 	it("stores what came back, under the key the Worker chose", async () => {
+		// bytes on disk under the address the renderer asks for — if this drifts, the map goes blank with no error anywhere.
 		const { downloadV4Area, getAllTileKeys } = await import(
 			"./packDownload"
 		);
@@ -105,7 +104,7 @@ describe("are the blobs coming?", () => {
 	});
 
 	it("a failed request does NOT throw the pass away", async () => {
-		// ⚠️ Must leave the area un-recorded so the next pass retries — never abort the whole reconcile.
+		// a network hiccup must leave the area un-recorded so the next pass retries — never abort the whole reconcile and starve every area behind it.
 		vi.stubGlobal(
 			"fetch",
 			vi.fn(async () => {
