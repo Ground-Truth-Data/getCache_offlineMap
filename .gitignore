@@ -34,3 +34,8 @@ secrets/
 # it ships inside the Worker bundle. Only the resumable Overpass download
 # scratch (~100 MB) stays out.
 workers/.bake-cache/
+
+# standaloneTest.sh vendors siblings in here to prove this child runs
+# with no workspace around it, then leaves the copy behind. Generated, never
+# committed — unlike _rapper/, which IS tracked so a lone clone can run.
+_siblings/
