@@ -138,7 +138,7 @@ async function download({ at, photo, keep }: Ask): Promise<void> {
 			{ photo, keep },
 		);
 		console.info(
-			`[offlineV10] blob ${region.id}: ${region.tiles} tiles, ${region.fetched} fetched, ${(region.bytes / 1048576).toFixed(1)} MB, ${region.ms} ms to disk`,
+			`[offlineV10] blob ${region.id}: ${region.fetched} new of ${region.tiles} tiles, ${((region.newBytes ?? 0) / 1048576).toFixed(1)} MB added (${(region.bytes / 1048576).toFixed(1)} MB on the ground), ${region.ms} ms to disk`,
 		);
 		emit({ kind: "landed", region });
 	} catch (error) {

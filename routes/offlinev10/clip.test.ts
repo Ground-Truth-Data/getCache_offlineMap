@@ -235,6 +235,40 @@ describe("clipTile", () => {
 		]);
 	});
 
+	it("⛔ OVERLAPPING borders emit a polygon ONCE — not once per border", () => {
+		// Two blobs that overlap share ground. A semi-transparent fill (a park,
+		// a lake) emitted once per border composites twice in the strip they
+		// share, and three blobs make it three times — the visible seam.
+		const west: Rect = { x0: 0.25, y0: 0.25, x1: 0.6, y1: 0.75 };
+		const east: Rect = { x0: 0.4, y0: 0.25, x1: 0.75, y1: 0.75 };
+		const src = tile([
+			{
+				id: 7,
+				type: 3,
+				kind: "park",
+				parts: [
+					[
+						[0, 0],
+						[4096, 0],
+						[4096, 4096],
+						[0, 4096],
+					],
+				],
+			},
+		]);
+		const [f] = decode(clipTile(src, [west, east]));
+		// The union is one rectangle: x 0.25..0.75, y 0.25..0.75.
+		const area = (r: Pt[]) => {
+			let a = 0;
+			for (let i = 0, j = r.length - 1; i < r.length; j = i++)
+				a += (r[j][0] + r[i][0]) * (r[j][1] - r[i][1]);
+			return Math.abs(a) / 2;
+		};
+		const total = f.geom.reduce((sum, ring) => sum + area(ring), 0);
+		const union = (0.75 - 0.25) * 4096 * ((0.75 - 0.25) * 4096);
+		expect(total).toBeCloseTo(union, 0);
+	});
+
 	it("respects a layer's own extent", () => {
 		const src = tile(
 			[

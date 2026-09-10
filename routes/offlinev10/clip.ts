@@ -347,8 +347,43 @@ function clipLayer(layer: Uint8Array, rects: Rect[]): number[] | null {
 	return features ? out : null;
 }
 
+/**
+ * The same rectangles, cut so none overlaps another — the union unchanged.
+ *
+ * ⛔ Overlap is not cosmetic here: clipping runs ONCE PER RECT and keeps every
+ * result, so ground two blobs share is emitted twice. A semi-transparent fill
+ * (park, lake) then composites against itself and the shared strip reads as a
+ * darker rectangle with hard edges — three blobs, three coats.
+ *
+ * Sweep both axes: every rect edge becomes a grid line, and each grid cell is
+ * emitted once if any rect covers it. Rect counts here are single digits (one
+ * per blob covering this tile), so the O(n²) grid is free.
+ */
+export function disjoint(rects: Rect[]): Rect[] {
+	if (rects.length < 2) return rects;
+	const xs = [...new Set(rects.flatMap((r) => [r.x0, r.x1]))].sort((a, b) => a - b);
+	const ys = [...new Set(rects.flatMap((r) => [r.y0, r.y1]))].sort((a, b) => a - b);
+	const out: Rect[] = [];
+	for (let i = 0; i < xs.length - 1; i++) {
+		for (let j = 0; j < ys.length - 1; j++) {
+			const x0 = xs[i];
+			const x1 = xs[i + 1];
+			const y0 = ys[j];
+			const y1 = ys[j + 1];
+			// Midpoint decides membership — a cell is wholly inside a rect or
+			// wholly outside it, because every rect edge is a grid line.
+			const mx = (x0 + x1) / 2;
+			const my = (y0 + y1) / 2;
+			if (rects.some((r) => mx > r.x0 && mx < r.x1 && my > r.y0 && my < r.y1))
+				out.push({ x0, y0, x1, y1 });
+		}
+	}
+	return out;
+}
+
 /** The tile with every layer clipped to the rectangles; layers left empty are dropped. */
 export function clipTile(data: Uint8Array, rects: Rect[]): Uint8Array {
+	const cuts = disjoint(rects);
 	const out: number[] = [];
 	let p = 0;
 	while (p < data.length) {
@@ -358,7 +393,7 @@ export function clipTile(data: Uint8Array, rects: Rect[]): Uint8Array {
 		if (tag >>> 3 === 3 && (tag & 7) === 2) {
 			let len: number;
 			[len, p] = readVarint(data, p);
-			const layer = clipLayer(data.subarray(p, p + len), rects);
+			const layer = clipLayer(data.subarray(p, p + len), cuts);
 			p += len;
 			if (layer) writeBytesField(out, 3, layer);
 			continue;

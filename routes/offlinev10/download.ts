@@ -82,6 +82,7 @@ export async function downloadRegion(
 		tiles: tiles.length,
 		fetched: p.fetched,
 		bytes: await bytesOfTiles(tiles.map(tileKey)),
+		newBytes: p.bytes,
 		ms: Math.round(performance.now() - t0),
 		place: await nearestPlace(range, lng, lat),
 	};

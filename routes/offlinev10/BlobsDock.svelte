@@ -104,7 +104,11 @@ async function tidyPhotos(): Promise<void> {
 }
 /** Tiles and photos together — the figure the budget is measured against. */
 const used = $derived(bytes + photoTotal);
-const rowBytes = (r: Region): number => blobBytes(r.bytes, photoOf(r)?.bytes);
+// ⚠️ What the blob ADDED, not what it covers — a blob landing on ground another
+// already saved costs only its photo, and a header reading 6 MB for it invited
+// the "is it downloading twice?" question. `newBytes` is absent on rows written
+// before it existed; those fall back to the on-disk size.
+const rowBytes = (r: Region): number => blobBytes(r.newBytes ?? r.bytes, photoOf(r)?.bytes);
 const broken = $derived(regions.filter((r) => (missing[r.id] ?? 0) > 0).length);
 const nameOf = (r: Region): string => (r.place ? placeLabel(r.place) : r.id);
 const secs = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
@@ -208,8 +212,8 @@ onMount(() => {
 							<span class="dir">in</span>
 							<span class="ico">🗺️</span>
 							<span class="lname">tiles</span>
-							<span class="ldetail">{r.tiles} tiles · {r.range.x1 - r.range.x0 + 1}×{r.range.y1 - r.range.y0 + 1} z10</span>
-							<span class="lbytes">{mb(r.bytes)}</span>
+							<span class="ldetail">{r.tiles} tiles · {mb(r.bytes)}</span>
+							<span class="lbytes">{r.newBytes == null ? "—" : mb(r.newBytes)}</span>
 						</div>
 						<div class="layer" class:on={photoOf(r) != null}>
 							<span class="dir">in</span>

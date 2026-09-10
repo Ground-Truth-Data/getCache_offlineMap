@@ -29,7 +29,6 @@ const GOLD = "#f5a119";
 export const LEGEND = [
 	{ label: "Roads", color: DARK.major, swatch: "line" },
 	{ label: "Lakes / rivers", color: DARK.water, swatch: "line" },
-	{ label: "Boundaries", color: DARK.boundaries, swatch: "dashed" },
 	{ label: "Saved map edge", color: GOLD, swatch: "line" },
 ] as const;
 
@@ -117,6 +116,9 @@ export function buildStyle(origin: string): StyleSpecification {
 	const flavor = { ...DARK, regular: FONT, bold: FONT, italic: FONT };
 	const planet = layers(PLANET, flavor, { lang: "en" })
 		.filter((l) => l.type !== "background")
+		// Admin borders read as roads on a dark basemap — the online map hides
+		// them for the same reason (mapStyleNatural.ts).
+		.filter((l) => (l as { "source-layer"?: string })["source-layer"] !== "boundaries")
 		.map(oneFont)
 		.map(fadeIn);
 
@@ -139,17 +141,6 @@ export function buildStyle(origin: string): StyleSpecification {
 			source: BASE,
 			"source-layer": "lakes",
 			paint: { "fill-color": DARK.water },
-		},
-		{
-			id: "base-admin",
-			type: "line",
-			source: BASE,
-			"source-layer": "admin",
-			paint: {
-				"line-color": DARK.boundaries,
-				"line-width": 0.6,
-				"line-dasharray": [3, 3],
-			},
 		},
 		{
 			id: "base-roads",

@@ -260,7 +260,7 @@ onMount(() => {
 			<span class="dim">· {mb(progress.bytes)} MB · {secs(progress.ms)}</span>
 		{:else if last}
 			<strong class="dim">idle</strong>
-			<span class="dim">· last blob {last.tiles} tiles · {mb(last.bytes)} MB{#if lastPhoto}{` · photo ${Math.round(lastPhoto.bytes / 1024)} KB ${lastPhoto.source}`}{/if}</span>
+			<span class="dim">· last blob {last.fetched} new of {last.tiles} · {last.newBytes == null ? "—" : mb(last.newBytes)} MB{#if lastPhoto}{` · photo ${Math.round(lastPhoto.bytes / 1024)} KB ${lastPhoto.source}`}{/if}</span>
 		{:else}
 			<strong class="dim">idle</strong>
 			<span class="dim">· no blob loaded yet</span>

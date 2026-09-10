@@ -35,6 +35,12 @@ export interface Region {
 	/** what this blob's tiles weigh on disk — shared tiles included, so an
 	 *  overlapping blob that fetched nothing still reports its true size */
 	bytes: number;
+	/** ⚠️ What THIS blob actually added to disk: the bytes of the tiles it
+	 *  fetched, shared ground excluded. `bytes` answers "how big is the ground
+	 *  this blob covers"; this answers "what did it cost me". Absent on blobs
+	 *  written before the field existed — render those as unknown, never as 0,
+	 *  which is a real and common value (a blob inside one already downloaded). */
+	newBytes?: number;
 	/** ask → all on disk */
 	ms: number;
 	/** on disk → painted (idle) */
