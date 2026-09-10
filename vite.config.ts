@@ -4,5 +4,21 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
 	plugins: [sveltekit()],
-	server: { fs: { allow: [".", "./_rapper", "./_siblings"] } },
+	server: {
+		// PINNED, and both halves matter. A Mapbox token carries a list of
+		// origins it will serve tiles to; an origin not on the list gets 403s
+		// and a blank grey map, with nothing on screen to say why. Vite's
+		// default is to wander to the next free port, so the origin changes
+		// under you. strictPort fails loudly instead of drifting somewhere the
+		// token does not know.
+		host: "getcache.localhost",
+		port: 5175,
+		strictPort: true,
+		fs: { allow: [".", "./_rapper", "./_siblings"] },
+	},
+	// The vendored trees carry their OWN tests, written against the workspace
+	// they came from — rapper's asset guard looks for a static/ directory a
+	// child does not have. Running them here reports failures that say nothing
+	// about this child.
+	test: { exclude: ["**/node_modules/**", "_rapper/**", "_siblings/**"] },
 });
