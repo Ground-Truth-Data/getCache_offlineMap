@@ -13,7 +13,9 @@
  * itself; mounted, the tier's layout runs instead and the real bars appear in
  * these positions. That is the swap — nothing to switch off by hand.
  */
+import { page } from "$app/state";
 import type { Snippet } from "svelte";
+import { hasBottomBar, hasTopBar } from "./rigOrientation";
 
 let {
 	children,
@@ -25,12 +27,23 @@ let {
 	header?: string;
 	footer?: string;
 } = $props();
+
+// Reserve exactly what the mounted tier will draw. A route the tier gives no
+// top bar must not be handed one here either, or the stand-in reserves a band
+// that never arrives and the child is laid out against the wrong height —
+// which is the one thing this component exists to prevent.
+const topBar = $derived(hasTopBar(page.url.pathname));
+const bottomBar = $derived(hasBottomBar(page.url.pathname));
 </script>
 
-<div class="host">
-	<div class="bar top" aria-hidden="true">{header}</div>
+<div class="host" class:no-top={!topBar} class:no-bottom={!bottomBar}>
+	{#if topBar}
+		<div class="bar top" aria-hidden="true">{header}</div>
+	{/if}
 	<div class="slot">{@render children?.()}</div>
-	<div class="bar bottom" aria-hidden="true">{footer}</div>
+	{#if bottomBar}
+		<div class="bar bottom" aria-hidden="true">{footer}</div>
+	{/if}
 </div>
 
 <style>
@@ -41,6 +54,15 @@ let {
 	grid-template-rows: auto 1fr auto;
 	height: 100%;
 	min-height: 0;
+}
+.host.no-top {
+	grid-template-rows: 1fr auto;
+}
+.host.no-bottom {
+	grid-template-rows: auto 1fr;
+}
+.host.no-top.no-bottom {
+	grid-template-rows: 1fr;
 }
 .slot {
 	position: relative;

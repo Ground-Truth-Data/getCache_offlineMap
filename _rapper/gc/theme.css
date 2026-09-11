@@ -651,6 +651,78 @@
 	container-type: size;
 }
 
+/* THE SMALL PRINT, ON THE BACKDROP. Copyright left, privacy right, in the
+   margin beside the phone — the only place on a framed page that is neither
+   the phone nor the art around it.
+
+   Hidden below the phone-frame breakpoint: narrower, the backdrop is entirely
+   filled by the hand and there is no margin to sit in, so the words would land
+   on the phone itself. 900px is THE breakpoint (breakpoint.ts,
+   PHONE_RIG_MIN_PX); it is a literal here because CSS cannot import it.
+
+   Each item carries its own feathered wash rather than a bar across the
+   bottom: the backdrop runs from bright sky to dark ground to bare branches,
+   so a single panel would be invisible over some of it and a heavy smudge over
+   the rest. An ellipse per item darkens only the ink's own patch and fades to
+   nothing before it reaches the phone. */
+.rig-legal {
+	display: none;
+}
+
+@media (min-width: 900px) {
+	.rig-legal {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-end;
+		gap: 1rem;
+		/* Clear of the bottom corners: the backdrop art has a yellow arrow in
+		   the left one that the copyright otherwise sits on top of. */
+		padding: 0 clamp(1.5rem, 3vw, 2.5rem) 1.4rem;
+		font-family: var(--rt-font-body);
+		font-size: 0.85rem;
+		line-height: 1;
+		letter-spacing: 0.02em;
+		/* Under the download pin and the phone, over the backdrop art. */
+		z-index: 1;
+		pointer-events: none;
+	}
+
+	.rig-legal__item {
+		position: relative;
+		padding: 0.4rem 0.9rem;
+		color: color-mix(in srgb, var(--rt-cream) 80%, transparent);
+		text-decoration: none;
+		white-space: nowrap;
+		/* The link is the only part that needs the pointer back. */
+		pointer-events: auto;
+	}
+
+	/* The wash. Behind the ink, feathered to nothing at the edges — closest-side
+	   so the ellipse hugs the words at either length. */
+	.rig-legal__item::before {
+		content: "";
+		position: absolute;
+		inset: -0.5rem -1.1rem;
+		z-index: -1;
+		background: radial-gradient(
+			ellipse closest-side,
+			rgba(0, 0, 0, 0.85) 0%,
+			rgba(0, 0, 0, 0.62) 50%,
+			rgba(0, 0, 0, 0) 100%
+		);
+	}
+
+	a.rig-legal__item:hover,
+	a.rig-legal__item:focus-visible {
+		color: var(--rt-yellow);
+		outline: none;
+	}
+}
+
 /* THE WHOLE-WINDOW CASE. A phone-only page (no nav, no footer — the Capacitor
    app, rapper's (gc) routes) wraps the rig in this, and the backdrop's
    inset:0 then resolves against the viewport. `fixed` rather than a 100dvh
@@ -666,6 +738,18 @@
    is dropped (phone reverts to full size and overflows). Registering it as a
    <number> makes the browser evaluate it at the element instead. */
 @property --fit {
+	syntax: "<number>";
+	inherits: false;
+	initial-value: 1;
+}
+/* Same typing, same reason: these hold cq-unit maths and must be EVALUATED at
+   the wrapper, not pasted into min() as text. */
+@property --fit-h {
+	syntax: "<number>";
+	inherits: false;
+	initial-value: 1;
+}
+@property --fit-w {
 	syntax: "<number>";
 	inherits: false;
 	initial-value: 1;
@@ -696,9 +780,8 @@
 	flex-shrink: 0;
 
 	/* THE CROP RULE. The phone screen must land inside the stage top-to-bottom
-	   at every window size and every browser zoom, and must never grow past its
-	   hand-tuned size. So scale the whole assembly uniformly by
-	   (stage height ÷ phone height), capped at 1. It only ever shrinks.
+	   at every window size and every browser zoom. So scale the whole assembly
+	   uniformly to whatever the stage allows — see the two-axis fit below.
 
 	   The art cannot reflow: --phone-width/height, --hand-width, --hand-left/-top
 	   and --hand-stretch are hand-tuned against hand_phoneV3.webp and only hold
@@ -729,9 +812,31 @@
 	   Declaring `syntax: '<number>'` forces the browser to actually evaluate it
 	   here, where 100cqh is meaningful. Do not "simplify" the @property away.
 
+	   IT GROWS TOO. This used to be min(1, height-only): the phone could shrink
+	   to fit a short stage but never grow, and width was not an input at all —
+	   so a wide stage left the phone at its 452px drawing size with dead
+	   gutters either side, at every width from 700 to 1400.
+
+	   Now it takes the SMALLER of the two fits, which is what "as big as the
+	   stage allows" means with an aspect ratio to respect: whichever axis runs
+	   out first decides. Growing is still one uniform scale of the finished
+	   picture, so nothing reflows and no knob above is re-tuned — the ban is on
+	   re-tuning the art, not on the size of the whole.
+
+	   The width fit measures against --stage-reach, not the phone: the arm is
+	   drawn ~2.7x the phone's width and runs off the left edge on purpose, so
+	   fitting the ART would shrink the screen to protect scenery (same reason
+	   the height fit uses --phone-height, not phone + arm). --stage-reach is
+	   how much stage one phone-width is allowed to claim.
+
 	   --stage-pad is the breathing room: ~10px above AND below the screen. */
 	--stage-pad: 20px;
-	--fit: min(1, calc((100cqh - var(--stage-pad)) / var(--phone-height)));
+	/* The share of the stage's width the phone screen may fill. 1 = edge to
+	   edge; the arm still runs off-frame beyond it. */
+	--stage-reach: 0.92;
+	--fit-h: calc((100cqh - var(--stage-pad)) / var(--phone-height));
+	--fit-w: calc(100cqw * var(--stage-reach) / var(--phone-width));
+	--fit: min(var(--fit-h), var(--fit-w));
 	transform: translate(var(--wrapper-nudge), var(--wrapper-drop))
 		scale(var(--fit));
 	transform-origin: center center;
@@ -761,7 +866,13 @@
 	width: var(--phone-width);
 	height: var(--phone-height);
 	background: var(--color-background);
-	overflow: hidden;
+	/* THE WALL: nothing inside the phone may paint outside it. `clip` not
+	   `hidden` — hidden does NOT clip a position:fixed descendant, and every
+	   popover in the app is fixed, so for years they escaped the frame while
+	   being positioned by it (contain:layout below). Positioned in, clipped
+	   out: that gap is what let a mis-computed popover land on the desktop.
+	   `clip` closes it without creating a scroll container. */
+	overflow: clip;
 	position: relative;
 	z-index: 0;
 	/* Rounded corners to match the phone screen shape in the hand image */
@@ -772,14 +883,104 @@
 	   painted opening. The knobs above are now solved so the art covers the
 	   frame by 3px on every side, so there is no gap to hide. If a sliver ever
 	   reappears, re-solve the knobs; do not re-add a ring. */
-	/* CRITICAL: Contain position:fixed children within the frame.
-	   - contain: layout — makes this a containing block for ALL positioned descendants
-	     (including position:fixed), so fixed elements position relative to the frame
-	   NOTE: Do NOT use `contain: paint` — it clips the big hand animation that slides
-	   in from outside the frame. The `overflow: hidden` above handles clipping. */
+	/* Makes the frame the containing block for fixed descendants, so a popover's
+	   top/left are measured from the phone rather than the desktop window. The
+	   other half of the pair — clipping — is `overflow: clip` above; neither
+	   alone keeps a popover in.
+	   Do NOT use `contain: paint`: it clips the hand that slides in from outside
+	   the frame. `clip` on the frame does not, because the hand is not inside it. */
 	contain: layout;
 	container-type: inline-size;
 }
+
+/* ── THE PHONE, TURNED A QUARTER TURN ──
+   Opt-in via <PhoneRig landscape>. The turn is a rotation of the finished
+   composition, NOT a second set of knobs: the phone, the hand and their
+   alignment are the settled numbers above and are used here unchanged. There
+   is no landscape variant of --hand-left/-top and there must never be one —
+   that is the duplicate geometry the block above exists to prevent.
+
+   CLOCKWISE: the arm enters the portrait art from the bottom, so a clockwise
+   turn swings it to the TOP, the way a hand comes over a phone laid sideways.
+
+   THE PHONE TURNS; THE SCREEN DOES NOT. Rotating the wrapper alone turns its
+   children too, and the page inside comes out reading bottom-to-top — a
+   rotated PICTURE of a phone, not a phone held sideways. So the turn is
+   applied twice: once to the assembly, and once back on the frame's contents.
+   What the page gets is an upright screen that is wide instead of tall, which
+   is the whole point of asking for it. */
+.mobile-preview-backdrop.rig-landscape .mobile-preview-wrapper {
+	/* THE AXES SWAP, NOTHING ELSE DOES. Turned, the phone's on-screen height is
+	   --phone-width and its on-screen width is --phone-height. Dividing the
+	   headroom by --phone-height instead lets a 936px-long phone claim it needs
+	   only 452px: it fits on almost any window and runs off both sides rather
+	   than scaling down. This is the ONE thing a rotation genuinely changes,
+	   and the reason the turn is a stated mode rather than a transform bolted
+	   on at the callsite.
+
+	   Both terms, smaller wins — same as portrait: whichever axis runs out
+	   first decides how big the whole picture may be. There is no upper clamp:
+	   the phone grows to fill the stage exactly as the portrait rig does, so a
+	   wide window shows a big phone instead of a 936px one adrift in gutters.
+	   Growing is one uniform scale of the finished composition, so nothing
+	   reflows and no hand-tuned knob is re-solved — the ban is on re-tuning the
+	   art, not on the size of the whole. */
+	/* A MARGIN IN PIXELS, NOT A RATIO. Portrait holds the phone back to 0.92 of
+	   the stage because the arm sweeps in from the left and needs room to read
+	   as an arm; turned, the arm comes over the TOP, so that width is spare and
+	   the phone may use nearly all of it. Nearly: running the body flush to the
+	   window edge cropped the phone's own rounded corner, which reads as the
+	   page being broken rather than as a phone filling the frame.
+	   --stage-reach cannot express that — a ratio yields whatever it yields at
+	   the window you happen to be at (0.97 is 30px at 2000px wide and 18px at
+	   1200px). Subtracting the gutter buys the same amount of phone at every
+	   width, the way --fit-h already subtracts --stage-pad on the other axis. */
+	--stage-side: 60px;
+	--fit-h: calc((100cqh - var(--stage-pad)) / var(--phone-width));
+	--fit-w: calc((100cqw - var(--stage-side)) / var(--phone-height));
+	--fit: min(var(--fit-h), var(--fit-w));
+	/* NO HORIZONTAL NUDGE WHEN TURNED. --wrapper-nudge slides the composition
+	   sideways so the arm — which hangs off the LEFT in the portrait art — does
+	   not make the phone look off-centre. That is a portrait concern: there the
+	   phone is 452px in a wide stage and the offset is spare room being spent.
+	   Turned, the phone is 936px across and very nearly IS the stage, so the
+	   same 38px is room that does not exist; measured at 760x560 it pushed the
+	   frame 28px past the right edge. */
+	/* Rotation LAST — transforms apply right to left, so the phone is turned
+	   about its own centre first and the scale then acts on the turned box in
+	   screen axes. Written the other way round the offsets would push the phone
+	   along an axis that no longer points where it did. */
+	transform: translate(0, var(--wrapper-drop)) scale(var(--fit)) rotate(90deg);
+}
+
+/* THE SCREEN, PUT BACK UPRIGHT. One box holding everything the page renders,
+   sized to the frame's dimensions swapped and turned the other way, so what
+   lands inside it is an ordinary upright screen that happens to be wide.
+
+   ONE BOX, not this rule applied to each child. The frame's children are
+   static blocks that stack vertically; turning each about its own corner puts
+   the first one right and throws the rest out of the phone — measured, the
+   second child landed 200px LEFT of the frame. Normal flow has to happen
+   INSIDE the turned box, which is why <PhoneRig> renders this wrapper rather
+   than the stylesheet trying to catch children one at a time.
+
+   Turning about top-left and then sliding by one full height is deliberate: a
+   centre origin needs the offset written as half the difference of two
+   dimensions, which silently drifts the moment either of them changes. */
+.mobile-preview-screen {
+	width: var(--phone-height);
+	height: var(--phone-width);
+	transform-origin: top left;
+	transform: rotate(-90deg) translate(calc(-1 * var(--phone-height)), 0);
+	/* The page inside positions against the screen, not the phone — otherwise
+	   a `position: fixed` child measures from the frame's untouched, still
+	   portrait box and lands in the rotated axes. */
+	position: relative;
+	overflow: hidden;
+	contain: layout;
+	container-type: inline-size;
+}
+
 
 /* Historical: Tablet mode (551–1040px, font-size: 26px scaling) was removed in
    April 2026. It caused persistent layout drift with fixed-position elements.

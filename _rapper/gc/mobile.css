@@ -200,6 +200,20 @@
 	--rt-dur-base: 220ms; /* fade scrim */
 	--rt-dur-panel: 260ms; /* slide-in panels */
 
+	/* ── Bottom tab bar ─────────────────────────────────────── */
+	/* Anything that must sit ON the tab bar's top edge (export bars, drawers,
+	   sheets) offsets by this — nudging the bar used to leave six hardcoded
+	   copies a hairline out of line. Tablet override is the rule below. */
+	--gc-navbar-h: calc(3.5625rem + max(env(safe-area-inset-bottom), 10px));
+}
+
+/* The tab bar grows at this container width, so everything pinned to its top
+   edge must grow with it. `.mobile-shell` is inside the desktop phone frame's
+   container; on native there is no container and the base value holds. */
+@container (min-width: 500px) {
+	.mobile-shell {
+		--gc-navbar-h: calc(4.3125rem + max(env(safe-area-inset-bottom), 10px));
+	}
 }
 
 /* Global <hr> divider — rust/terracotta line, visible outdoors. Never style hr locally; change THIS rule instead. */
@@ -496,14 +510,17 @@ hr {
 }
 
 /* ── Pointer hover — hollow buttons ─────────────────────────────────────
-   One hover language for every outline / bare button in Get Cache: the fill
-   tints toward the button's own colour and a soft ring of it appears outside
-   the edge. currentColor makes it self-tinting — white pill, gold clicker,
-   rust link all get their own hue from one rule. background-COLOR (not
-   background) so a gradient-filled button is untouched; outline (not
-   box-shadow) so a bevel is untouched. Solid gold / rust buttons glow via
-   their own rules instead. Hover-capable pointers only: a phone must never
-   hold a hover after a tap.
+   One hover language for every outline / bare button in Get Cache: a gold wash
+   fills it and a soft ring in the button's own colour appears outside the edge.
+   The RING is currentColor, the FILL never is — a fill in currentColor
+   converges on the ink and the label erases itself (gold chip on gold, dark
+   ink on dark). The wash is a fixed gold at two strengths, because one strength
+   cannot serve both grounds: 30% over dark, 70% over an already-gold button.
+   background-COLOR (not background) so a gradient-filled button is untouched;
+   outline (not box-shadow) so a bevel is untouched. Solid gold / rust buttons
+   glow via their own rules instead. Hover-capable pointers only: a phone must
+   never hold a hover after a tap. A SELECTED item hovers exactly like any
+   other — being current is said by its lit state, never by a brighter wash.
 
    The :not() list is every button that already carries its own hover in a
    scoped stylesheet — keep it in sync when adding one. Nothing on the map
@@ -544,7 +561,7 @@ hr {
 			.fault-card,
 			.fault-card--usual
 		):hover {
-		background-color: color-mix(in srgb, currentColor 12%, transparent);
+		background-color: color-mix(in srgb, var(--rt-yellow) 30%, transparent);
 		outline: 3px solid color-mix(in srgb, currentColor 9%, transparent);
 		outline-offset: 0;
 	}
@@ -647,11 +664,13 @@ body.mobile-app .rt-selectable * {
 
 /* Map scale bar — shared by /mobile/map + /mobile/offlinev2/lite. Lives here (not MobMapPage's <style>) because the offline route never mounts MobMapPage. */
 
-/* Mapbox logo + scale bar share a baseline; logo nudged up/right to clear the rounded phone-frame corner. */
+/* Bottom of the map-chrome stack (scale bar > pills > logo). Right-aligned with
+   the zoom pill: on the left the shovel artwork sits behind the logo. */
 .mobile-map-fill .mapboxgl-ctrl-bottom-left,
 .mobile-map-fill .maplibregl-ctrl-bottom-left {
 	bottom: calc(env(safe-area-inset-bottom) + 1.25rem + 56px + 15px + 6px) !important;
-	left: calc(0.75rem + 10px) !important;
+	left: auto !important;
+	right: 0.75rem !important;
 	padding: 0 !important;
 }
 .mobile-map-fill .mapboxgl-ctrl-logo,
@@ -661,7 +680,12 @@ body.mobile-app .rt-selectable * {
 
 .mobile-map-fill .nice-scale-bar {
 	position: fixed;
-	bottom: calc(env(safe-area-inset-bottom) + 1.25rem + 56px + 15px);
+	/* Labels render above the blocks (column-reverse): below them the shovel
+	   artwork covers the numbers. */
+	display: flex;
+	flex-direction: column-reverse;
+	align-items: flex-end;
+	bottom: calc(env(safe-area-inset-bottom) + 1.25rem + 56px + 15px + 70px);
 	right: 0.75rem;
 	left: auto;
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -696,7 +720,7 @@ body.mobile-app .rt-selectable * {
 .mobile-map-fill .nice-scale-bar__labels {
 	position: relative;
 	height: 1rem;
-	margin-top: 2px;
+	margin-bottom: 2px;
 }
 .mobile-map-fill .nice-scale-bar__tick {
 	position: absolute;
@@ -1533,10 +1557,10 @@ body.map-only .mobile-map-fill .maplibregl-ctrl-bottom-left {
     filter: none;
 }
 
-/* The line indicator is the ONE signal for "this tab is focused" — 4px gold on the seam, with a soft shadow. */
+/* The line indicator is the ONE signal for "this tab is focused" — gold on the seam, with a soft shadow. */
 .nav-line {
     position: absolute;
-    height: 3px;
+    height: 2px;
     background: var(--rt-yellow-bright);
     box-shadow: var(--rt-nav-line);
     pointer-events: none;

@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
@@ -50,5 +50,12 @@ export default defineConfig({
 			// shared tree — noParentNames.test.ts fails the build if that
 			// changes by copy-paste.
 		},
+	},
+	// ⛔ _rapper/ and _siblings/ are VENDORED by dressChild.sh — other repos'
+	// tests, written for their own harness and their own assets. Running them
+	// here fails on files this repo never had. vite.config.ts already excludes
+	// them; vitest reads THIS file, so the rule has to live here too.
+	test: {
+		exclude: [...configDefaults.exclude, "_rapper/**", "_siblings/**"],
 	},
 });
