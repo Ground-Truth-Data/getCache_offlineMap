@@ -59,6 +59,9 @@ function sources(dir: string, out: string[] = []): string[] {
 	for (const e of readdirSync(dir, { withFileTypes: true })) {
 		if (e.name === "node_modules" || e.name === "assets") continue;
 		if (e.name.startsWith(".")) continue;
+		// Vendored by dressChild.sh, not authored here — a parent's name inside
+		// a copied file is the copy's business, not this child's.
+		if (e.name === "_rapper" || e.name === "_siblings") continue;
 		const full = join(dir, e.name);
 		if (e.isDirectory()) sources(full, out);
 		else if (EXT.has(extname(e.name)) && !isTest(e.name)) out.push(full);

@@ -98,6 +98,8 @@ const CLUSTER_PIN_PIXEL_RATIO = 10;
 // Where the count sits: the head of the pin, in ems of CLUSTER_COUNT_SIZE above the point.
 const CLUSTER_COUNT_SIZE = 13;
 const CLUSTER_COUNT_OFFSET_EM = -2.05;
+// text-offset is in ems, icon-offset in px — the count must ride the same slot as the icon.
+const CLUSTER_COUNT_X_EM = PIN_SLOT_X / CLUSTER_COUNT_SIZE;
 
 // When two pins become one. Mapbox clusters on the integer zoom below the
 // one on screen, so this radius reads as anything from 1× to 2× on screen:

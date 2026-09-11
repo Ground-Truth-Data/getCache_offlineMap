@@ -50,3 +50,27 @@ export const ROUTE_STALE_MS = 60 * 60 * 1000;
 export function isRouteStale(r: Route, now = Date.now()): boolean {
 	return routeAgeMs(r, now) >= ROUTE_STALE_MS;
 }
+
+/**
+ * What the banner says about this route. The UI must show this whenever the
+ * route is not live — the whole safety of the feature is that a driver knows
+ * they are looking at a memory.
+ */
+export function routeAgeLabel(
+	r: Route,
+	live: boolean,
+	now = Date.now(),
+): string {
+	if (live) return "Live route";
+	const mins = Math.floor(routeAgeMs(r, now) / 60_000);
+	const when =
+		mins < 1
+			? "just now"
+			: mins < 60
+				? `${mins} min ago`
+				: mins < 60 * 48
+					? `${Math.floor(mins / 60)}h ago`
+					: `${Math.floor(mins / 1440)} days ago`;
+	const what = r.kind === "direct" ? "Saved direct line" : "Saved route";
+	return `${what} — no signal, fetched ${when}`;
+}

@@ -196,8 +196,6 @@ onMount(async () => {
 });
 
 // ⚠️ Only writes on commit (swipe-right); an untyped-but-unswiped row is discarded. Uses targeted updateActivePlot — never the page's destructive persistInspection.
-// saveFailed: updateActivePlot returned "missing" — the row is gone from the store (deleted from another surface); raises the refusal strip so an unsaved value never renders as filed.
-let saveFailed = $state(false);
 // Reports each refused row ONCE per mount — the commit effect re-runs on every rows edit.
 const missingReported = new Set<string>();
 
@@ -205,7 +203,6 @@ $effect(() => {
 	if (!hydrated || !q704) return;
 	// ⚠️ Bump plotVersion ONLY when a write actually changed the store — bumping unconditionally causes an infinite effect loop (effect_update_depth_exceeded, the map "freeze").
 	let changed = false;
-	let missing = false;
 	for (const r of rows) {
 		if (r.plotNo == null) continue; // the trailing blank has no number yet.
 		if (!r.committed) continue; // UNCOMMITTED → buffered in memory, not saved.
@@ -220,7 +217,14 @@ $effect(() => {
 		if (outcome === "updated") changed = true;
 		if (outcome === "missing") {
 			// ⚠️ "missing" is not "unchanged" — treating it as unchanged is how a committed count rendered as filed but lived only in memory (gone on restart).
-			missing = true;
+			// ROLL THE SWIPE BACK. A refused write persisted nothing, so the plot is
+			// exactly where it was before the swipe: in memory, uncounted. Putting the
+			// row back to uncommitted restores that truth on screen — the pill is grey
+			// again and the swipe is armed, so the fix is to swipe once more, not to
+			// close the plot and hunt for its pin. Never render a filed-looking row
+			// over an unwritten one, and never make the user read an error to recover
+			// from something they can just redo.
+			r.committed = false;
 			if (!missingReported.has(r.id)) {
 				missingReported.add(r.id);
 				ports.ui.reportSwallowed(
@@ -233,7 +237,6 @@ $effect(() => {
 			}
 		}
 	}
-	saveFailed = missing;
 	// Only bump plotVersion on a real write — untouched otherwise, which is what stops the loop.
 	if (changed) plotVersion += 1;
 });
@@ -325,14 +328,6 @@ function requestClose() {
 				</div>
 			{/if}
 		</div>
-
-		<!-- IMPOSSIBLE-WRITE refusal strip: saveFailed → value stays on screen but is NOT saved; close-and-retap the pin to retry. -->
-		{#if saveFailed}
-			<div class="pp-save-failed" role="alert">
-				Couldn't save this plot's count — it's shown below but NOT saved yet.
-				Close this plot and tap its pin again to retry.
-			</div>
-		{/if}
 
 		<!-- Gated on `counted`: UNCOUNTED shows the editable deck (create); COUNTED is view-only — Edit opens the quality704 form, never inline. -->
 		{#if !counted || focusing || justFiledHold}
@@ -602,16 +597,6 @@ function requestClose() {
 	.pp-cell--bad {
 		background: color-mix(in srgb, var(--rt-q704-fault) 18%, rgba(0, 0, 0, 0.28));
 		border-color: var(--rt-q704-fault);
-	}
-	/* Same red fault chrome as .pp-cell--bad — loud by design, the value on screen is NOT saved. */
-	.pp-save-failed {
-		padding: 7px 10px;
-		border-radius: var(--rt-radius-sm, 8px);
-		background: color-mix(in srgb, var(--rt-q704-fault) 18%, rgba(0, 0, 0, 0.28));
-		border: 1px solid var(--rt-q704-fault);
-		font-size: 0.82rem;
-		line-height: 1.3;
-		color: var(--rt-fg, #f3ead2);
 	}
 	/* Fault-code footnote row — the shared FaultChip, shrunk via its CSS-var knobs (same as the deck's row strip). */
 	.pp-fault-strip {
