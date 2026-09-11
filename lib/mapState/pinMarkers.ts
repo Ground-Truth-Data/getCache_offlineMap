@@ -13,8 +13,7 @@ import {
     parsePinKey,
     pinAssetPath,
 } from "../shared/icons";
-import clusterPinUrl from "../assets/pin_library_small/pin_blank_emoji_sm.webp";
-import clusterGlyphUrl from "../assets/pin_library_small/pin_default_sm.webp";
+import clusterPinUrl from "../assets/pin_library_small/pin_cluster_gold_sm.webp";
 import { mount } from "svelte";
 import type {
     MapHostPorts,
@@ -50,8 +49,17 @@ const PLOT_CLUSTER_PCT_DY = 8;
 // plots sit just LEFT of the point and pins just RIGHT, shoulder to shoulder
 // with the coordinate between them. A bubble marks an area, not a spot, so
 // the half-width shift costs nothing. CSS px at the point.
-const PLOT_SLOT_X = -(PLOT_PLAQUE.w / 2) - 1;
-const PIN_SLOT_X = 16;
+// THE GAP IS MEASURED, NOT GUESSED. Each badge gets its own half-width plus a
+// breathing gap, so neither can reach the other however they grow: the plaque
+// is PLOT_PLAQUE.w across and the teardrop CLUSTER_PIN_W, and the ears perch
+// above the plaque rather than beside it, so width is the only axis in play.
+// A fixed +/-16 was the earlier answer and it stopped working the moment the
+// plaque grew ears and a second line of text — the two badges then abutted at
+// zero gap and the teardrop's tail flared into the plaque's corner.
+const BADGE_GAP = 6; // CSS px of clear air between the two badges
+const CLUSTER_PIN_W = 30; // teardrop width in CSS px, the 30x42 the DOM pins wear
+const PLOT_SLOT_X = -(PLOT_PLAQUE.w / 2) - BADGE_GAP / 2;
+const PIN_SLOT_X = CLUSTER_PIN_W / 2 + BADGE_GAP / 2;
 // The plaque wears the plot pin's ears, summed: each ear counts the member
 // plots with that condition. Same order and colours as StatusDots.svelte —
 // under hugs the corner, the others fan left, absent ears close the gap.
@@ -90,40 +98,6 @@ const CLUSTER_PIN_PIXEL_RATIO = 10;
 // Where the count sits: the head of the pin, in ems of CLUSTER_COUNT_SIZE above the point.
 const CLUSTER_COUNT_SIZE = 13;
 const CLUSTER_COUNT_OFFSET_EM = -2.05;
-
-// A small pin beside the count: the count says how many, the pin says of
-// what. The two share the head like characters — count left, pin right,
-// both further out at two digits — and the head holds three, so from 100 up
-// the pin goes and the number takes the head alone.
-const CLUSTER_GLYPH_LAYER = "rt-pin-clusters-glyph";
-const CLUSTER_GLYPH_ICON = "rt-cluster-glyph";
-const CLUSTER_GLYPH_SRC = clusterGlyphUrl;
-const CLUSTER_GLYPH_INK_H = 10; // px on screen, about the count's height
-const CLUSTER_GLYPH_DY = 1; // px the pin sits below the count's centre
-const CLUSTER_GLYPH_MAX = 99; // last count that still gets the pin
-const CLUSTER_GLYPH_GAP = 3; // px between count and pin
-const CLUSTER_DIGIT_PX = 7.4; // one digit's width at CLUSTER_COUNT_SIZE
-// The art is 630×859 with the ink in a 413×584 box, centred 3.5 px right and
-// 16.5 px above the frame's centre; at this ratio the frame is 30 CSS px
-// wide at icon-size 1.
-const CLUSTER_GLYPH_PIXEL_RATIO = 21;
-const CLUSTER_GLYPH_INK = { w: 19.67, h: 27.8, cx: 0.17, cy: -0.79 };
-const CLUSTER_GLYPH_SIZE = CLUSTER_GLYPH_INK_H / CLUSTER_GLYPH_INK.h;
-const CLUSTER_GLYPH_W = CLUSTER_GLYPH_INK.w * CLUSTER_GLYPH_SIZE;
-// The pair (count + gap + pin) is centred on the head, so the count moves
-// left by half of what sits to its right — the same shift for 1 or 2 digits.
-const CLUSTER_COUNT_X_EM = PIN_SLOT_X / CLUSTER_COUNT_SIZE;
-const CLUSTER_COUNT_PAIRED_X_EM =
-    CLUSTER_COUNT_X_EM - (CLUSTER_GLYPH_GAP + CLUSTER_GLYPH_W) / 2 / CLUSTER_COUNT_SIZE;
-// icon-offset is scaled by icon-size, so divide the CSS px through; the ink
-// correction is already in icon-size units.
-const clusterGlyphOffset = (digits: number): [number, number] => [
-    (PIN_SLOT_X + (digits * CLUSTER_DIGIT_PX + CLUSTER_GLYPH_GAP) / 2) / CLUSTER_GLYPH_SIZE -
-        CLUSTER_GLYPH_INK.cx,
-    (CLUSTER_COUNT_OFFSET_EM * CLUSTER_COUNT_SIZE + CLUSTER_GLYPH_DY) /
-        CLUSTER_GLYPH_SIZE -
-        CLUSTER_GLYPH_INK.cy,
-];
 
 // When two pins become one. Mapbox clusters on the integer zoom below the
 // one on screen, so this radius reads as anything from 1× to 2× on screen:
@@ -280,7 +254,6 @@ function makeEarImage(color: string): { image: ImageData; pixelRatio: number } |
 }
 function loadClusterPin(map: MapboxMap): void {
     loadClusterImage(map, CLUSTER_ICON, CLUSTER_PIN_SRC, CLUSTER_PIN_PIXEL_RATIO);
-    loadClusterImage(map, CLUSTER_GLYPH_ICON, CLUSTER_GLYPH_SRC, CLUSTER_GLYPH_PIXEL_RATIO, CLUSTER_GLYPH_SIZE);
     if (!map.hasImage(PLOT_CLUSTER_ICON)) {
         const plaque = makePlaqueImage();
         if (plaque) map.addImage(PLOT_CLUSTER_ICON, plaque.image, { pixelRatio: plaque.pixelRatio });
@@ -569,7 +542,6 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
     const CLUSTER_STACK = [
         CLUSTER_LAYER,
         CLUSTER_COUNT_LAYER,
-        CLUSTER_GLYPH_LAYER,
         PLOT_CLUSTER_LAYER,
         PLOT_CLUSTER_COUNT_LAYER,
         PLOT_CLUSTER_PCT_LAYER,
@@ -651,43 +623,15 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                         ? ["Noto Sans Regular"]
                         : ["DIN Pro Bold", "Arial Unicode MS Bold"],
                     "text-size": CLUSTER_COUNT_SIZE,
-                    "text-offset": [
-                        "case",
-                        ["<=", ["get", "point_count"], CLUSTER_GLYPH_MAX],
-                        ["literal", [CLUSTER_COUNT_PAIRED_X_EM, CLUSTER_COUNT_OFFSET_EM]],
-                        ["literal", [CLUSTER_COUNT_X_EM, CLUSTER_COUNT_OFFSET_EM]],
-                    ],
+                    "text-offset": [CLUSTER_COUNT_X_EM, CLUSTER_COUNT_OFFSET_EM],
                     "text-allow-overlap": true,
                 },
                 paint: {
-                    "text-color": "#f0c040",
-                    "text-halo-color": "rgba(0, 0, 0, 0.9)",
-                    "text-halo-width": 0.8,
-                },
-            });
-        }
-        if (!map.getLayer(CLUSTER_GLYPH_LAYER)) {
-            map.addLayer({
-                id: CLUSTER_GLYPH_LAYER,
-                type: "symbol",
-                source: CLUSTER_SOURCE,
-                filter: [
-                    "all",
-                    ["has", "point_count"],
-                    ["<=", ["get", "point_count"], CLUSTER_GLYPH_MAX],
-                ],
-                layout: {
-                    "icon-image": CLUSTER_GLYPH_ICON,
-                    "icon-size": CLUSTER_GLYPH_SIZE,
-                    "icon-anchor": "center",
-                    "icon-offset": [
-                        "case",
-                        ["<", ["get", "point_count"], 10],
-                        ["literal", clusterGlyphOffset(1)],
-                        ["literal", clusterGlyphOffset(2)],
-                    ],
-                    "icon-allow-overlap": true,
-                    "icon-ignore-placement": true,
+                    // Black on the gold head. The count used to be gold with a
+                    // dark halo because the head was black art; on gold that
+                    // reads as a smudge, and the halo it needed to survive is
+                    // what made it one.
+                    "text-color": "#1a1a1a",
                 },
             });
         }
