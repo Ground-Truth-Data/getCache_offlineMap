@@ -28,8 +28,8 @@ const LANDSCAPE_ROUTES = new Set(["/app/georef", "/georef"]);
  * /app prefix. One table, so a route cannot be landscape in one tier and
  * portrait in another.
  */
-export function isLandscapeRoute(pathname: string): boolean {
-	return LANDSCAPE_ROUTES.has(normalise(pathname));
+export function isLandscapeRoute(url: RouteInput): boolean {
+	return LANDSCAPE_ROUTES.has(normalise(pathOf(url)));
 }
 
 /**
@@ -47,12 +47,36 @@ export function isLandscapeRoute(pathname: string): boolean {
  */
 const NO_CHROME_ROUTES = new Set(["/app/georef", "/georef"]);
 
-export function hasTopBar(pathname: string): boolean {
-	return !NO_CHROME_ROUTES.has(normalise(pathname));
+export function hasTopBar(url: RouteInput): boolean {
+	return hasChrome(url);
 }
 
-export function hasBottomBar(pathname: string): boolean {
-	return !NO_CHROME_ROUTES.has(normalise(pathname));
+export function hasBottomBar(url: RouteInput): boolean {
+	return hasChrome(url);
 }
+
+/**
+ * THE APP MOUNTED INSIDE ITSELF still runs this layout, and without being told
+ * so it draws a second top bar under the outer one and a second tab bar over
+ * it — which is what /wiki/inbox showed. An embedded document is a separate
+ * browsing context, so the only signal that crosses into it is its own URL:
+ * the embedder appends EMBED_PARAM and the shell inside reads it here.
+ *
+ * A URL, not a pathname, is therefore the argument — a bare string still works
+ * and is read as a path with no query, which is every non-embedding caller.
+ */
+export const EMBED_PARAM = "embed";
+
+export type RouteInput = string | URL;
+
+export const isEmbedded = (url: RouteInput): boolean =>
+	typeof url !== "string" && url.searchParams.get(EMBED_PARAM) === "1";
+
+/** The path part, whichever form the caller had. */
+const pathOf = (url: RouteInput) =>
+	typeof url === "string" ? url : url.pathname;
+
+const hasChrome = (url: RouteInput) =>
+	!isEmbedded(url) && !NO_CHROME_ROUTES.has(normalise(pathOf(url)));
 
 const normalise = (pathname: string) => pathname.replace(/\/+$/, "") || "/";

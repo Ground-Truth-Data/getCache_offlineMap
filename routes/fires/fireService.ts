@@ -17,12 +17,12 @@ import { needsFireDisc } from "../../lib/shared/liveAnchor";
 import { passQueue } from "../../lib/shared/passQueue";
 import { fetchAreaFires } from "../../lib/worker/worker-local-dev/fires/fireFetch";
 import {
-	FIRE_TTL_MS,
-	fireCoverage,
-	isCoverageFresh,
-	isFresh,
-	readFireCache,
-	writeFireCache,
+    FIRE_TTL_MS,
+    fireCoverage,
+    isCoverageFresh,
+    isFresh,
+    readFireCache,
+    writeFireCache,
 } from "./fireCache";
 
 export const FIRE_RETRY_MS = 60_000;
@@ -33,110 +33,150 @@ const listeners = new Set<() => void>();
 
 /** Fires landed in the cache — the flame layer repaints on this. */
 export function onFires(fn: () => void): () => void {
-	listeners.add(fn);
-	return () => {
-		listeners.delete(fn);
-	};
+    listeners.add(fn);
+    return () => {
+        listeners.delete(fn);
+    };
 }
 
 /** The cache's own key shape for an area centre. */
 export function fireKey(lng: number, lat: number): string {
-	return `${lng.toFixed(4)},${lat.toFixed(4)}`;
+    return `${lng.toFixed(4)},${lat.toFixed(4)}`;
 }
 
 let pausedUntil = 0;
 
 /** Centres ride the queue as their cache keys — primitives, so a re-ask dedupes. */
 const askQueue = passQueue<string>((keys) =>
-	pass(keys.map((k) => k.split(",").map(Number) as unknown as LngLat)),
+    pass(keys.map((k) => k.split(",").map(Number) as unknown as LngLat)),
 );
 
 /** Fetch a fire disc for every centre that no fresh disc covers. Returns how many discs landed. One pass at a time; a centre asked for mid-pass gets the next one. */
 export function refreshFires(centres: readonly LngLat[]): Promise<number> {
-	return askQueue(centres.map(([lng, lat]) => fireKey(lng, lat)));
+    return askQueue(centres.map(([lng, lat]) => fireKey(lng, lat)));
 }
 
 async function pass(centres: readonly LngLat[]): Promise<number> {
-	if (typeof navigator !== "undefined" && navigator.onLine === false) return 0;
-	if (Date.now() < pausedUntil) return 0;
-	let landed = 0;
-	for (const [lng, lat] of centres) {
-		const key = fireKey(lng, lat);
-		const prev = await readFireCache(key);
-		if (prev && isFresh(prev)) continue;
-		const fresh = (await fireCoverage())
-			.filter((c) => isCoverageFresh(c))
-			.map((c) => c.center);
-		if (!needsFireDisc([lng, lat], fresh)) continue;
-		try {
-			const r = await fetchAreaFires(lng, lat);
-			await writeFireCache(key, {
-				fetchedAt: r.fetchedAt,
-				center: [lng, lat],
-				radiusKm: FIRE_RADIUS_KM,
-				sourcesOk: r.sourcesOk,
-				hotspots: [...r.hotspots],
-			});
-			landed++;
-			console.info(
-				`[fires] ${r.hotspots.length} hotspots within ${FIRE_RADIUS_KM} km of ${lat.toFixed(4)},${lng.toFixed(4)} (${(r.bytes / 1024).toFixed(1)} KB, ${r.sourcesOk}/3 satellites)`,
-			);
-			for (const fn of listeners) fn();
-		} catch (error) {
-			pausedUntil = Date.now() + FIRE_RETRY_MS;
-			console.warn(
-				`[fires] feed failed at ${lat.toFixed(4)},${lng.toFixed(4)} — pass paused ${FIRE_RETRY_MS / 1000}s, cached hotspots kept`,
-				error,
-			);
-			break;
-		}
-	}
-	return landed;
+    if (typeof navigator !== "undefined" && navigator.onLine === false)
+        return 0;
+    if (Date.now() < pausedUntil) return 0;
+    let landed = 0;
+    const fetched: FireFetchLog[] = [];
+    // The discs this pass has already pulled. A pass arrives with one centre per
+    // blob, and blobs cluster far tighter than the 500 km disc they each ask for
+    // — eighteen Ottawa centres, the closest pair 40 m apart, once pulled
+    // eighteen identical discs. Coverage is re-read per centre so a disc written
+    // mid-pass counts, but that read is a memo invalidated on write: cheap, yet
+    // it only helps AFTER a disc lands. Centres are therefore checked against
+    // this pass's own centres too, so the second of a 40 m pair never fetches.
+    const covered: LngLat[] = [];
+    for (const [lng, lat] of centres) {
+        const key = fireKey(lng, lat);
+        const prev = await readFireCache(key);
+        if (prev && isFresh(prev)) continue;
+        const fresh = (await fireCoverage())
+            .filter((c) => isCoverageFresh(c))
+            .map((c) => c.center);
+        if (!needsFireDisc([lng, lat], [...fresh, ...covered])) continue;
+        try {
+            const r = await fetchAreaFires(lng, lat);
+            await writeFireCache(key, {
+                fetchedAt: r.fetchedAt,
+                center: [lng, lat],
+                radiusKm: FIRE_RADIUS_KM,
+                sourcesOk: r.sourcesOk,
+                hotspots: [...r.hotspots],
+            });
+            landed++;
+            covered.push([lng, lat]);
+            fetched.push({
+                at: `${lat.toFixed(4)},${lng.toFixed(4)}`,
+                hotspots: r.hotspots.length,
+                KB: Number((r.bytes / 1024).toFixed(1)),
+                satellites: `${r.sourcesOk}/3`,
+            });
+            for (const fn of listeners) fn();
+        } catch (error) {
+            pausedUntil = Date.now() + FIRE_RETRY_MS;
+            console.warn(
+                `[fires] feed failed at ${lat.toFixed(4)},${lng.toFixed(4)} — pass paused ${FIRE_RETRY_MS / 1000}s, cached hotspots kept`,
+                error,
+            );
+            break;
+        }
+    }
+    reportPass(fetched);
+    return landed;
+}
+
+interface FireFetchLog {
+    at: string;
+    hotspots: number;
+    KB: number;
+    satellites: string;
+}
+
+/**
+ * ONE line per pass, not per disc. Every disc printing its own line made a
+ * quiet pass indistinguishable from a runaway one — the thirty-three-line
+ * burst that exposed the duplicate-disc bug read exactly like normal traffic.
+ * The per-disc detail stays, one fold down, for when a pass looks wrong.
+ */
+function reportPass(fetched: readonly FireFetchLog[]): void {
+    if (fetched.length === 0) return;
+    const hotspots = fetched.reduce((n, f) => n + f.hotspots, 0);
+    const kb = fetched.reduce((n, f) => n + f.KB, 0);
+    const degraded = fetched.filter((f) => f.satellites !== "3/3").length;
+    console.groupCollapsed(
+        `[fires] ${fetched.length} disc${fetched.length === 1 ? "" : "s"}, ${hotspots.toLocaleString()} hotspots, ${kb.toFixed(1)} KB, ${FIRE_RADIUS_KM} km each${degraded > 0 ? ` — ${degraded} on partial satellite coverage` : ""}`,
+    );
+    console.table(fetched);
+    console.groupEnd();
 }
 
 export interface FireServiceOptions {
-	/** Every centre that wants a disc — read at every run. */
-	centres: () => Promise<readonly LngLat[]> | readonly LngLat[];
-	/** The app's own signal that a centre landed; call `refresh` with it (or with nothing for all), return the unsubscribe. */
-	onCentresChanged?: (
-		refresh: (centres?: readonly LngLat[]) => void,
-	) => () => void;
+    /** Every centre that wants a disc — read at every run. */
+    centres: () => Promise<readonly LngLat[]> | readonly LngLat[];
+    /** The app's own signal that a centre landed; call `refresh` with it (or with nothing for all), return the unsubscribe. */
+    onCentresChanged?: (
+        refresh: (centres?: readonly LngLat[]) => void,
+    ) => () => void;
 }
 
 let stop: (() => void) | null = null;
 
 export function startFireService(opts: FireServiceOptions): () => void {
-	if (stop)
-		return () => {
-			/* already running — the first start's stop owns shutdown */
-		};
-	const refresh = (centres?: readonly LngLat[]): void => {
-		// Fired from timers, visibility and online events — there is no caller
-		// to hand a rejection to, so `void` alone leaves an unhandled one when
-		// the Worker is unreachable. Fires are best-effort: log and let the
-		// next tick retry.
-		(centres
-			? refreshFires(centres)
-			: Promise.resolve(opts.centres()).then(refreshFires)
-		).catch((e) => {
-			console.warn("[fires] refresh failed", e);
-		});
-	};
-	const all = (): void => refresh();
-	const visible = (): void => {
-		if (document.visibilityState === "visible") all();
-	};
-	const offCentres = opts.onCentresChanged?.(refresh) ?? (() => undefined);
-	window.addEventListener("online", all);
-	document.addEventListener("visibilitychange", visible);
-	const timer = setInterval(all, FIRE_TTL_MS);
-	all();
-	stop = () => {
-		offCentres();
-		window.removeEventListener("online", all);
-		document.removeEventListener("visibilitychange", visible);
-		clearInterval(timer);
-		stop = null;
-	};
-	return stop;
+    if (stop)
+        return () => {
+            /* already running — the first start's stop owns shutdown */
+        };
+    const refresh = (centres?: readonly LngLat[]): void => {
+        // Fired from timers, visibility and online events — there is no caller
+        // to hand a rejection to, so `void` alone leaves an unhandled one when
+        // the Worker is unreachable. Fires are best-effort: log and let the
+        // next tick retry.
+        (centres
+            ? refreshFires(centres)
+            : Promise.resolve(opts.centres()).then(refreshFires)
+        ).catch((e) => {
+            console.warn("[fires] refresh failed", e);
+        });
+    };
+    const all = (): void => refresh();
+    const visible = (): void => {
+        if (document.visibilityState === "visible") all();
+    };
+    const offCentres = opts.onCentresChanged?.(refresh) ?? (() => undefined);
+    window.addEventListener("online", all);
+    document.addEventListener("visibilitychange", visible);
+    const timer = setInterval(all, FIRE_TTL_MS);
+    all();
+    stop = () => {
+        offCentres();
+        window.removeEventListener("online", all);
+        document.removeEventListener("visibilitychange", visible);
+        clearInterval(timer);
+        stop = null;
+    };
+    return stop;
 }

@@ -19,7 +19,9 @@ import "./devCard.css";
  * a page uses to move its own nodes in.
  */
 import type { Snippet } from "svelte";
+import { page } from "$app/state";
 import SideCard from "$gc/SideCard.svelte";
+import { devChromeShows } from "$gc/devChrome";
 
 let {
 	side = "left",
@@ -36,9 +38,18 @@ let {
 } = $props();
 
 const dev = import.meta.env.DEV;
+
+/**
+ * A PAGE THAT MOUNTS ANOTHER PAGE inherits its instruments. The wiki pages
+ * render the offline map's whole +page.svelte as a poster, and it brings its
+ * three rails with it — they landed over the phone and beside the copy, on a
+ * page whose entire job is to be read. The child cannot know it is a poster,
+ * so the question is asked of the URL, here, once for every dock.
+ */
+const shows = $derived(dev && devChromeShows(page.url));
 </script>
 
-{#if dev}
+{#if shows}
 	<SideCard {side} {top} bind:el={host} class="dock" data-ephemeral-dock>
 		{@render children?.()}
 	</SideCard>
@@ -51,6 +62,9 @@ const dev = import.meta.env.DEV;
 	z-index: 8900;
 	color: #d8d4c8;
 	font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+	/* A rail of readouts, not a card of sentences — the tight padding is the
+	   instrument look. SideCard's roomier default is for the public cards. */
+	--card-pad: 12px 14px;
 }
 :global(.dock:empty) { display: none; }
 /* The dock owns placement, the item keeps its look. */

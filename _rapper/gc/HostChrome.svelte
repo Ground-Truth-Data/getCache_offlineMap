@@ -32,8 +32,8 @@ let {
 // top bar must not be handed one here either, or the stand-in reserves a band
 // that never arrives and the child is laid out against the wrong height —
 // which is the one thing this component exists to prevent.
-const topBar = $derived(hasTopBar(page.url.pathname));
-const bottomBar = $derived(hasBottomBar(page.url.pathname));
+const topBar = $derived(hasTopBar(page.url));
+const bottomBar = $derived(hasBottomBar(page.url));
 </script>
 
 <div class="host" class:no-top={!topBar} class:no-bottom={!bottomBar}>

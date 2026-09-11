@@ -109,6 +109,15 @@ onMount(() => {
 	overflow-y: auto;
 	max-height: calc(100dvh - var(--host-chrome, 0px) - 4rem);
 	z-index: 40;
+	/* GOLD EDGE IN ALL THREE PLACEMENTS. It used to be set only on the two
+	   floating ones, so the same card changed colour when the gutter grew wide
+	   enough to sit in — a card is the app's own furniture wherever it lands. */
+	border-color: var(--rt-yellow, #e8b923);
+	/* .dev-card's 12px is a debugger's padding, sized for a dense panel of
+	   readouts. A card carrying sentences needs air, and a caller overriding it
+	   one page at a time is how the three placements drifted in the first
+	   place. --card-pad lets a dense panel ask for the tight value back. */
+	padding: var(--card-pad, 20px 22px);
 }
 
 /* Beside the phone: hovering in the middle of the space under the host
@@ -119,12 +128,11 @@ onMount(() => {
 	transform: translateY(calc(-50% + var(--nudge, 0px)));
 }
 
-/* Floating, gold-edged, centred on its box from its own centre. */
+/* Floating, centred on its box from its own centre. */
 .side-card--centred,
 .side-card--over {
 	position: fixed;
 	transform: translate(-50%, -50%);
-	border-color: var(--rt-yellow, #e8b923);
 }
 
 /* No phone: the box is the VIEWPORT. Sized with a gutter rather than a

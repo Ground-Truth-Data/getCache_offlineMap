@@ -193,37 +193,3 @@ export function githubUrl(child: ChildRecord): string {
 	return `https://github.com/${child.org}/${child.repo}`;
 }
 
-/** The one tier that IS an npm package (`@retreever/create-rapper`). */
-const PACKAGE_TIER = "rapper";
-
-/**
- * THE SCAFFOLD COMMAND FOR ONE CHILD — built, never written down.
- *
- * The flag is the repo name, verbatim. create.mjs matches it against the
- * child folder names case- and separator-insensitively, exact match first, so
- * the full name always resolves and can never collide with a sibling; a
- * shorter unique fragment still works typed by hand. createCommand.test.ts
- * (ReTreever) re-runs create.mjs's matcher over every printed flag.
- *
- * Flag order is load-bearing: `--min-release-age=0` is npm's and must sit
- * BEFORE the package name — after it, `npm create` ignores the flag and the
- * 7-day guard hides a just-published version from its own scaffold
- * (ENOVERSIONS); the child flag sits AFTER the `--` or npm eats it and the
- * scaffold falls back to the interactive picker.
- *
- * rapper gets the bare command (it IS the package; no flag → the picker,
- * which is right when no child was named). ReTreever returns null — it
- * publishes no package.
- */
-export function createCommand(child: ChildRecord, dir = "rapper"): string | null {
-	if (child.repo === PACKAGE_TIER) {
-		return `npm create --min-release-age=0 @retreever/rapper@latest ${dir}`;
-	}
-	if (child.tier) return null;
-	return `npm create --min-release-age=0 @retreever/rapper@latest ${dir} -- --${child.repo}`;
-}
-
-/** Every child that can be scaffolded, in table order — the menu. */
-export function installableChildren(): ChildRecord[] {
-	return CHILDREN.filter((c) => !c.tier);
-}

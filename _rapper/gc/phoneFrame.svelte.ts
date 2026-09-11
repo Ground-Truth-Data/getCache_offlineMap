@@ -20,10 +20,22 @@ export type { FrameBox };
 export function watchPhoneFrame(onChange: (box: FrameBox | null) => void): () => void {
 	let stopWidths: (() => void) | undefined;
 	let current: HTMLElement | null = null;
+	/**
+	 * WHETHER WE HAVE ANSWERED YET, kept apart from WHAT the answer was.
+	 *
+	 * Both start as `null` otherwise — "not looked yet" and "looked, no frame"
+	 * are the same value — so the `frame === current` guard below read the very
+	 * first look at a frameless page as "nothing changed" and reported nothing.
+	 * A caller waiting for its first answer then waited forever: SideCard stayed
+	 * `--unplaced`, which is `visibility: hidden`, so every card on every page
+	 * with no phone was invisible rather than centred.
+	 */
+	let reported = false;
 
 	const sync = () => {
 		const frame = document.querySelector<HTMLElement>(".mobile-preview-frame");
-		if (frame === current) return;
+		if (reported && frame === current) return;
+		reported = true;
 		stopWidths?.();
 		stopWidths = undefined;
 		current = frame;

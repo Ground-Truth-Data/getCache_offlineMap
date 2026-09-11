@@ -683,7 +683,7 @@
 		   the left one that the copyright otherwise sits on top of. */
 		padding: 0 clamp(1.5rem, 3vw, 2.5rem) 1.4rem;
 		font-family: var(--rt-font-body);
-		font-size: 0.85rem;
+		font-size: 1.05rem;
 		line-height: 1;
 		letter-spacing: 0.02em;
 		/* Under the download pin and the phone, over the backdrop art. */
@@ -694,11 +694,25 @@
 	.rig-legal__item {
 		position: relative;
 		padding: 0.4rem 0.9rem;
-		color: color-mix(in srgb, var(--rt-cream) 80%, transparent);
+		color: var(--rt-yellow);
 		text-decoration: none;
 		white-space: nowrap;
 		/* The link is the only part that needs the pointer back. */
 		pointer-events: auto;
+	}
+
+	/* Only the LINK reads as pressable. The copyright beside it is the same
+	   ink and the same size, so without an outline of its own the link would
+	   be indistinguishable from a label until the pointer happened to cross
+	   it. Border at rest, filled on hover — the fill is the press. */
+	a.rig-legal__item {
+		border: 1px solid color-mix(in srgb, var(--rt-yellow) 55%, transparent);
+		border-radius: 999px;
+		transition:
+			background-color 0.16s ease,
+			border-color 0.16s ease,
+			color 0.16s ease,
+			transform 0.16s ease;
 	}
 
 	/* The wash. Behind the ink, feathered to nothing at the edges — closest-side
@@ -718,8 +732,15 @@
 
 	a.rig-legal__item:hover,
 	a.rig-legal__item:focus-visible {
-		color: var(--rt-yellow);
+		background: var(--rt-yellow);
+		border-color: var(--rt-yellow);
+		color: #000;
+		transform: translateY(-1px);
 		outline: none;
+	}
+
+	a.rig-legal__item:active {
+		transform: translateY(0);
 	}
 }
 
