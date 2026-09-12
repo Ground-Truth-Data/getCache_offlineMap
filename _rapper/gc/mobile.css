@@ -59,7 +59,14 @@
 	/* Same as resting gradient bottom — only TOP darkens on press; aliased so they can't drift. */
 	--rt-gold-2-press: var(--rt-gold-2); /* gradient bottom, pressed */
 	--rt-gold-bevel: #8a6a0d; /* hard 0 2px 0 bevel beneath */
-	--rt-gold-ink: #1a1405; /* text + icon-badge color on gold */
+	--rt-gold-ink: #1c0d04; /* text + icon-badge color on gold */
+
+	/* Letterpress: the ink sits IN the fill rather than on it. A light line
+	   below and a dark line above — the direction is what sells it, so these
+	   are never symmetric and never swap. Applies to any dark ink on a
+	   saturated fill, gold and terracotta alike. */
+	--rt-press-lo: rgba(255, 255, 255, 0.55); /* lit edge, below */
+	--rt-press-hi: rgba(0, 0, 0, 0.18); /* shaded edge, above */
 
 	/* ── Rust (section labels, "imported" pills) ───── */
 	--rt-rust: #c97a4a;

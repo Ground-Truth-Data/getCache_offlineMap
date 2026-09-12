@@ -388,6 +388,74 @@
 .rt-gold-btn * {
     color: var(--rt-gold-ink);
 }
+
+/* ──────────────────────────────────────────────────────────────────
+   Letterpress — dark ink stamped INTO a saturated fill.
+   ------------------------------------------------------------------
+   Wherever dark ink sits on gold, terracotta or any other saturated
+   fill, it gets a lit edge below and a shaded edge above. That is the
+   whole trick: a light-from-above surface reads as pressed in, and the
+   asymmetry is what carries it — never make the two shadows match, and
+   never flip which one is light.
+
+   Glyphs come along: `text-shadow` has no effect on a stroked SVG, so
+   icons take the same two offsets as a `drop-shadow` pair instead.
+
+   Wear `rt-letterpress` on anything custom; `.rt-gold-btn`, the
+   terracotta variant and every inked toggle already have it.
+
+   Why it is also keyed on `color:` — the audit of 2026-09-12 found ~60
+   hand-rolled gold fills that wear no shared class at all, each having
+   set its own `background` and its own dark text. A rule keyed only on
+   class names reaches none of them, and the next hand-rolled button
+   would escape too. Ink colour is the honest signal: dark text is only
+   ever chosen BECAUSE the ground underneath is saturated.
+   ────────────────────────────────────────────────────────────────── */
+.rt-letterpress,
+.rt-letterpress *,
+.rt-gold-btn,
+.rt-gold-btn *,
+:is(button, a, [role="button"], [role="tab"], label)[style*="--rt-gold-ink"] {
+    text-shadow:
+        0 1px 0 var(--rt-press-lo),
+        0 -1px 0 var(--rt-press-hi);
+}
+.rt-letterpress svg,
+.rt-gold-btn svg {
+    filter:
+        drop-shadow(0 1px 0 var(--rt-press-lo))
+        drop-shadow(0 -1px 0 var(--rt-press-hi));
+}
+
+/* Terracotta and the olive "lit" fills are darker grounds: the same white
+   highlight blows out on them, so the lit edge is dialled back and the shade
+   deepened. Wear `rt-letterpress--deep` instead of the default. */
+.rt-letterpress--deep,
+.rt-letterpress--deep * {
+    text-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.3),
+        0 -1px 0 rgba(0, 0, 0, 0.3);
+}
+.rt-letterpress--deep svg {
+    filter:
+        drop-shadow(0 1px 0 rgba(255, 255, 255, 0.3))
+        drop-shadow(0 -1px 0 rgba(0, 0, 0, 0.3));
+}
+/* Pressed, the surface is below the light — the emboss shallows out rather
+   than inverting, which would read as a different button. */
+.rt-gold-btn:active:not(:disabled):not(.disabled),
+.rt-gold-btn:active:not(:disabled):not(.disabled) *,
+.rt-gold-btn.pressed:not(:disabled):not(.disabled),
+.rt-gold-btn.pressed:not(:disabled):not(.disabled) *,
+.rt-letterpress:active:not(:disabled):not(.disabled),
+.rt-letterpress:active:not(:disabled):not(.disabled) * {
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+.rt-gold-btn:active:not(:disabled):not(.disabled) svg,
+.rt-gold-btn.pressed:not(:disabled):not(.disabled) svg,
+.rt-letterpress:active:not(:disabled):not(.disabled) svg {
+    filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.28));
+}
 @media (hover: hover) and (pointer: fine) {
     .rt-gold-btn:hover:not(:disabled):not(.disabled):not(:active):not(.pressed) {
         box-shadow: var(--rt-shadow-gold-hover);
@@ -440,6 +508,30 @@
 :is(button, a, [role="button"])[data-on-gold]:focus,
 :is(button, a, [role="button"])[data-on-gold]:active {
     color: var(--rt-gold-ink) !important;
+}
+
+/* Wherever that ink lands, the press lands with it — a toggle that turns gold
+   should look stamped, not painted. Same selectors deliberately: one list, so
+   an element can never get the ink without the emboss. */
+.rt-on-gold,
+.rt-on-gold *,
+:is(button, a, [role="button"], [role="tab"])[aria-pressed="true"],
+:is(button, a, [role="button"], [role="tab"])[aria-pressed="true"] *,
+:is(button, a, [role="button"], [role="tab"]):not([role="option"])[aria-selected="true"],
+:is(button, a, [role="button"], [role="tab"]):not([role="option"])[aria-selected="true"] *,
+:is(button, a, [role="button"])[data-on-gold],
+:is(button, a, [role="button"])[data-on-gold] * {
+    text-shadow:
+        0 1px 0 var(--rt-press-lo),
+        0 -1px 0 var(--rt-press-hi);
+}
+.rt-on-gold svg,
+:is(button, a, [role="button"], [role="tab"])[aria-pressed="true"] svg,
+:is(button, a, [role="button"], [role="tab"]):not([role="option"])[aria-selected="true"] svg,
+:is(button, a, [role="button"])[data-on-gold] svg {
+    filter:
+        drop-shadow(0 1px 0 var(--rt-press-lo))
+        drop-shadow(0 -1px 0 var(--rt-press-hi));
 }
 
 /*
@@ -840,9 +932,10 @@
 
 	   Now it takes the SMALLER of the two fits, which is what "as big as the
 	   stage allows" means with an aspect ratio to respect: whichever axis runs
-	   out first decides. Growing is still one uniform scale of the finished
-	   picture, so nothing reflows and no knob above is re-tuned — the ban is on
-	   re-tuning the art, not on the size of the whole.
+	   out first decides — up to 1, never past it, so a stage roomier than the
+	   art leaves the art at its drawn size. Growing is still one uniform scale
+	   of the finished picture, so nothing reflows and no knob above is
+	   re-tuned — the ban is on re-tuning the art, not on the size of the whole.
 
 	   The width fit measures against --stage-reach, not the phone: the arm is
 	   drawn ~2.7x the phone's width and runs off the left edge on purpose, so
@@ -857,7 +950,10 @@
 	--stage-reach: 0.92;
 	--fit-h: calc((100cqh - var(--stage-pad)) / var(--phone-height));
 	--fit-w: calc(100cqw * var(--stage-reach) / var(--phone-width));
-	--fit: min(var(--fit-h), var(--fit-w));
+	/* The 1 is the ceiling, not a third axis: a stage bigger than the art must
+	   leave the art alone. Drop it and a tall window upscales the tuned 452×936
+	   picture — soft edges, and every px knob above silently off. */
+	--fit: min(1, var(--fit-h), var(--fit-w));
 	transform: translate(var(--wrapper-nudge), var(--wrapper-drop))
 		scale(var(--fit));
 	transform-origin: center center;
@@ -959,7 +1055,8 @@
 	--stage-side: 60px;
 	--fit-h: calc((100cqh - var(--stage-pad)) / var(--phone-width));
 	--fit-w: calc((100cqw - var(--stage-side)) / var(--phone-height));
-	--fit: min(var(--fit-h), var(--fit-w));
+	/* Same ceiling as portrait — never upscale the tuned art. */
+	--fit: min(1, var(--fit-h), var(--fit-w));
 	/* NO HORIZONTAL NUDGE WHEN TURNED. --wrapper-nudge slides the composition
 	   sideways so the arm — which hangs off the LEFT in the portrait art — does
 	   not make the phone look off-centre. That is a portrait concern: there the
