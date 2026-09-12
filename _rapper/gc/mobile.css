@@ -205,6 +205,14 @@
 	   sheets) offsets by this — nudging the bar used to leave six hardcoded
 	   copies a hairline out of line. Tablet override is the rule below. */
 	--gc-navbar-h: calc(3.5625rem + max(env(safe-area-inset-bottom), 10px));
+
+	/* ── Top nav bar ────────────────────────────────────────── */
+	/* Twin of --gc-navbar-h, for anything that hangs off the top bar's bottom
+	   edge. TopBarMobile overwrites this on :root with the nav's MEASURED
+	   height (it is content-sized by its tallest icon); this value is only the
+	   pre-mount fallback, kept in step with the 4rem truck + its 0.3rem link
+	   padding. */
+	--gc-topbar-h: calc(4.6rem + env(safe-area-inset-top));
 }
 
 /* The tab bar grows at this container width, so everything pinned to its top
@@ -308,6 +316,31 @@ hr {
 		0 4px 12px rgba(0, 0, 0, 0.5);
 	color: var(--rt-fg);
 	box-sizing: border-box;
+}
+
+/* A ROUNDED BOX THAT SCROLLS KEEPS ITS SCROLLBAR OFF THE CORNERS. Left alone
+   the track runs the full height of the box, so at either end the thumb rides
+   out over the curve and crosses the border. Set --scroll-inset to the box's
+   own radius wherever this is used; the default suits a 1rem corner. */
+.rt-scroll-inset {
+	scrollbar-width: thin;
+	scrollbar-color: var(--rt-border-strong, rgb(255 255 255 / 0.28)) transparent;
+}
+
+.rt-scroll-inset::-webkit-scrollbar {
+	width: 6px;
+}
+
+.rt-scroll-inset::-webkit-scrollbar-track {
+	background: transparent;
+	/* margin, not padding: the track BOX shrinks, so the thumb cannot reach the
+	   corner even at the extremes of the scroll. */
+	margin-block: var(--scroll-inset, 1rem);
+}
+
+.rt-scroll-inset::-webkit-scrollbar-thumb {
+	background: var(--rt-border-strong, rgb(255 255 255 / 0.28));
+	border-radius: 99px;
 }
 
 /* Gold lowercase title — the popover's heading row. */

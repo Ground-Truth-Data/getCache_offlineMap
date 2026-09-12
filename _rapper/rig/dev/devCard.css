@@ -28,7 +28,8 @@
 	background: rgb(0 0 0 / 0.86);
 	backdrop-filter: blur(6px);
 	border: 1px solid var(--border);
-	border-radius: 14px;
+	--card-radius: 14px;
+	border-radius: var(--card-radius);
 	padding: 12px 14px;
 	box-sizing: border-box;
 	box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
@@ -69,3 +70,28 @@
 }
 .dev-lane--left { --dock-width: var(--dock-width-left); left: 12px; right: var(--lane-far); }
 .dev-lane--right { --dock-width: var(--dock-width-right); right: 12px; left: var(--lane-far); }
+
+/* A SCROLLING CARD'S TRACK STOPS SHY OF THE CORNERS. Left to itself the track
+   runs the full height of the box and the thumb rides out over the curve,
+   crossing the gold edge at both ends. The inset is the radius, so a card that
+   changes its corner keeps the gap. */
+.dev-card {
+	scrollbar-color: var(--border) transparent;
+	scrollbar-width: thin;
+}
+
+.dev-card::-webkit-scrollbar {
+	width: 6px;
+}
+
+.dev-card::-webkit-scrollbar-track {
+	background: transparent;
+	/* margin, not padding: the track BOX shrinks, so the thumb cannot reach
+	   the corner even at the extremes of the scroll. */
+	margin-block: var(--card-radius);
+}
+
+.dev-card::-webkit-scrollbar-thumb {
+	background: var(--border);
+	border-radius: 99px;
+}

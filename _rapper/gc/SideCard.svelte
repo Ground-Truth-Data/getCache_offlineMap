@@ -135,14 +135,22 @@ onMount(() => {
 	transform: translate(-50%, -50%);
 }
 
-/* No phone: the box is the VIEWPORT. Sized with a gutter rather than a
-   percentage, so there is padding off the edge at every width — 88vw of a
-   narrow phone is still a card touching both sides. */
+/* No phone: the box is the VIEWPORT MINUS ITS CHROME. Sized with a gutter
+   rather than a percentage, so there is padding off the edge at every width —
+   88vw of a narrow phone is still a card touching both sides.
+
+   The chrome term is what keeps the card off the bars. Against the bare
+   viewport the card's own gold edge lands part-way down the tab bar, which
+   reads as the FOOTER being broken rather than the card overhanging it.
+   Centring shifts by half the difference: the bars are not symmetrical, and
+   a card centred on the window sits too low inside the space left over. */
 .side-card--centred {
 	left: 50%;
-	top: 50%;
+	top: calc(50% + var(--host-chrome-top, 0px) / 2 - var(--host-chrome-bottom, 0px) / 2);
 	width: min(480px, calc(100vw - 2 * var(--card-gutter, 20px)));
-	max-height: calc(100dvh - 2 * var(--card-gutter, 20px));
+	max-height: calc(
+		100dvh - var(--host-chrome, 0px) - 2 * var(--card-gutter, 20px)
+	);
 }
 
 /* Gutter too narrow: the box is the PHONE SCREEN, as the frame publishes it. */
