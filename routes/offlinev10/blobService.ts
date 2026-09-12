@@ -49,6 +49,20 @@ interface Ask {
 	keep?: Region;
 }
 
+/**
+ * Blob narration — every KB fetched, one line per photo. Kept, never deleted:
+ * it is the only account of what the engine actually pulled. Off unless
+ * /app/offlinev10/debug turns it on, because ten lines per pan buries
+ * everything else in the console.
+ */
+let narrate = false;
+export function setBlobNarration(on: boolean): void {
+	narrate = on;
+}
+function say(...args: unknown[]): void {
+	if (narrate) console.info(...args);
+}
+
 const queue: Ask[] = [];
 const queued = new Set<string>();
 let draining = false;
@@ -137,7 +151,7 @@ async function download({ at, photo, keep }: Ask): Promise<void> {
 			},
 			{ photo, keep },
 		);
-		console.info(
+		say(
 			`[offlineV10] blob ${region.id}: ${region.fetched} new of ${region.tiles} tiles, ${((region.newBytes ?? 0) / 1048576).toFixed(1)} MB added (${(region.bytes / 1048576).toFixed(1)} MB on the ground), ${region.ms} ms to disk`,
 		);
 		emit({ kind: "landed", region });
@@ -155,7 +169,7 @@ async function removeBlob(id: string, at: [number, number]): Promise<void> {
 	if (!regions.some((r) => r.id === id)) return;
 	await deleteSatImage(satImageKey(at));
 	const tiles = await deleteRegion(id);
-	console.info(
+	say(
 		`[offlineV10] pin gone — blob ${id} removed, ${tiles} tiles freed`,
 	);
 	emit({ kind: "removed", id });
@@ -186,7 +200,7 @@ export function startBlobService(ports: HostPorts): () => void {
 			/* already running — the first start's stop owns shutdown */
 		};
 	const since = new Date().toISOString();
-	console.info(
+	say(
 		`[offlineV10] blob engine on — pins dropped after ${since.slice(11, 19)} earn blobs`,
 	);
 	// Ask while there is nothing to lose yet; the answer is a light on the blobs dock.

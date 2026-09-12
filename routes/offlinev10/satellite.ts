@@ -26,6 +26,20 @@ import { onBlob } from "./blobService";
 import { notePhotoBytes, regionsSnapshot } from "./store";
 
 /** How long a dead or throttled imagery host pauses the pass. EOX backs off the same way the old map did. */
+/**
+ * Photo narration — one line per photo fetched. Kept, never deleted: it is the
+ * only per-photo account of what the pass pulled. Off unless
+ * /app/offlinev10/debug turns it on, because a pan bakes ten of these and
+ * buries everything else. A failure still warns unconditionally.
+ */
+let narrate = false;
+export function setPhotoNarration(on: boolean): void {
+	narrate = on;
+}
+function say(...args: unknown[]): void {
+	if (narrate) console.info(...args);
+}
+
 export const PHOTO_RETRY_MS = 60_000;
 export { BAKE_RADIUS_KM as PHOTO_RADIUS_KM };
 /** What a photo is, for the docks and the JSON export: PHOTO_RADIUS_KM around the pin, from the first source whose box holds it. */
@@ -124,7 +138,7 @@ async function pass(centres: readonly [number, number][]): Promise<number> {
 			break;
 		}
 		landed++;
-		console.info(
+		say(
 			`[offlineV10] photo: ${BAKE_RADIUS_KM} km around ${lat.toFixed(4)},${lng.toFixed(4)} (${(img.blob.size / 1024).toFixed(0)} KB)`,
 		);
 		for (const fn of listeners) fn();

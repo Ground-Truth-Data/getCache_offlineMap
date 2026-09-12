@@ -31,13 +31,13 @@ import { onMount } from "svelte";
 import BlobsDock from "./BlobsDock.svelte";
 import ConfigDock, { type LayerRow, type Light } from "./ConfigDock.svelte";
 import SessionDock from "./SessionDock.svelte";
-import { blobBusy, blobInFlight, onBlob, queueBlob, repairBlob } from "./blobService";
+import { blobBusy, blobInFlight, onBlob, queueBlob, repairBlob, setBlobNarration } from "./blobService";
 import { budgetMb as readBudgetMb, setBudgetMb } from "./budget";
 import { nearestPlace } from "./places";
 import type { Progress } from "./download";
 import { onFires } from "../fires/fireService";
 import { HOSPITAL_LAYER_ID_LIST, type HospitalLayerHandle, attachHospitalLayer } from "../hospitals/hospitalLayer";
-import { dropPhoto, onPhoto, type PhotoInfo, photoInfo } from "./satellite";
+import { dropPhoto, onPhoto, type PhotoInfo, photoInfo, setPhotoNarration } from "./satellite";
 import { FOLLOW_MARGIN_KM, marginKm, moved } from "./follow";
 import { PLANET_TILES, installProtocol, setReadThrough } from "./protocol";
 import { type Kept, type Region, checkRegions, deleteRegion, keepStorage, listRegions, putRegion, stats, wipe } from "./store";
@@ -93,6 +93,7 @@ let {
 	places = soloHostPorts(),
 	MapDrawControls,
 	fireOrigins = soloFireOrigins,
+	debug = false,
 }: {
 	/** OPTIONAL: a host with no Get Cache app behind it (rapper, a bare
 	 *  `npm create` install) supplies none, and the solo bundle is the honest
@@ -113,6 +114,9 @@ let {
 		mapCentre: readonly [number, number],
 		maps: MapHostPorts["store"]["allMaps"],
 	) => Array<readonly [number, number]>;
+	/** Mounts the three instrument docks. Only /app/offlinev10/debug passes
+	 *  true — the plain route is the map a user sees. */
+	debug?: boolean;
 } = $props();
 /** Where the user has a stake — the camera only when there is no fix and no touched ground. */
 function origins(m: maplibregl.Map): readonly (readonly [number, number])[] {
@@ -482,6 +486,10 @@ onMount(() => {
 		kept = k;
 	});
 	if (dev) (window as unknown as { __v10?: unknown }).__v10 = { map: m, addBlob: queueBlob, refresh, fix: onUserFix };
+
+	// The engine narrates only where someone is reading it.
+	setBlobNarration(debug);
+	setPhotoNarration(debug);
 	return () => {
 		unfires();
 		unphoto();
@@ -533,7 +541,13 @@ onMount(() => {
 	{/if}
 </div>
 
-{#if dev}
+<!-- THE THREE INSTRUMENTS. Not dead code, and NEVER to be deleted — they are
+     how this map is debugged, and nothing else reports what is on disk, what a
+     Worker served, or which pyramid layers actually painted. They now live at
+     /app/offlinev10/debug so the plain route stays clean; reaching them is a
+     URL away, which is why an audit finding them unmounted is finding them
+     working. `dev` still walls them out of a build. -->
+{#if dev && debug}
 	<EphemeralDock side="left">
 		<SessionDock {progress} {last} {regions} photos={photoMeta} {tier} {kept} {budgetMb} {bytes} />
 		<ConfigDock
