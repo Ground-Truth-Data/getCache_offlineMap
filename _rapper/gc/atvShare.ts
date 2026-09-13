@@ -110,10 +110,19 @@ function resolveExit(btn: HTMLElement, exit: Exit): "left" | "right" {
 	const host = btn.closest(".mobile-shell") ?? document.documentElement;
 	// MIN_RUNWAY is a CSS-px constant, so the gap must be CSS px too — a raw
 	// screen-px gap is compared against an effectively smaller threshold the
-	// more dt-web scales the phone up, which flips the exit direction.
-	const { k } = localFrom(btn);
-	const roomRight =
-		(host.getBoundingClientRect().right - btn.getBoundingClientRect().right) / k;
+	// more dt-web scales the phone up, which flips the exit direction. And it
+	// must be the PAGE's rightward gap, not the screen's: turned a quarter
+	// turn those are different directions, and the screen's answer describes
+	// the room BELOW the button.
+	const { point } = localFrom(btn);
+	const hr = host.getBoundingClientRect();
+	const br = btn.getBoundingClientRect();
+	const hostXs = [
+		point(hr.left, hr.top).x,
+		point(hr.right, hr.bottom).x,
+	];
+	const btnXs = [point(br.left, br.top).x, point(br.right, br.bottom).x];
+	const roomRight = Math.max(...hostXs) - Math.max(...btnXs);
 	return roomRight >= MIN_RUNWAY ? "right" : "left";
 }
 
@@ -218,29 +227,28 @@ export function playAtvShare(btn: HTMLElement, exit: Exit = "auto"): void {
 	// `contain: layout` makes it the containing block for the fixed layer and
 	// whose overflow:hidden clips the ride to the bezel; <body> on a device,
 	// where fixed resolves to the viewport.
-	const home = frameFor(btn) ?? document.body;
-	const hr = home.getBoundingClientRect();
-	// ONE COORDINATE SPACE — the home's own CSS px. Rects come back in screen
-	// px and dt-web scales the phone by --fit, so every measurement is divided
-	// by k on the way in (same conversion as Player.svelte's place()).
-	const inFrame = home !== document.body;
-	const k = inFrame && home.offsetWidth > 0 ? hr.width / home.offsetWidth : 1;
-	const hcs = getComputedStyle(home);
-	const originX = inFrame
-		? hr.left + (Number.parseFloat(hcs.borderLeftWidth) || 0) * k
-		: 0;
-	const originY = inFrame
-		? hr.top + (Number.parseFloat(hcs.borderTopWidth) || 0) * k
-		: 0;
-	const toLocalX = (screenX: number) => (screenX - originX) / k;
-	const toLocalY = (screenY: number) => (screenY - originY) / k;
+	// ONE COORDINATE SPACE — the home's own CSS px, via the shared conversion.
+	// This used to hand-roll `rect.width / offsetWidth`, which reads the ASPECT
+	// RATIO rather than the scale once the rig is turned a quarter turn, and
+	// drew the quad at ~2x on every landscape route. localFrom owns that maths
+	// for exactly this reason; overlayCoordLaw.test.ts bans the copy.
+	const local = localFrom(btn);
+	// No `k` here on purpose: every distance below is converted through
+	// point(), which carries the scale already. A loose scale factor in scope
+	// is what invited the raw `rect - rect` divides that broke on the turn.
+	const { point } = local;
+	// The layer is `position: fixed`, so it resolves against the containing
+	// block localFrom measured from — NOT necessarily the box frameFor picked.
+	// Appending to one and measuring from the other offsets the whole ride by
+	// the gap between them, so the measured box wins and frameFor is only the
+	// fallback for a page with no containing block at all (native).
+	const home = local.origin ?? frameFor(btn) ?? document.body;
 
 	const h = btn.offsetHeight;
 	if (!h) return;
 	const w = btn.offsetWidth;
 	const btnRect = btn.getBoundingClientRect();
-	const bx = toLocalX(btnRect.left);
-	const by = toLocalY(btnRect.top);
+	const { x: bx, y: by } = point(btnRect.left, btnRect.top);
 	const bcs = getComputedStyle(btn);
 	const rRaw =
 		Number.parseFloat(
@@ -320,19 +328,29 @@ export function playAtvShare(btn: HTMLElement, exit: Exit = "auto"): void {
 	}
 
 	// Runway: how far the quad must travel to fully clear the app shell.
+	// EVERY edge goes through the same conversion as the button's own, because
+	// a raw rect difference is a SCREEN-space distance: turned a quarter turn,
+	// the shell's "right edge minus the button's right edge" is the gap BELOW
+	// the button, and the quad was handed a downward runway to drive along.
 	const host = btn.closest(".mobile-shell") ?? document.documentElement;
 	const hostRect = host.getBoundingClientRect();
+	// A turn SWAPS the ends as well as the axes — at -90° the screen's left edge
+	// maps to the page's bottom — so both corners go through the conversion and
+	// the pair is then sorted rather than assumed.
+	const a = point(hostRect.left, hostRect.top);
+	const b = point(hostRect.right, hostRect.bottom);
+	const hostLeft = Math.min(a.x, b.x);
+	const hostRight = Math.max(a.x, b.x);
+	const hostTop = Math.min(a.y, b.y);
+	const hostBottom = Math.max(a.y, b.y);
 	const run =
-		(dir === "right"
-			? hostRect.right - btnRect.right
-			: btnRect.left - hostRect.left) /
-			k +
+		(dir === "right" ? hostRight - (bx + w) : bx - hostLeft) +
 		SPRITE_W * scale;
 
 	// Vertical headroom: the quad must not leave through the TOP or BOTTOM.
 	// Whatever room it has above/below the button caps how far it may drift.
-	const driftUp = (btnRect.top - hostRect.top) / k;
-	const driftDown = (hostRect.bottom - btnRect.bottom) / k;
+	const driftUp = by - hostTop;
+	const driftDown = hostBottom - (by + h);
 
 	const legs = buildRoute(run, Math.max(0, Math.min(driftUp, driftDown)));
 	const total = legs.reduce((s, l) => s + l.len, 0);

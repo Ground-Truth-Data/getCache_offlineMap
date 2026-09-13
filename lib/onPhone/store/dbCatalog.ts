@@ -70,3 +70,11 @@ export function isOtherWorld(db: string): boolean {
 export function isLegacyDb(db: string): boolean {
 	return !isLiveV4(db) && !isOtherWorld(db) && baseDbName(db) !== APP_DB;
 }
+
+/** ⛔ Imagery a re-download would restore, so sign-out keeps it — anything NOT listed here is treated as the signed-in person's own data and destroyed. Adding a store that holds user data to this list leaks it to the next person at the browser. */
+const IMPERSONAL_BASES = [V4_TILES_DB, SAT_DB, SAT_DB_LEGACY_NAME];
+
+/** True when a database must not outlive the signed-in session. Covers both worlds — the sandbox twin holds real edits too. */
+export function isPersonalDb(db: string): boolean {
+	return !IMPERSONAL_BASES.includes(baseDbName(db));
+}

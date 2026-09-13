@@ -23,17 +23,26 @@
 // first frame, then <body>.
 // ════════════════════════════════════════════════════════════════════════════
 
-/** Resolve the phone frame a hand should live in, from its target element. */
+// THE TURNED PHONE HAS TWO BOXES, and an overlay wants the INNER one. On a
+// landscape route the frame holds `.mobile-preview-screen`, rotated -90° so the
+// page inside reads upright. The frame itself is NOT rotated, so the two
+// disagree about which way is right: a quad given the frame as its stage drove
+// out of the button and straight DOWN the window. The screen is also clipping
+// and a containing block in its own right, so it satisfies everything the frame
+// was chosen for — it is simply the frame's inner surface once turned.
+const HOMES = ".mobile-preview-screen, .mobile-preview-frame";
+
+/** Resolve the box a hand should live in, from its target element. */
 export function frameFor(
 	target: Element | null | undefined,
 ): HTMLElement | null {
-	const owned = target?.closest?.(
-		".mobile-preview-frame",
-	) as HTMLElement | null;
+	// `closest` walks outward and stops at the FIRST match, so the screen wins
+	// over the frame that contains it without the selector needing to rank them.
+	const owned = target?.closest?.(HOMES) as HTMLElement | null;
 	if (owned) return owned;
 	// No target (or target not under a frame yet): use the sole frame if there's
 	// exactly one — ambiguous with several, so bail to <body> rather than guess.
-	const all = document.querySelectorAll<HTMLElement>(".mobile-preview-frame");
+	const all = document.querySelectorAll<HTMLElement>(HOMES);
 	return all.length === 1 ? all[0] : null;
 }
 

@@ -9,6 +9,28 @@ import { overlayVisibility } from "./overlayVisibility.svelte";
 import type { Coord } from "$parent/siblings/getCache_OnlineMap/lib/coord";
 import { toCoord } from "$parent/siblings/getCache_OnlineMap/lib/coord";
 
+/**
+ * Run one call against a lazily-imported map module, reporting anything it
+ * throws instead of dropping it.
+ *
+ * `void import(…).then(fn)` detaches the promise — it does NOT handle it, and
+ * it escapes any try/catch around the call site. Every throw inside `fn` then
+ * arrives as a bare "Unhandled promise rejection" toast. These are all overlay
+ * chrome (opacity, visibility, the waiting box): a failure is worth a console
+ * line, never a toast over the user's map.
+ */
+function withMapModule<T>(
+	load: () => Promise<T>,
+	use: (mod: T) => void,
+	what: string,
+): void {
+	void load()
+		.then(use)
+		.catch((err) => {
+			console.warn(`[overlay] ${what} failed`, err);
+		});
+}
+
 /** Mapbox corner order [TL,TR,BR,BL]; a null slot means non-finite/out-of-range input (NaN defence) — caller skips the overlay. */
 type OverlayQuad = [Coord | null, Coord | null, Coord | null, Coord | null];
 
@@ -65,6 +87,8 @@ export interface OverlayManager {
 	attachActiveMapDispatch(): () => void;
 	showWaiting(corners: readonly [Coord, Coord, Coord, Coord]): void;
 	hideWaiting(): void;
+	/** Hide once the real overlay has actually painted, not when its load resolves. */
+	hideWaitingSoon(): void;
 }
 
 export function createOverlayManager(
@@ -192,9 +216,14 @@ export function createOverlayManager(
 					}
 					// Wait for the WebP to actually PAINT before hiding the waiting box — hiding on addMapOverlay's resolve (source added, image still decoding) flashes blank basemap.
 					// Watch THIS slot's source: the bare id belongs to overlay 0 only, and it is already loaded by the time a second sheet mounts, so no sourcedata ever fires for it and the box strands until the guard.
-					void import("$parent/siblings/getCache_OnlineMap/lib/mobMapWaitingBox").then(
+					withMapModule(
+						() =>
+							import(
+								"$parent/siblings/getCache_OnlineMap/lib/mobMapWaitingBox"
+							),
 						({ hideWaitingBoxOnceRendered }) =>
 							hideWaitingBoxOnceRendered(m, overlay.imageSourceId(slot)),
+						"hide waiting box",
 					);
 				}
 			}
@@ -282,8 +311,10 @@ export function createOverlayManager(
 			const m = getMap();
 			if (!m) return;
 			// Reads the CURRENT store value (not reactive) — the host's `$effect` owns the reactive read and re-fires this on change.
-			void import("$parent/siblings/getCache_OnlineMap/lib/mobMapOverlay").then(
+			withMapModule(
+				() => import("$parent/siblings/getCache_OnlineMap/lib/mobMapOverlay"),
 				(overlay) => overlay.setMapOverlayVisibility(m, overlayVisibility.pdf),
+				"pdf visibility",
 			);
 		},
 		attachOpacity() {
@@ -295,8 +326,11 @@ export function createOverlayManager(
 			// Applier pattern, not a reactive read — cross-module Svelte rune tracking is flaky.
 			// Applies to EVERY mounted overlay — one slider governs all sheets, matching the single MAP OPACITY control.
 			return overlayOpacity.register((opacity) => {
-				void import("$parent/siblings/getCache_OnlineMap/lib/mobMapOverlay").then(
+				withMapModule(
+					() =>
+						import("$parent/siblings/getCache_OnlineMap/lib/mobMapOverlay"),
 					(overlay) => overlay.setMapOverlayOpacity(m, opacity),
+					"opacity",
 				);
 			});
 		},
@@ -332,31 +366,40 @@ export function createOverlayManager(
 		showWaiting(corners) {
 			const m = getMap();
 			if (!m) return;
-			void import("$parent/siblings/getCache_OnlineMap/lib/mobMapWaitingBox").then(
+			withMapModule(
+				() =>
+					import("$parent/siblings/getCache_OnlineMap/lib/mobMapWaitingBox"),
 				({ showWaitingBox }) => {
 					const map = getMap();
 					if (map) showWaitingBox(map, corners);
 				},
+				"show waiting box",
 			);
 		},
 		hideWaiting() {
 			const m = getMap();
 			if (!m) return;
-			void import("$parent/siblings/getCache_OnlineMap/lib/mobMapWaitingBox").then(
+			withMapModule(
+				() =>
+					import("$parent/siblings/getCache_OnlineMap/lib/mobMapWaitingBox"),
 				({ hideWaitingBox }) => {
 					const map = getMap();
 					if (map) hideWaitingBox(map);
 				},
+				"hide waiting box",
 			);
 		},
 		hideWaitingSoon() {
 			const m = getMap();
 			if (!m) return;
-			void import("$parent/siblings/getCache_OnlineMap/lib/mobMapWaitingBox").then(
+			withMapModule(
+				() =>
+					import("$parent/siblings/getCache_OnlineMap/lib/mobMapWaitingBox"),
 				({ hideWaitingBoxOnceRendered }) => {
 					const map = getMap();
 					if (map) hideWaitingBoxOnceRendered(map, OVERLAY_SOURCE_ID);
 				},
+				"hide waiting box on render",
 			);
 		},
 	};

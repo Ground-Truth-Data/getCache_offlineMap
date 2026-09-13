@@ -222,7 +222,12 @@ export function attachHospitalLayer(
 
 	const paint = async (): Promise<void> => {
 		const fc = await hospitalCollection(opts.origins());
-		if (!isLive() || !map.getStyle()) return;
+		// CHECKED AFTER THE AWAIT, AND WITH isStyleLoaded. getStyle() is truthy
+		// the moment a Style object exists — long before addSource will accept
+		// anything — so it passes during a basemap swap and addLayers throws
+		// "Style is not done loading" into a promise nobody catches. The
+		// style.load listener below repaints, so returning here loses nothing.
+		if (!isLive() || !map.isStyleLoaded()) return;
 		addLayers(map);
 		const src = map.getSource(HOSPITAL_LAYER_IDS.src) as
 			| maplibregl.GeoJSONSource
@@ -244,7 +249,13 @@ export function attachHospitalLayer(
 				},
 			);
 	const repaint = (): void => {
-		void ready.then(paint);
+		// `void p.then(f)` discards the promise, it does not handle it: anything
+		// paint throws became an unhandled rejection with no stack behind it.
+		// Hospitals are a secondary layer — a failed repaint must report, not
+		// surface as a bare toast over the map.
+		void ready.then(paint).catch((err) => {
+			console.warn("[hospitals] repaint failed", err);
+		});
 	};
 	repaint();
 	wantHospitals(opts.origins());
@@ -252,13 +263,23 @@ export function attachHospitalLayer(
 	// A style swap (basemap picker) drops every custom layer; put them back.
 	const onStyle = (): void => {
 		if (!map.hasImage(PIN)) {
-			void loadImage(map, hospitalPinUrl).then((img) => {
-				if (isLive() && !map.hasImage(PIN)) map.addImage(PIN, img);
-				repaint();
-			});
+			void loadImage(map, hospitalPinUrl)
+				.then((img) => {
+					if (isLive() && !map.hasImage(PIN)) map.addImage(PIN, img);
+					repaint();
+				})
+				.catch((err) => {
+					console.warn("[hospitals] pin icon reload failed", err);
+				});
 		} else repaint();
 	};
-	map.on("style.load", onStyle);
+	// styledata, NOT style.load: style.load fires once per style and BEFORE the
+	// style is loaded enough to accept a symbol layer, so paint's isStyleLoaded
+	// guard would return and nothing would put the hospitals back. styledata
+	// keeps firing as the style settles, so one of them lands on a ready style.
+	// paint is idempotent (addLayers early-returns on an existing source), so
+	// the repeats cost nothing.
+	map.on("styledata", onStyle);
 
 	const show = (
 		at: LngLat,
@@ -351,7 +372,7 @@ export function attachHospitalLayer(
 		offLanded();
 		popup?.remove();
 		popup = null;
-		map.off("style.load", onStyle);
+		map.off("styledata", onStyle);
 		map.off("click", HOSPITAL_LAYER_IDS.icon, onIcon);
 		map.off("click", HOSPITAL_LAYER_IDS.cluster, onCluster);
 	};

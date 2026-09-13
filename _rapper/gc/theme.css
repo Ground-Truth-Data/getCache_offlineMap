@@ -1051,12 +1051,24 @@
 	   --stage-reach cannot express that — a ratio yields whatever it yields at
 	   the window you happen to be at (0.97 is 30px at 2000px wide and 18px at
 	   1200px). Subtracting the gutter buys the same amount of phone at every
-	   width, the way --fit-h already subtracts --stage-pad on the other axis. */
-	--stage-side: 60px;
+	   width, the way --fit-h already subtracts --stage-pad on the other axis.
+
+	   ZERO, DELIBERATELY. Subtracting a gutter sizes the phone but cannot place
+	   it: the wrapper's layout box stays the un-turned 452px one, so the stage
+	   centres THAT while the phone paints 936px wide about the same point, and
+	   the whole gap lands on one side with the body flush against the other. A
+	   side margin that shows up entirely on the right is worse than none, so the
+	   turned phone runs edge to edge until the centring itself is solved. */
+	--stage-side: 0px;
 	--fit-h: calc((100cqh - var(--stage-pad)) / var(--phone-width));
 	--fit-w: calc((100cqw - var(--stage-side)) / var(--phone-height));
-	/* Same ceiling as portrait — never upscale the tuned art. */
-	--fit: min(1, var(--fit-h), var(--fit-w));
+	/* NO CEILING HERE, unlike portrait. Turned, the phone's 936px long side
+	   runs across a window that is wider still, so a min(1,…) cap stops it at
+	   its drawing size and leaves ~500px of dead stage either side — which is
+	   the gutter this rig keeps being reported for. Portrait can afford the cap
+	   because the arm claims the spare width; turned, the arm is overhead and
+	   the width is the phone's to use. */
+	--fit: min(var(--fit-h), var(--fit-w));
 	/* NO HORIZONTAL NUDGE WHEN TURNED. --wrapper-nudge slides the composition
 	   sideways so the arm — which hangs off the LEFT in the portrait art — does
 	   not make the phone look off-centre. That is a portrait concern: there the
