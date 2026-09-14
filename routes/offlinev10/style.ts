@@ -134,8 +134,77 @@ function fadeIn(layer: LayerSpecification): LayerSpecification {
 	return layer;
 }
 
+/**
+ * THE GROUND, as a flavor override.
+ *
+ * A Protomaps flavor is 74 named colours, and `layers()` builds the ENTIRE
+ * style from it — every fill, line, casing and label. So the ground is styled
+ * by handing it different colours, never by patching layers one at a time:
+ * that road ends in hand-authoring a basemap, which is what these people
+ * already did for us.
+ *
+ * ⛔ Stock DARK is authored to HIDE the ground — every ground tone sits within
+ * 10 luminance points of `earth`, and `wood_a`/`wood_b` are the same colour.
+ * That is a deliberate choice for a dark canvas, and it is why the world reads
+ * as a void with lakes in it. These lift only the ground keys off `earth`,
+ * leaving DARK's roads, water and labels exactly as shipped.
+ *
+ * ⛔ Keep the `_a`/`_b` pairs EQUAL. The stock style cross-fades between them
+ * across a zoom; different values make the ground drift colour as you move,
+ * which reads as a bug.
+ *
+ * ── THE DIAL ───────────────────────────────────────────────────────────────
+ * One number: GROUND_LIFT, how far the ground separates from bare earth.
+ * 0 = stock DARK (invisible ground). 1 = the values below. Nothing else here
+ * needs touching; to restyle the whole map instead, swap the flavor in
+ * buildStyle for BLACK / GRAYSCALE / LIGHT / WHITE.
+ */
+export const GROUND_LIFT = 1;
+const GROUND: Record<string, string> = {
+	wood_a: "#26312a",
+	wood_b: "#26312a",
+	park_a: "#24302b",
+	park_b: "#24302b",
+	scrub_a: "#2a3029",
+	scrub_b: "#2a3029",
+	sand: "#2b2924",
+	beach: "#2d2b25",
+	glacier: "#2a2c2e",
+	industrial: "#232323",
+	hospital: "#272425",
+	school: "#252426",
+	zoo: "#253029",
+	military: "#282725",
+	aerodrome: "#222222",
+	pedestrian: "#242424",
+};
+
+/** Stock colour → lifted colour, mixed by `lift` so one number dials the whole palette. */
+export function groundFlavor<T extends Record<string, unknown>>(
+	flavor: T,
+	lift: number = GROUND_LIFT,
+): T {
+	const t = Math.max(0, Math.min(1, lift));
+	const chan = (h: string, i: number) => parseInt(h.slice(1 + i * 2, 3 + i * 2), 16);
+	const out: Record<string, unknown> = { ...flavor };
+	for (const [key, lifted] of Object.entries(GROUND)) {
+		const stock = flavor[key];
+		if (typeof stock !== "string" || !/^#[0-9a-f]{6}$/i.test(stock)) continue;
+		out[key] =
+			"#" +
+			[0, 1, 2]
+				.map((i) =>
+					Math.round(chan(stock, i) + (chan(lifted, i) - chan(stock, i)) * t)
+						.toString(16)
+						.padStart(2, "0"),
+				)
+				.join("");
+	}
+	return out as T;
+}
+
 export function buildStyle(origin: string): StyleSpecification {
-	const flavor = { ...DARK, regular: FONT, bold: FONT, italic: FONT };
+	const flavor = groundFlavor({ ...DARK, regular: FONT, bold: FONT, italic: FONT });
 	const planet = layers(PLANET, flavor, { lang: "en" })
 		.filter((l) => l.type !== "background")
 		// Admin borders read as roads on a dark basemap — the online map hides

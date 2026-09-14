@@ -104,12 +104,12 @@ const CLUSTER_COUNT_X_EM = PIN_SLOT_X / CLUSTER_COUNT_SIZE;
 
 // When two pins become one. Mapbox clusters on the integer zoom below the
 // one on screen, so this radius reads as anything from 1× to 2× on screen:
-// the pin art is ~29 px wide, and 15 lets pins nearly touch before they merge.
-const CLUSTER_RADIUS = 15;
-// Plots are what a surveyor came to see, so they merge LATE: at 20 they get
-// to one or two body widths apart on screen before joining. Two merged
-// plaques can brush at the half zooms between splits; that is the trade.
-const PLOT_CLUSTER_RADIUS = 20;
+// the pin art is ~29 px wide, so 30 merges them while a pin-width of clear air
+// still separates them — waiting for them to touch leaves the map unreadable.
+const CLUSTER_RADIUS = 30;
+// Plots are what a surveyor came to see, so they still merge later than the
+// rest — but only by a little, or a dense survey buries the map it sits on.
+const PLOT_CLUSTER_RADIUS = 34;
 const clusterImagesLoading = new WeakMap<MapboxMap, Set<string>>();
 // The sprite atlas has no mipmaps: a 300 px source drawn at 30 px is sampled
 // one pixel in ten and reads as jaggies. Halve on a canvas down to the size
