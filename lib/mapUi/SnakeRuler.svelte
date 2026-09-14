@@ -879,12 +879,22 @@ let popAnchor = $derived.by(() => {
     // Level with the snake's vertical centre, +52px to undo .measure-pop's upward translate, so the popover's centre lands on the touch point.
     const levelY = dodgedSideways ? (minY + maxY) / 2 + POP_OFFSET_PX + POP_H / 2 : y;
 
+    // Y obeys the same law as X: placement may never return a position the user
+    // cannot reach. The `cornered` pan below is a nicety that can silently refuse
+    // (map mid-ease, or bounds), and the ✕ Discard lives in this box — an
+    // unreachable popover is a mode with no exit.
+    const topOffset = below ? TOTAL_OFFSET_PX : -POP_OFFSET_PX - POP_H;
+    const clampedY = Math.min(
+        Math.max(levelY, VP_MARGIN - topOffset),
+        H - VP_MARGIN - POP_H - topOffset,
+    );
+
     return {
         popX,
         totalX: singlePoint
             ? popX
             : clampX(cx + (tailX - cx) * TOTAL_TAIL_BIAS, TOTAL_HALF_W, VP_MARGIN),
-        y: levelY,
+        y: clampedY,
         below,
         cornered,
         minY,
@@ -1006,6 +1016,13 @@ $effect(() => {
     >{totalText}</div>
 {/if}
 
+<!-- The measurement is UNANCHORABLE (snake dragged fully off-screen, or a projection
+     that went non-finite) so the popover carrying ✕ cannot be placed. Being unable to
+     position a label must never cost the user the only way out of the mode. -->
+{#if active && !popAnchor}
+    <button class="measure-btn measure-x measure-x-loose" onclick={discard} title="Discard" aria-label="Discard measurement">&#x2715;</button>
+{/if}
+
 <!-- Actions — stacked above the readout/bounding box; a lone point gets the same popover: Save drops a pin, Share copies the GPS. -->
 {#if active && popAnchor && (canFinish || singlePoint)}
     <div class="measure-pop" class:measure-grid={singlePoint} class:measure-at-self={singlePoint && seedAtSelf} class:measure-gliding={!!cursor} class:measure-below={popAnchor.below} style="left:{popAnchor.popX}px; top:{popAnchor.y}px;">
@@ -1100,6 +1117,15 @@ $effect(() => {
     }
     /* Flipped BELOW the snake (no room above) — hang downward from the anchor. */
     .measure-pop.measure-below { transform: translate(-50%, 52px); }
+
+    /* Anchored to the viewport, not the snake — it appears only when the snake has
+       no reachable anchor, so it cannot follow one. */
+    .measure-x-loose {
+        position: absolute;
+        top: 14px;
+        right: 14px;
+        z-index: 18;
+    }
 
     /* Share/Save stacked, ✕ beside them — outline buttons matching the Inbox toolbar style: gold Save (commit), terracotta Share/✕ (context). */
     .measure-col {

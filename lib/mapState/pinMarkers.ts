@@ -3,6 +3,7 @@ import type { Feature } from "geojson";
 import type mapboxgl from "mapbox-gl";
 import type { Map as MapboxMap } from "mapbox-gl";
 import { getAreaLabelRects } from "$parent/siblings/getCache_OnlineMap/lib/areaLabels";
+import { distinguishingLabels } from "$parent/siblings/getCache_OnlineMap/lib/distinguishingLabel";
 import { isFiniteCoord } from "$parent/siblings/getCache_OnlineMap/lib/safeMap";
 // Pins render on BOTH Mapbox (online) and MapLibre (offline /mobile/offlinev4) — a Mapbox Marker attached to a MapLibre map throws and takes the whole map down.
 // plotByGpsKey arrives via the optional ports.q704 — absent on hosts without inspections, so callers must optional-chain it.
@@ -1116,11 +1117,15 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
     function placeCaptions(map: MapboxMap, selKey: string | null): void {
         const zoom = map.getZoom();
         const zoomOk = Number.isFinite(zoom) && zoom >= PIN_CAPTION_MINZOOM;
-        const nameByKey = new Map<string, string>();
+        const fullNameByKey = new Map<string, string>();
         for (const p of lastPins) {
             const k = p.properties?.mapFeatureKey as string | undefined;
-            if (k) nameByKey.set(k, String(p.properties?.name ?? "").trim());
+            if (k) fullNameByKey.set(k, String(p.properties?.name ?? "").trim());
         }
+        // The caption shows only what tells this pin from the others on screen —
+        // "cache 1", not "260912cache_GTUser" four times over. The full name is
+        // what the popover shows on tap, so nothing is lost by shortening here.
+        const nameByKey = distinguishingLabels(fullNameByKey);
 
         // WRITE pass: builds each caption hidden-but-laid-out for measurement; unnamed pins, `tiles`, and PLOTS (identity is the plaque number) never get one.
         type Candidate = { pm: PinMarker; cap: HTMLElement; priority: number };
