@@ -102,11 +102,13 @@ const CLUSTER_COUNT_OFFSET_EM = -2.05;
 // text-offset is in ems, icon-offset in px — the count must ride the same slot as the icon.
 const CLUSTER_COUNT_X_EM = PIN_SLOT_X / CLUSTER_COUNT_SIZE;
 
-// When two pins become one: roughly two pin-heights of gap (art is 30x40).
-// Tuned by eye, not derived — 30 left overlapping pins as separate eggs, 140
-// merged pins that were nowhere near each other.
-const CLUSTER_RADIUS = 70;
-const PLOT_CLUSTER_RADIUS = 70;
+// When two pins become one. Tuned by eye against a ruler on screen, NOT
+// derived from the 30x40 art: Mapbox clusters at the integer zoom below the
+// one displayed, so the number here lands as 1-2x that on screen (70 measured
+// as ~120). Chasing a screen distance by arithmetic is what made 30 too loose
+// and 140 far too eager.
+const CLUSTER_RADIUS = 47;
+const PLOT_CLUSTER_RADIUS = 47;
 const clusterImagesLoading = new WeakMap<MapboxMap, Set<string>>();
 // The sprite atlas has no mipmaps: a 300 px source drawn at 30 px is sampled
 // one pixel in ten and reads as jaggies. Halve on a canvas down to the size
@@ -352,6 +354,14 @@ export interface PinMarkers {
     sync(): void;
     /** Run in the map-wiring effect cleanup. */
     clear(): void;
+    /**
+     * Re-measure the fans against the live camera. MUST be called on every
+     * `move`/`zoom` frame: the fan offsets are screen pixels, so one measured at
+     * z14 is wrong at z15 and the pins visibly sail off their coordinate until
+     * something re-runs. Cheap by design — markers and DOM are untouched, only
+     * the offsets are recomputed.
+     */
+    relayoutFans(): void;
 }
 
 export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
@@ -1206,5 +1216,17 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
         }
     }
 
-    return { sync, clear };
+    // The fans are screen-space, so they belong on the CAMERA clock, not the
+    // data clock. reconcile() re-runs them too, but it is wired to moveend —
+    // one frame AFTER the gesture, which is exactly why fanned pins used to
+    // sail outward during a zoom and snap back the instant it stopped.
+    function relayoutFans(): void {
+        const map = getMap();
+        if (!map) return;
+        if (!expandedCluster && openStacks.size === 0) return;
+        layoutStacks(deps.getSelectedKey());
+        layoutExpandedCluster(map);
+    }
+
+    return { sync, clear, relayoutFans };
 }
