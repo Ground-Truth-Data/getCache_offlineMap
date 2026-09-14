@@ -102,14 +102,11 @@ const CLUSTER_COUNT_OFFSET_EM = -2.05;
 // text-offset is in ems, icon-offset in px — the count must ride the same slot as the icon.
 const CLUSTER_COUNT_X_EM = PIN_SLOT_X / CLUSTER_COUNT_SIZE;
 
-// When two pins become one. Mapbox clusters on the integer zoom below the
-// one on screen, so this radius reads as anything from 1× to 2× on screen:
-// the pin art is ~29 px wide, so 30 merges them while a pin-width of clear air
-// still separates them — waiting for them to touch leaves the map unreadable.
-const CLUSTER_RADIUS = 30;
-// Plots are what a surveyor came to see, so they still merge later than the
-// rest — but only by a little, or a dense survey buries the map it sits on.
-const PLOT_CLUSTER_RADIUS = 34;
+// When two pins become one: roughly two pin-heights of gap (art is 30x40).
+// Tuned by eye, not derived — 30 left overlapping pins as separate eggs, 140
+// merged pins that were nowhere near each other.
+const CLUSTER_RADIUS = 70;
+const PLOT_CLUSTER_RADIUS = 70;
 const clusterImagesLoading = new WeakMap<MapboxMap, Set<string>>();
 // The sprite atlas has no mipmaps: a 300 px source drawn at 30 px is sampled
 // one pixel in ten and reads as jaggies. Halve on a canvas down to the size
@@ -287,14 +284,26 @@ function rectsOverlap(a: Rect, b: Rect): boolean {
 
 // Reported-offender memo so the audit logs each duplicate ONCE (sync() runs often).
 const auditedDupes = new Set<string>();
+const UNNUMBERED = "\0unnumbered"; // never a real "survey|plot:N" id
+
 // Scans live plot pins for two sharing the same plot number on the same survey (the "two 78s on one map" bug) — surfaces dupes already on disk; drop-time guards block new ones.
 function auditDuplicatePlotPins(
     pins: (Feature & { geometry: GeoJSON.Point })[],
 ): void {
     const byKey = new Map<string, string[]>(); // "survey|plot:N" → [featureKeys]
+    const unnumbered: string[] = [];
     for (const p of pins) {
         const pinType = p.properties?.pinTypeKey as string | undefined;
         if (!pinType || !pinType.startsWith("plot:")) continue;
+        // A plot pin with no number has no identity to collide with, so it is a
+        // different fault from a duplicate: every unnumbered pin reads
+        // "plot:undefined", and grouping them collapses N unrelated pins into
+        // one N-way "duplicate" that no amount of cleanup can resolve.
+        const num = pinType.slice("plot:".length);
+        if (!num || num === "undefined" || num === "null") {
+            unnumbered.push((p.properties?.mapFeatureKey as string) ?? "?");
+            continue;
+        }
         const survey = (p.properties?.surveyKey as string | undefined) ?? "";
         const fkey = (p.properties?.mapFeatureKey as string | undefined) ?? "?";
         const id = `${survey}|${pinType}`;
@@ -315,6 +324,12 @@ function auditDuplicatePlotPins(
                 tags: { area: "quality704", kind: "duplicate-pin-audit" },
             });
         } catch {} // codestyle-allow-swallow: Sentry may be uninitialised in tests/headless
+    }
+    if (unnumbered.length && !auditedDupes.has(UNNUMBERED)) {
+        auditedDupes.add(UNNUMBERED);
+        console.warn(
+            `[markers] ${unnumbered.length} plot pin(s) carry no plot number — features ${unnumbered.join(", ")}. They draw, but nothing can address them by number.`,
+        );
     }
 }
 

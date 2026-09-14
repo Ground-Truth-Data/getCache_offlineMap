@@ -36,14 +36,16 @@ const GOLD = "#f5a119";
  */
 const WATER_FAR = DARK.water;
 const WATER_NEAR = "#2B3855";
-const WATER_SHIFT_Z = 13;
+/** Where the blue starts, and how many zooms it takes to get there — a wider span eases, a span of 1 snaps. */
+const WATER_SHIFT_Z = 4;
+const WATER_SHIFT_SPAN = 9;
 const waterColor: ExpressionSpecification = [
 	"interpolate",
 	["linear"],
 	["zoom"],
 	WATER_SHIFT_Z,
 	WATER_FAR,
-	WATER_SHIFT_Z + 1,
+	WATER_SHIFT_Z + WATER_SHIFT_SPAN,
 	WATER_NEAR,
 ];
 

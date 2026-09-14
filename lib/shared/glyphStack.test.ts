@@ -13,7 +13,14 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { glyphStack, usesBundledGlyphs } from "./glyphStack";
+// Across the declared dependency, deliberately: this guards the detector the
+// offline map relies on, and the ONE copy that ships is the online map's —
+// mapDraw and mobMapOverlay call it. Testing a local copy proved nothing about
+// the code that actually runs.
+import {
+	glyphStack,
+	usesBundledGlyphs,
+} from "$parent/siblings/getCache_OnlineMap/lib/glyphStack";
 
 const mapWithGlyphs = (glyphs: unknown) =>
     ({ getStyle: () => ({ glyphs }) }) as never;

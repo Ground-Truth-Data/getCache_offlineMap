@@ -73,6 +73,10 @@ async function bordersIn(
 
 const clipped = new Map<string, { version: number; data: ArrayBuffer }>();
 
+// MapLibre TRANSFERS whatever we return to the tile worker, which detaches it.
+// So the memo keeps the bytes and every handout is a fresh copy — returning the
+// cached buffer itself made the second read of a key throw DataCloneError
+// ("already detached"), which on a zoom is most of the parent tiles at once.
 async function clippedTile(
 	key: string,
 	z: number,
@@ -82,11 +86,11 @@ async function clippedTile(
 ): Promise<ArrayBuffer | null> {
 	const { version, rects } = await bordersIn(z, x, y);
 	const hit = clipped.get(key);
-	if (hit && hit.version === version) return hit.data;
+	if (hit && hit.version === version) return hit.data.slice(0);
 	if (!rects.length) return null;
 	const data = clipTile(new Uint8Array(raw), rects).buffer as ArrayBuffer;
 	clipped.set(key, { version, data });
-	return data;
+	return data.slice(0);
 }
 
 let installed = false;
