@@ -3,16 +3,13 @@ export const OFFLINE_MAP_ROUTE = "/app/offlinev10";
 
 export type MapRoute = typeof ONLINE_MAP_ROUTE | typeof OFFLINE_MAP_ROUTE;
 
+import { worldStorageSuffix } from "../shared/sandboxDbNames";
+
 const KEY = "retreever-last-map-route";
 
-// TRUE when this load is the sandbox world (?sandbox=1) — localStorage is shared with the real app, so sandbox must never decide the real MAP tab’s target.
-function sandboxPage(): boolean {
-	if (typeof location === "undefined") return false;
-	return new URLSearchParams(location.search).get("sandbox") === "1";
-}
-
+// localStorage is shared by every world on the origin, so the key is suffixed per world — a sandbox must never decide the real MAP tab’s target.
 function storageKey(): string {
-	return sandboxPage() ? `${KEY}-sandbox` : KEY;
+	return KEY + worldStorageSuffix();
 }
 
 // rejects anything but a known route — an unvalidated value here would 404 the MAP tab via goto.

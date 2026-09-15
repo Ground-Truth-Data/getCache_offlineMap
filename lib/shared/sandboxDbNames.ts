@@ -1,10 +1,43 @@
 export const SANDBOX_SUFFIX = "-sandbox";
 
-let sandboxActive = false;
+/** A world token must be safe inside an IndexedDB name and a localStorage key. */
+const WORLD_TOKEN = /^[a-z0-9][a-z0-9_-]{0,31}$/i;
 
-/** Called by enterSandbox/exitSandbox to flip the offline-storage target. */
-export function setSandboxStorageActive(active: boolean): void {
+/**
+ * The world this page load runs in, read off `?sandbox=`: "1" is the practice
+ * sandbox, any other token a NAMED world (`?sandbox=blue`) — a second full app
+ * on the same origin with its own databases, used to play two phones against
+ * each other. null = the real app. Reads `location.search` unless given one.
+ */
+export function sandboxWorld(search?: string): string | null {
+	const s =
+		search ?? (typeof location === "undefined" ? "" : location.search);
+	const v = new URLSearchParams(s).get("sandbox");
+	if (v === null || v === "" || v === "0") return null;
+	return WORLD_TOKEN.test(v) ? v : null;
+}
+
+/** The suffix a world adds to every DB name: `-sandbox` for the practice
+ *  sandbox, `-sandbox-<name>` for a named world. */
+export function worldSuffix(world: string): string {
+	return world === "1" ? SANDBOX_SUFFIX : `${SANDBOX_SUFFIX}-${world}`;
+}
+
+/** Suffix for a localStorage key that must not cross worlds; "" in the real
+ *  app. Read from the URL, not the storage flag, so a module-scope seed sees
+ *  it before boot has set the flag. */
+export function worldStorageSuffix(): string {
+	const w = sandboxWorld();
+	return w ? worldSuffix(w) : "";
+}
+
+let sandboxActive = false;
+let activeSuffix = "";
+
+/** Called at boot to point offline storage at this page load's world. */
+export function setSandboxStorageActive(active: boolean, world = "1"): void {
 	sandboxActive = active;
+	activeSuffix = active ? worldSuffix(world) : "";
 	// Mirror onto a window global so rapper (must NOT import proprietary $lib/mobile — open-core rule) can read sandbox state and redirect "maps" → "maps-sandbox".
 	if (typeof window !== "undefined") {
 		(window as { __rt_sandbox_active?: boolean }).__rt_sandbox_active = active;
@@ -15,9 +48,10 @@ export function isSandboxStorageActive(): boolean {
 	return sandboxActive;
 }
 
-/** Resolve the live DB name for a base name — `<name>-sandbox` in sandbox. */
+/** Resolve the live DB name for a base name — `<name>-sandbox` in the
+ *  practice sandbox, `<name>-sandbox-<world>` in a named world. */
 export function currentDbName(realName: string): string {
-	return sandboxActive ? realName + SANDBOX_SUFFIX : realName;
+	return realName + activeSuffix;
 }
 
 const resetFns = new Set<() => void>();

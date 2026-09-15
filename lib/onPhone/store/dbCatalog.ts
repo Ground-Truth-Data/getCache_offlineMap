@@ -22,11 +22,12 @@ export const REGISTRY_DB = "rt-mapRegistry";
 /** Wildfire hotspots per area (v4FireCache); MUST stay registered here or /blobs offers to wipe the layer's only offline copy. */
 export const FIRE_DB = "rt-fire-cache";
 
-/** Strip a sandbox suffix down to the store's base name. */
+/** Strip a world suffix (`-sandbox`, `-sandbox-<name>`) down to the store's
+ *  base name, so a named world's DBs classify as the other world's, never as
+ *  legacy weight the inspector offers to wipe. */
 export function baseDbName(db: string): string {
-	return db.endsWith(SANDBOX_SUFFIX)
-		? db.slice(0, -SANDBOX_SUFFIX.length)
-		: db;
+	const i = db.indexOf(SANDBOX_SUFFIX);
+	return i === -1 ? db : db.slice(0, i);
 }
 
 /** The OTHER world's name for a base store (`x` ⇄ `x-sandbox`). */

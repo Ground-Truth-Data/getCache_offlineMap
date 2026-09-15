@@ -12,19 +12,17 @@ type CameraMap = {
 	off(type: "moveend", listener: () => void): unknown;
 };
 
+import { sandboxWorld, worldStorageSuffix } from "../shared/sandboxDbNames";
+
 const CAMERA_KEY = "retreever-map-camera";
 const FRAMED_KEY = "retreever-map-framed-key";
 
-/** TRUE when this load is the sandbox world (?sandbox=1) — localStorage is shared with the real app, so camera keys are suffixed per world; roaming the practice map must never move the real app’s camera, and vice versa. */
-function sandboxPage(): boolean {
-	if (typeof location === "undefined") return false;
-	return new URLSearchParams(location.search).get("sandbox") === "1";
-}
+/** localStorage is shared by every world on the origin, so camera keys are suffixed per world; roaming the practice map must never move the real app’s camera, and vice versa. */
 function cameraKey(): string {
-	return sandboxPage() ? `${CAMERA_KEY}-sandbox` : CAMERA_KEY;
+	return CAMERA_KEY + worldStorageSuffix();
 }
 function framedKey(): string {
-	return sandboxPage() ? `${FRAMED_KEY}-sandbox` : FRAMED_KEY;
+	return FRAMED_KEY + worldStorageSuffix();
 }
 
 /** THE map home — shared by the online cold-open fallback and the offline demo blob; the two MUST stay the same spot so the crow toggle lands in the same place. */
@@ -52,7 +50,8 @@ export function isNullIsland(lng: number, lat: number): boolean {
 
 /** Reads the persisted camera, or null if none/corrupt/non-finite — in the sandbox world it falls back to the sandbox home instead of null. */
 export function loadCamera(): SavedCamera | null {
-	const fallback: SavedCamera | null = sandboxPage()
+	// The practice sandbox only: a named world is a blank phone, not the seeded map.
+	const fallback: SavedCamera | null = sandboxWorld() === "1"
 		? {
 				center: SANDBOX_HOME_CENTER,
 				zoom: SANDBOX_HOME_ZOOM,
