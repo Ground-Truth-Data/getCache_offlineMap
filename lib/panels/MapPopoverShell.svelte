@@ -150,7 +150,7 @@ $effect(() => {
 		/* Above the map but BELOW the mob drawer (zIndex 22). */
 		z-index: 18;
 		max-width: calc(100% - 16px);
-		padding: 10px;
+		padding: 8px 5px;
 		animation: rt-fmp-in 0.15s ease-out;
 		overflow-y: auto;
 		/* Never scroll sideways — deck fits the surface width; a sideways scrollbar here is always a phantom from overflow-x:visible default. */

@@ -75,7 +75,7 @@ export interface MapHostFeature {
 export interface MapHostSession {
 	mapKey: string;
 	mapTitle: string;
-	landKey: string | null;
+	landKey?: string | null;
 	createdAt: string;
 	lastTouched: string;
 	senderName: string | null;
