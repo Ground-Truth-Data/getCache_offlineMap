@@ -121,7 +121,9 @@ export function attachCameraPersistence(map: CameraMap): () => void {
 
 /** ⚠️ Forces the map upright on every mount. This used to RESTORE a saved bearing/pitch, which is exactly how the map came back rotated — keep this a one-way assertion, never a restore. */
 export function applyCameraOrientation(map: CameraMap, _cam: SavedCamera): void {
+	// camera-allow-raw: literal 0, not a computed value — nothing for safeMap to validate
 	map.setBearing(0);
+	// camera-allow-raw: as above
 	map.setPitch(0);
 }
 

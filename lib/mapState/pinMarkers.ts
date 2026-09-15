@@ -4,7 +4,7 @@ import type mapboxgl from "mapbox-gl";
 import type { Map as MapboxMap } from "mapbox-gl";
 import { getAreaLabelRects } from "$parent/siblings/getCache_OnlineMap/lib/areaLabels";
 import { distinguishingLabels } from "$parent/siblings/getCache_OnlineMap/lib/distinguishingLabel";
-import { isFiniteCoord } from "$parent/siblings/getCache_OnlineMap/lib/safeMap";
+import { isFiniteCoord, safeEaseTo } from "$parent/siblings/getCache_OnlineMap/lib/safeMap";
 // Pins render on BOTH Mapbox (online) and MapLibre (offline /mobile/offlinev4) — a Mapbox Marker attached to a MapLibre map throws and takes the whole map down.
 // plotByGpsKey arrives via the optional ports.q704 — absent on hosts without inspections, so callers must optional-chain it.
 import { markerCtor } from "../shared/rendererOf";
@@ -838,8 +838,7 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                     }
                     src.getClusterExpansionZoom(clusterId, (err, zoom) => {
                         if (err || zoom == null) return;
-                        if (!isFiniteCoord(center as unknown)) return;
-                        map.easeTo({ center, zoom });
+                        safeEaseTo(map, { center, zoom });
                     });
                 });
                 map.on("mouseenter", layerId, () => {

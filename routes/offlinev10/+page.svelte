@@ -19,6 +19,7 @@ import { attachDoubleTapToPin } from "../../lib/shared/doubleTapToPin";
 import { FIRE_LAYER_ID_LIST, type FireLayerHandle, attachFireLayer } from "../../lib/onPhone/render/fireLayer";
 import { type SatelliteMount, createSatelliteMount, satLayerId } from "../../lib/onPhone/satellite/mountSatellite";
 import { NiceScaleBarControl } from "$parent/siblings/getCache_OnlineMap/lib/mapScaleBar";
+import { safeFlyTo } from "$parent/siblings/getCache_OnlineMap/lib/safeMap";
 import EphemeralDock from "$rig/dev/EphemeralDock.svelte";
 import type { Component } from "svelte";
 import { soloFireOrigins, soloHostPorts, soloMapPorts } from "../../lib/shared/soloPorts";
@@ -581,7 +582,7 @@ onMount(() => {
 			onAddForPins={blobsForPinsInView}
 			onDelete={removeBlob}
 			onWipe={wipeAll}
-			onFly={(r) => map?.flyTo({ center: [r.lng, r.lat], zoom: 11 })}
+			onFly={(r) => { if (map) safeFlyTo(map, { center: [r.lng, r.lat], zoom: 11 }); }}
 			onRepair={(r) => void repairBlob($state.snapshot(r))}
 			onRepairAll={() => { for (const r of regions) if ((missing[r.id] ?? 0) > 0) void repairBlob($state.snapshot(r)); }}
 		/>
