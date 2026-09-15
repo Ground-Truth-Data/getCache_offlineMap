@@ -19,6 +19,8 @@ let {
     onDelete,
     onContacts,
     onBlock,
+    cornerEditing = false,
+    onEditCorners,
 }: {
     ports: MapHostPorts;
     feature: Feature;
@@ -35,6 +37,9 @@ let {
     onDelete?: () => void;
     onContacts?: (keys: string[]) => void;
     onBlock?: (block: string) => void;
+    /** True while this feature's corners are in drag mode on the map. */
+    cornerEditing?: boolean;
+    onEditCorners?: (on: boolean) => void;
 } = $props();
 
 const isPoint = $derived(feature.geometry?.type === "Point");
@@ -53,5 +58,7 @@ const isPoint = $derived(feature.geometry?.type === "Point");
         {onDelete}
         {onContacts}
         {onBlock}
+        {cornerEditing}
+        {onEditCorners}
     />
 </MapPopoverShell>

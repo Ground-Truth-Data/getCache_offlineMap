@@ -262,8 +262,10 @@ Layers 1 and 2 ship as ONE route, `/app/offline`. The blob debug panel
 
 **The reconcile lives in `lib/onPhone/bake/bakeService.svelte.ts`.** Until
 6 Sep 2026 the Get Cache layout started it app-wide; since then the layout
-starts V10's `blobService` instead, and `OfflineMapPage.svelte` starts this
-service on mount, so it runs only while `/app/offline` is open. The map itself
+starts V10's `blobService` instead, and V10's own page
+(`routes/offlinev10/+page.svelte`) starts this service on mount, so it runs only
+while the offline map is open. (`OfflineMapPage.svelte` was the V8/V9 shell and
+was deleted with them on 6 Sep 2026.) The map itself
 still renders only what is on disk; the service tells the panels
 (`subscribeOfflineBake`) when new blobs land.
 
