@@ -386,7 +386,10 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
     // a zoom change — the camera stays where the surveyor put it.
     // Held by member keys, not cluster_id: ids are re-minted on every re-tile,
     // so an id would go stale the first time the map moved a pixel.
-    let expandedCluster: { at: [number, number]; keys: Set<string> } | null = null;
+    // No anchor coordinate here on purpose: the fan derives its centre from the
+    // members' own positions each layout. Storing the cluster's coordinate is
+    // what made fanned pins drift, since that coordinate is zoom-dependent.
+    let expandedCluster: { keys: Set<string> } | null = null;
 
     // getClusterLeaves is async and paged; ask for far more than a bubble can
     // hold so one call is always the whole membership.
@@ -394,7 +397,6 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
     function expandCluster(
         src: mapboxgl.GeoJSONSource,
         clusterId: number,
-        at: [number, number],
     ): void {
         src.getClusterLeaves(clusterId, EXPAND_MAX, 0, (err, leaves) => {
             if (err || !leaves) return;
@@ -404,7 +406,7 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                 if (k) keys.add(k);
             }
             if (keys.size < 2) return;
-            expandedCluster = { at, keys };
+            expandedCluster = { keys };
             // sync() is what carries the `open` flag into the source, and only
             // that hides the bubble the members are stepping out of.
             sync();
@@ -471,7 +473,19 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
         if (!expandedCluster) return;
         const members = pinMarkers.filter((pm) => expandedCluster?.keys.has(pm.key));
         if (members.length < 2) return;
-        const origin = map.project(expandedCluster.at);
+        // Anchor on the MEMBERS' centroid, never the cluster feature's own
+        // coordinate: Supercluster recomputes that per zoom as members join and
+        // leave, so a fan hung on it slides across the ground while you zoom.
+        // The centroid of a fixed set of points is a property of those points —
+        // it cannot move, which is the whole requirement for an anchor.
+        let sumLng = 0;
+        let sumLat = 0;
+        for (const pm of members) {
+            const ll = pm.marker.getLngLat();
+            sumLng += ll.lng;
+            sumLat += ll.lat;
+        }
+        const origin = map.project([sumLng / members.length, sumLat / members.length]);
         const n = members.length;
         const R = Math.min(90, 34 + n * 6);
         // Order the ring by each member's true bearing from the centre, so a
@@ -609,6 +623,12 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                 clusterRadius: id === PLOT_CLUSTER_SOURCE ? PLOT_CLUSTER_RADIUS : CLUSTER_RADIUS,
                 // Each plot carries its ears as 0/1 (sync stamps them); the cluster sums them into "how many members have this".
                 // sat/spots sum the same way, and the plaque divides them — summing the two terms and dividing ONCE is what makes the merged % a true weighted quality rather than an average of averages.
+                // sumLng/sumLat exist to give the bubble a FIXED anchor. A cluster's
+                // own coordinate is Supercluster's running average of whichever
+                // members it holds at that zoom, so it slides across the ground as
+                // membership changes — the bubble appears to travel. Summed here and
+                // divided by point_count at draw time, the anchor is the members'
+                // true centroid: a property of those plots, so it cannot move.
                 ...(id === PLOT_CLUSTER_SOURCE && {
                     clusterProperties: {
                         ...Object.fromEntries(
@@ -617,6 +637,8 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                         sat: ["+", ["get", "sat"]],
                         spots: ["+", ["get", "spots"]],
                         open: ["+", ["get", "open"]],
+                        sumLng: ["+", ["get", "lng"]],
+                        sumLat: ["+", ["get", "lat"]],
                     },
                 }),
             });
@@ -811,8 +833,7 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                         number,
                     ];
                     if (sourceId === PLOT_CLUSTER_SOURCE) {
-                        if (!isFiniteCoord(center as unknown)) return;
-                        expandCluster(src, clusterId, center);
+                        expandCluster(src, clusterId);
                         return;
                     }
                     src.getClusterExpansionZoom(clusterId, (err, zoom) => {
@@ -992,6 +1013,11 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                         sat: q.sat,
                         spots: q.spots,
                         open: k && expandedCluster?.keys.has(k) ? 1 : 0,
+                        // Summed by clusterProperties into the bubble's centroid —
+                        // a cluster expression can't reach into geometry, so the
+                        // coordinate has to travel as a property.
+                        lng: (p.geometry as GeoJSON.Point).coordinates[0],
+                        lat: (p.geometry as GeoJSON.Point).coordinates[1],
                     },
                 });
             } else pinFeed.push(p);
