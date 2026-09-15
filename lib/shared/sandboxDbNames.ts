@@ -20,6 +20,10 @@ export function sandboxWorld(search?: string): string | null {
 /** The suffix a world adds to every DB name: `-sandbox` for the practice
  *  sandbox, `-sandbox-<name>` for a named world. */
 export function worldSuffix(world: string): string {
+	// Fail loud: a junk token here names a junk database on the origin for good.
+	if (typeof world !== "string" || !WORLD_TOKEN.test(world)) {
+		throw new Error(`[sandboxDbNames] not a world token: ${String(world)}`);
+	}
 	return world === "1" ? SANDBOX_SUFFIX : `${SANDBOX_SUFFIX}-${world}`;
 }
 

@@ -34,3 +34,10 @@ describe("named worlds — ?sandbox=<world>", () => {
 		expect(currentDbName("rt-treeStuff")).toBe("rt-treeStuff");
 	});
 });
+
+describe("worldSuffix refuses junk", () => {
+	it("throws rather than name a database after a non-token", () => {
+		expect(() => worldSuffix(false as unknown as string)).toThrow();
+		expect(() => worldSuffix("a b")).toThrow();
+	});
+});
