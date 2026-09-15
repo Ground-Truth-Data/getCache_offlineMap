@@ -20,7 +20,7 @@ import { describe, expect, it } from "vitest";
 import {
 	glyphStack,
 	usesBundledGlyphs,
-} from "$parent/siblings/getCache_OnlineMap/lib/glyphStack";
+} from "$parent/siblings/getCache_OnlineMap/lib/draw/glyphStack";
 
 const mapWithGlyphs = (glyphs: unknown) =>
     ({ getStyle: () => ({ glyphs }) }) as never;

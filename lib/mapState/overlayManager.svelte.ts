@@ -6,8 +6,8 @@ import type {
 } from "../shared/mapHostPorts";
 import { overlayOpacity } from "./overlayOpacity.svelte";
 import { overlayVisibility } from "./overlayVisibility.svelte";
-import type { Coord } from "$parent/siblings/getCache_OnlineMap/lib/coord";
-import { toCoord } from "$parent/siblings/getCache_OnlineMap/lib/coord";
+import type { Coord } from "$parent/siblings/getCache_OnlineMap/lib/core/coord";
+import { toCoord } from "$parent/siblings/getCache_OnlineMap/lib/core/coord";
 
 /**
  * Run one call against a lazily-imported map module, reporting anything it
@@ -129,7 +129,7 @@ export function createOverlayManager(
 		if (!m) return;
 		const targetMapKey = mapStore.activeMap?.mapKey ?? null;
 		const features = activeOverlayFeatures();
-		const overlay = await import("$parent/siblings/getCache_OnlineMap/lib/mobMapOverlay");
+		const overlay = await import("$parent/siblings/getCache_OnlineMap/lib/overlay/mobMapOverlay");
 		overlay.removeMapOverlay(m);
 		activeOverlay = null;
 		if (features.length === 0) return;
@@ -154,7 +154,7 @@ export function createOverlayManager(
 
 	async function mountOverlayFeature(
 		m: MapboxMap,
-		overlay: typeof import("$parent/siblings/getCache_OnlineMap/lib/mobMapOverlay"),
+		overlay: typeof import("$parent/siblings/getCache_OnlineMap/lib/overlay/mobMapOverlay"),
 		feature: MapSessionFeature,
 		slot: string | undefined,
 		targetMapKey: string | null,
@@ -219,7 +219,7 @@ export function createOverlayManager(
 					withMapModule(
 						() =>
 							import(
-								"$parent/siblings/getCache_OnlineMap/lib/mobMapWaitingBox"
+								"$parent/siblings/getCache_OnlineMap/lib/overlay/mobMapWaitingBox"
 							),
 						({ hideWaitingBoxOnceRendered }) =>
 							hideWaitingBoxOnceRendered(m, overlay.imageSourceId(slot)),
@@ -273,7 +273,7 @@ export function createOverlayManager(
 		}
 		try {
 			const overlay = await import(
-				"$parent/siblings/getCache_OnlineMap/lib/mobMapOverlay"
+				"$parent/siblings/getCache_OnlineMap/lib/overlay/mobMapOverlay"
 			);
 			const swapped = await overlay.swapMapOverlayImage(m, {
 				key: feature.overlayStorageKey,
@@ -312,7 +312,7 @@ export function createOverlayManager(
 			if (!m) return;
 			// Reads the CURRENT store value (not reactive) — the host's `$effect` owns the reactive read and re-fires this on change.
 			withMapModule(
-				() => import("$parent/siblings/getCache_OnlineMap/lib/mobMapOverlay"),
+				() => import("$parent/siblings/getCache_OnlineMap/lib/overlay/mobMapOverlay"),
 				(overlay) => overlay.setMapOverlayVisibility(m, overlayVisibility.pdf),
 				"pdf visibility",
 			);
@@ -328,7 +328,7 @@ export function createOverlayManager(
 			return overlayOpacity.register((opacity) => {
 				withMapModule(
 					() =>
-						import("$parent/siblings/getCache_OnlineMap/lib/mobMapOverlay"),
+						import("$parent/siblings/getCache_OnlineMap/lib/overlay/mobMapOverlay"),
 					(overlay) => overlay.setMapOverlayOpacity(m, opacity),
 					"opacity",
 				);
@@ -368,7 +368,7 @@ export function createOverlayManager(
 			if (!m) return;
 			withMapModule(
 				() =>
-					import("$parent/siblings/getCache_OnlineMap/lib/mobMapWaitingBox"),
+					import("$parent/siblings/getCache_OnlineMap/lib/overlay/mobMapWaitingBox"),
 				({ showWaitingBox }) => {
 					const map = getMap();
 					if (map) showWaitingBox(map, corners);
@@ -381,7 +381,7 @@ export function createOverlayManager(
 			if (!m) return;
 			withMapModule(
 				() =>
-					import("$parent/siblings/getCache_OnlineMap/lib/mobMapWaitingBox"),
+					import("$parent/siblings/getCache_OnlineMap/lib/overlay/mobMapWaitingBox"),
 				({ hideWaitingBox }) => {
 					const map = getMap();
 					if (map) hideWaitingBox(map);
@@ -394,7 +394,7 @@ export function createOverlayManager(
 			if (!m) return;
 			withMapModule(
 				() =>
-					import("$parent/siblings/getCache_OnlineMap/lib/mobMapWaitingBox"),
+					import("$parent/siblings/getCache_OnlineMap/lib/overlay/mobMapWaitingBox"),
 				({ hideWaitingBoxOnceRendered }) => {
 					const map = getMap();
 					if (map) hideWaitingBoxOnceRendered(map, OVERLAY_SOURCE_ID);

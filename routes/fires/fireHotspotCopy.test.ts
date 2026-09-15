@@ -233,7 +233,7 @@ describe("areaLabel — hectares, the unit the job speaks", () => {
 	});
 
 	it("matches the app's own formatArea rules", () => {
-		// Mirrors mapDrawUtils.formatArea (not imported — that module pulls in
+		// Mirrors featureMeasure.formatArea (not imported — that module pulls in
 		// turf) so a fire and a block are described the same way; this test
 		// stops the duplication rotting.
 		const formatArea = (sqMetres: number): string => {

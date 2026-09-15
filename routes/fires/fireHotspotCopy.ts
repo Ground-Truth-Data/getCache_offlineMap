@@ -160,7 +160,7 @@ export function clusterAreaKm2(
 	return ungridded + cells.size * CELL_KM ** 2;
 }
 
-/** "9,464 ha" — fire size in HECTARES, the unit the job already speaks (wildfire agencies report in ha; km² flattered small fires, e.g. "0.14 km²" for 14 ha). Formatting mirrors (not imports — that pulls in turf) `formatArea` in harness/src/lib/getCache_OnlineMap/lib/mapDrawUtils.ts; a test pins the two against each other. */
+/** "9,464 ha" — fire size in HECTARES, the unit the job already speaks (wildfire agencies report in ha; km² flattered small fires, e.g. "0.14 km²" for 14 ha). Formatting mirrors (not imports — that pulls in turf) `formatArea` in harness/src/lib/getCache_OnlineMap/lib/featureMeasure.ts; a test pins the two against each other. */
 export function areaLabel(km2: number): string {
 	const ha = km2 * 100;
 	// Floor at 1 m² — a detection is never "0 m²"; rounding a sliver to zero

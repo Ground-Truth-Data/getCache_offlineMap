@@ -7,7 +7,7 @@ let installed: Promise<void> | undefined;
 
 export function ensureMapboxGuards(): Promise<void> {
 	if (!installed) {
-		installed = import("$parent/siblings/getCache_OnlineMap/lib/safeMarker").then(
+		installed = import("$parent/siblings/getCache_OnlineMap/lib/core/safeMarker").then(
 			({ installMapboxNanGuards }) => installMapboxNanGuards(),
 		);
 	}
