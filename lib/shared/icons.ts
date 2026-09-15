@@ -212,6 +212,11 @@ export const EMOJI_PIN_PREFIX = "emoji:";
 /** The blank gold pin an emoji is composited onto. Not in ICONS — never selectable on its own, only as an emoji's backing plate. */
 export const EMOJI_PIN_PLATE = pinLibraryUrl("pin_blank_emoji_sm.webp");
 
+// The plate's proportions live in their own import-free module so the baking
+// script can read them from bare Node; re-exported here so callers still have
+// one place to ask about pins.
+export * from "./emojiPinGeometry";
+
 /** The emoji character in an emoji:<char> key, or null otherwise — the mirror of parsePinKey; together they're exhaustive over user-pickable pins. */
 export function parseEmojiPin(raw: unknown): string | null {
     if (typeof raw !== "string" || !raw.startsWith(EMOJI_PIN_PREFIX))
