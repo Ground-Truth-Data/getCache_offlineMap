@@ -210,8 +210,14 @@
 	/* ── Bottom tab bar ─────────────────────────────────────── */
 	/* Anything that must sit ON the tab bar's top edge (export bars, drawers,
 	   sheets) offsets by this — nudging the bar used to leave six hardcoded
-	   copies a hairline out of line. Tablet override is the rule below. */
-	--gc-navbar-h: calc(3.5625rem + max(env(safe-area-inset-bottom), 10px));
+	   copies a hairline out of line.
+	   The bar's contents and the art above it scale continuously with width, so
+	   the bar must too: a fixed height (or a step at one breakpoint) leaves it
+	   squat and flat at every width the step doesn't land on. 15cqw tracks the
+	   phone frame, clamped to the old narrow value at the bottom. */
+	--gc-navbar-h: calc(
+		clamp(3.5625rem, 15cqw, 5.7rem) + max(env(safe-area-inset-bottom), 10px)
+	);
 
 	/* ── Top nav bar ────────────────────────────────────────── */
 	/* Twin of --gc-navbar-h, for anything that hangs off the top bar's bottom
@@ -220,15 +226,6 @@
 	   pre-mount fallback, kept in step with the 4rem truck + its 0.3rem link
 	   padding. */
 	--gc-topbar-h: calc(4.6rem + env(safe-area-inset-top));
-}
-
-/* The tab bar grows at this container width, so everything pinned to its top
-   edge must grow with it. `.mobile-shell` is inside the desktop phone frame's
-   container; on native there is no container and the base value holds. */
-@container (min-width: 500px) {
-	.mobile-shell {
-		--gc-navbar-h: calc(4.3125rem + max(env(safe-area-inset-bottom), 10px));
-	}
 }
 
 /* Global <hr> divider — rust/terracotta line, visible outdoors. Never style hr locally; change THIS rule instead. */

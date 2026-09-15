@@ -222,11 +222,25 @@
 	/* Mobile-specific: lock viewport completely + custom font */
 	body.mobile-app {
 		position: fixed;
-		width: 100%;
+		/* THE UNFRAMED CAP. 0.742 is the widest the app reads correctly at, from
+		   breakpoint.ts APP_MAX_RATIO — held to it by breakpoint.test.ts, since
+		   CSS cannot import the constant. Without it a wide window stretched rows
+		   the full width of the pane with phone-sized art adrift in the middle.
+		   Centred, so the surplus is even margin.
+		   The rig opens at this same ratio and draws its own 452px frame, so the
+		   cap lifts there (below) rather than squeezing the framed layout too. */
+		width: min(100%, 74.2vh);
+		margin-inline: auto;
+		inset-inline: 0;
 		height: 100%;
 		overflow: hidden;
 		touch-action: pan-y;
 		font-family: var(--font-retreever);
+	}
+
+	/* Rig on: the frame sets the width, so the unframed cap must let go. */
+	body.mobile-app-framed {
+		width: 100%;
 	}
 
 	body.mobile-app input,
@@ -761,7 +775,11 @@
 	display: none;
 }
 
-@media (min-width: 900px) {
+/* Keyed off the body class the app sets from PHONE_FRAME_QUERY, NOT a second
+   copy of its width. The legal strip belongs to the rig, so it must appear and
+   vanish with the rig — a literal here drifted the moment that number moved,
+   and CSS cannot import the constant to stay in step. */
+body.mobile-app-framed {
 	.rig-legal {
 		position: absolute;
 		left: 0;
@@ -1195,3 +1213,4 @@ html.native .measure-pop {
 		color: var(--color-link);
 	}
 }
+

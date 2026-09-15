@@ -369,6 +369,10 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
     // Anchor 'bottom' EVERY route — the pin art is a teardrop whose point IS the coordinate. (Was center-anchored on offline once, which put the GPS coord half a pin north of where online showed it.)
     const PIN_ANCHOR = "bottom" as const;
     let pinMarkers: PinMarker[] = [];
+    // Cluster bubbles are DOM markers for the same reason pins are: a Marker is
+    // held at a lng/lat by the map itself, so it cannot drift. The GL symbol
+    // layers they replaced drew at the cluster's own coordinate, which moves.
+    let clusterMarkers = new Map<string, mapboxgl.Marker>();
 
     // Pins most recently pushed into the clustered source — reconcileSingles builds DOM markers from these once the source reports which are unclustered.
     let lastPins: (Feature & { geometry: GeoJSON.Point })[] = [];
@@ -581,6 +585,14 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
     }
 
     // Skip-if-already-on-top guard is required — moveLayer fires styledata itself, so without it this becomes an infinite loop when called from styledata.
+    // The bubbles render as DOM markers (reconcileClusters), pinned to the
+    // members' centroid. Their GL symbol layers stay defined — the ear, count
+    // and % expressions are the contract the markers reproduce — but match
+    // nothing, because a symbol draws at the CLUSTER's own coordinate, which
+    // Supercluster recomputes per zoom and which therefore slides across the
+    // ground. Expressed as a filter rather than `visibility`, so hiding a
+    // bubble can never reach any other layer.
+    const GL_BUBBLES_OFF = ["==", ["literal", 1], ["literal", 0]] as Expr;
     const CLUSTER_STACK = [
         CLUSTER_LAYER,
         CLUSTER_COUNT_LAYER,
@@ -612,6 +624,13 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
     ];
 
     // Idempotent — setStyle (basemap swap) wipes all custom sources/layers, so this must re-run and re-create them every sync.
+    // A cluster expression cannot reach into geometry, so every feature carries
+    // its own coordinate as a property for clusterProperties to sum.
+    function coordProps(f: Feature): { lng: number; lat: number } {
+        const c = (f.geometry as GeoJSON.Point).coordinates;
+        return { lng: c[0] as number, lat: c[1] as number };
+    }
+
     function ensureClusterLayers(map: MapboxMap): void {
         for (const id of [CLUSTER_SOURCE, PLOT_CLUSTER_SOURCE]) {
             if (map.getSource(id)) continue;
@@ -623,24 +642,26 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                 clusterRadius: id === PLOT_CLUSTER_SOURCE ? PLOT_CLUSTER_RADIUS : CLUSTER_RADIUS,
                 // Each plot carries its ears as 0/1 (sync stamps them); the cluster sums them into "how many members have this".
                 // sat/spots sum the same way, and the plaque divides them — summing the two terms and dividing ONCE is what makes the merged % a true weighted quality rather than an average of averages.
-                // sumLng/sumLat exist to give the bubble a FIXED anchor. A cluster's
-                // own coordinate is Supercluster's running average of whichever
-                // members it holds at that zoom, so it slides across the ground as
-                // membership changes — the bubble appears to travel. Summed here and
-                // divided by point_count at draw time, the anchor is the members'
-                // true centroid: a property of those plots, so it cannot move.
-                ...(id === PLOT_CLUSTER_SOURCE && {
-                    clusterProperties: {
-                        ...Object.fromEntries(
-                            PLOT_EARS.map((e) => [e.key, ["+", ["get", e.key]]]),
-                        ),
-                        sat: ["+", ["get", "sat"]],
-                        spots: ["+", ["get", "spots"]],
-                        open: ["+", ["get", "open"]],
-                        sumLng: ["+", ["get", "lng"]],
-                        sumLat: ["+", ["get", "lat"]],
-                    },
-                }),
+                // sumLng/sumLat are what let the badge be PINNED. A cluster's own
+                // coordinate is Supercluster's running average of whichever members
+                // it holds at that zoom, so it slides across the ground as
+                // membership changes. Divided by point_count these give the
+                // members' true centroid — a property of those points, fixed like
+                // any other coordinate. Both sources need them.
+                clusterProperties: {
+                    sumLng: ["+", ["get", "lng"]],
+                    sumLat: ["+", ["get", "lat"]],
+                    ...(id === PLOT_CLUSTER_SOURCE
+                        ? {
+                              ...Object.fromEntries(
+                                  PLOT_EARS.map((e) => [e.key, ["+", ["get", e.key]]]),
+                              ),
+                              sat: ["+", ["get", "sat"]],
+                              spots: ["+", ["get", "spots"]],
+                              open: ["+", ["get", "open"]],
+                          }
+                        : {}),
+                },
             });
         }
         // setStyle wipes custom images too — loadClusterPin re-checks hasImage, so this stays idempotent like the layer adds below.
@@ -650,7 +671,7 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                 id: CLUSTER_LAYER,
                 type: "symbol",
                 source: CLUSTER_SOURCE,
-                filter: ["has", "point_count"],
+                filter: GL_BUBBLES_OFF,
                 layout: {
                     // ONE fixed size, must NOT grow with count — graduated sizes previously ballooned busy blocks into a wall of fat coins.
                     "icon-image": CLUSTER_ICON,
@@ -665,7 +686,7 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                 id: CLUSTER_COUNT_LAYER,
                 type: "symbol",
                 source: CLUSTER_SOURCE,
-                filter: ["has", "point_count"],
+                filter: GL_BUBBLES_OFF,
                 layout: {
                     "text-field": ["get", "point_count_abbreviated"],
                     // Font must exist in the CURRENT style's glyph endpoint — offline only bundles "Noto Sans Regular"; requesting DIN Pro there 404s and the count silently never renders (blank gold coins).
@@ -690,7 +711,7 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                 id: PLOT_CLUSTER_LAYER,
                 type: "symbol",
                 source: PLOT_CLUSTER_SOURCE,
-                filter: ["all", ["has", "point_count"], ["==", ["get", "open"], 0]],
+                filter: GL_BUBBLES_OFF,
                 layout: {
                     "icon-image": PLOT_CLUSTER_ICON,
                     "icon-anchor": "center",
@@ -705,7 +726,7 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                 id: PLOT_CLUSTER_COUNT_LAYER,
                 type: "symbol",
                 source: PLOT_CLUSTER_SOURCE,
-                filter: ["all", ["has", "point_count"], ["==", ["get", "open"], 0]],
+                filter: GL_BUBBLES_OFF,
                 layout: {
                     "text-field": ["get", "point_count_abbreviated"],
                     "text-font": deps.getOffline()
@@ -880,6 +901,79 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
         }
     }
 
+    // Tap behaviour carried over from the GL layers' click handlers: a plot
+    // plaque fans its members, a pin teardrop zooms to the split. It eases to
+    // the CENTROID rather than the cluster's own coordinate, so the camera
+    // lands where the badge actually is.
+    function onClusterTap(sourceId: string, p: Record<string, unknown>): void {
+        const map = getMap();
+        if (!map) return;
+        const clusterId = p.cluster_id as number | undefined;
+        const src = map.getSource(sourceId) as mapboxgl.GeoJSONSource | undefined;
+        if (clusterId == null || !src) return;
+        if (sourceId === PLOT_CLUSTER_SOURCE) {
+            expandCluster(src, clusterId);
+            return;
+        }
+        const n = p.point_count as number;
+        const center: [number, number] = [
+            (p.sumLng as number) / n,
+            (p.sumLat as number) / n,
+        ];
+        src.getClusterExpansionZoom(clusterId, (err, zoom) => {
+            if (err || zoom == null) return;
+            if (!isFiniteCoord(center as unknown)) return;
+            safeEaseTo(map, { center, zoom });
+        });
+    }
+
+    // The bubble's DOM. Same shapes the GL layers drew — teardrop for pins,
+    // plaque with ears and a % for plots — but as an element a Marker can hold.
+    // Keeps position:absolute via .map-pin-marker, for the reason recorded on
+    // buildPinElement's plot branch.
+    function buildClusterElement(
+        sourceId: string,
+        n: number,
+        p: Record<string, unknown>,
+    ): HTMLElement {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "map-pin-marker map-pin-cluster";
+        btn.setAttribute("aria-label", `${n} here`);
+        if (sourceId === PLOT_CLUSTER_SOURCE) {
+            btn.classList.add("map-pin-cluster--plaque");
+            const sat = (p.sat as number) ?? 0;
+            const spots = (p.spots as number) ?? 0;
+            // Divide the summed terms ONCE — the weighted quality, never an
+            // average of averages. Same rule the GL plaque followed.
+            const pct = spots > 0 ? Math.round((sat / spots) * 100) : null;
+            const ears = PLOT_EARS.filter((e) => ((p[e.key] as number) ?? 0) > 0)
+                .map(
+                    (e) =>
+                        `<span class="q704-dot q704-dot--${e.key}">${e.glyph}</span>`,
+                )
+                .join("");
+            btn.innerHTML =
+                `<span class="map-pin-cluster__inner">` +
+                `<span class="map-pin-cluster__n">${n}</span>` +
+                (pct == null
+                    ? ""
+                    : `<span class="map-pin-cluster__pct">${pct}%</span>`) +
+                (ears ? `<span class="q704-dots">${ears}</span>` : "") +
+                `</span>`;
+        } else {
+            btn.classList.add("map-pin-cluster--pin");
+            btn.innerHTML =
+                `<img class="map-pin-cluster__art" src="${CLUSTER_PIN_SRC}" alt="">` +
+                `<span class="map-pin-cluster__n">${n}</span>`;
+        }
+        btn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            onClusterTap(sourceId, p);
+        });
+        return btn;
+    }
+
     function buildPinElement(featureKey: string, pinTypeKey: string): HTMLElement {
         const btn = document.createElement("button");
         btn.type = "button";
@@ -961,6 +1055,7 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
     function clear() {
         for (const pm of pinMarkers) pm.marker.remove();
         pinMarkers = [];
+        clearClusterMarkers();
         expandedStack = null;
         expandedCluster = null;
         stackByFeature = new Map();
@@ -1012,14 +1107,10 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                         sat: q.sat,
                         spots: q.spots,
                         open: k && expandedCluster?.keys.has(k) ? 1 : 0,
-                        // Summed by clusterProperties into the bubble's centroid —
-                        // a cluster expression can't reach into geometry, so the
-                        // coordinate has to travel as a property.
-                        lng: (p.geometry as GeoJSON.Point).coordinates[0],
-                        lat: (p.geometry as GeoJSON.Point).coordinates[1],
+                        ...coordProps(p),
                     },
                 });
-            } else pinFeed.push(p);
+            } else pinFeed.push({ ...p, properties: { ...p.properties, ...coordProps(p) } });
         }
         ensureClusterLayers(map);
         lastPins = pins;
@@ -1032,6 +1123,52 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
             features: plotFeed,
         });
         reconcileSingles();
+    }
+
+    // The bubbles, pinned the same way the pins are. Supercluster still decides
+    // WHICH points group; it does not get to decide WHERE the badge sits —
+    // that is the members' centroid, carried in as sumLng/sumLat. Identity is
+    // the member set, not cluster_id: Supercluster reissues ids per zoom, so an
+    // id-keyed marker would be destroyed and rebuilt on every zoom level.
+    function reconcileClusters(map: MapboxMap): void {
+        const wanted = new Map<string, { at: [number, number]; el: HTMLElement }>();
+        for (const id of [CLUSTER_SOURCE, PLOT_CLUSTER_SOURCE]) {
+            for (const f of map.querySourceFeatures(id, {
+                filter: ["has", "point_count"],
+            })) {
+                const p = (f.properties ?? {}) as Record<string, number>;
+                const n = p.point_count;
+                if (!n || p.open === 1) continue;
+                const at: [number, number] = [p.sumLng / n, p.sumLat / n];
+                if (!isFiniteCoord(at as unknown)) continue;
+                const key = `${id}:${at[0].toFixed(6)},${at[1].toFixed(6)}:${n}`;
+                if (wanted.has(key)) continue;
+                wanted.set(key, {
+                    at,
+                    el: buildClusterElement(id, n, p),
+                });
+            }
+        }
+        for (const [key, m] of clusterMarkers) {
+            if (!wanted.has(key)) {
+                m.remove();
+                clusterMarkers.delete(key);
+            }
+        }
+        for (const [key, { at, el }] of wanted) {
+            if (clusterMarkers.has(key)) continue;
+            clusterMarkers.set(
+                key,
+                new (markerCtor(map))({ element: el, anchor: "bottom" })
+                    .setLngLat(at)
+                    .addTo(map),
+            );
+        }
+    }
+
+    function clearClusterMarkers(): void {
+        for (const m of clusterMarkers.values()) m.remove();
+        clusterMarkers = new Map();
     }
 
     // Reconciles DOM markers to exactly what the clustered source reports as unclustered; runs after sync() and every re-tile — clustering happens in worker tiles, so the answer isn't available synchronously after setData.
@@ -1054,6 +1191,7 @@ export function createPinMarkers(deps: PinMarkersDeps): PinMarkers {
                 if (k) singleKeys.add(k);
             }
         }
+        reconcileClusters(map);
         // Feature pins + the selected pin never cluster — they're not in the clustered source at all, so add them back as always-wanted singles.
         for (const k of forcedSingleKeys) singleKeys.add(k);
         // An expanded plaque's members are still clustered as far as the source
