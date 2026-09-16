@@ -39,6 +39,7 @@ let {
 	side = "left",
 	title = "",
 	top = "0px",
+	align = "centre",
 	el = $bindable<HTMLElement | undefined>(undefined),
 	class: className = "",
 	children,
@@ -49,6 +50,10 @@ let {
 	title?: string;
 	/** Extra offset below the host chrome. */
 	top?: string;
+	/** Beside the phone: hang from the phone's top edge instead of riding its
+	 *  midline. A card that grows keeps its top where it is; a centred one grows
+	 *  upward, into the nav. */
+	align?: "centre" | "top";
 	/** The element itself, for a caller that portals DOM into it. */
 	el?: HTMLElement;
 	/** Merged with the box's own classes, never in place of them. */
@@ -89,6 +94,7 @@ onMount(() => {
 	class:gc-lane={beside}
 	class:gc-lane--left={beside && side === "left"}
 	class:gc-lane--right={beside && side === "right"}
+	class:side-card--top={beside && align === "top"}
 	class:side-card--over={placement === "over"}
 	class:side-card--centred={placement === "centred"}
 	class:side-card--unplaced={placement === undefined}
@@ -126,6 +132,13 @@ onMount(() => {
 .side-card.gc-lane {
 	top: calc(50% + var(--host-chrome, 0px) / 2);
 	transform: translateY(calc(-50% + var(--nudge, 0px)));
+}
+/* Top edge on the phone's top edge, never above the host chrome. No centre
+   maths: the card's own height plays no part, so growing content pushes the
+   bottom down instead of the top up. */
+.side-card.gc-lane.side-card--top {
+	top: max(var(--phone-frame-top, 0px), var(--host-chrome, 0px) + 12px);
+	transform: translateY(var(--nudge, 0px));
 }
 
 /* Floating, centred on its box from its own centre. */

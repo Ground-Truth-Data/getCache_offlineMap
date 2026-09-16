@@ -9,7 +9,8 @@
  * `viewport` = this page is NOTHING BUT the phone, so it may have the whole
  * window. Default false: the phone fills whatever box its parent gives it, so
  * a nav above it is simply above it. Pass true only where there is no chrome
- * at all — the Capacitor app, rapper's (gc) routes.
+ * at all — the Capacitor app. rapper's (gc) routes do NOT qualify: rapper
+ * draws a nav in dev, and under `viewport` the phone sat behind it.
  *
  * `landscape` = turn the phone a quarter turn clockwise, the way you would in
  * your hand to read a wide document. OPT-IN AND IT MUST STAY THAT WAY: this

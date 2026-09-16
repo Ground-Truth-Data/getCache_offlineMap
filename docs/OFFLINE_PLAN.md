@@ -183,7 +183,7 @@ download, no clock — if the area is downloaded, its hospitals came with it.
 ⚠️ If a hospital doesn't appear, the question is whether the `pois` layer
 made it into the pack (`packLayers.ts`), not the online map's hospital
 machinery, which this route does not use. Campsites in the same layer
-(`v4-poi-camp`, `wallLabels.ts`) are gated to z10+ as decluttering — the one
+(`v4-poi-camp`, `lib/onPhone/render/wallLegend.ts`) are gated to z10+ as decluttering — the one
 sanctioned exception to Law 1's no-zoom-band rule.
 
 ---

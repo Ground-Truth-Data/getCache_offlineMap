@@ -126,9 +126,9 @@ export const CHILDREN: ChildRecord[] = [
 		owner: "Get Cache",
 		logo: "GC_fly_logo_transparent.webp",
 		icon: "favicon.png",
-		paths: ["/", "/map", "/demo", "/georef"],
+		paths: ["/", "/map", "/georef"],
 		defaultPath: "/map",
-		soloPaths: ["/", "/demo"],
+		soloPaths: ["/"],
 		// No nav views, same rule as the offline map.
 		views: [],
 	},

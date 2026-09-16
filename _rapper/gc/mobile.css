@@ -322,6 +322,108 @@ hr {
 	box-sizing: border-box;
 }
 
+/* THE PAD AND ITS KEYS — one tray of five equal keys. Used by BOTH courses of
+   the feature card: the section rail and the pin library. They are one object
+   seen twice, so they are ONE class, not two rules that happen to agree. Two
+   flex rows in two files each computing "a fifth" their own way is what let
+   them drift until one row had keys and the other was loose labels.
+
+   Like a dial pad: every key is a key. A key never loses its border or its
+   fill to say something about its contents — state paints OVER the key
+   (sage = holds data, gold = showing, terracotta = action), the way CANCEL is
+   red and ENTER green while both stay obviously keys. Height is the ONLY
+   thing a course may set for itself: --rt-key-h, because pin art needs more
+   room than a caption. */
+.rt-pad {
+	display: grid;
+	grid-template-columns: repeat(5, 1fr);
+	align-items: stretch;
+	/* One moulded strip: the keys TOUCH. A gap between pale faces reads as
+	   missing teeth — the eye counts the slots, not the keys. Each key's own
+	   .7px side border meets its neighbour's as a 1.4px groove, which is all
+	   the separating a keycap needs. No overflow:hidden here: it would clip
+	   the open key's gold glow. */
+	gap: 0;
+	padding: 0;
+	border-radius: 16px;
+	background: rgba(0, 0, 0, 0.3);
+	border: 1.5px solid rgba(255, 255, 255, 0.07);
+	box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+.rt-pad .rt-key {
+	border-radius: 0;
+	border-width: 1.4px 0.7px;
+}
+/* The strip's four corners nest inside the tray's 16px radius; every other
+   corner is square. Rows wrap at five, so the edges are column positions, not
+   first/last alone — a 14-key library has three left edges. */
+.rt-pad .rt-key:nth-child(5n + 1) {
+	border-left-width: 0;
+}
+.rt-pad .rt-key:nth-child(5n),
+.rt-pad .rt-key:last-child {
+	border-right-width: 0;
+}
+.rt-pad .rt-key:first-child {
+	border-top-left-radius: 15px;
+}
+.rt-pad .rt-key:nth-child(5),
+.rt-pad .rt-key:nth-child(-n + 5):last-child {
+	border-top-right-radius: 15px;
+}
+.rt-pad .rt-key:last-child {
+	border-bottom-right-radius: 15px;
+}
+.rt-pad .rt-key:nth-child(5n + 1):nth-last-child(-n + 5) {
+	border-bottom-left-radius: 15px;
+}
+
+.rt-key {
+	min-width: 0;
+	height: var(--rt-key-h, 46px);
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 3px;
+	padding: 3px 2px;
+	border-radius: 11px;
+	/* A moulded keycap, not a hole in the tray: a solid face, a catchlight
+	   along the top edge and a 2px lip underneath. A translucent fill made the
+	   whole row read as switched off; so did the old #83876f ink. */
+	background: linear-gradient(180deg, #272a20, #1b1d15);
+	border: 1.4px solid rgba(255, 255, 255, 0.15);
+	box-shadow:
+		0 2px 0 rgba(0, 0, 0, 0.5),
+		inset 0 1px 0 rgba(255, 255, 255, 0.06);
+	color: #b3b79e;
+	font-family: inherit;
+	cursor: pointer;
+	-webkit-tap-highlight-color: transparent;
+	transition:
+		background 0.16s ease,
+		border-color 0.16s ease,
+		color 0.16s ease,
+		box-shadow 0.16s ease,
+		transform 0.08s ease;
+}
+
+@media (hover: hover) {
+	.rt-key:hover {
+		background: linear-gradient(180deg, #2e3126, #20221a);
+	}
+}
+
+/* A tap physically depresses the key: it drops by its own lip and the lip
+   becomes an inset. This state is what sells the tile as a button. State
+   classes (sage/gold/terracotta faces) keep their colour; only depth changes. */
+.rt-pad .rt-key:active {
+	transform: translateY(2px);
+	box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.65);
+}
+
 /* A ROUNDED BOX THAT SCROLLS KEEPS ITS SCROLLBAR OFF THE CORNERS. Left alone
    the track runs the full height of the box, so at either end the thumb rides
    out over the curve and crosses the border. Set --scroll-inset to the box's
@@ -644,7 +746,7 @@ body.shovel-cursor .fake-cursor {
 	}
 }
 
-/* Click splash — companion to .fake-cursor; shows WHEN a tap lands, not just where. Created/self-removed in +layout@.svelte onMouseDown. */
+/* Click splash — companion to .fake-cursor; shows WHEN a tap lands, not just where. Created/self-removed by ShovelCursor.svelte. */
 .click-splash {
 	position: fixed;
 	width: 34px;

@@ -855,7 +855,7 @@ body.mobile-app-framed {
 }
 
 /* THE WHOLE-WINDOW CASE. A phone-only page (no nav, no footer — the Capacitor
-   app, rapper's (gc) routes) wraps the rig in this, and the backdrop's
+   app; NOT rapper, which draws a nav in dev) wraps the rig in this, and the backdrop's
    inset:0 then resolves against the viewport. `fixed` rather than a 100dvh
    block so the mobile URL bar sliding in cannot resize the stage mid-scroll. */
 .phone-viewport {
