@@ -148,16 +148,22 @@ function countTiles(): Promise<number> {
 				resolve(0);
 				return;
 			}
-			const c = db.transaction("tiles", "readonly").objectStore("tiles").count();
-			c.onsuccess = () => {
+			// The transaction's own outcome, not the request's: an aborted
+			// transaction leaves `count` silent, and this promise is awaited.
+			const tx = db.transaction("tiles", "readonly");
+			const c = tx.objectStore("tiles").count();
+			tx.oncomplete = () => {
 				resolve(c.result);
 				db.close();
 			};
-			c.onerror = () => {
+			const failed = () => {
 				resolve(-1);
 				db.close();
 			};
+			tx.onabort = failed;
+			tx.onerror = failed;
 		};
 		req.onerror = () => resolve(-1);
+		req.onblocked = () => resolve(-1);
 	});
 }

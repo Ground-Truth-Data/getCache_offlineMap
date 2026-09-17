@@ -67,24 +67,22 @@ async function readAll(
 				return;
 			}
 			const out: Array<{ key: IDBValidKey; value: unknown }> = [];
-			const cursorReq = db
-				.transaction(store, "readonly")
-				.objectStore(store)
-				.openCursor();
+			const tx = db.transaction(store, "readonly");
+			const cursorReq = tx.objectStore(store).openCursor();
 			cursorReq.onsuccess = () => {
 				const cursor = cursorReq.result;
 				if (cursor) {
 					out.push({ key: cursor.key, value: cursor.value });
 					cursor.continue();
-				} else {
-					db.close();
-					resolve(out);
 				}
 			};
-			cursorReq.onerror = () => {
+			const done = () => {
 				db.close();
 				resolve(out);
 			};
+			tx.oncomplete = done;
+			tx.onabort = done;
+			tx.onerror = done;
 		};
 		req.onerror = () => resolve([]);
 		req.onblocked = () => resolve([]);
@@ -117,10 +115,12 @@ async function writeAll(
 				db.close();
 				resolve(true);
 			};
-			tx.onerror = () => {
+			const failed = () => {
 				db.close();
 				resolve(false);
 			};
+			tx.onerror = failed;
+			tx.onabort = failed;
 		};
 		req.onerror = () => resolve(false);
 		req.onblocked = () => resolve(false);
@@ -180,24 +180,28 @@ export async function migrateIdbDatabase(
 	}
 }
 
-/** Does any objectStore in this database hold at least one record? */
+/** Does any objectStore in this database hold at least one record?
+ *
+ *  Counting every store needs the TRANSACTION's own outcome, not just each
+ *  request's: a transaction that aborts fires `onabort` and leaves its pending
+ *  requests silent, so a promise resolved only from request callbacks never
+ *  settles. Every await in this file is a one-time migration at boot, and a
+ *  promise that cannot settle there stops the app from opening at all. */
 function anyStoreHasData(db: IDBDatabase): Promise<boolean> {
 	const names = Array.from(db.objectStoreNames);
 	if (names.length === 0) return Promise.resolve(false);
 	return new Promise((resolve) => {
 		const tx = db.transaction(names, "readonly");
-		let pending = names.length;
 		let found = false;
 		for (const n of names) {
 			const c = tx.objectStore(n).count();
 			c.onsuccess = () => {
 				if (c.result > 0) found = true;
-				if (--pending === 0) resolve(found);
-			};
-			c.onerror = () => {
-				if (--pending === 0) resolve(found);
 			};
 		}
+		tx.oncomplete = () => resolve(found);
+		tx.onabort = () => resolve(found);
+		tx.onerror = () => resolve(found);
 	});
 }
 
@@ -248,7 +252,6 @@ export async function cloneEntireIdbDatabase(
 		const dumps: StoreDump[] = await new Promise((resolve) => {
 			const tx = src.transaction(storeNames, "readonly");
 			const result: StoreDump[] = [];
-			let pending = storeNames.length;
 			for (const n of storeNames) {
 				const os = tx.objectStore(n);
 				const dump: StoreDump = {
@@ -265,14 +268,12 @@ export async function cloneEntireIdbDatabase(
 						// Inline keyPath → key travels inside value; out-of-line key → must capture it explicitly.
 						dump.rows.push({ key: c.key, value: c.value });
 						c.continue();
-					} else if (--pending === 0) {
-						resolve(result);
 					}
 				};
-				cur.onerror = () => {
-					if (--pending === 0) resolve(result);
-				};
 			}
+			tx.oncomplete = () => resolve(result);
+			tx.onabort = () => resolve(result);
+			tx.onerror = () => resolve(result);
 		});
 		src.close();
 
@@ -308,10 +309,12 @@ export async function cloneEntireIdbDatabase(
 					db.close();
 					resolve(true);
 				};
-				tx.onerror = () => {
+				const failed = () => {
 					db.close();
 					resolve(false);
 				};
+				tx.onerror = failed;
+				tx.onabort = failed;
 			};
 			req.onerror = () => resolve(false);
 			req.onblocked = () => resolve(false);
