@@ -37,4 +37,4 @@ export const FIRE_CLUSTER_RADIUS = 120;
  * outline on screen together read as a disaster app. fireDials.test.ts holds
  * the line.
  */
-export const FIRE_CLUSTER_MAX_ZOOM = 12;
+export const FIRE_CLUSTER_MAX_ZOOM = 11;

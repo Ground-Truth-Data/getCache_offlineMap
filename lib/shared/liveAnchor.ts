@@ -23,8 +23,8 @@ export const FIRE_TRIGGER_KM = Math.round(FIRE_COVERAGE_KM * 0.7);
 
 /** Distance to the nearest of centres, in km; Infinity when there are none, so the first fix always triggers a bake. */
 export function kmToNearest(
-	pos: LngLat,
-	centres: readonly LngLat[],
+	pos: readonly [number, number],
+	centres: readonly (readonly [number, number])[],
 ): number {
 	let best = Number.POSITIVE_INFINITY;
 	for (const c of centres) {
@@ -44,8 +44,8 @@ export function needsMapBlob(
 
 /** Should the live position pull a fresh FIRE disc? Geography only — time-based freshness is a separate axis owned by fireIsFresh in v4FireCache; don't conflate the two. */
 export function needsFireDisc(
-	pos: LngLat,
-	fireCentres: readonly LngLat[],
+	pos: readonly [number, number],
+	fireCentres: readonly (readonly [number, number])[],
 ): boolean {
 	return kmToNearest(pos, fireCentres) > FIRE_TRIGGER_KM;
 }
@@ -62,8 +62,10 @@ export function needsFireDisc(
  * it only has to be small and complete, both of which it is. Callers keep
  * their own order; nothing downstream may assume these are sorted.
  */
-export function fireDiscCentres(centres: readonly LngLat[]): LngLat[] {
-	const chosen: LngLat[] = [];
+export function fireDiscCentres(
+	centres: readonly (readonly [number, number])[],
+): Array<readonly [number, number]> {
+	const chosen: Array<readonly [number, number]> = [];
 	for (const c of centres) if (needsFireDisc(c, chosen)) chosen.push(c);
 	return chosen;
 }

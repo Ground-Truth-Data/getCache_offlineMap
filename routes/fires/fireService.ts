@@ -83,7 +83,11 @@ async function pass(centres: readonly LngLat[]): Promise<number> {
             fetched.push({
                 at: `${lat.toFixed(4)},${lng.toFixed(4)}`,
                 hotspots: r.hotspots.length,
-                KB: Number((r.bytes / 1024).toFixed(1)),
+                wireKB:
+                    r.wireBytes === null
+                        ? null
+                        : Number((r.wireBytes / 1024).toFixed(1)),
+                jsonKB: Number((r.bytes / 1024).toFixed(1)),
                 satellites: `${r.sourcesOk}/3`,
             });
             for (const fn of listeners) fn();
@@ -103,7 +107,10 @@ async function pass(centres: readonly LngLat[]): Promise<number> {
 interface FireFetchLog {
     at: string;
     hotspots: number;
-    KB: number;
+    /** Transferred — the cost. Null when Content-Length was absent. */
+    wireKB: number | null;
+    /** Decompressed, ~13x larger on fire-heavy ground. */
+    jsonKB: number;
     satellites: string;
 }
 
@@ -116,10 +123,16 @@ interface FireFetchLog {
 function reportPass(fetched: readonly FireFetchLog[]): void {
     if (fetched.length === 0) return;
     const hotspots = fetched.reduce((n, f) => n + f.hotspots, 0);
-    const kb = fetched.reduce((n, f) => n + f.KB, 0);
+    // The headline is what the network cost, not the decompressed string: gzip
+    // makes those differ by ~13x over fire-heavy ground, and the bigger number
+    // reads as a runaway pass. Falls back to the JSON size only when no
+    // Content-Length came back, and says which it is showing.
+    const wire = fetched.reduce((n, f) => n + (f.wireKB ?? 0), 0);
+    const anyWire = fetched.some((f) => f.wireKB !== null);
+    const kb = anyWire ? wire : fetched.reduce((n, f) => n + f.jsonKB, 0);
     const degraded = fetched.filter((f) => f.satellites !== "3/3").length;
     console.groupCollapsed(
-        `[fires] ${fetched.length} disc${fetched.length === 1 ? "" : "s"}, ${hotspots.toLocaleString()} hotspots, ${kb.toFixed(1)} KB, ${FIRE_RADIUS_KM} km each${degraded > 0 ? ` — ${degraded} on partial satellite coverage` : ""}`,
+        `[fires] ${fetched.length} disc${fetched.length === 1 ? "" : "s"}, ${hotspots.toLocaleString()} hotspots, ${kb.toFixed(1)} KB ${anyWire ? "transferred" : "of JSON (wire size unknown)"}, ${FIRE_RADIUS_KM} km each${degraded > 0 ? ` — ${degraded} on partial satellite coverage` : ""}`,
     );
     console.table(fetched);
     console.groupEnd();

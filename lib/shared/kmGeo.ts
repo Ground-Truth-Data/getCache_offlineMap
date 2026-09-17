@@ -23,7 +23,10 @@ export function degBoxAround(center: LngLat, km: number): DegBounds {
 }
 
 /** Flat-earth km between two [lng,lat] points (cos taken at `a`'s latitude — fine at blob scale). */
-export function kmBetween(a: LngLat, b: LngLat): number {
+export function kmBetween(
+	a: readonly [number, number],
+	b: readonly [number, number],
+): number {
 	const dLat = (b[1] - a[1]) * 111;
 	const dLng = (b[0] - a[0]) * 111 * Math.cos((a[1] * Math.PI) / 180);
 	return Math.hypot(dLat, dLng);

@@ -16,8 +16,17 @@ export interface FireFetchResult {
 	fetchedAt: number;
 	/** X-Sources-Ok — satellites that reported, of three */
 	sourcesOk: number;
-	/** response size in bytes */
+	/** Decompressed JSON size in bytes — what was parsed, NOT what crossed the network. */
 	bytes: number;
+	/**
+	 * Bytes actually transferred, from Content-Length when the Worker's gzip is
+	 * in play. A 500 km disc over fire-heavy ground is ~2.1 MB of JSON and
+	 * ~156 KB on the wire, so reporting `bytes` alone overstates the real cost
+	 * by an order of magnitude — which is how a normal fetch got read as a
+	 * runaway one. Null when the header is absent (it is not exposed on every
+	 * path), and the caller then has only the decompressed figure.
+	 */
+	wireBytes: number | null;
 }
 
 interface FireGeoJSON {
@@ -113,5 +122,9 @@ export async function fetchAreaFires(
 		fetchedAt: Number.isFinite(headerAt) && headerAt > 0 ? headerAt : Date.now(),
 		sourcesOk: Number.isFinite(sourcesOk) && sourcesOk > 0 ? sourcesOk : 3,
 		bytes: text.length,
+		wireBytes: (() => {
+			const n = Number(res.headers.get("content-length"));
+			return Number.isFinite(n) && n > 0 ? n : null;
+		})(),
 	};
 }
