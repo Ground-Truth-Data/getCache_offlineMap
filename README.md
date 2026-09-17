@@ -148,7 +148,7 @@ watched while it runs. Do not propose renaming it or a second "shared map" repo.
 | What | Where |
 |---|---|
 | The live map (V10) — in the PARENT, not here | `ReTreever/src/routes/(getcache)/app/offlinev10/` |
-| Fires engine (v1 + v2 + masks) | `routes/fires/` — read `routes/fires/docs/FIRES.md` before touching v2 |
+| Fires engine | `routes/fires/` — read `routes/fires/docs/FIRES.md` first |
 | Fires Worker half | `lib/worker/firesWorker.ts` — `workers/worker-local-dev/src/index.ts` imports it relatively |
 | Tile Worker (Cloudflare, R2) | `workers/worker-local-dev/` — `workers/worker-local-dev/README.md`; `worker-cloud-dev/`, `worker-cloud-prod/` are the deployed twins |
 | Worker client (tiers, `/pack` download, fires fetch) | `lib/worker/` — `lib/worker/README.md` |
@@ -203,10 +203,9 @@ the online child.
    `parseCellKey`, `tileHoldsRadius`, `idbDeleteMany`,
    `offlineDownloadGateStats`. Wire or delete.
 
-4. **FIRES V2 IS UNWIRED.** `attachFireLayer` (`lib/onPhone/render/fireLayer.ts`)
-   paints v1 from the bake's cache and the Fires row in `wallLegend.ts` carries
-   its ids; `routes/fires/v2/fireLayerV2.ts` is written, tested and imported by
-   nothing (`routes/fires/docs/FIRES.md`). The Worker's `/fires` route needs a
+4. **FIRES NEEDS A FIRMS KEY.** `attachFireLayer` (`lib/onPhone/render/fireLayer.ts`)
+   paints from the bake's cache and the Fires row in `wallLegend.ts` carries
+   its ids. The Worker's `/fires` route needs a
    NASA FIRMS key (free at firms.modaps.eosdis.nasa.gov): `wrangler secret put
    FIRMS_MAP_KEY` on the cloud tiers, a gitignored
    `workers/worker-local-dev/.dev.vars` locally — without one a fresh local

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	FIRE_TRIGGER_KM,
+	fireDiscCentres,
 	MAP_COVERAGE_KM,
 	MAP_TRIGGER_KM,
 	isUsableFix,
@@ -179,5 +180,41 @@ describe("isUsableFix — junk must never reach the bake pass", () => {
 		expect(isUsableFix([-76])).toBe(false);
 		expect(isUsableFix(null)).toBe(false);
 		expect(isUsableFix("-76,45")).toBe(false);
+	});
+});
+
+describe("fireDiscCentres — blob-scale centres must not become disc-scale fetches", () => {
+	/** Two blobs 14 m apart, as the live cache actually held them. */
+	const PAIR: LngLat[] = [
+		[-89.2294, 48.7902],
+		[-89.2295, 48.7903],
+	];
+
+	it("collapses a metres-apart pair to ONE disc", () => {
+		expect(fireDiscCentres(PAIR)).toEqual([PAIR[0]]);
+	});
+
+	it("keeps centres further apart than the trigger", () => {
+		const far = north(BLOCK, FIRE_TRIGGER_KM + 10);
+		expect(fireDiscCentres([BLOCK, far])).toHaveLength(2);
+	});
+
+	it("covers EVERY input centre it dropped — the whole point", () => {
+		const cluster = Array.from({ length: 40 }, (_, i) =>
+			north(BLOCK, i * 0.01),
+		);
+		const chosen = fireDiscCentres(cluster);
+		expect(chosen.length).toBeLessThan(cluster.length);
+		for (const c of cluster)
+			expect(needsFireDisc(c, chosen)).toBe(false);
+	});
+
+	it("is stable: reducing an already-reduced set changes nothing", () => {
+		const once = fireDiscCentres([...PAIR, north(BLOCK, 900)]);
+		expect(fireDiscCentres(once)).toEqual(once);
+	});
+
+	it("handles an empty list", () => {
+		expect(fireDiscCentres([])).toEqual([]);
 	});
 });

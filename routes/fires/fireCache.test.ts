@@ -346,21 +346,21 @@ describe("coverage freshness — the light shape", () => {
 	});
 });
 
-/** ⛔ two caches compound, they don't overlap — phone TTL must stay well under the edge cache's 1h or the windows offset and a copy can sit stale for two full hours. */
-describe("the phone's TTL is SHORT — the edge does the rate-limiting", () => {
-	it("is minutes, not an hour", () => {
-		expect(FIRE_TTL_MS).toBeLessThanOrEqual(10 * 60 * 1000);
-		expect(FIRE_TTL_MS).toBeGreaterThanOrEqual(60 * 1000);
+/** ⛔ two caches compound, they don't overlap — the phone TTL must stay under the edge cache's 1h, or a copy taken already-stale sits for a second full window. */
+describe("the phone's TTL — bounded by the edge, not by eagerness", () => {
+	it("is long enough not to re-ask inside FIRMS' own refresh", () => {
+		// FIRMS refreshes hourly; asking far more often cannot surface newer fires.
+		expect(FIRE_TTL_MS).toBeGreaterThanOrEqual(30 * 60 * 1000);
 	});
 
-	it("is well under the edge cache's hour, so the two cannot compound", () => {
-		// if this ever reaches the edge TTL (3600s), a phone can hold an already-stale copy for a second full window.
+	it("stays UNDER the edge cache's hour, so the two cannot compound", () => {
+		// at or above the edge TTL (3600s) a phone can hold an already-stale copy for a second full window.
 		expect(FIRE_TTL_MS).toBeLessThan(60 * 60 * 1000);
 	});
 
 	it("bounds what `Last checked` can read while ONLINE", () => {
 		const worstCaseOnlineMs = FIRE_TTL_MS + 60 * 60 * 1000;
-		expect(worstCaseOnlineMs).toBeLessThanOrEqual(70 * 60 * 1000);
+		expect(worstCaseOnlineMs).toBeLessThanOrEqual(2 * 60 * 60 * 1000);
 	});
 });
 

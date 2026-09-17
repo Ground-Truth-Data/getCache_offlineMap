@@ -15,8 +15,7 @@ in signal the cache is topped up, and the UI must say how old it is.
 | Worker `GET /fires?lng=&lat=&km=` | `workers/worker-local-dev/src/index.ts` (route) + `lib/worker/firesWorker.ts` (pure FIRMS logic) | **live**, v1 payload only |
 | Phone fetch + IndexedDB (v1) | `lib/worker/{worker-local-dev,worker-cloud-prod}/fires/fireFetch.ts`, `routes/fires/fireCache.ts` (`rt-fire-cache`) | works; refresh on (next row) |
 | Bake-loop refresh | `refreshFires()` in `lib/onPhone/bake/bakeService.svelte.ts` | **on** — `FIRE_REFRESH_ENABLED = true` in `lib/shared/bakeFlags.ts` since the `unionHotspots` box-reject fix (30 Aug) |
-| Render layer | v1: `lib/onPhone/render/fireLayer.ts` (`attachFireLayer`) — **live** since 31 Aug 2026, mounted by `OfflineMapPage.svelte` and `/app/offlinev10`; the Fires row in `lib/onPhone/render/wallLegend.ts` carries its four ids. Online: `getCache_mapTools/fireLayer.ts` (`attachFireLayer`), mounted by `MobMapPage.svelte` — **live again since 7 Sep 2026**: the two bisect kill switches (`FIRE_LAYER_ENABLED_ONLINE` in MobMapPage and `FIRES_ENABLED` inside the module) are deleted, not flipped — the `unionHotspots` cost tests they were waiting on pass. v2: `routes/fires/v2/fireLayerV2.ts` | v1 paints the bake's cache; v2 restored from ReTreever git history (30 Aug), still **unwired** — nothing imports it |
-| Phone v2 (`routes/fires/v2/`) | `fireCacheV2.ts` (`rt-fire-v2`), `fireFetchV2.ts` | written, tested, **inert** — throws a named error because the Worker has no `?v=2` |
+| Render layer | v1: `lib/onPhone/render/fireLayer.ts` (`attachFireLayer`) — **live** since 31 Aug 2026, mounted by `OfflineMapPage.svelte` and `/app/offlinev10`; the Fires row in `lib/onPhone/render/wallLegend.ts` carries its four ids. Online: `getCache_mapTools/fireLayer.ts` (`attachFireLayer`), mounted by `MobMapPage.svelte` — **live again since 7 Sep 2026**: the two bisect kill switches (`FIRE_LAYER_ENABLED_ONLINE` in MobMapPage and `FIRES_ENABLED` inside the module) are deleted, not flipped — the `unionHotspots` cost tests they were waiting on pass. | paints the bake's cache |
 | Worker `?v=2` | — | not started |
 
 ReTreever mounts the v1 phone half through `retreeverPorts.ts`; this repo's
@@ -82,7 +81,7 @@ ever land — CWFIS / NIFC WFIGS / EFFIS were specced and never built.
 |---|---|---|
 | NASA processing + pass gaps | 1–3 h | no — physics |
 | Cloudflare edge (`/fires`, `max-age=3600`) | 1 h nominal, **4 h measured** | yes |
-| Phone IndexedDB TTL | v1 `FIRE_TTL_MS` 5 min · v2 `FIRE_V2_TTL_MS` 20 min | yes |
+| Phone IndexedDB TTL | `FIRE_TTL_MS` 45 min — under the edge hour, or the two compound | yes |
 | Bake loop tick + boot delay | 20 s + 20 s | yes |
 
 - **Edge cache key** = `FIRE_ANSWER_VERSION` + centre snapped to 0.25° + km.
@@ -97,7 +96,7 @@ ever land — CWFIS / NIFC WFIGS / EFFIS were specced and never built.
   short.
 - **A TTL fixes STALE data, never WRONG data.** When a change alters what a
   correct answer looks like, bump **both** `FIRE_ANSWER_VERSION` (Worker
-  cache key) and `FIRE_CACHE_VERSION` / `FIRE_V2_VERSION` (phone). The
+  cache key) and `FIRE_CACHE_VERSION` (phone). The
   `DAY_RANGE=1` empties took four hours per cell to clear because nobody did.
 - **Arrival beats the TTL** (`routes/fires/fireArrival.ts`). App open, tab
   visible, and `online` each arm a one-shot TTL bypass — **one debt per
@@ -181,60 +180,10 @@ paint-side helpers still exist in
 
 ---
 
-## v2 — the phone renders, it does not compute geometry
+## The phone renders, it does not compute geometry
 
-A disc arrives from the Worker deduped, clustered, outlined and
-urban/industrial-classified. The phone stores three strings and hands them to
-`setData()`. This removes the *possibility* of v1's passes; the data the phone
-holds is no longer a shape you could run them on.
+Derivation belongs on the Worker: a disc should arrive ready to paint, so the
+phone stores it and hands it to `setData()`. When a pass on the phone starts
+growing hulls, cross-disc unions or trig over a stored payload, move that work
+to the Worker rather than optimising it here.
 
-`fireCostV2.test.ts` is the architecture guard — it asserts on the shape of
-the work (no hulls, no cross-disc union, no trig, no iterating a stored
-payload, no `getAll()`, no v1 imports). **If it fails, do not relax it**; move
-the derivation to the Worker.
-
-### Worker route — `GET /fires?…&v=2` — what remains
-
-1. ⚠️ **BLOCKING: the edge cache key drops the request's `?v=`.**
-   `index.ts` builds the key from `FIRE_ANSWER_VERSION` + snapped centre only,
-   so `?v=2` collides with `?v=1` on a warm cell and is served the v1 body.
-   Cold cells answer correctly, so it looks intermittent. Read `v`, validate
-   `1 | 2`, put it in the key as its own token. Do this first, alone.
-2. Payload — pinned by `fireFetchV2.ts`, build to it exactly:
-   `{ points, clusters, outlines }`, each a FeatureCollection. `points` is
-   **required** (missing/malformed → the phone throws and keeps its cache);
-   `clusters`/`outlines` optional, default empty. Point properties
-   `t, c, frp, px?, dn?` are v1's shape; new is **`ind: 1`** on industrial
-   detections — omit the key otherwise, never `true/false` (the cluster sum
-   would add booleans). Ship `clusters` empty for the first cut — nothing
-   renders it; native `cluster: true` does that job. The Worker's genuinely new
-   work is `outlines` and `ind`.
-3. ETag: hash the body (`crypto.subtle.digest`), set `ETag`, **add it to
-   `Access-Control-Expose-Headers`** (or the phone reads `null` and silently
-   never sends a conditional request), answer `If-None-Match` with a bodiless
-   304 that still carries `X-Fetched-At` / `X-Sources-Ok`. The phone already
-   handles all three outcomes.
-4. Bump `FIRE_ANSWER_VERSION` to 4. Confirm gzip is negotiated — the live
-   body is 2.86 MB raw, 180 KB compressed; a field phone cares which.
-
-Keep the new logic on `firesWorker.ts`'s side of the line: pure, injected
-fetch, no `Response`, no cache — `index.ts` owns those.
-
-### Phone — what remains
-
-1. MOUNT `routes/fires/v2/fireLayerV2.ts` — nothing imports it. Its spec
-   (`LAYER` in `fireCostV2.test.ts` scans it): `kmBetween` in exactly one place,
-   `JSON.parse` only straight into `setData`, `if (!disc)` keeps the last good
-   cache, `if (!isLive()) return` after every await.
-2. Wire the bake ports (`retreeverPorts.ts`) to v2 alongside v1 so both
-   caches fill on one device and can be compared.
-3. Swap the Fires row ids in `wallLegend.ts` from v1's to v2's.
-4. **Measure.** Fires-on must sit near the fires-off floor (274 MB online,
-   963 MB offline as last measured; the ~690 MB gap between those is satellite
-   textures, not fires). Materially above it means a derivation step crept
-   back — find it, do not tune constants.
-5. Delete v1 (`fireCache.ts`, `fireArrival.ts`, `fireOutline.ts`,
-   `fireClassifyCache.ts`, `fireRelevance.ts` — their rules move to the
-   Worker) and `FIRE_REFRESH_ENABLED`. Re-point the `describe.skip` blocks in
-   `fireArrival.test.ts` and `masks/staticHeatSources.test.ts` at v2 rather
-   than deleting them — they caught real drift.

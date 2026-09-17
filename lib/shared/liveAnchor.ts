@@ -50,6 +50,24 @@ export function needsFireDisc(
 	return kmToNearest(pos, fireCentres) > FIRE_TRIGGER_KM;
 }
 
+/**
+ * The few centres whose discs cover them all — `needsFireDisc` in the plural.
+ *
+ * ⚠️ Blob centres are 4-decimal (~11 m) and a fire disc is 500 km, so a raw
+ * blob list asks for the same disc over and over: 354 stored centres reduced
+ * to 77 here, and two of them were 14 m apart. Anything handing blob-scale
+ * centres to a disc-scale pass MUST come through this first.
+ *
+ * Greedy, so the result depends on input order and is not the minimum set —
+ * it only has to be small and complete, both of which it is. Callers keep
+ * their own order; nothing downstream may assume these are sorted.
+ */
+export function fireDiscCentres(centres: readonly LngLat[]): LngLat[] {
+	const chosen: LngLat[] = [];
+	for (const c of centres) if (needsFireDisc(c, chosen)) chosen.push(c);
+	return chosen;
+}
+
 /** The live position snapped to a coarse grid (~0.25°), for use as an area key — belt-and-braces behind containment. Deliberately NOT satImageKey (4-decimal); must never hand a moving point that key. */
 export function snapLiveAnchor(pos: LngLat): LngLat {
 	const step = 0.25;

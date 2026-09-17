@@ -25,10 +25,18 @@ export { FIRE_RADIUS_KM } from "../../lib/shared/fireContract";
 
 /**
  * How long the PHONE keeps its own copy before asking the Worker again.
- * ⚠️ Was 1h (matching the edge) — wrong: two TTLs COMPOUND, not add, and produced `Last checked — 5h ago` with the app open.
- * The edge cache (not this one) protects NASA — a phone re-asking costs a cache hit, not a NASA call, so staying eager here is free.
+ * FIRMS itself refreshes hourly, so a shorter TTL cannot surface newer fires.
+ * ⚠️ Wall-clock, not app-open time — a session starting hours later always
+ * refetches, whatever this says; it only governs a session left open.
+ * ⚠️ An earlier 1h TTL showed `Last checked — 5h ago` because every clustered
+ * blob held its own disc and they expired out of step. Discs are now reduced
+ * to a covering set (fireDiscCentres) before any fetch, so the few that remain
+ * expire together.
+ * ⚠️ MUST stay under the edge's 3600s or the two TTLs compound — a phone can
+ * take an already-59-minute-old edge copy and hold it a full TTL longer, so
+ * the age the UI shows is this PLUS the edge's hour.
  */
-export const FIRE_TTL_MS = 5 * 60 * 1000;
+export const FIRE_TTL_MS = 45 * 60 * 1000;
 
 // don't reintroduce a flat "stale after N hours" threshold — removed FIRE_STALE_MS had no right value; unionHotspots' newer-fetch-supersedes rule replaced it.
 

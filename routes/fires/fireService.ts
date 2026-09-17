@@ -13,7 +13,7 @@
  */
 
 import { FIRE_RADIUS_KM } from "../../lib/shared/fireContract";
-import { needsFireDisc } from "../../lib/shared/liveAnchor";
+import { fireDiscCentres, needsFireDisc } from "../../lib/shared/liveAnchor";
 import { passQueue } from "../../lib/shared/passQueue";
 import { fetchAreaFires } from "../../lib/worker/worker-local-dev/fires/fireFetch";
 import {
@@ -62,22 +62,14 @@ async function pass(centres: readonly LngLat[]): Promise<number> {
     if (Date.now() < pausedUntil) return 0;
     let landed = 0;
     const fetched: FireFetchLog[] = [];
-    // The discs this pass has already pulled. A pass arrives with one centre per
-    // blob, and blobs cluster far tighter than the 500 km disc they each ask for
-    // — eighteen Ottawa centres, the closest pair 40 m apart, once pulled
-    // eighteen identical discs. Coverage is re-read per centre so a disc written
-    // mid-pass counts, but that read is a memo invalidated on write: cheap, yet
-    // it only helps AFTER a disc lands. Centres are therefore checked against
-    // this pass's own centres too, so the second of a 40 m pair never fetches.
-    const covered: LngLat[] = [];
-    for (const [lng, lat] of centres) {
+    for (const [lng, lat] of fireDiscCentres(centres)) {
         const key = fireKey(lng, lat);
         const prev = await readFireCache(key);
         if (prev && isFresh(prev)) continue;
         const fresh = (await fireCoverage())
             .filter((c) => isCoverageFresh(c))
             .map((c) => c.center);
-        if (!needsFireDisc([lng, lat], [...fresh, ...covered])) continue;
+        if (!needsFireDisc([lng, lat], fresh)) continue;
         try {
             const r = await fetchAreaFires(lng, lat);
             await writeFireCache(key, {
@@ -88,7 +80,6 @@ async function pass(centres: readonly LngLat[]): Promise<number> {
                 hotspots: [...r.hotspots],
             });
             landed++;
-            covered.push([lng, lat]);
             fetched.push({
                 at: `${lat.toFixed(4)},${lng.toFixed(4)}`,
                 hotspots: r.hotspots.length,
