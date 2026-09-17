@@ -43,6 +43,10 @@ import {
     warmStaticMask,
 } from "../../../routes/fires/masks/staticHeatIndex";
 import { isStaticSource } from "../../../routes/fires/masks/staticHeatSources";
+import {
+    FIRE_CLUSTER_MAX_ZOOM,
+    FIRE_CLUSTER_RADIUS,
+} from "../../../routes/fires/fireDials";
 
 export const FIRE_LAYER_IDS = {
     src: "v4-fire-geo",
@@ -154,8 +158,8 @@ function addFireLayers(map: maplibregl.Map, isLive: () => boolean): void {
         type: "geojson",
         data: EMPTY,
         cluster: true,
-        clusterRadius: 50,
-        clusterMaxZoom: 11,
+        clusterRadius: FIRE_CLUSTER_RADIUS,
+        clusterMaxZoom: FIRE_CLUSTER_MAX_ZOOM,
         clusterProperties: {
             // Max, never sum: merging many mild fires must not read as an inferno.
             // Industrial FRP excluded — a flare stack must not colour the wildfire
