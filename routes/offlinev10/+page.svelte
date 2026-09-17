@@ -14,7 +14,7 @@ import { page } from "$app/state";
 import MapTopControls from "../../lib/mapUi/MapTopControls.svelte";
 import { OFFLINE_MAP_ROUTE, ONLINE_MAP_ROUTE, saveLastMapRoute } from "../../lib/mapState/lastMapRoute.svelte";
 import MapLegend from "../../lib/mapUi/MapLegend.svelte";
-import { attachCameraPersistence, loadCamera } from "../../lib/mapState/mapViewport";
+import { attachCameraPersistence, loadCamera, MAP_HOME_CENTER } from "../../lib/mapState/mapViewport";
 import { attachDoubleTapToPin } from "../../lib/shared/doubleTapToPin";
 import { FIRE_LAYER_ID_LIST, type FireLayerHandle, attachFireLayer } from "../../lib/onPhone/render/fireLayer";
 import { type SatelliteMount, createSatelliteMount, satLayerId } from "../../lib/onPhone/satellite/mountSatellite";
@@ -140,7 +140,7 @@ function readUrl(): { center: [number, number]; zoom: number } {
 	if (validLatLng(lat, lng) && !(lat === 0 && lng === 0)) return { center: [lng, lat], zoom: Number.isFinite(z) && z > 0 ? z : 10 };
 	const saved = loadCamera();
 	if (saved) return { center: saved.center, zoom: saved.zoom };
-	return { center: [-119.5937, 49.4991], zoom: 6 };
+	return { center: MAP_HOME_CENTER, zoom: 6 };
 }
 
 /** The same view on the online map, in the URL shape both pages read. */
