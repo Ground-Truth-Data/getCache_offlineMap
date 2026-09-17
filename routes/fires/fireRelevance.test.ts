@@ -10,10 +10,8 @@ import {
 	distKm,
 	fireAnchors,
 	fireFeatureCollection,
-	frpGateAt,
 	HARD_CUTOFF_KM,
 	MAX_FIRE_ANCHORS,
-	NEAR_KM,
 	nearestAnchorKm,
 	type RelevantHotspot,
 	relevantHotspots,
@@ -74,35 +72,18 @@ describe("near fires are never filtered — small+close beats big+far", () => {
 	it("keeps a tiny 5 MW fire 47 km away", () => {
 		const kept = relevantHotspots([SQUAMISH], AT_USER);
 		expect(kept).toHaveLength(1);
-		expect(kept[0].km).toBeLessThan(NEAR_KM);
+		expect(kept[0].km).toBeLessThan(50);
 	});
 
 	it("keeps a moderate fire at 250 km", () => {
 		expect(relevantHotspots([KAMLOOPS], AT_USER)).toHaveLength(1);
 	});
 
-	it("drops a tiny fire far out but keeps a big one at the same distance", () => {
+	it("keeps a tiny fire and a big one at the SAME distance — size is not relevance", () => {
 		const farTiny = spot(-118.0, 49.28, 1);
 		const farBig = spot(-118.0, 49.28, 400);
-		expect(relevantHotspots([farTiny], AT_USER)).toHaveLength(0);
+		expect(relevantHotspots([farTiny], AT_USER)).toHaveLength(1);
 		expect(relevantHotspots([farBig], AT_USER)).toHaveLength(1);
-	});
-});
-
-describe("frpGateAt — the size-vs-distance ramp", () => {
-	it("filters nothing inside the near ring", () => {
-		expect(frpGateAt(0)).toBe(0);
-		expect(frpGateAt(NEAR_KM)).toBe(0);
-	});
-
-	it("climbs with distance", () => {
-		expect(frpGateAt(100)).toBeGreaterThan(0);
-		expect(frpGateAt(400)).toBeGreaterThan(frpGateAt(200));
-	});
-
-	it("is infinite at and past the wall", () => {
-		expect(frpGateAt(HARD_CUTOFF_KM)).toBe(Number.POSITIVE_INFINITY);
-		expect(frpGateAt(9999)).toBe(Number.POSITIVE_INFINITY);
 	});
 });
 
@@ -126,7 +107,7 @@ describe.skip("NO DISTANCE FADE — a drawn fire is a fire", () => {
 	it("distance still reaches the CARD — it just doesn't touch paint", () => {
 		// deleting the fade must not delete the information — distance belongs on the tap card ("190 km E")
 		const far = relevantHotspots([KAMLOOPS], AT_USER)[0];
-		expect(far.km).toBeGreaterThan(NEAR_KM);
+		expect(far.km).toBeGreaterThan(50);
 	});
 
 	it("no paint property multiplies by prom", () => {
@@ -163,7 +144,7 @@ describe("ANCHORS — fires near ground you touched, not just near your body", (
 		const kept = relevantHotspots([NEAR_BLOCK], [USER, BLOCK]);
 		expect(kept).toHaveLength(1);
 		// measured from the BLOCK (~30km), not the phone (~1,900km) — reads as the near, loud thing it is
-		expect(kept[0].km).toBeLessThan(NEAR_KM);
+		expect(kept[0].km).toBeLessThan(50);
 	});
 
 	it("adding an anchor never hides what the user's fix already showed", () => {
@@ -238,7 +219,7 @@ describe("nearestAnchorKm", () => {
 	it("measures from the closest stake, not the first", () => {
 		const BLOCK: [number, number] = [-99.6, 52.4];
 		const km = nearestAnchorKm([-99.6, 52.67], [USER, BLOCK]);
-		expect(km).toBeLessThan(NEAR_KM);
+		expect(km).toBeLessThan(50);
 	});
 
 	it("is Infinity with no anchors", () => {
@@ -346,5 +327,45 @@ describe("fireFeatureCollection — both maps get identical features", () => {
 		const far = paintOf("-120.33"); // Kamloops, ~250 km
 		expect(near).toEqual(far);
 		expect(near.prom).toBeUndefined();
+	});
+});
+
+/**
+ * The Ottawa case: NASA shows a scatter of SMALL fires east and south of the
+ * user; the app drew one distant big one and nothing local. Real VIIRS 375 m
+ * detections of grass, crop and small forest fires sit at 1–10 MW, so a gate
+ * that demands more MW with distance deletes exactly the fires nearest the
+ * person while keeping a bigger one further away.
+ */
+describe("a real fire inside the wall RENDERS, however small", () => {
+	/** ~175 km east of Ottawa — the cluster in the NASA screenshot. */
+	const SMALL_NEARBY = spot(-73.8, 45.5, 3);
+	/** Sudbury, ~380 km away, big enough that the old gate kept it. */
+	const BIG_FAR = spot(-80.99, 46.49, 40);
+	const OTTAWA: Array<readonly [number, number]> = [[-75.9, 45.35]];
+
+	it("keeps a 3 MW fire 175 km out — small is not the same as irrelevant", () => {
+		const kept = relevantHotspots([SMALL_NEARBY], OTTAWA);
+		expect(kept).toHaveLength(1);
+	});
+
+	it("does not keep only the big distant one", () => {
+		const kept = relevantHotspots([SMALL_NEARBY, BIG_FAR], OTTAWA);
+		expect(kept).toHaveLength(2);
+	});
+
+	it("keeps sub-megawatt detections inside the wall", () => {
+		const kept = relevantHotspots([spot(-74.5, 45.6, 0.4)], OTTAWA);
+		expect(kept).toHaveLength(1);
+	});
+
+	it("the wall is still the ONLY thing that removes a fire", () => {
+		const outside = spot(-60, 45.35, 5000);
+		expect(relevantHotspots([outside], OTTAWA)).toHaveLength(0);
+	});
+
+	it("exports no FRP gate — size must never decide visibility", () => {
+		expect(mod).not.toHaveProperty("frpGateAt");
+		expect(mod).not.toHaveProperty("MAX_FRP_GATE");
 	});
 });

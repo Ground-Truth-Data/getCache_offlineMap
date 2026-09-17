@@ -8,9 +8,6 @@ import type { FireHotspot } from "./fireCache";
 /** ⛔ THE HARD WALL — past this from every anchor, nothing renders, ever. Not a number to tune; deliberately equals FIRE_RADIUS_KM (what we download is what we may draw). */
 export const HARD_CUTOFF_KM = 500;
 
-/** Inside this, a fire is "at your block" — always shown at full prominence whatever its size. */
-export const NEAR_KM = 50;
-
 /** Great-circle km. Local copy keeps this module dependency-free. */
 export function distKm(
 	a: readonly [number, number],
@@ -26,17 +23,14 @@ export function distKm(
 	return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
 }
 
-/** Minimum FRP (MW) to stay visible at a given distance — 0 inside NEAR_KM, climbs linearly to MAX_FRP_GATE at the cutoff. */
-export const MAX_FRP_GATE = 25;
-
-export function frpGateAt(km: number): number {
-	if (km <= NEAR_KM) return 0;
-	if (km >= HARD_CUTOFF_KM) return Number.POSITIVE_INFINITY;
-	const t = (km - NEAR_KM) / (HARD_CUTOFF_KM - NEAR_KM);
-	return t * MAX_FRP_GATE;
-}
-
-/** ⛔ DELETED: `prominenceAt` (distance fade) — do not bring it back. Anchors broke its premise: a fire 400km from a pinned block is not "less important" than one at your live fix (the two-tone bug). Opacity now carries only AGE and the industrial flag. */
+/**
+ * ⛔ DELETED: `prominenceAt` (distance fade) and `frpGateAt` (size-vs-distance
+ * ramp) — do not bring either back. Both made a real detection less than real
+ * because of where it sat: the ramp demanded 25 MW at the wall, and VIIRS
+ * 375 m reports grass and crop fires at 1–10 MW, so a 5 MW fire vanished past
+ * 140 km while a big one 380 km away still drew. Distance decides IN or OUT at
+ * the wall, and nothing else; opacity carries only AGE and the industrial flag.
+ */
 
 export interface RelevantHotspot extends FireHotspot {
 	/** km from the NEAREST anchor (see `fireAnchors`) — not necessarily the user. */
@@ -107,9 +101,8 @@ export function relevantHotspots(
 	const out: RelevantHotspot[] = [];
 	for (const h of hotspots) {
 		const km = nearestAnchorKm(h.coordinates, origin);
-		// THE WALL — from the nearest anchor.
+		// THE WALL — from the nearest anchor. The only test there is.
 		if (km >= HARD_CUTOFF_KM) continue;
-		if (h.frp < frpGateAt(km)) continue;
 		out.push({ ...h, km });
 	}
 	return out;
