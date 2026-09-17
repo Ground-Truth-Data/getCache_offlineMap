@@ -14,6 +14,13 @@ import {
 	payloadStats,
 	resetWorkStats,
 } from "./workMeter.svelte";
+import {
+	startDataMeter,
+	todayBytes,
+	todayTotal,
+	dailyAverage,
+	dataSnapshot,
+} from "./dataMeter.svelte";
 import { subscribeOfflineBake } from "../onPhone/bake/bakeService.svelte";
 import {
 	HEAP_NOTE,
@@ -270,6 +277,17 @@ const pays = $derived(payloadStats());
 /** Total KB pushed into the Mapbox worker for re-parsing since load. */
 const payTotalKb = $derived(pays.reduce((n, p) => n + p.totalKb, 0));
 
+// THE DATA BILL — real wire bytes, surviving reloads. Unlike every other row in
+// this panel it is not reset by the Reset button: a download budget measured from
+// the last time someone pressed a button is not a budget.
+$effect(() => startDataMeter());
+const netRows = $derived(todayBytes());
+const netTotal = $derived(todayTotal());
+const netAvg = $derived(dailyAverage());
+async function copyData(): Promise<void> {
+	await navigator.clipboard.writeText(JSON.stringify(dataSnapshot(), null, 2));
+}
+
 function secs(ms: number): string {
 	return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
 }
@@ -278,6 +296,14 @@ function secs(ms: number): string {
 function fmtKb(kb: number): string {
 	if (kb <= 0) return "—";
 	return kb < 1024 ? `${kb}KB` : `${(kb / 1024).toFixed(1)}MB`;
+}
+
+/** Raw bytes; MB once past a megabyte, because that is the unit a data plan is sold in. */
+function fmtBytes(b: number): string {
+	if (b <= 0) return "—";
+	if (b < 1024) return `${b}B`;
+	if (b < 1024 * 1024) return `${Math.round(b / 1024)}KB`;
+	return `${(b / 1024 / 1024).toFixed(1)}MB`;
 }
 </script>
 
@@ -486,6 +512,39 @@ function fmtKb(kb: number): string {
 				<div class="foot">
 					<span class="dim">DROP PIN TO START · LONG PRESS ON MAP</span>
 					<button onclick={resetWorkStats}>reset</button>
+				</div>
+			{/if}
+
+			<!-- DATA BILL — bytes off the WIRE, per kind, today; the only section here that outlives a reload. -->
+			{#if netRows.length > 0}
+				<div class="paysec netsec">
+					<div class="payhead">
+						data downloaded today
+						<span class="big">{fmtBytes(netTotal)}</span>
+					</div>
+					<table>
+						<tbody>
+							{#each netRows as n (n.kind)}
+								<tr>
+									<td class="name">{n.kind}</td>
+									<td class="num" title="share of today's download">
+										{netTotal > 0 ? `${Math.round((n.bytes / netTotal) * 100)}%` : "—"}
+									</td>
+									<td class="num">{fmtBytes(n.bytes)}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+					<div class="foot">
+						<span class="dim">
+							{#if netAvg.days > 0}
+								{fmtBytes(netAvg.bytesPerDay)}/day over {netAvg.days} day{netAvg.days === 1 ? "" : "s"}
+							{:else}
+								first day — an average needs a second
+							{/if}
+						</span>
+						<button onclick={copyData}>copy</button>
+					</div>
 				</div>
 			{/if}
 
@@ -720,6 +779,19 @@ tr.hot .name {
 	font-size: 11px;
 	padding-bottom: 3px;
 }
+/* the data bill's total is the headline of the whole panel — sized to be readable without leaning in, because the point is spotting a spike at a glance. */
+.netsec .big {
+	margin-left: auto;
+	font-size: 1.35em;
+	font-variant-numeric: tabular-nums;
+	color: var(--dev-card-accent, #ffd479);
+}
+.netsec .payhead {
+	display: flex;
+	align-items: baseline;
+	gap: 0.5em;
+}
+
 /* payload section separated by a rule — answers a different question from the timing rows above it (bytes re-parsed, not ms spent). */
 .paysec {
 	margin-top: 6px;
