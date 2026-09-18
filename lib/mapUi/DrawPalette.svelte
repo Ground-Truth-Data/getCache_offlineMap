@@ -1,6 +1,7 @@
 <!-- DrawPalette — the LINE/POLY/PIN tool strip; presentational only. Picking a tool arms the Snake Ruler (armKind), which then owns all geometry, the readout, and finishing. -->
 <script lang="ts">
 import type { MapHostPorts } from "../shared/mapHostPorts";
+import xCloseWhite from "$gc/assets/x_close_white.webp";
 
 let {
     ports,
@@ -53,7 +54,7 @@ let {
             <span>UNDO</span>
         </button>
         <button class="strip-btn strip-btn-exit" onclick={onExit} title="Exit draw mode">
-            <ports.ui.Icon name="close" size={16} />
+            <img class="strip-x" src={xCloseWhite} alt="" draggable="false" />
         </button>
     </div>
 {/if}
@@ -118,6 +119,12 @@ let {
     .strip-btn-exit {
         color: var(--rt-fg);
         padding: 4px 6px;
+    }
+
+    .strip-x {
+        display: block;
+        width: 16px;
+        height: 16px;
     }
 
     @container (min-width: 500px) {

@@ -6,6 +6,8 @@ import handShovelCursor from "$gc/assets/hand_shovel_cursor.webp";
 import handShovelCursorRight from "$gc/assets/hand_shovel_cursor_right.webp";
 import handShovelCursor100 from "$gc/assets/hand_shovel_cursor_100.webp";
 import pinDefaultUrl from "../assets/pin_library_small/pin_default_sm.webp";
+import xCloseGrey from "$gc/assets/x_close_grey.webp";
+import xCloseWhite from "$gc/assets/x_close_white.webp";
 import type { Feature } from "geojson";
 import mapboxgl from "mapbox-gl";
 import type { Map as MapboxMap } from "mapbox-gl";
@@ -1020,7 +1022,7 @@ $effect(() => {
      that went non-finite) so the popover carrying ✕ cannot be placed. Being unable to
      position a label must never cost the user the only way out of the mode. -->
 {#if active && !popAnchor}
-    <button class="measure-btn measure-x measure-x-loose" onclick={discard} title="Discard" aria-label="Discard measurement">&#x2715;</button>
+    <button style="--x-grey:url({xCloseGrey}); --x-white:url({xCloseWhite})" class="measure-btn measure-x measure-x-loose" onclick={discard} title="Discard" aria-label="Discard measurement">&#x2715;</button>
 {/if}
 
 <!-- Actions — stacked above the readout/bounding box; a lone point gets the same popover: Save drops a pin, Share copies the GPS. -->
@@ -1044,7 +1046,7 @@ $effect(() => {
                     Copy
                 {/if}
             </button>
-            <button class="measure-btn measure-x" onclick={discard} title="Discard" aria-label="Discard measurement">&#x2715;</button>
+            <button style="--x-grey:url({xCloseGrey}); --x-white:url({xCloseWhite})" class="measure-btn measure-x" onclick={discard} title="Discard" aria-label="Discard measurement">&#x2715;</button>
             <button class="measure-btn measure-save" onclick={savePoint} title="Save pin">
                 <img class="measure-pin-ic" src={pinDefaultUrl} alt="" />
                 Save
@@ -1075,7 +1077,7 @@ $effect(() => {
                     Save
                 </button>
             </div>
-            <button class="measure-btn measure-x" onclick={discard} title="Discard" aria-label="Discard measurement">&#x2715;</button>
+            <button style="--x-grey:url({xCloseGrey}); --x-white:url({xCloseWhite})" class="measure-btn measure-x" onclick={discard} title="Discard" aria-label="Discard measurement">&#x2715;</button>
         {/if}
     </div>
 {/if}
@@ -1224,12 +1226,20 @@ $effect(() => {
     .measure-plot:active { background: color-mix(in srgb, #ffffff 14%, transparent); }
     .measure-x {
         align-self: stretch;
-        font-size: 1rem;
+        /* The ✕ text node is collapsed and the painted X drawn behind it, but
+           `color` stays: .measure-btn's border is `1px solid currentColor`.
+           The image arrives as a CSS var from a JS import — `$gc/` inside a
+           component <style> is NOT resolved by Vite and ships a dead URL. */
+        font-size: 0;
         padding: 0 0.6rem;
+        min-width: 2.2rem;
+        background: var(--x-grey) center / 15px 15px no-repeat;
         color: #b7bba6; /* ghost glyph grey — currentColor border follows */
     }
     .measure-x:active {
-        background: rgba(255, 255, 255, 0.1);
+        background:
+            var(--x-white) center / 15px 15px no-repeat,
+            rgba(255, 255, 255, 0.1);
         color: #edefe2;
     }
 

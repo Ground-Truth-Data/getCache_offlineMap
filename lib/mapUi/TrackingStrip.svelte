@@ -1,6 +1,7 @@
 <script lang="ts">
 import type { MapHostPorts } from "../shared/mapHostPorts";
 import tracksIconUrl from "$parent/siblings/getCache_OnlineMap/lib/assets/mobileAssets/tracks_goldV3.webp";
+import xCloseGold from "$gc/assets/x_close_gold.webp";
 
 let {
     ports,
@@ -15,7 +16,7 @@ let {
 
 {#if active}
     <button class="tracking-strip" onclick={onStop} title="Stop tracking">
-        <ports.ui.Icon name="close" size={22} />
+        <img class="tracking-strip__x" src={xCloseGold} alt="" draggable="false" />
         <span class="tracking-strip__label">TRACKING</span>
         <ports.ui.MaskedIcon src={tracksIconUrl} size={30} color="var(--color-accent)" />
     </button>
@@ -44,6 +45,12 @@ let {
         -webkit-tap-highlight-color: transparent;
     }
     .tracking-strip :global(svg) {
+        margin-left: 8px;
+    }
+    .tracking-strip__x {
+        display: block;
+        width: 22px;
+        height: 22px;
         margin-left: 8px;
     }
     .tracking-strip__label {

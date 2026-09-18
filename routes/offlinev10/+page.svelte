@@ -31,6 +31,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { onMount } from "svelte";
 import BlobsDock from "./BlobsDock.svelte";
 import ConfigDock, { type LayerRow, type Light } from "./ConfigDock.svelte";
+import DataDock from "./DataDock.svelte";
 import SessionDock from "./SessionDock.svelte";
 import { blobBusy, blobInFlight, onBlob, queueBlob, repairBlob, setBlobNarration } from "./blobService";
 import { budgetMb as readBudgetMb, setBudgetMb } from "./budget";
@@ -550,6 +551,7 @@ onMount(() => {
      working. `dev` still walls them out of a build. -->
 {#if dev && debug}
 	<EphemeralDock side="left">
+		<DataDock />
 		<SessionDock {progress} {last} {regions} photos={photoMeta} {tier} {kept} {budgetMb} {bytes} />
 		<ConfigDock
 			{tier}
