@@ -1,7 +1,7 @@
 /**
  * fireLayer — the offline map's fire renderer, same look as the online map:
  * terracotta clusters coloured by the WORST fire inside, one flame glyph per
- * detection at every zoom, a thin red hull around each group from z13.
+ * detection at every zoom, a thin red hull around each group from z8.
  *
  * Paints what the bake service already stored (fireCache, via the host's
  * `fires` port). Never fetches — the bake owns downloads.
@@ -45,6 +45,7 @@ import {
 import { isStaticSource } from "../../../routes/fires/masks/staticHeatSources";
 import {
     FIRE_CLUSTER_MAX_ZOOM,
+    FIRE_OUTLINE_MIN_ZOOM,
     FIRE_CLUSTER_RADIUS,
 } from "../../../routes/fires/fireDials";
 
@@ -65,10 +66,7 @@ export const FIRE_LAYER_ID_LIST: readonly string[] = [
     FIRE_LAYER_IDS.outline,
 ];
 
-// Block scale. Above this the clusters already say "fire here"; a hull per
-// fire at regional zoom reads as red specks scattered over ground the user is
-// not looking at.
-const OUTLINE_MIN_ZOOM = 13;
+
 // Terracotta, never red: red is the destructive-action colour in this design
 // system, and a hotspot is information, not a button. Severity is a warmer
 // step within the same family.
@@ -124,7 +122,7 @@ function addFireLayers(map: maplibregl.Map, isLive: () => boolean): void {
         id: FIRE_LAYER_IDS.outline,
         type: "line",
         source: FIRE_LAYER_IDS.outlineSrc,
-        minzoom: OUTLINE_MIN_ZOOM,
+        minzoom: FIRE_OUTLINE_MIN_ZOOM,
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
             // The one sanctioned red: every wildfire agency draws a fire boundary
@@ -146,9 +144,9 @@ function addFireLayers(map: maplibregl.Map, isLive: () => boolean): void {
                 "interpolate",
                 ["linear"],
                 ["zoom"],
-                OUTLINE_MIN_ZOOM,
+                FIRE_OUTLINE_MIN_ZOOM,
                 0,
-                OUTLINE_MIN_ZOOM + 1,
+                FIRE_OUTLINE_MIN_ZOOM + 1,
                 0.85,
             ],
         },

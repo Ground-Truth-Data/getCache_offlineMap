@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
 	FIRE_TRIGGER_KM,
 	fireDiscCentres,
+	FIRE_RELEVANCE_KM,
+	fireCentresWorthFetching,
 	MAP_COVERAGE_KM,
 	MAP_TRIGGER_KM,
 	isUsableFix,
@@ -216,5 +218,40 @@ describe("fireDiscCentres — blob-scale centres must not become disc-scale fetc
 
 	it("handles an empty list", () => {
 		expect(fireDiscCentres([])).toEqual([]);
+	});
+});
+
+describe("fireCentresWorthFetching — distant maps must not pull discs", () => {
+	it("drops ground the user is nowhere near", () => {
+		const faraway = north(BLOCK, FIRE_RELEVANCE_KM + 100);
+		expect(fireCentresWorthFetching([BLOCK, faraway], [BLOCK])).toEqual([
+			BLOCK,
+		]);
+	});
+
+	it("keeps ground within reach — a day's drive stays covered", () => {
+		const nearby = north(BLOCK, FIRE_RELEVANCE_KM - 100);
+		expect(
+			fireCentresWorthFetching([BLOCK, nearby], [BLOCK]),
+		).toHaveLength(2);
+	});
+
+	it("an unknown position keeps everything — a GPS outage must not stop fires", () => {
+		const spread = [BLOCK, north(BLOCK, 5000), north(BLOCK, 9000)];
+		expect(fireCentresWorthFetching(spread, [])).toEqual(spread);
+	});
+
+	it("the 21-disc case: many saved maps, user standing in one", () => {
+		// Every 400 km up the map, as a well-travelled user's blob list looks.
+		const saved = Array.from({ length: 21 }, (_, i) => north(BLOCK, i * 400));
+		const worth = fireCentresWorthFetching(saved, [BLOCK]);
+		expect(worth.length).toBeLessThan(5);
+		expect(worth[0]).toEqual(north(BLOCK, 0));
+	});
+
+	it("reduces AFTER filtering to the covering set — the two compose", () => {
+		const saved = Array.from({ length: 21 }, (_, i) => north(BLOCK, i * 400));
+		const discs = fireDiscCentres(fireCentresWorthFetching(saved, [BLOCK]));
+		expect(discs.length).toBeLessThanOrEqual(3);
 	});
 });

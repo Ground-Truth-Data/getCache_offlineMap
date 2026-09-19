@@ -33,8 +33,31 @@ export const FIRE_CLUSTER_RADIUS = 120;
  * sooner. This is the one that makes a dense region explode into hundreds of
  * flames at a certain zoom: above this number nothing is grouped any more.
  *
- * ⚠️ MUST stay below OUTLINE_MIN_ZOOM (13) — a counted blob and a fire's
- * outline on screen together read as a disaster app. fireDials.test.ts holds
- * the line.
+ * Independent of DIAL 3: the hull has its own unclustered source, so the two
+ * marks may overlap. A counted bubble sitting inside a hull is them agreeing.
  */
 export const FIRE_CLUSTER_MAX_ZOOM = 11;
+
+/**
+ * DIAL 3 — the zoom the red hull around a group of fires appears at.
+ *
+ * The hull is GEOGRAPHY: built from raw detection coordinates in a source of
+ * its own, never from what is on screen, so it exists at every zoom and this
+ * dial only decides when to reveal it. Lower shows it from further out.
+ *
+ * It answers "is the fire between me and where I am going", which is asked
+ * looking at a province — so it is set out at regional scale, well below the
+ * zoom where individual flames take over the telling.
+ *
+ * 8 a province · 11 a district · 13 one fire
+ *
+ * ⛔ THIS IS A TREE-PLANTING APP. The outline is the most "fire app" looking
+ * mark on the map, so it earns the strictest gate here.
+ *
+ * ⚠️ HISTORY, AND THE THING TO WATCH: 11 was tried once and pulled back to 13,
+ * because a screen of scattered red polygons over ground nobody is standing on
+ * read as pollution. Set to 8 deliberately — the hull answers "is the fire
+ * between me and where I am going", which is a regional question — but if it
+ * ever reads as clutter again, that is this number, and the fix is to raise it.
+ */
+export const FIRE_OUTLINE_MIN_ZOOM = 8;

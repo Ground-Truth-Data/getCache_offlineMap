@@ -21,6 +21,9 @@ export const FIRE_COVERAGE_KM = FIRE_RADIUS_KM;
 /** How far before we pull a fresh fire disc. 70% of the disc — the same margin logic as MAP_TRIGGER_KM. ~350 km, i.e. four or five hours of driving. */
 export const FIRE_TRIGGER_KM = Math.round(FIRE_COVERAGE_KM * 0.7);
 
+/** How far from the user ground still earns fire data. Two discs' reach — far enough that a day's drive stays covered, near enough that maps on the far side of the country cost nothing. */
+export const FIRE_RELEVANCE_KM = FIRE_COVERAGE_KM * 2;
+
 /** Distance to the nearest of centres, in km; Infinity when there are none, so the first fix always triggers a bake. */
 export function kmToNearest(
 	pos: readonly [number, number],
@@ -68,6 +71,27 @@ export function fireDiscCentres(
 	const chosen: Array<readonly [number, number]> = [];
 	for (const c of centres) if (needsFireDisc(c, chosen)) chosen.push(c);
 	return chosen;
+}
+
+/**
+ * Centres worth a fire disc AT ALL, given where the user actually is.
+ *
+ * ⚠️ The companion to fireDiscCentres, and the one it cannot do: that reduces
+ * NEARBY duplicates, this drops DISTANT ground. Without it every map ever
+ * saved pulls its own disc every TTL — 21 downloads for a user standing in
+ * one of them, the other 20 over ground they are nowhere near.
+ *
+ * Empty `here` means the position is unknown, not that nothing is relevant:
+ * everything passes, because dropping discs on a missing fix would silently
+ * stop fires during a GPS outage.
+ */
+export function fireCentresWorthFetching(
+	centres: readonly (readonly [number, number])[],
+	here: readonly (readonly [number, number])[],
+	reachKm = FIRE_RELEVANCE_KM,
+): Array<readonly [number, number]> {
+	if (here.length === 0) return [...centres];
+	return centres.filter((c) => kmToNearest(c, here) <= reachKm);
 }
 
 /** The live position snapped to a coarse grid (~0.25°), for use as an area key — belt-and-braces behind containment. Deliberately NOT satImageKey (4-decimal); must never hand a moving point that key. */

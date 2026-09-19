@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
 	FIRE_CLUSTER_MAX_ZOOM,
 	FIRE_CLUSTER_RADIUS,
+	FIRE_OUTLINE_MIN_ZOOM,
 } from "./fireDials";
 
 const read = (rel: string): string =>
@@ -19,18 +20,31 @@ const read = (rel: string): string =>
 const OFFLINE_LAYER = read("../../lib/onPhone/render/fireLayer.ts");
 
 describe("the dials stay inside what the layer can render", () => {
-	it("clumping hands over BELOW the zoom the outline appears at", () => {
-		// a counted blob plus a fire's outline on screen together reads as a disaster app
-		const outlineMin = Number(
-			OFFLINE_LAYER.match(/const OUTLINE_MIN_ZOOM = (\d+);/)?.[1],
-		);
-		expect(outlineMin).toBeGreaterThan(0);
-		expect(FIRE_CLUSTER_MAX_ZOOM).toBeLessThan(outlineMin);
+	it("the outline zoom is the ONE the layers read — neither declares its own", () => {
+		// Two copies of this number is the drift the dials file exists to stop; it
+		// was 13 in both maps and would have been changed in one.
+		expect(OFFLINE_LAYER).not.toMatch(/const\s+\w*OUTLINE_MIN_ZOOM\s*=/);
+		expect(OFFLINE_LAYER).toMatch(/minzoom: FIRE_OUTLINE_MIN_ZOOM/);
+	});
+
+	it("the outline may sit below the cluster hand-over — the hull is not clustered", () => {
+		// The old rule here demanded outline > clusterMaxZoom, on the belief that a
+		// counted bubble inside a hull is a contradiction. It is not: the hull has
+		// its own unclustered source and is computed from raw detection
+		// coordinates, so it is geography at every zoom. That rule blocked showing
+		// the line from regional zoom, which is the only zoom it is useful at.
+		expect(OFFLINE_LAYER).toMatch(/outlineSrc, \{ type: "geojson"/);
+		expect(OFFLINE_LAYER).not.toMatch(/outlineSrc[\s\S]{0,120}cluster: true/);
 	});
 
 	it("the radius is a usable pixel distance", () => {
 		expect(FIRE_CLUSTER_RADIUS).toBeGreaterThan(0);
 		expect(FIRE_CLUSTER_RADIUS).toBeLessThanOrEqual(400);
+	});
+
+	it("the outline zoom is a reachable map zoom", () => {
+		expect(FIRE_OUTLINE_MIN_ZOOM).toBeGreaterThanOrEqual(0);
+		expect(FIRE_OUTLINE_MIN_ZOOM).toBeLessThanOrEqual(22);
 	});
 
 	it("clumping is reachable — a max zoom past the map's own ceiling disables it", () => {

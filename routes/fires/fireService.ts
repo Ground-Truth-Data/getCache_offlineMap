@@ -13,7 +13,11 @@
  */
 
 import { FIRE_RADIUS_KM } from "../../lib/shared/fireContract";
-import { fireDiscCentres, needsFireDisc } from "../../lib/shared/liveAnchor";
+import {
+    fireCentresWorthFetching,
+    fireDiscCentres,
+    needsFireDisc,
+} from "../../lib/shared/liveAnchor";
 import { passQueue } from "../../lib/shared/passQueue";
 import { fetchAreaFires } from "../../lib/worker/worker-local-dev/fires/fireFetch";
 import {
@@ -62,7 +66,9 @@ async function pass(centres: readonly LngLat[]): Promise<number> {
     if (Date.now() < pausedUntil) return 0;
     let landed = 0;
     const fetched: FireFetchLog[] = [];
-    for (const [lng, lat] of fireDiscCentres(centres)) {
+    for (const [lng, lat] of fireDiscCentres(
+        fireCentresWorthFetching(centres, here?.() ?? []),
+    )) {
         const key = fireKey(lng, lat);
         const prev = await readFireCache(key);
         if (prev && isFresh(prev)) continue;
@@ -133,6 +139,8 @@ function reportPass(fetched: readonly FireFetchLog[]): void {
 export interface FireServiceOptions {
     /** Every centre that wants a disc — read at every run. */
     centres: () => Promise<readonly LngLat[]> | readonly LngLat[];
+    /** Where the user has a stake — live fix, pin anchors. Ground far from these earns no fire disc. Omitted → every centre is fetched, as before. */
+    here?: () => readonly LngLat[];
     /** The app's own signal that a centre landed; call `refresh` with it (or with nothing for all), return the unsubscribe. */
     onCentresChanged?: (
         refresh: (centres?: readonly LngLat[]) => void,
@@ -140,12 +148,15 @@ export interface FireServiceOptions {
 }
 
 let stop: (() => void) | null = null;
+/** Where the user actually is. Unset (or empty) means unknown — every centre then passes, see fireCentresWorthFetching. */
+let here: (() => readonly LngLat[]) | null = null;
 
 export function startFireService(opts: FireServiceOptions): () => void {
     if (stop)
         return () => {
             /* already running — the first start's stop owns shutdown */
         };
+    here = opts.here ?? null;
     const refresh = (centres?: readonly LngLat[]): void => {
         // Fired from timers, visibility and online events — there is no caller
         // to hand a rejection to, so `void` alone leaves an unhandled one when
@@ -172,6 +183,7 @@ export function startFireService(opts: FireServiceOptions): () => void {
         window.removeEventListener("online", all);
         document.removeEventListener("visibilitychange", visible);
         clearInterval(timer);
+        here = null;
         stop = null;
     };
     return stop;
