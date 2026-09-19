@@ -25,7 +25,6 @@ import {
 
 export const HOSPITAL_RETRY_MS = 60_000;
 const HOSPITAL_TIMEOUT_MS = 20_000;
-const HOSPITAL_TICK_MS = 24 * 60 * 60 * 1000;
 
 /** The Worker's disc as text, validated as a FeatureCollection and nothing more. */
 export async function fetchHospitals(
@@ -139,14 +138,15 @@ export function startHospitalService(opts: HospitalServiceOptions): () => void {
 	const offAnchors = opts.onAnchorsChanged?.(all) ?? (() => undefined);
 	window.addEventListener("online", all);
 	document.addEventListener("visibilitychange", visible);
-	const timer = setInterval(all, HOSPITAL_TICK_MS);
+	// ⛔ NO TIMER — same rule as the fires pass: the pass runs when the user
+	// LOOKS, never on a clock. Hospitals barely change, so a backgrounded app
+	// ticking against them bought nothing at all.
 	all();
 	stop = () => {
 		offWanted();
 		offAnchors();
 		window.removeEventListener("online", all);
 		document.removeEventListener("visibilitychange", visible);
-		clearInterval(timer);
 		stop = null;
 	};
 	return stop;

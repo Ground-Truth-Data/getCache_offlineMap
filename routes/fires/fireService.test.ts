@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const cache = new Map<
@@ -115,4 +117,22 @@ describe("the fire pass", () => {
         await refreshFires([PENTICTON]);
         expect(fetch).toHaveBeenCalledTimes(2);
     });
+});
+
+describe("no clock — a backgrounded app must not download", () => {
+	const read = (rel: string): string =>
+		readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
+
+	it("neither pass schedules itself on a timer", () => {
+		// People switch away from an app, they do not quit it. A timer here
+		// downloads all day for nobody: a left-open week cost ~40 MB against
+		// ~1 MB for the same actual use. `visibilitychange` is the trigger.
+		for (const rel of [
+			"./fireService.ts",
+			"../hospitals/hospitalService.ts",
+		]) {
+			expect(read(rel), rel).not.toMatch(/setInterval/);
+			expect(read(rel), rel).toMatch(/visibilitychange/);
+		}
+	});
 });

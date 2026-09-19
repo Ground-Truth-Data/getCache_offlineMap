@@ -4,9 +4,9 @@
  * gets a FIRE_RADIUS_KM fire disc from the tiles Worker, kept in the fire
  * cache the flame layer paints from. A FRESH disc within FIRE_TRIGGER_KM
  * already covers a centre; the cache's TTL says when it has gone stale. The
- * pass runs when the app says a centre landed, on coming back online or to
- * the front, and every TTL meanwhile. A dead feed pauses the pass for a
- * minute, never the map.
+ * pass runs when the app says a centre landed, on coming back online, and on
+ * coming back to the front — never on a clock, so a backgrounded app costs
+ * nothing. A dead feed pauses the pass for a minute, never the map.
  *
  * The Worker's address comes from tilesHost.ts, configured by the app at boot
  * — this package names no host of its own.
@@ -21,7 +21,6 @@ import {
 import { passQueue } from "../../lib/shared/passQueue";
 import { fetchAreaFires } from "../../lib/worker/worker-local-dev/fires/fireFetch";
 import {
-    FIRE_TTL_MS,
     fireCoverage,
     isCoverageFresh,
     isFresh,
@@ -170,19 +169,25 @@ export function startFireService(opts: FireServiceOptions): () => void {
         });
     };
     const all = (): void => refresh();
+    // ⛔ NO TIMER. The pass runs when the user LOOKS, never on a clock: a
+    // backgrounded app is the normal state of a phone app — people switch
+    // away, they do not quit — and an interval there downloads all day for
+    // nobody. A left-open week cost ~40 MB against ~1 MB for the same use.
+    //
+    // Nothing is lost: coming back to the app fires `visible`, and the cache's
+    // TTL decides whether that look actually fetches, so a user checking ten
+    // times an hour still downloads once.
     const visible = (): void => {
         if (document.visibilityState === "visible") all();
     };
     const offCentres = opts.onCentresChanged?.(refresh) ?? (() => undefined);
     window.addEventListener("online", all);
     document.addEventListener("visibilitychange", visible);
-    const timer = setInterval(all, FIRE_TTL_MS);
     all();
     stop = () => {
         offCentres();
         window.removeEventListener("online", all);
         document.removeEventListener("visibilitychange", visible);
-        clearInterval(timer);
         here = null;
         stop = null;
     };
