@@ -460,14 +460,20 @@ hr {
 	letter-spacing: 0.02em;
 }
 
-/* Ghost ✕ close button — the ONE close glyph for every popup. Gold = do-this-next, red = trash, ghost = quiet exit. Icon scales with the box; overrides only need width/height. */
+/* Hand-drawn ✕ close button — the ONE close glyph for every popup. Gold = do-this-next, red = trash, ghost = quiet exit.
+   The X is a painted WebP, not a stroked glyph: the brush edge carries its own
+   colour, so `color`/`currentColor` no longer reaches it — pick the tone by
+   swapping the image (x_close_white/grey/gold/rust). A caller's <svg> is
+   hidden rather than removed, so every existing <Icon name="close-x"/> call
+   site converts untouched. Icon scales with the box; overrides only need width/height. */
 .rt-popover-close {
 	flex: 0 0 auto;
 	width: 30px;
 	height: 30px;
 	border: 1.5px solid rgba(255, 255, 255, 0.17);
-	background: rgba(0, 0, 0, 0.3);
-	color: #b7bba6;
+	background:
+		url('$gc/assets/x_close_grey.webp') center / 62% 62% no-repeat,
+		rgba(0, 0, 0, 0.3);
 	line-height: 1;
 	cursor: pointer;
 	display: flex;
@@ -478,12 +484,12 @@ hr {
 	-webkit-tap-highlight-color: transparent;
 }
 .rt-popover-close svg {
-	width: 65%;
-	height: 65%;
+	display: none;
 }
 .rt-popover-close:active {
-	background: rgba(255, 255, 255, 0.1);
-	color: #edefe2;
+	background:
+		url('$gc/assets/x_close_white.webp') center / 62% 62% no-repeat,
+		rgba(255, 255, 255, 0.1);
 	transform: scale(0.92);
 }
 
@@ -612,9 +618,14 @@ hr {
 }
 
 [data-sonner-toaster] [data-sonner-toast] [data-close-button] {
-	background: #1a1a1a !important;
-	color: var(--rt-yellow) !important;
+	background:
+		url('$gc/assets/x_close_gold.webp') center / 58% 58% no-repeat,
+		#1a1a1a !important;
 	border-color: var(--rt-yellow) !important;
+}
+/* Sonner draws its own cross as an inline <svg>; the painted X replaces it. */
+[data-sonner-toaster] [data-sonner-toast] [data-close-button] svg {
+	display: none !important;
 }
 
 /* Shared subdrawer back-chip — reused by SubDrawer + DrawerTabHeader; single source so headers don't duplicate this CSS. */
@@ -1329,10 +1340,13 @@ body.map-only .mobile-map-fill .maplibregl-ctrl-bottom-left {
 	padding: 0;
 	border: 1.5px solid rgba(255, 255, 255, 0.17);
 	border-radius: 9px;
-	background: rgba(0, 0, 0, 0.32);
-	color: #cfd3c2;
-	font-size: 1rem;
-	font-family: var(--rt-font-display, "Retreever", sans-serif);
+	background:
+		url('$gc/assets/x_close_grey.webp') center / 62% 62% no-repeat,
+		rgba(0, 0, 0, 0.32);
+	/* The vendor's own "×" is a TEXT NODE inside this button, not an icon we
+	   render — collapsing the font is the only way to hide it without
+	   replacing Mapbox's markup and re-wiring its click handler. */
+	font-size: 0;
 	line-height: 1;
 	cursor: pointer;
 	-webkit-tap-highlight-color: transparent;
@@ -1456,9 +1470,11 @@ body.map-only .mobile-map-fill .maplibregl-ctrl-bottom-left {
 	height: 30px;
 	border: 1.5px solid rgba(255, 255, 255, 0.17);
 	border-radius: 10px;
-	background: rgba(0, 0, 0, 0.3);
-	color: #b7bba6;
-	font-size: 1.2rem;
+	background:
+		url('$gc/assets/x_close_grey.webp') center / 62% 62% no-repeat,
+		rgba(0, 0, 0, 0.3);
+	/* Vendor "×" text node — collapsed, not recoloured (see the fire popup). */
+	font-size: 0;
 	line-height: 1;
 	padding: 0;
 }
