@@ -17,6 +17,12 @@ function isMapRoute(v: unknown): v is MapRoute {
 	return v === ONLINE_MAP_ROUTE || v === OFFLINE_MAP_ROUTE;
 }
 
+// THE DEFAULT IS THE OFFLINE MAP, because it is the only map route with a
+// store behind it: its host page substitutes both `mapPorts` and the pin
+// renderer's host, which `/app/map` does not. A device that has never chosen —
+// or chose before that was true — must not land on a map that draws no pins.
+const DEFAULT_MAP_ROUTE: MapRoute = OFFLINE_MAP_ROUTE;
+
 // ⚠️ localStorage is NOT reactive — read via this $state cell, not directly, or the UI silently goes stale (measured: the tab kept whichever map was visited first).
 // ⚠️ seed eagerly at module scope, not lazily on first read — lazy seeding inside $derived throws state_unsafe_mutation.
 let current = $state<MapRoute>(readStored());
@@ -25,13 +31,13 @@ let seededFor: string | null = storageKey();
 
 /** Read the persisted value once per page load, to seed the cell. */
 function readStored(): MapRoute {
-	if (typeof localStorage === "undefined") return ONLINE_MAP_ROUTE;
+	if (typeof localStorage === "undefined") return DEFAULT_MAP_ROUTE;
 	try {
 		const raw = localStorage.getItem(storageKey());
 		if (isMapRoute(raw)) return raw;
 	} catch {
 	}
-	return ONLINE_MAP_ROUTE;
+	return DEFAULT_MAP_ROUTE;
 }
 
 export function loadLastMapRoute(): MapRoute {
@@ -43,7 +49,7 @@ export function loadLastMapRoute(): MapRoute {
 // drops the in-memory cell so the next read re-seeds — clearing localStorage alone does NOT reset it (the cell isn’t re-read every call); tests must call this.
 export function resetLastMapRouteCache(): void {
 	seededFor = null;
-	current = ONLINE_MAP_ROUTE;
+	current = DEFAULT_MAP_ROUTE;
 }
 
 // records the current map route; ignores anything that is not one of the two known routes.
