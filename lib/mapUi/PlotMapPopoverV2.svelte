@@ -288,9 +288,12 @@ function requestClose() {
 		</div>
 
 		<!-- Title = the permanent plot NUMBER (read-only, the key); status lives on the PLOT DATA pills below, not a separate chips row. -->
-		<div class="pp-title" aria-label="Plot {displayNo}">
+		<!-- 0 means every leg of the displayNo chain came up empty — an unnumbered
+		     plot. It reads as the number zero, so it claimed a plot that does not
+		     exist; a dash says "no number yet", which is the truth. -->
+		<div class="pp-title" aria-label={displayNo ? `Plot ${displayNo}` : "Plot, not numbered yet"}>
 			<span class="pp-title-lead">Plot #</span>
-			<span class="pp-title-no">{displayNo}</span>
+			<span class="pp-title-no">{displayNo || "—"}</span>
 			{#if plotShortCode}
 				<span class="pp-title-code" aria-label="Plot code {plotShortCode}">
 					<span class="pp-title-code-bar">|</span>&nbsp;{plotShortCode}

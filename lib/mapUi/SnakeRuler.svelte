@@ -16,6 +16,7 @@ import { area, length as turfLength } from "@turf/turf";
 import { markerCtor } from "../shared/rendererOf";
 import type { Lnglat } from "$parent/siblings/getCache_OnlineMap/lib/draw/mapDraw";
 import { formatHectares, formatMeasureDist } from "../panels/measureFormat";
+import { legLabelsReadable } from "./legLabelCrowding";
 import { type Rect, mapKeepOutRects, shiftClear } from "../shared/mapKeepOut";
 // Icon and SharePicker render as ports.ui.*; copyToClipboard is ports.ui.copyToClipboard; ShareFormat is the contract's MapShareRow, MapShareFormat is in the contract.
 import type {
@@ -451,9 +452,29 @@ function updateEndCursors() {
 
 // formatHectares / formatMeasureDist live in ../measureFormat, shared with the draw tool so totals round identically.
 let legMarkers: mapboxgl.Marker[] = [];
+// Whether the last render painted the leg labels — the `move` handler compares
+// against it so a pan only rebuilds the markers when the verdict actually flips.
+let legLabelsShown = false;
+/** Would the leg labels be readable where they sit on screen right now?
+ *  FALSE when there are no labels to place: "nothing to show" must match what a
+ *  cleared render leaves behind, or the move handler sees the two disagree and
+ *  rebuilds the markers on every pan frame. */
+function legLabelsFit(): boolean {
+    if (!map) return false;
+    const m = map;
+    const anchors = legLabelAnchors();
+    if (!anchors.length) return false;
+    return legLabelsReadable(
+        anchors.map(({ geo, off }) => {
+            const p = m.project({ lng: geo[0], lat: geo[1] });
+            return { x: p.x + off[0], y: p.y + off[1] };
+        }),
+    );
+}
 function clearLegs() {
     for (const m of legMarkers) m.remove();
     legMarkers = [];
+    legLabelsShown = false;
 }
 // Leg readout; `offset` is a screen-px nudge off the band (screen-constant, no zoom scaling) so it clears the line + gold centre.
 function addLeg(lngLat: Lnglat, text: string, offset: [number, number]) {
@@ -495,6 +516,12 @@ function renderLegs() {
     const ring = isPolygon && pts.length >= 3 ? [...pts, pts[0]] : pts;
     if (ring.length < (isPolygon ? 4 : 3)) return;
     const anchors = legLabelAnchors();
+    // Crowded legs show NO labels. Zoomed out, a small shape stacks its leg
+    // readouts on each other and overlapping digits read as a wrong number —
+    // worse than the absent one. The total above the shape still answers "how
+    // big", so nothing a reader needs is lost.
+    legLabelsShown = legLabelsFit();
+    if (!legLabelsShown) return;
     for (let i = 0; i < ring.length - 1; i++) {
         const segKm = turfLength({
             type: "Feature", properties: {},
@@ -1002,6 +1029,12 @@ $effect(() => {
         const ring: Lnglat[] =
             isPolygon && verts.length >= 3 ? [...verts, verts[0]] : pts;
         setData(MEASURE_TICKS_SRC, buildTicksFC(ring));
+        // Crowding is a SCREEN distance, so zooming changes the answer with the
+        // geometry untouched — without this the labels keep whatever verdict
+        // they were born with and pile up as you zoom out. Rebuild ONLY when the
+        // verdict flips: this runs every pan frame, and renderLegs tears down
+        // and recreates every marker's DOM.
+        if (legLabelsShown !== legLabelsFit()) renderLegs();
     };
     m.on("move", onMove);
     return () => m.off("move", onMove);
