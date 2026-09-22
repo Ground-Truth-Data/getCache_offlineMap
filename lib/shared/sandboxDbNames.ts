@@ -37,7 +37,8 @@ export function worldStorageSuffix(): string {
 
 // The world, named the moment this module is evaluated. Nothing has to
 // remember to call it, and nothing can run before it.
-publishWorldSuffix(worldStorageSuffix());
+const bornSuffix = worldStorageSuffix();
+publishWorldSuffix(bornSuffix);
 
 /** The world's suffix, published across the open-core wall for the blob layer
  *  (`getCache_OnlineMap/lib/overlay/mobMapStorage`), which may not import
@@ -54,12 +55,18 @@ function publishWorldSuffix(suffix: string): void {
 	(window as { __rt_world_suffix?: string }).__rt_world_suffix = suffix;
 }
 
-let sandboxActive = false;
-let activeSuffix = "";
+// BORN FROM THE URL, like the blob layer's suffix above — not from a store's
+// boot. Every offline box (satellite, tiles, vectors, registry) names itself
+// through `currentDbName`, and the one caller that used to set this sits in
+// V1's `initOnce` past the early return a V2 page takes. On `/app/offlinev10`
+// it never ran, so a sandbox world downloaded its imagery straight into the
+// REAL app's boxes.
+let sandboxActive = bornSuffix !== "";
+let activeSuffix = bornSuffix;
 
-/** Point the IndexedDB name resolver at this page load's world. The blob
- *  layer's global is already true from module scope; this keeps the two from
- *  drifting when a caller names a world explicitly. */
+/** Point the IndexedDB name resolver at a world named EXPLICITLY — a caller
+ *  that knows better than the URL. The page's own world is already live from
+ *  module scope, so nothing has to call this for storage to be correct. */
 export function setSandboxStorageActive(active: boolean, world = "1"): void {
 	sandboxActive = active;
 	activeSuffix = active ? worldSuffix(world) : "";

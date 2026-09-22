@@ -17,6 +17,25 @@ export const WIPE_DBS = [
 /** ⛔ NEVER add these to WIPE_DBS. The user's own data lives here. */
 export const NEVER_WIPE = ["rt-treeStuff"] as const;
 
+/** Boxes STILL WRITTEN TO. A wipe the user asked for may take them — they
+ *  re-download and the page says so. A retirement sweep may NOT: it runs
+ *  unasked at boot, and nothing refills what it takes.
+ *
+ *  `gc-offlineSatellite` holds V10's photos (`satellite.ts` → `satelliteImage`)
+ *  and `rt-mapRegistry` is that photo store's own bookkeeping — the budget and
+ *  LRU `photoDedup`/`bakeService` read on every bake. V10's tiles live in
+ *  `gc-offlineV10`, which was never on the wipe list at all.
+ *
+ *  Kept beside WIPE_DBS because the bug was two questions sharing one list:
+ *  "what does a wipe clear" and "what is obsolete" are not the same set, and
+ *  `retireOldOffline` read the first as if it were the second. Satellite had
+ *  already been subtracted BY NAME after it bit once; the registry behind it
+ *  had not, so every boot deleted the budget ledger under the live photos. */
+export const V10_LIVE_DBS = [
+	"gc-offlineSatellite",
+	"rt-mapRegistry",
+] as const;
+
 export interface WipeResult {
 	/** Database name → how it went. */
 	readonly deleted: Record<string, "gone" | "blocked" | "absent">;
