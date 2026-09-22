@@ -625,8 +625,9 @@ export async function collectFocusedBlobReport(
 		blob: sorted.length > 0 ? geometryFor(sorted[0]) : null,
 	};
 	// summary goes SECOND in the file (after schema) — the human block fronts
-	// the developer sections. Spread keeps key order: schema, summary, rest.
-	return { schema: report.schema, summary: summarizeFocusedReport(report), ...report };
+	// the developer sections.
+	const { schema, ...rest } = report;
+	return { schema, summary: summarizeFocusedReport(report), ...rest };
 }
 
 /** Stable filename for a saved report. */
