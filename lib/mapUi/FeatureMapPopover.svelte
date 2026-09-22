@@ -21,6 +21,7 @@ let {
     onBlock,
     cornerEditing = false,
     onEditCorners,
+    drawLive = false,
 }: {
     ports: MapHostPorts;
     feature: Feature;
@@ -40,12 +41,14 @@ let {
     /** True while this feature's corners are in drag mode on the map. */
     cornerEditing?: boolean;
     onEditCorners?: (on: boolean) => void;
+    /** A draw is in progress — the shell fades and yields taps to it. */
+    drawLive?: boolean;
 } = $props();
 
 const isPoint = $derived(feature.geometry?.type === "Point");
 </script>
 
-<MapPopoverShell {bbox} {containerWidth} {containerHeight} {isPoint}>
+<MapPopoverShell {bbox} {containerWidth} {containerHeight} {isPoint} {drawLive}>
     <!-- Pins/lines/polygons get an easy delete (garbage can beside Share); PLOT pins use their own popover and intentionally have no trash. -->
     <ports.ui.FeatureDetail
         {feature}

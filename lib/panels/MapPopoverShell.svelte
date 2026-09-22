@@ -8,6 +8,7 @@ export const POPOVER_BOTTOM_RESERVE = 95;
 <script lang="ts">
 import type { Snippet } from "svelte";
 import { leaderLine, placePopover } from "./mapPopoverGeom";
+import { yieldStyle } from "./popoverYield";
 
 let {
 	bbox,
@@ -16,6 +17,7 @@ let {
 	isPoint = false,
 	wide = false,
 	scrollLocked = false,
+	drawLive = false,
 	children,
 }: {
 	bbox: { minX: number; minY: number; maxX: number; maxY: number };
@@ -26,6 +28,8 @@ let {
 	wide?: boolean;
 	/** Freezes the surface's own scroll — ⚠️ must stay frozen during edit-spotlight or the focused row slides out from under the scrim. */
 	scrollLocked?: boolean;
+	/** A tool is armed or the ruler is measuring — the card fades and stops taking taps so the shape being drawn under it stays visible and clickable. */
+	drawLive?: boolean;
 	children: Snippet;
 } = $props();
 
@@ -62,8 +66,10 @@ const geom = $derived(
 		crow: crowExclusion(),
 	}),
 );
+const yielding = $derived(yieldStyle(drawLive).css);
 const style = $derived(
-	`left:${geom.left}px;top:${geom.top}px;width:${geom.width}px;max-height:${geom.maxH}px`,
+	`left:${geom.left}px;top:${geom.top}px;width:${geom.width}px;max-height:${geom.maxH}px` +
+		(yielding ? `;${yielding}` : ""),
 );
 
 // Dotted leader trail ties a point-pin to its popover; runs to whichever edge of the card faces the pin.
@@ -81,7 +87,10 @@ $effect(() => {
 	function setPassthrough(on: boolean) {
 		if (passthrough === on) return;
 		passthrough = on;
-		node.style.pointerEvents = on ? "none" : "";
+		// Restoring means "" — but while yielding to a draw the card is
+		// deliberately pointer-transparent, and clearing it here would hand it
+		// back the taps the draw needs.
+		node.style.pointerEvents = on || drawLive ? "none" : "";
 	}
 
 	function onPointerDown(e: PointerEvent) {
