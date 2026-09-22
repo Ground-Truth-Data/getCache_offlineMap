@@ -889,7 +889,22 @@ let popAnchor = $derived.by(() => {
 
     // Dodges the map's floating chrome (eye+crow, top-right, painted at z-index 40 above this popover) — SIDEWAYS beats upward (avoids a diagonal leap), falling back to lifting only if no clear x exists; pill+popover dodge together as ONE box.
     const popW = popHalf * 2;
-    const rects = mapKeepOutRects(W, undefined, map.getCanvas());
+    // THE SNAKE IS A KEEP-OUT TOO. Dodging the crow slides the stack sideways,
+    // and sideways from that corner is straight onto the measurement — the
+    // dodge was solving "clear of chrome" while the contract is "clear of the
+    // chrome AND the thing being measured". Handing the geometry's own bbox to
+    // the same test makes one list answer for both; a snake that leaves nowhere
+    // clear falls through to the existing null branch and keeps its clamped x.
+    const snakeRect: Rect = {
+        x: minX,
+        y: minY,
+        w: Math.max(maxX - minX, 1),
+        h: Math.max(maxY - minY, 1),
+    };
+    const rects = [
+        ...mapKeepOutRects(W, undefined, map.getCanvas()),
+        snakeRect,
+    ];
     const minPopX = POP_EDGE_PX;
     const maxPopX = W - POP_EDGE_PX - popW;
     const stackBox = (atY: number, isBelow: boolean): Rect => ({

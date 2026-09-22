@@ -1,4 +1,4 @@
-<!-- PlotMapPopover (V2) — gated on counted: CREATE (uncounted) shows the editable deck; VIEW (counted) is read-only — never edit inline here, edit via the quality704 form. -->
+<!-- PlotMapPopover (V2) — the BODY is gated on counted: uncounted shows the editable deck, counted is read-only. The header's Edit/Share are gated on the plot EXISTING (see canOpenInForm), never on its count — editing happens in the quality704 form, never inline here. -->
 <script lang="ts">
 import { iconPath } from "../shared/icons";
 import type { Feature } from "geojson";
@@ -50,7 +50,7 @@ function atvShare(node: HTMLElement) {
 const mapFeatureKey = $derived((feature?.properties?.mapFeatureKey as string) ?? "");
 // CREATE mode iff pendingPlotNo was passed (no pin until the count is written); VIEW mode otherwise.
 const isCreate = $derived(pendingPlotNo != null);
-// ⚠️ plotByGpsKey reads the store imperatively (runes can't track it) — plotVersion must bump after every write, or `counted` freezes and the Edit pencil never appears until a full close/reopen.
+// ⚠️ plotByGpsKey reads the store imperatively (runes can't track it) — plotVersion must bump after every write, or `counted` freezes and the body stays on the editable deck until a full close/reopen. The Edit pencil no longer depends on it.
 let plotVersion = $state(0);
 const plot = $derived.by<MapQ704PlotPinData | null>(() => {
 	void plotVersion;
@@ -72,6 +72,14 @@ const pinPlotNo = $derived.by(() => {
 const plotNo = $derived(plot?.plotNo || pinPlotNo);
 // The DYNAMIC per-map number the user SEES (pin label + title) — re-flows as surveys merge/plots delete; falls back to the survey-local number.
 const displayNo = $derived(plot?.displayNo || plot?.plotNo || pinPlotNo);
+// "Open in form" needs a plot that EXISTS and a number to find it by — never a
+// count. A pin is minted only for a plot already in the database, so in VIEW
+// mode the row is there whether or not its count has been re-read here. There
+// is no plot zero: 0 means every leg of the number chain came up empty, and a
+// deep link on it would land on nothing.
+const canOpenInForm = $derived(
+	!isCreate && Number.isInteger(plotNo) && plotNo > 0,
+);
 
 // Plot NUMBER is the identity; the full Open LoCode rides beneath as a faint, copyable sub-line. `copyLoCode` writes the FULL code.
 const plotFullCode = $derived(q704 ? q704.plotFullCodeByGpsKey(mapFeatureKey) : "");
@@ -204,7 +212,10 @@ $effect(() => {
 	// ⚠️ Bump plotVersion ONLY when a write actually changed the store — bumping unconditionally causes an infinite effect loop (effect_update_depth_exceeded, the map "freeze").
 	let changed = false;
 	for (const r of rows) {
-		if (r.plotNo == null) continue; // the trailing blank has no number yet.
+		// Unnumbered → nothing to write against. There is no plot zero: 0 is the
+		// row's not-yet-numbered value, so it is the trailing blank too, and
+		// writing it earns a "missing" that rolls the swipe back on every pass.
+		if (r.plotNo == null || r.plotNo <= 0) continue;
 		if (!r.committed) continue; // UNCOMMITTED → buffered in memory, not saved.
 		const outcome = q704.updateActivePlot(r.id, {
 			planted: r.planted,
@@ -264,8 +275,15 @@ function requestClose() {
 			<img class="pp-glyph" src={iconPath("quality")} alt="" />
 			<span class="pp-kind">Quality plot</span>
 			<span class="pp-spacer"></span>
-			<!-- Edit appears once counted — an existing plot is never edited inline; editing happens in the quality704 form. Icon-only so the header row never wraps. -->
-			{#if counted}
+			<!-- Edit belongs to any EXISTING plot, not only a counted one. A pin is
+			     only ever minted for a plot that is in the database, so a VIEW-mode
+			     popover always has somewhere to go — and `plotNo` falls back to the
+			     number baked into the pin, so the deep link works even when the
+			     count has not been re-read yet. Gating this on `counted` meant the
+			     one plot you most need to open — the one whose count did not land —
+			     was the one with no way in. CREATE mode is still excluded: a pending
+			     drop has no row to edit. Icon-only so the header never wraps. -->
+			{#if canOpenInForm}
 				<span class="pp-edit">
 					<ports.ui.GoldButton
 						size="sm"
@@ -277,8 +295,8 @@ function requestClose() {
 					</ports.ui.GoldButton>
 				</span>
 			{/if}
-			<!-- Share only exists for a COUNTED plot — nothing to share while CREATE mode is still session-only. -->
-			{#if counted}
+			<!-- Share follows Edit: an existing plot is shareable. Nothing to share in CREATE mode, which is still session-only. -->
+			{#if canOpenInForm}
 				<button class="pp-icon" aria-label="Share plot" title="Share" use:atvShare onclick={() => onShare("getcache")}>
 					<ports.ui.Icon name="share" size={18} />
 				</button>

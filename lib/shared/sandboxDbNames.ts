@@ -35,17 +35,35 @@ export function worldStorageSuffix(): string {
 	return w ? worldSuffix(w) : "";
 }
 
+// The world, named the moment this module is evaluated. Nothing has to
+// remember to call it, and nothing can run before it.
+publishWorldSuffix(worldStorageSuffix());
+
+/** The world's suffix, published across the open-core wall for the blob layer
+ *  (`getCache_OnlineMap/lib/overlay/mobMapStorage`), which may not import
+ *  `$lib/mobile` and so cannot ask any of this directly.
+ *
+ *  WRITTEN FROM THE URL, AT MODULE SCOPE — not from a store's boot. A world is
+ *  a property of the page load, and the one caller that used to name it sat
+ *  inside V1's `initOnce`, past the early return a V2 page takes: on `/app/map`
+ *  it never ran at all, so two sandbox phones wrote their overlays into the
+ *  REAL app's `maps` directory. Naming the world where the world is BORN is
+ *  what makes that unreachable rather than merely early. */
+function publishWorldSuffix(suffix: string): void {
+	if (typeof window === "undefined") return;
+	(window as { __rt_world_suffix?: string }).__rt_world_suffix = suffix;
+}
+
 let sandboxActive = false;
 let activeSuffix = "";
 
-/** Called at boot to point offline storage at this page load's world. */
+/** Point the IndexedDB name resolver at this page load's world. The blob
+ *  layer's global is already true from module scope; this keeps the two from
+ *  drifting when a caller names a world explicitly. */
 export function setSandboxStorageActive(active: boolean, world = "1"): void {
 	sandboxActive = active;
 	activeSuffix = active ? worldSuffix(world) : "";
-	// Mirror onto a window global so rapper (must NOT import proprietary $lib/mobile — open-core rule) can read sandbox state and redirect "maps" → "maps-sandbox".
-	if (typeof window !== "undefined") {
-		(window as { __rt_sandbox_active?: boolean }).__rt_sandbox_active = active;
-	}
+	publishWorldSuffix(activeSuffix);
 }
 
 export function isSandboxStorageActive(): boolean {

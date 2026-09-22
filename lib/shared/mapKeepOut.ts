@@ -76,7 +76,14 @@ export function shiftClear(
 
     const left = hit.x - box.w; // box's right edge just left of the obstacle
     const right = hit.x + hit.w; // box's left edge just right of the obstacle
-    for (const cand of [left, right]) {
+    // NEAREST lane first. Trying left before right regardless of distance sends
+    // the box across the whole obstacle when a shorter hop was available — read
+    // on screen as the popover teleporting away from the thing it belongs to.
+    const candidates =
+        Math.abs(left - box.x) <= Math.abs(right - box.x)
+            ? [left, right]
+            : [right, left];
+    for (const cand of candidates) {
         if (cand < minX || cand > maxX) continue;
         const moved = { ...box, x: cand };
         if (!rects.some((r) => rectsOverlap(moved, r))) return cand;
