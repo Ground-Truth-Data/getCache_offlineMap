@@ -100,15 +100,34 @@ export interface MapHostStore {
 		abstraction?: string | null,
 		opts?: Record<string, unknown>,
 	): string;
+	/** EVERY KEY IS NAMED, and that is the point of this type.
+	 *
+	 *  This patch carried `[extra: string]: unknown`, which meant a host could
+	 *  accept five keys and drop the rest without anything failing to compile —
+	 *  the map sent `landName` for months and naming a block wrote nothing at
+	 *  all. A key that is not listed here is now a build error at the call site
+	 *  rather than a silent no-op on a planter's phone.
+	 *
+	 *  Adding a key means adding it here AND routing it in every host. If a host
+	 *  genuinely cannot store one, it should say so — not accept it quietly. */
 	updateFeature(
 		mapFeatureKey: string,
 		patch: {
 			name?: string;
+			featureType?: string;
 			featureDesc?: string;
 			featureData?: string;
 			contacts?: string[];
 			geometry?: Feature | null;
-			[extra: string]: unknown;
+			/** Who last edited the shape; hosts that track it stamp the row. */
+			lastEditedBy?: string;
+			/** The BLOCK this shape is the ground of, "" to release it. */
+			landName?: string;
+			/** Styling, stored inside the geometry's own properties.
+			 *  `null`/`false`/`""` REMOVE the prop — off is an absence. */
+			fillOpacity?: number | null;
+			titleShown?: boolean;
+			displayName?: string;
 		},
 	): void;
 	deleteFeature(mapFeatureKey: string): void;
