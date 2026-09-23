@@ -1,16 +1,12 @@
 /**
- * The flame icon survives a style swap.
+ * The flame is in hand before any layer can ask for it.
  *
- * `rt-fire-flame` is registered by `ensureFireIcon` through an ASYNC
- * `loadImage`, while the symbol layer that asks for it is added synchronously.
- * A `setStyle` landing between the load and the resolve wipes the image
- * registry, and `addFireLayers` then short-circuits on `getSource(...)` — so
- * the layer exists, the image does not, and MapLibre logs
- * `Image "rt-fire-flame" could not be loaded` forever after.
- *
- * `style.load` alone does not cover it: the wipe can land after that fires.
- * The renderer's own `styleimagemissing` is the only signal that reports the
- * image is actually absent, so the layer must listen for it and re-register.
+ * MapLibre fires `styleimagemissing` and then warns
+ * `Image "rt-fire-flame" could not be loaded` in the SAME tick unless a
+ * listener has already called `addImage`. An async `loadImage` per style can
+ * only start a load and lose, so a tile that asks first — a slow first load, a
+ * style swap — warns and draws no flame. The image must be decoded once, before
+ * the layers exist, and every registration after that must be synchronous.
  *
  * Source-text scan, matching the sibling fireLayer.test.ts: this module reaches
  * bundler-only asset imports and cannot be imported under vitest.
@@ -25,24 +21,34 @@ const raw = readFileSync(
 	"utf8",
 );
 
-describe("the flame icon re-registers when the style drops it", () => {
-	it("listens for styleimagemissing", () => {
-		expect(raw).toMatch(/map\.on\(\s*"styleimagemissing"/);
+const body = (start: string): string => {
+	const fn = raw.slice(raw.indexOf(start));
+	return fn.slice(0, fn.indexOf("\n}"));
+};
+
+describe("the flame registers synchronously", () => {
+	it("never loads the flame through the renderer's async loadImage", () => {
+		expect(raw).not.toContain("loadImage(");
 	});
 
-	it("re-registers the flame rather than only repainting", () => {
-		// The handler must reach ensureFireIcon: `paint()` alone re-adds layers
-		// but bails at the source check, leaving the image unregistered.
-		const handler = raw.slice(
-			raw.indexOf("styleimagemissing") - 400,
-			raw.indexOf("styleimagemissing") + 200,
-		);
-		expect(handler).toContain("ensureFireIcon");
+	it("registers from an already-decoded image, with no await", () => {
+		const fn = body("function ensureFireIcon");
+		expect(fn).toMatch(/map\.addImage\(FIRE_ICON,/);
+		expect(fn).not.toMatch(/\bawait\b|\.then\(/);
 	});
 
-	it("only answers for its own image id", () => {
-		// A blanket re-register would fight every other layer's missing images.
-		expect(raw).toMatch(/e\.id === FIRE_ICON/);
+	it("waits for the decoded flame before adding the layers", () => {
+		const fn = raw.slice(raw.indexOf("const paint = async"));
+		const waitAt = fn.indexOf("await flameDecoded");
+		const addAt = fn.indexOf("addFireLayers(map");
+		expect(waitAt).toBeGreaterThan(-1);
+		expect(addAt).toBeGreaterThan(waitAt);
+	});
+
+	it("re-registers inside styleimagemissing, for its own id only", () => {
+		const at = raw.indexOf('"styleimagemissing"');
+		const handler = raw.slice(at - 200, at);
+		expect(handler).toMatch(/e\.id === FIRE_ICON\) ensureFireIcon\(map\)/);
 	});
 
 	it("unbinds on dispose", () => {

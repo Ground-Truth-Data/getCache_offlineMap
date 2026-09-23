@@ -73,7 +73,6 @@ export const FIRE_LAYER_ID_LIST: readonly string[] = [
 const FIRE_DOT = "#b36940";
 const FIRE_HOT = "#d18a5e";
 const FIRE_ICON = "rt-fire-flame";
-const FIRE_ICON_URL = fireIconUrl;
 
 const EMPTY: GeoJSON.FeatureCollection = {
     type: "FeatureCollection",
@@ -92,27 +91,35 @@ export interface FireLayerOptions {
     readonly origins?: () => readonly (readonly [number, number])[];
 }
 
-// Single detections have no fallback mark: if the flame image fails they do
-// not render, so the failure is loud.
-function ensureFireIcon(map: maplibregl.Map, isLive: () => boolean): void {
-    if (map.hasImage(FIRE_ICON)) return;
-    map.loadImage(FIRE_ICON_URL).then(
-        (r) => {
-            if (!isLive() || map.hasImage(FIRE_ICON)) return;
-            map.addImage(FIRE_ICON, r.data);
-        },
-        (err) => {
-            if (!isLive()) return;
+// MapLibre fires `styleimagemissing` and warns in the same tick unless a
+// listener has already called `addImage`, so the flame must be decoded BEFORE
+// any layer can ask for it. Once per page; lazy because `Image` is absent in SSR.
+let flame: HTMLImageElement | null = null;
+let flameLoad: Promise<void> | null = null;
+function flameDecoded(): Promise<void> {
+    flameLoad ??= (async () => {
+        const img = new Image();
+        img.src = fireIconUrl;
+        try {
+            await img.decode();
+            flame = img;
+        } catch (err) {
+            // Single detections have no fallback mark, so this is load-bearing.
             console.warn(
                 "[fire] flame icon failed to load — single detections will NOT render (clusters still will)",
                 err,
             );
-        },
-    );
+        }
+    })();
+    return flameLoad;
 }
 
-function addFireLayers(map: maplibregl.Map, isLive: () => boolean): void {
-    ensureFireIcon(map, isLive);
+function ensureFireIcon(map: maplibregl.Map): void {
+    if (flame && !map.hasImage(FIRE_ICON)) map.addImage(FIRE_ICON, flame);
+}
+
+function addFireLayers(map: maplibregl.Map): void {
+    ensureFireIcon(map);
     if (map.getSource(FIRE_LAYER_IDS.src)) return;
 
     // Outline first so it sits UNDER the flames; its own source because it is
@@ -444,7 +451,6 @@ export function attachFireLayer(
     opts: FireLayerOptions = {},
 ): FireLayerHandle {
     let disposed = false;
-    const isLive = (): boolean => !disposed;
     warmStaticMask();
 
     const paint = async (): Promise<void> => {
@@ -455,9 +461,10 @@ export function attachFireLayer(
             ? own
             : [[c0.lng, c0.lat]];
         const entries = await fireEntriesNear(origin, HARD_CUTOFF_KM);
-        // The read awaited; a route change may have removed the map meanwhile.
+        await flameDecoded();
+        // The reads awaited; a route change may have removed the map meanwhile.
         if (disposed) return;
-        addFireLayers(map, isLive);
+        addFireLayers(map);
         const { hotspots: all } = unionHotspots(entries);
         lastPingedAt = entries.length
             ? entries.reduce((m, e) => Math.max(m, e.fetchedAt), 0)
@@ -492,12 +499,10 @@ export function attachFireLayer(
 
     const onStyle = (): void => void paint();
     map.on("style.load", onStyle);
-    // The renderer is the only thing that knows the image is gone: `addImage`
-    // is async, so a style swap landing between the load and the resolve wipes
-    // it with no event we already listen for, and the symbol layer then renders
-    // nothing forever. Asking the renderer beats tracking it ourselves.
+    // A style swap can drop the flame with no event of its own. MapLibre only
+    // accepts an image added synchronously inside this listener.
     const onMissing = (e: { id: string }): void => {
-        if (e.id === FIRE_ICON) ensureFireIcon(map, isLive);
+        if (e.id === FIRE_ICON) ensureFireIcon(map);
     };
     map.on("styleimagemissing", onMissing);
     void paint();
