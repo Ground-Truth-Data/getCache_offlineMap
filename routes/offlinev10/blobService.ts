@@ -178,31 +178,25 @@ async function removeBlob(id: string, at: [number, number]): Promise<void> {
 let stop: (() => void) | null = null;
 
 /**
- * Watch the app's places: a pin dropped or moved from now on gets its blob,
- * the pins that were already there do not — 440 pins is 2 GB.
+ * Watch the app's places: every pin earns its blob, oldest queued behind
+ * newest by the order the host reports them.
  *
  * A corridor (a line, a polygon, a plot) bakes here too, at each of its
  * anchors, with NO photo — roads are what you follow a line for, and a photo
  * per anchor is what makes long geometry expensive.
  *
- * THE AGE GATE DOES NOT APPLY TO A CORRIDOR. `since` is stamped when this
- * starts, so it means "newer than this page", not "not yet baked" — a line
- * imported before the page opened would never bake, which is every line,
- * since nobody imports a route while watching the blob dock. The gate guards
- * against 440 old PINS costing 2 GB in photos; a corridor takes no photo and
- * `anchorsOf` caps it at ten anchors, so it was never what the gate was for.
- * Re-baking is free either way: `queueBlob` returns early on a spot already
- * on disk, which is the real "have I got this?" answer.
+ * Nothing here decides what the phone can afford. The walls are the budget
+ * and the blob-count cap, enforced in the store, and a full disk evicts the
+ * oldest blob rather than refusing the newest pin. Re-baking is free:
+ * `queueBlob` returns early on a spot already on disk, which is the real
+ * "have I got this?" answer.
  */
 export function startBlobService(ports: HostPorts): () => void {
 	if (stop)
 		return () => {
 			/* already running — the first start's stop owns shutdown */
 		};
-	const since = new Date().toISOString();
-	say(
-		`[offlineV10] blob engine on — pins dropped after ${since.slice(11, 19)} earn blobs`,
-	);
+	say("[offlineV10] blob engine on — every pin earns a blob");
 	// Ask while there is nothing to lose yet; the answer is a light on the blobs dock.
 	void keepStorage();
 	// Every pin spot seen while the host was ready; a spot that leaves this set was deleted (or moved — the new spot earns its own blob).
@@ -213,8 +207,7 @@ export function startBlobService(ports: HostPorts): () => void {
 		for (const p of ports.places()) {
 			for (const [lng, lat] of p.anchors) {
 				now.set(regionId(lng, lat), [lng, lat]);
-				if (p.corridor || p.lastTouched > since)
-					void queueBlob(lng, lat, { photo: !p.corridor });
+				void queueBlob(lng, lat, { photo: !p.corridor });
 			}
 		}
 		if (seen)

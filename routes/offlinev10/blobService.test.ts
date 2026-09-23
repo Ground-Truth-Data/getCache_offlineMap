@@ -88,7 +88,14 @@ function fakePorts(
 	return { ports, changed: () => cb?.(), listening: () => cb !== null };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+	// The queue, its in-flight id set and `stop` are module state: a test that
+	// ends mid-download leaves a spot queued, and the next test's `queueBlob`
+	// reports it as already asked for. Let the engine finish before clearing.
+	for (let i = 0; i < 20 && blobBusy(); i++) {
+		release?.();
+		await new Promise((r) => setTimeout(r, 0));
+	}
 	disk.length = 0;
 	downloads.length = 0;
 	photosDropped.length = 0;
@@ -96,7 +103,7 @@ beforeEach(() => {
 });
 
 describe("blob service", () => {
-	it("a pin touched after the start earns a blob; older pins do not", async () => {
+	it("every pin earns a blob, however old, and a new one queues behind it", async () => {
 		const list = [
 			{ anchors: [PENTICTON], lastTouched: ago(), corridor: false },
 		];
@@ -105,11 +112,15 @@ describe("blob service", () => {
 		// the engine asks the browser to keep the store at boot, while there is nothing to lose
 		expect(keepAsked).toBe(1);
 		await tick();
-		expect(downloads).toEqual([]);
+		// the pin predates this page and still earns its blob: the walls are
+		// the budget and the count cap, not the clock
+		expect(downloads).toEqual([PENTICTON]);
 		list.push({ anchors: [SPOKANE], lastTouched: soon(), corridor: false });
 		changed();
+		release?.();
 		await tick();
-		expect(downloads).toEqual([SPOKANE]);
+		await tick();
+		expect(downloads).toEqual([PENTICTON, SPOKANE]);
 		release?.();
 		await tick();
 		stop();
@@ -140,12 +151,7 @@ describe("blob service", () => {
 		stop();
 	});
 
-	it("a corridor bakes even when it was drawn before the service started", async () => {
-		// A line is imported, THEN the offline page opens — the ordinary case,
-		// since nobody imports a route while staring at the blob dock. The
-		// age gate exists to stop 440 old PINS baking 2 GB of photos; a
-		// corridor is roads-only and capped at ten anchors, so age was never
-		// the risk it was written for.
+	it("a corridor drawn before the page opened still bakes, roads only", async () => {
 		const list = [{ anchors: [PENTICTON], lastTouched: ago(), corridor: true }];
 		const { ports, listening } = fakePorts(() => list);
 		const stop = startBlobService(ports);
@@ -159,15 +165,19 @@ describe("blob service", () => {
 		stop();
 	});
 
-	it("an old pin is still skipped — the age gate only lifts for corridors", async () => {
+	it("an old pin takes a PHOTO, where a corridor of the same age does not", async () => {
+		// The one thing age never decided: a pin is a place you stood, so it
+		// earns its photo whenever it was dropped. Only `corridor` says no.
 		const list = [{ anchors: [PENTICTON], lastTouched: ago(), corridor: false }];
 		const { ports, listening } = fakePorts(() => list);
 		const stop = startBlobService(ports);
-		// a start that returned the no-op stop would make the assertion below
-		// pass without the engine ever running
 		expect(listening()).toBe(true);
 		await tick();
-		expect(downloads).toEqual([]);
+		expect(downloads).toEqual([PENTICTON]);
+		release?.();
+		await tick();
+		await tick();
+		expect(disk.map((r) => r.photo)).toEqual([undefined]);
 		stop();
 	});
 
@@ -206,11 +216,12 @@ describe("blob service", () => {
 		release?.();
 		await tick();
 		await tick();
+		// Penticton landed; Spokane is still mid-download, so it has no blob yet
 		expect(disk.map((r) => r.id)).toEqual([
-			`${SPOKANE[1].toFixed(5)},${SPOKANE[0].toFixed(5)}`,
+			`${PENTICTON[1].toFixed(5)},${PENTICTON[0].toFixed(5)}`,
 		]);
-		// the old pin had no blob: deleting it drops nothing
-		list.splice(0, 1);
+		// the pin whose blob has not landed: deleting it drops nothing
+		list.splice(1, 1);
 		changed();
 		await tick();
 		expect(disk.length).toBe(1);
@@ -222,7 +233,7 @@ describe("blob service", () => {
 		await tick();
 		expect(disk).toEqual([]);
 		expect(photosDropped).toEqual([
-			`${SPOKANE[0].toFixed(4)},${SPOKANE[1].toFixed(4)}`,
+			`${PENTICTON[0].toFixed(4)},${PENTICTON[1].toFixed(4)}`,
 		]);
 		expect(events.at(-1)).toBe("removed");
 		stop();
