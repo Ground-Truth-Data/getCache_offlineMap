@@ -10,9 +10,16 @@
  * The daily average is the point of the history: a single day says nothing
  * about whether today was unusual.
  */
+import { onMount } from "svelte";
 import { dailyAverage, pastDays, startDataMeter, todayBytes, todayTotal } from "../../lib/shared/dataMeter.svelte";
 
-$effect(() => startDataMeter());
+// NOT `$effect`. Starting the meter counts the entries already in the
+// performance buffer, synchronously, into the same reactive map this
+// component reads below — an effect that writes what it reads, which Svelte
+// stops as `effect_update_depth_exceeded`. The error boundary then replaces
+// the whole page, so the one dock that mounts this took the debug route down
+// with it. onMount runs once, outside the read path; its return is the stop.
+onMount(() => startDataMeter());
 
 const rows = $derived(todayBytes());
 const total = $derived(todayTotal());
