@@ -5,6 +5,7 @@
  */
 
 import { BudgetError, budgetBytes } from "./budget";
+import { toEvict } from "./evict";
 import type { Place } from "./places";
 import {
 	missingKeys,
@@ -181,13 +182,40 @@ export async function bytesOfTiles(keys: readonly string[]): Promise<number> {
 	});
 }
 
+/**
+ * Delete the oldest blobs until `adding` fits under both walls, and report
+ * what went. The axe falls here, at the write boundary, so no download path
+ * can fill the disk without it — the same reason the budget is checked here.
+ *
+ * Nothing to evict (a blob bigger than the whole budget) leaves the disk
+ * alone and lets the caller's BudgetError stand: a refusal the user sees
+ * beats a map silently cleared to fail anyway.
+ */
+export async function makeRoom(adding: number): Promise<Region[]> {
+	// A blob's row carries `bytes: 0` until its download finishes sizing it,
+	// so the rows must be sized BEFORE they are weighed — a policy fed zeroes
+	// evicts nothing and the write fails with the disk still full.
+	await healRegionBytes(await listRegions());
+	const doomed = toEvict(await listRegions(), {
+		adding,
+		budget: budgetBytes(),
+		used: await usedBytes(),
+	});
+	for (const r of doomed) await deleteRegion(r.id);
+	return doomed;
+}
+
 export async function putTiles(
 	entries: Array<[string, ArrayBuffer]>,
 ): Promise<void> {
 	if (entries.length === 0) return;
 	const adding = entries.reduce((a, [, b]) => a + b.byteLength, 0);
-	const used = await usedBytes();
+	let used = await usedBytes();
 	const budget = budgetBytes();
+	if (used + adding > budget) {
+		await makeRoom(adding);
+		used = await usedBytes();
+	}
 	if (used + adding > budget) throw new BudgetError(used, budget, adding);
 	const db = await open();
 	const tx = db.transaction(TILES, "readwrite");
@@ -243,7 +271,16 @@ export function regionsSnapshot(): {
 	return { version: regionsVersion, regions: regionsCache };
 }
 
+/**
+ * The count wall falls here rather than in `putTiles`, because a blob that
+ * fetched nothing — laid over ground another blob already covers — writes no
+ * tiles at all. Counting slots where slots are taken is the only place the
+ * cap cannot be walked past.
+ */
 export async function putRegion(r: Region): Promise<void> {
+	const have = (await listRegions()).filter((x) => x.id !== r.id);
+	const room = { adding: 0, budget: budgetBytes(), used: await usedBytes() };
+	for (const gone of toEvict(have, room)) await deleteRegion(gone.id);
 	const db = await open();
 	const tx = db.transaction(REGIONS, "readwrite");
 	tx.objectStore(REGIONS).put(r);

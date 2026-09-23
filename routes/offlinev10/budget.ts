@@ -6,6 +6,13 @@
  */
 
 export const BUDGET_MB = 1024;
+/**
+ * How many blobs a phone may hold. A second wall beside the megabytes: a
+ * thousand small blobs cost little disk but make the dock unreadable and the
+ * coverage geometry slow, and a phone carrying more places than a person
+ * visits is holding someone else's map.
+ */
+export const BLOB_COUNT_CAP = 1000;
 /** The dev CONFIG card cycles through these so the wall can be hit in minutes, not after a gigabyte. */
 export const BUDGET_PRESETS_MB = [BUDGET_MB, 256, 64, 16] as const;
 
