@@ -1,5 +1,8 @@
 node_modules/
 .svelte-kit/
+# adapter-static's output. Not ignoring it let gitEr/shipAll.sh's `git add -A`
+# push 34 generated files, a 1.3 MB webp among them, to this PUBLIC repo.
+build/
 .DS_Store
 *.log
 
