@@ -97,10 +97,13 @@ export async function wipeOfflineData(
 	}
 
 	const clean = Object.values(deleted).every((v) => v !== "blocked");
+	// Names the targets, because the caller chooses them: the boot-time
+	// retirement sweep passes two dead boxes, and a blanket "every offline
+	// database is gone" reads as data loss to whoever finds it in a console.
 	console.warn(
 		clean
-			? "[wipe] ✅ CLEAN — every offline database is gone. Reloading…"
-			: "[wipe] ❌ BLOCKED — nothing deleted. Close other tabs on this origin.",
+			? `[wipe] ✅ CLEAN — ${names.join(", ")} gone.`
+			: `[wipe] ❌ BLOCKED — ${names.join(", ")} still held. Close other tabs on this origin.`,
 		deleted,
 	);
 	return { deleted, clean };
