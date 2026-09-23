@@ -458,6 +458,12 @@ hr {
 	font-weight: 500;
 	text-transform: lowercase;
 	letter-spacing: 0.02em;
+	/* The shared display-type shadow, same as every plaque name — it thickens
+	   the letterform, which is what carries gold in direct sun. */
+	text-shadow:
+		1px 1px 0 rgba(0, 0, 0, 0.9),
+		2px 2px 4px rgba(0, 0, 0, 0.7),
+		0 0 8px rgba(0, 0, 0, 0.5);
 }
 
 /* Hand-drawn ✕ close button — the ONE close glyph for every popup. Gold = do-this-next, red = trash, ghost = quiet exit.
@@ -466,14 +472,33 @@ hr {
    swapping the image (x_close_white/grey/gold/rust). A caller's <svg> is
    hidden rather than removed, so every existing <Icon name="close-x"/> call
    site converts untouched. Icon scales with the box; overrides only need width/height. */
+/* Bright white, border matched to the glyph: the brightest neutral on the panel
+   without reading as gold Save/Share or red Delete. The map popups' vendor close
+   buttons share this chrome so every ✕ is one colour. */
+.rt-popover-close,
+.rt-fire-popup .mapboxgl-popup-close-button,
+.rt-fire-popup .maplibregl-popup-close-button,
+.rt-hospital-popup .mapboxgl-popup-close-button,
+.rt-hospital-popup .maplibregl-popup-close-button {
+	border: 2px solid #f2f3ea;
+	background:
+		url('$gc/assets/x_close_white.webp') center / 62% 62% no-repeat,
+		rgba(0, 0, 0, 0.28);
+}
+.rt-popover-close:active,
+.rt-fire-popup .mapboxgl-popup-close-button:active,
+.rt-fire-popup .maplibregl-popup-close-button:active,
+.rt-hospital-popup .mapboxgl-popup-close-button:active,
+.rt-hospital-popup .maplibregl-popup-close-button:active {
+	background:
+		url('$gc/assets/x_close_white.webp') center / 62% 62% no-repeat,
+		rgba(255, 255, 255, 0.14);
+	transform: scale(0.92);
+}
 .rt-popover-close {
 	flex: 0 0 auto;
 	width: 30px;
 	height: 30px;
-	border: 1.5px solid rgba(255, 255, 255, 0.17);
-	background:
-		url('$gc/assets/x_close_grey.webp') center / 62% 62% no-repeat,
-		rgba(0, 0, 0, 0.3);
 	line-height: 1;
 	cursor: pointer;
 	display: flex;
@@ -485,12 +510,6 @@ hr {
 }
 .rt-popover-close svg {
 	display: none;
-}
-.rt-popover-close:active {
-	background:
-		url('$gc/assets/x_close_white.webp') center / 62% 62% no-repeat,
-		rgba(255, 255, 255, 0.1);
-	transform: scale(0.92);
 }
 
 /* ============================================================
@@ -1325,7 +1344,7 @@ body.map-only .mobile-map-fill .maplibregl-ctrl-bottom-left {
 	display: none;
 }
 
-/* Mapbox's own close button is dressed as the ghost ✕ (see .rt-popover-close) instead of building a second one that would need its own click wiring. */
+/* Mapbox's own close button is dressed as the ✕ (see .rt-popover-close) instead of building a second one that would need its own click wiring. */
 /* 28px, not 36 — at 36 the box crowded the Intensity gauge beside it. Still fine below the 44px tap target since the popup padding adds slop and the map itself also dismisses. */
 .rt-fire-popup .mapboxgl-popup-close-button,
 .rt-fire-popup .maplibregl-popup-close-button {
@@ -1338,11 +1357,7 @@ body.map-only .mobile-map-fill .maplibregl-ctrl-bottom-left {
 	align-items: center;
 	justify-content: center;
 	padding: 0;
-	border: 1.5px solid rgba(255, 255, 255, 0.17);
 	border-radius: 9px;
-	background:
-		url('$gc/assets/x_close_grey.webp') center / 62% 62% no-repeat,
-		rgba(0, 0, 0, 0.32);
 	/* The vendor's own "×" is a TEXT NODE inside this button, not an icon we
 	   render — collapsing the font is the only way to hide it without
 	   replacing Mapbox's markup and re-wiring its click handler. */
@@ -1366,8 +1381,7 @@ body.map-only .mobile-map-fill .maplibregl-ctrl-bottom-left {
 @media (hover: hover) and (pointer: fine) {
 	.rt-fire-popup .mapboxgl-popup-close-button:hover,
 	.rt-fire-popup .maplibregl-popup-close-button:hover {
-		background: rgba(0, 0, 0, 0.3);
-		color: #b7bba6;
+		background-color: rgba(0, 0, 0, 0.28);
 	}
 }
 /* Mapbox's _focusFirstElement() auto-focuses this button on open — the resulting ring reads as a bug, so it's suppressed; :active is the real feedback. */
@@ -1377,12 +1391,6 @@ body.map-only .mobile-map-fill .maplibregl-ctrl-bottom-left {
 .rt-fire-popup .maplibregl-popup-close-button:focus-visible {
 	outline: none;
 	box-shadow: none;
-}
-.rt-fire-popup .mapboxgl-popup-close-button:active,
-.rt-fire-popup .maplibregl-popup-close-button:active {
-	background: rgba(255, 255, 255, 0.1);
-	color: #edefe2;
-	transform: scale(0.92);
 }
 /* Title = gold (the "thing itself" accent); rust labels step down from it so title→label→value reads as three voices, not one flat wash. */
 .rt-fire-card h4 {
@@ -1468,11 +1476,7 @@ body.map-only .mobile-map-fill .maplibregl-ctrl-bottom-left {
 	right: 0.45rem;
 	width: 30px;
 	height: 30px;
-	border: 1.5px solid rgba(255, 255, 255, 0.17);
 	border-radius: 10px;
-	background:
-		url('$gc/assets/x_close_grey.webp') center / 62% 62% no-repeat,
-		rgba(0, 0, 0, 0.3);
 	/* Vendor "×" text node — collapsed, not recoloured (see the fire popup). */
 	font-size: 0;
 	line-height: 1;

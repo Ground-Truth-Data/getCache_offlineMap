@@ -133,24 +133,6 @@ export function currentRepo(pathname: string, routes: TierRoute[]): string | und
 }
 
 /**
- * THE `?rtvrFrom=` STAMP IS DELETED — the cause was fixed instead.
- *
- * There was a pair of helpers here, stampOrigin/readOrigin, that wrote the
- * page you were leaving into the destination's query string so the far side
- * could send you back to it. They existed because rapper served BOTH of the
- * who_what child's views from "/": two views, one url, a many-to-one mapping
- * with no inverse, so returning always guessed /who.
- *
- * The child now serves /who and /what itself. Each row is a bijection, the
- * return trip is an ordinary table lookup, and there is nothing left to carry
- * beside the url. Carrying state next to a url that can already express it was
- * the bug; deleting the carrier is the fix, not an additional layer on it.
- *
- * If a future child again mounts several views on one path, the answer is to
- * give it real paths — not to bring this back.
- */
-
-/**
  * DOES THE OTHER TIER SERVE THIS PAGE AT ALL?
  *
  * `otherTierPath` deliberately always returns something, because a pill that
@@ -162,9 +144,6 @@ export function currentRepo(pathname: string, routes: TierRoute[]): string | und
  *
  * This answers the question the path cannot. False → the caller greys the pill
  * out rather than performing a swap it never announced.
- *
- * A stamped origin (readOrigin) always wins over this: if the other tier told
- * us where we came from, that page demonstrably exists there.
  */
 export function servesOtherSide(pathname: string, routes: TierRoute[]): boolean {
 	return matchRoute(pathname, routes)?.otherPath !== undefined;

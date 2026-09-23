@@ -13,7 +13,6 @@
 //   9000       ImportProgress
 //   9990–10001 intro tour (scrim / buttons / fingers)
 //   9999       FeatureDetail sheet, layout drag overlay
-//   10000      OperatorSyncDot
 //   10400      sonner toaster (rapper/gc/mobile.css pins it; sonner ships 999999999)
 //   10500      ← Z_HANDS (this file) — above ALL of the above, by design;
 //              the share quad (atvShare.ts) rides at this tier too
