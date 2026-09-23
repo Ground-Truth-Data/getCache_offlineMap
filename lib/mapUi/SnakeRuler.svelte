@@ -6,7 +6,6 @@ import handShovelCursor from "$gc/assets/hand_shovel_cursor.webp";
 import handShovelCursorRight from "$gc/assets/hand_shovel_cursor_right.webp";
 import handShovelCursor100 from "$gc/assets/hand_shovel_cursor_100.webp";
 import pinDefaultUrl from "../assets/pin_library_small/pin_default_sm.webp";
-import xCloseGrey from "$gc/assets/x_close_grey.webp";
 import xCloseWhite from "$gc/assets/x_close_white.webp";
 import type { Feature } from "geojson";
 import mapboxgl from "mapbox-gl";
@@ -1070,14 +1069,14 @@ $effect(() => {
      that went non-finite) so the popover carrying ✕ cannot be placed. Being unable to
      position a label must never cost the user the only way out of the mode. -->
 {#if active && !popAnchor}
-    <button style="--x-grey:url({xCloseGrey}); --x-white:url({xCloseWhite})" class="measure-btn measure-x measure-x-loose" onclick={discard} title="Discard" aria-label="Discard measurement">&#x2715;</button>
+    <button style="--x-white:url({xCloseWhite})" class="measure-btn measure-x measure-x-loose" onclick={discard} title="Discard" aria-label="Discard measurement">&#x2715;</button>
 {/if}
 
 <!-- Actions — stacked above the readout/bounding box; a lone point gets the same popover: Save drops a pin, Share copies the GPS. -->
 {#if active && popAnchor && (canFinish || singlePoint)}
     <div class="measure-pop" class:measure-grid={singlePoint} class:measure-at-self={singlePoint && seedAtSelf} class:measure-gliding={!!cursor} class:measure-below={popAnchor.below} style="left:{popAnchor.popX}px; top:{popAnchor.y}px;">
         {#if singlePoint}
-            <!-- 2×2 grid: copy · ✕ / save · plot. "Plot" throws a Quality 704 plot straight from the map. -->
+            <!-- 2×2 checkerboard: copy · ✕ / plot · save — no two neighbours share a colour, Save under the right thumb. "Plot" throws a Quality 704 plot straight from the map. -->
             {#if seedAtSelf}
                 <!-- Snapped onto the blue dot — a plot dropped from here is PROOF the inspector was physically standing there; spans the full grid width above the four buttons. -->
                 <div class="measure-self-badge">
@@ -1094,14 +1093,14 @@ $effect(() => {
                     Copy
                 {/if}
             </button>
-            <button style="--x-grey:url({xCloseGrey}); --x-white:url({xCloseWhite})" class="measure-btn measure-x" onclick={discard} title="Discard" aria-label="Discard measurement">&#x2715;</button>
-            <button class="measure-btn measure-save" onclick={savePoint} title="Save pin">
-                <img class="measure-pin-ic" src={pinDefaultUrl} alt="" />
-                Save
-            </button>
+            <button style="--x-white:url({xCloseWhite})" class="measure-btn measure-x" onclick={discard} title="Discard" aria-label="Discard measurement">&#x2715;</button>
             <button class="measure-btn measure-plot" class:at-self={seedAtSelf} onclick={dropPlot} title={seedAtSelf ? "Drop a plot AT your location (proof you were here)" : "Drop a Quality 704 plot here"}>
                 <img class="measure-plot-ic" src={iconPath("qualityWhite")} alt="" />
                 Plot
+            </button>
+            <button class="measure-btn measure-save" onclick={savePoint} title="Save pin">
+                <img class="measure-pin-ic" src={pinDefaultUrl} alt="" />
+                Save
             </button>
         {:else}
             <div class="measure-col">
@@ -1125,7 +1124,7 @@ $effect(() => {
                     Save
                 </button>
             </div>
-            <button style="--x-grey:url({xCloseGrey}); --x-white:url({xCloseWhite})" class="measure-btn measure-x" onclick={discard} title="Discard" aria-label="Discard measurement">&#x2715;</button>
+            <button style="--x-white:url({xCloseWhite})" class="measure-btn measure-x" onclick={discard} title="Discard" aria-label="Discard measurement">&#x2715;</button>
         {/if}
     </div>
 {/if}
@@ -1214,7 +1213,7 @@ $effect(() => {
     /* Both webp icons sized by HEIGHT — the pin art is much taller than wide, so a width cap let it inflate its button; height caps keep every 2×2 grid button the same rectangle. */
     .measure-pin-ic { height: 24px; width: auto; flex-shrink: 0; display: block; }
 
-    /* Single-point 2×2 grid (copy·✕ / save·plot) — FIXED width, must match POP_GRID_W in the clamp code so the horizontal clamp knows where the edges land. */
+    /* Single-point 2×2 grid (copy·✕ / plot·save) — FIXED width, must match POP_GRID_W in the clamp code so the horizontal clamp knows where the edges land. */
     .measure-pop.measure-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -1265,7 +1264,7 @@ $effect(() => {
     /* SharePicker wrapper is inline-flex by default (shrinks Share to its content) — stretched so Share fills the column like its Save sibling. */
     .measure-col :global(.rt-sharepick) { display: flex; }
     .measure-col :global(.rt-sharepick .measure-btn) { flex: 1; }
-    /* Copy=orange, Save=gold, Plot=white, ✕=ghost grey — per the colour law, red is reserved for the trash glyph only (✕ is a dismiss, nothing lost). */
+    /* Copy=orange, Save=gold, Plot=white, ✕=bright white — per the colour law, red is reserved for the trash glyph only (✕ is a dismiss, nothing lost). */
     .measure-share { color: var(--color-accent-terracotta); }
     .measure-share:active { background: color-mix(in srgb, var(--color-accent-terracotta) 16%, transparent); }
     .measure-save { color: var(--color-accent); }
@@ -1281,14 +1280,13 @@ $effect(() => {
         font-size: 0;
         padding: 0 0.6rem;
         min-width: 2.2rem;
-        background: var(--x-grey) center / 15px 15px no-repeat;
-        color: #b7bba6; /* ghost glyph grey — currentColor border follows */
+        background: var(--x-white) center / 15px 15px no-repeat;
+        color: #f2f3ea;
     }
     .measure-x:active {
         background:
             var(--x-white) center / 15px 15px no-repeat,
-            rgba(255, 255, 255, 0.1);
-        color: #edefe2;
+            rgba(255, 255, 255, 0.14);
     }
 
     /* Dominant total/area readout shares the draw tool's pill style (.rt-line-label-total in mobile.css) — only positioning + number formatting stay local. */
