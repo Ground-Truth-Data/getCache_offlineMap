@@ -112,6 +112,27 @@ export function satImageKey(c: [number, number]): string {
  */
 export const PHOTO_REUSE_KM = 1;
 
+/**
+ * May a photo at `haveCenter`, drawn by `haveSource`, stand in for one at
+ * `wantCenter`? Close enough on the ground AND not from a row a sharper one has
+ * since beaten.
+ *
+ * Both halves, in one place, because the bake and the dedup sweep must answer
+ * this identically: the sweep once weighed distance alone, so it reported as
+ * waste the very photos the bake had minted on purpose to escape a beaten
+ * source, and `tidy N dupes` could never reach zero.
+ */
+export function photoReusableFor(
+	haveSource: string | undefined,
+	haveCenter: [number, number],
+	wantCenter: [number, number],
+): boolean {
+	return (
+		kmBetween(haveCenter, wantCenter) <= PHOTO_REUSE_KM &&
+		isBestPhotoSource(haveSource, wantCenter[0], wantCenter[1])
+	);
+}
+
 /** Parse a key back to the centre it was made from; null if it isn't one. */
 function centerOfKey(key: string): [number, number] | null {
 	const [lng, lat] = key.split(",").map(Number);
@@ -147,10 +168,9 @@ export async function photoCovering(
 	}
 	if (!bestKey) return undefined;
 	const near = await getSatImageByKey(bestKey);
-	// A neighbour from a beaten source is not a reason to skip a better bake.
-	return near && isBestPhotoSource(near.source, center[0], center[1])
-		? near
-		: undefined;
+	if (!near) return undefined;
+	const c = centerOfKey(bestKey);
+	return c && photoReusableFor(near.source, c, center) ? near : undefined;
 }
 
 function lngToTileX(lng: number, z: number): number {

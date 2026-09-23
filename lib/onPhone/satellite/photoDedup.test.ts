@@ -10,10 +10,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const photos = new Map<string, number>(); // key -> bytes
 const coverage: { key: string; hasPhoto: boolean; photoBytes: number }[] = [];
 
-vi.mock("./satelliteImage", () => ({
-	PHOTO_REUSE_KM: 1,
+// `photoReusableFor` is the REAL one, not a stub: it is the rule the bake uses
+// to skip a download, and a sweep tested against a different rule is how the
+// two drifted apart in the first place.
+vi.mock("./satelliteImage", async (importOriginal) => ({
+	...(await importOriginal<typeof import("./satelliteImage")>()),
 	satImageMeta: async () =>
-		[...photos].map(([key, bytes]) => ({ key, bytes })),
+		[...photos].map(([key, bytes]) => ({ key, bytes, source: SOURCE })),
 	deleteSatImage: async (k: string) => void photos.delete(k),
 }));
 vi.mock("../store/coverageRegistry", () => ({
@@ -35,6 +38,8 @@ vi.mock("../store/coverageRegistry", () => ({
 const { planPhotoDedup, runPhotoDedup } = await import("./photoDedup");
 
 const STAND: [number, number] = [-117.2, 56.9];
+/** The row that serves STAND (Canada — outside every USGS box). */
+const SOURCE = "MapTiler";
 const key = (c: [number, number]) => `${c[0].toFixed(4)},${c[1].toFixed(4)}`;
 const east = (from: [number, number], km: number): [number, number] => [
 	from[0] + km / (111.32 * Math.cos((from[1] * Math.PI) / 180)),
@@ -53,6 +58,15 @@ describe("the duplicate-photo sweep", () => {
 		expect(plan.keep).toHaveLength(1);
 		expect(photos.size).toBe(1);
 		expect(plan.bytes).toBe(9000);
+	});
+
+	it("reaches zero and STAYS there — a second sweep finds nothing", async () => {
+		// The button's whole promise. When the sweep judged by distance alone it
+		// kept reporting photos the bake had minted deliberately, so the count
+		// came back however often it was pressed.
+		for (let i = 0; i < 10; i++) photos.set(key(east(STAND, i * 0.05)), 1000);
+		await runPhotoDedup();
+		expect((await planPhotoDedup()).drop).toHaveLength(0);
 	});
 
 	it("NEVER deletes a photo nothing else covers", async () => {

@@ -12,16 +12,20 @@
  * survivor genuinely covers the same ground, so a sweep can never leave an
  * area blank. Plot photos have no survivor requirement: a plot earns no photo
  * at all now, so its copies go.
+ *
+ * Redundancy is `photoReusableFor`, the same predicate the bake consults before
+ * it skips a download. Weighing distance alone made this sweep report photos
+ * the bake had minted deliberately — one per beaten source — so the count could
+ * never reach zero however often it ran.
  */
 
 import {
 	dropCoverage,
 	noteCoverage,
 } from "../store/coverageRegistry";
-import { kmBetween } from "../../shared/kmGeo";
 import {
 	deleteSatImage,
-	PHOTO_REUSE_KM,
+	photoReusableFor,
 	satImageMeta,
 } from "./satelliteImage";
 
@@ -53,8 +57,8 @@ export async function planPhotoDedup(): Promise<DedupPlan> {
 	const keep: typeof meta = [];
 	const drop: DedupPlan["drop"] = [];
 	for (const m of meta) {
-		const cover = keep.find(
-			(k) => kmBetween(k.center, m.center) <= PHOTO_REUSE_KM,
+		const cover = keep.find((k) =>
+			photoReusableFor(k.source, k.center, m.center),
 		);
 		if (cover) drop.push({ key: m.key, coveredBy: cover.key, bytes: m.bytes });
 		else keep.push(m);
