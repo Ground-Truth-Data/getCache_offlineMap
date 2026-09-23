@@ -8,7 +8,6 @@ import handShovelCursor100 from "$gc/assets/hand_shovel_cursor_100.webp";
 import pinDefaultUrl from "../assets/pin_library_small/pin_default_sm.webp";
 import xCloseWhite from "$gc/assets/x_close_white.webp";
 import type { Feature } from "geojson";
-import mapboxgl from "mapbox-gl";
 import type { Map as MapboxMap } from "mapbox-gl";
 import { area, length as turfLength } from "@turf/turf";
 // Runs on BOTH maps (Mapbox online, MapLibre offline) — a Marker from the wrong library throws "_addMarker is not a function" on addTo.
@@ -1107,7 +1106,7 @@ $effect(() => {
                 {#if !paletteMode}
                     <!-- side="below" — the ruler popover hugs the top of the map, so an upward menu would overlap the app header. -->
                     <ports.ui.SharePicker formats={shareFormats} side="below">
-                        {#snippet trigger({ toggle })}
+                        {#snippet trigger({ toggle }: { toggle: () => void })}
                             <button class="measure-btn measure-share" onclick={toggle} title="Save &amp; share">
                                 <ports.ui.Icon name="upload" size={13} style="flex-shrink:0" />
                                 Share

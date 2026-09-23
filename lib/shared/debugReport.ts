@@ -363,6 +363,13 @@ export interface FocusedBlobReport {
 		feed: "sat" | "pack" | "fires" | null;
 		status: CircuitState;
 		arrived: boolean;
+		onScreen: boolean;
+		askedAt: string | null;
+		arrivedAt: string | null;
+		drawnAt: string | null;
+		transitMs: number | null;
+		paintLagMs: number | null;
+		paintedCount: number | null;
 		reason: string;
 		/** What is MEANT to accompany a blob for this layer, and where it
 		 *  would live — so a reader can tell MISSING apart from NEVER-PART-

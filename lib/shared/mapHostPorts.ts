@@ -253,12 +253,15 @@ export interface MapQ704PlotRow {
 	committed: boolean;
 }
 
-/** The inspection header the deck binds to. Mirrors q704.ts BlockHeader
+/** The inspection header the deck binds to. Mirrors quality704Core BlockHeader
  *  (speciesChoices optional on read — older rows have no cell). */
 export interface MapQ704BlockHeader {
-	blockNo: string;
+	name?: string;
+	landKey: string;
+	landName: string;
 	treesPerHa: number | null;
 	totalHa: number | null;
+	mapKey?: string;
 	speciesChoices?: string[];
 }
 
@@ -319,6 +322,13 @@ export interface MapQ704FaultChipProps {
 
 export interface MapQ704CelebrateHostProps {
 	target: HTMLElement | null;
+}
+
+/** The draw drawer's `bind:this` surface — what the offline page calls on the
+ *  host-supplied MapDrawControls. */
+export interface MapDrawControlsExports {
+	importFile(file: File): void;
+	requestMyLocation(): Promise<void>;
 }
 
 export interface MapQ704Ports {

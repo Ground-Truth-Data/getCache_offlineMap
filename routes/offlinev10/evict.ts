@@ -39,10 +39,10 @@ export interface Room {
  * refusal, not a reason to strip the disk. The caller reports that refusal;
  * silently clearing the map to fail anyway is the worse outcome.
  */
-export function toEvict(
-	have: readonly Evictable[],
+export function toEvict<T extends Evictable>(
+	have: readonly T[],
 	{ adding, budget, used, cap = BLOB_COUNT_CAP }: Room,
-): Evictable[] {
+): T[] {
 	if (adding > budget) return [];
 
 	let overBytes = used + adding - budget;
@@ -51,7 +51,7 @@ export function toEvict(
 	if (overBytes <= 0 && overCount <= 0) return [];
 
 	const oldest = [...have].sort((a, b) => a.at - b.at);
-	const out: Evictable[] = [];
+	const out: T[] = [];
 	for (const r of oldest) {
 		if (overBytes <= 0 && overCount <= 0) break;
 		// An unsized row (`bytes: 0`, still downloading) frees nothing we can

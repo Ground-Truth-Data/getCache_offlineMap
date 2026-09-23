@@ -123,7 +123,8 @@ const faultGroups = $derived.by<[string, number][]>(() => {
 
 // ⚠️ ONE survey, loaded VERBATIM — no invented trailing blank, no repair (repairing buries the bug); an illegal buried null makes the deck's assertThread THROW on purpose.
 let block = $state({
-	blockNo: "",
+	landKey: "",
+	landName: "",
 	treesPerHa: null as number | null,
 	totalHa: null as number | null,
 	speciesChoices: [] as string[],

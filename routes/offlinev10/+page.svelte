@@ -24,7 +24,7 @@ import EphemeralDock from "$rig/dev/EphemeralDock.svelte";
 import type { Component } from "svelte";
 import { soloFireOrigins, soloHostPorts, soloMapPorts } from "../../lib/shared/soloPorts";
 import type { HostPorts } from "../../lib/shared/hostPorts";
-import type { MapHostPorts } from "../../lib/shared/mapHostPorts";
+import type { MapDrawControlsExports, MapHostPorts } from "../../lib/shared/mapHostPorts";
 import type { Map as MapboxMap } from "mapbox-gl";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -78,7 +78,7 @@ let dlMs = $state<number | null>(null);
 let layerRows = $state<LayerRow[]>([]);
 /** The online map's chrome, bound the way /app/offline binds it. */
 let mapForTools = $state<MapboxMap | null>(null);
-let drawControlsRef: ReturnType<typeof MapDrawControls> | undefined = $state();
+let drawControlsRef: ReturnType<NonNullable<typeof MapDrawControls>> | undefined = $state();
 let mapOnly = $state(false);
 let legendOpen = $state(false);
 let armKind = $state<"line" | "polygon" | "pin" | null>(null);
@@ -108,7 +108,7 @@ let {
 	 *  lives in a PRIVATE repo this one may not import, so the host hands it in.
 	 *  OPTIONAL: an open-core host has no drawer to give, and the map is whole
 	 *  without it — pan, zoom, blobs and every layer are the child's own. */
-	MapDrawControls?: Component<Record<string, unknown>>;
+	MapDrawControls?: Component<Record<string, unknown>, MapDrawControlsExports>;
 	/** Anchor set → the points the fire and hospital walls are measured from.
 	 *  Same private repo. Defaults to the camera alone, which is what the full
 	 *  one returns for a user with no fix and no touched ground. */

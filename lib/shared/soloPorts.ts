@@ -15,8 +15,10 @@ import type { Component } from "svelte";
 import type { HostPlace, HostPorts } from "./hostPorts";
 import type { MapGpsPorts, MapHostPorts, MapHostStore, MapUiPorts } from "./mapHostPorts";
 
-/** Renders nothing. The map draws its own chrome; host furniture is the host's. */
-const Empty = (() => {}) as unknown as Component<Record<string, unknown>>;
+/** Renders nothing. The map draws its own chrome; host furniture is the host's.
+ *  `any`, because one stub stands in for every port component whatever props
+ *  that port declares — a fixed props type fails the first port typed tighter. */
+const Empty = (() => {}) as unknown as Component<any>;
 
 /** An eye that never animates: one frame, no timers to leak. */
 const stillEye = () => ({

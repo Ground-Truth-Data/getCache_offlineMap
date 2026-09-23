@@ -27,7 +27,6 @@ import {
 	collectFocusedBlobReport,
 	compactJson,
 	debugReportFilename,
-	type LngLatPin,
 } from "./debugReport";
 let bakeOn = $state(false);
 let bakePend = $state(0);
@@ -72,10 +71,6 @@ $effect(() => {
 interface Props {
 	/** Which map this is, used to label the report. */
 	route?: string;
-	/** Every pin the host page knows about — passed IN on purpose; reading mapStore here would couple the debugger to TinyBase and cost the portability to move into rapper. */
-	pins?: LngLatPin[];
-	/** The blob signature areas SHOULD hold, so the export can flag stale ones. */
-	blobVersion?: string | null;
 	/** Which layers are on, for the export report's snapshot — toggle UI lives in OfflineConfigPanel; this only reads `on`, it doesn't render switches. */
 	layers?: { key: string; on: boolean }[];
 	/** DOCKED — render in-flow instead of fixed-to-viewport; default false suits the floating meter over a full-screen map, but a columned debug page needs docked since a fixed panel can't sit in a column. */
@@ -86,8 +81,6 @@ interface Props {
 let {
 	docked = false,
 	route = "map",
-	pins = [],
-	blobVersion = null,
 	layers = [],
 	focusedBlobName = null,
 }: Props = $props();

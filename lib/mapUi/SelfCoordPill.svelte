@@ -66,7 +66,7 @@ const readout = $derived(
         {readout}
 
         <ports.ui.SharePicker {formats} side="above">
-            {#snippet trigger({ toggle })}
+            {#snippet trigger({ toggle }: { toggle: () => void })}
                 <button
                     class="rt-selfcoord__btn"
                     onclick={toggle}
