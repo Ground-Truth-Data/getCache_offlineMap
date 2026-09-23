@@ -9,8 +9,8 @@ store, its own sprites, its own tier setting; nothing is shared with the
 retired V8 and V9 (deleted 6 Sep 2026 — V8 cut on the pin's 60 km box, V9
 on whole z8 tiles ~104 km across; both are in git history).
 
-What it stands on (bucket, Worker, phone, libraries): `OFFLINE_STACK.md`,
-kept by the host tier beside its own app routes.
+What it stands on (bucket, Worker, phone, libraries) and the laws it obeys:
+[`docs/OFFLINE_PLAN.md`](../../docs/OFFLINE_PLAN.md).
 
 ## ⛓️ CONSTRAINTS
 
