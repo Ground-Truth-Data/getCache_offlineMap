@@ -23,15 +23,14 @@
  * folds to false, Svelte drops the block, and Rollup drops the import. False
  * on Vercel, on TestFlight and in any `vite build`.
  *
- * A page that wants to ADD to the tray reads `trayHost` and portals into it —
- * it never mounts a second one. A page that wants its own side rails mounts an
- * EphemeralDock, which stays per-page because `bind:host` is per-page wiring.
+ * A page never mounts a second tray. A page that wants its own side rails
+ * mounts an EphemeralDock, which stays per-page because `bind:host` is
+ * per-page wiring.
  */
 import { onMount } from "svelte";
 import { page } from "$app/state";
 import EphemeralCard from "./EphemeralCard.svelte";
 import EphemeralDock from "./EphemeralDock.svelte";
-import { trayHost } from "./trayHost.svelte";
 import arrowGold from "../assets/arrowIconGold.webp";
 
 let { title }: { title?: string } = $props();
@@ -78,16 +77,6 @@ const derived = $derived(
 	page.url.pathname.split("/").filter(Boolean).join(" / ") || "home",
 );
 
-let host = $state<HTMLElement>();
-
-// Published for pages that portal their own panels in. Cleared on destroy so
-// a stale element can never outlive the tray that owned it.
-$effect(() => {
-	trayHost.el = host;
-	return () => {
-		trayHost.el = undefined;
-	};
-});
 </script>
 
 {#if dev}
@@ -97,7 +86,7 @@ $effect(() => {
 		</button>
 	{:else}
 		<EphemeralDock side="left">
-			<EphemeralCard title={title ?? derived} bind:host onfold={toggleFold} />
+			<EphemeralCard title={title ?? derived} onfold={toggleFold} />
 		</EphemeralDock>
 	{/if}
 {/if}

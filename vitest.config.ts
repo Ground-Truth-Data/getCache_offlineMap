@@ -24,7 +24,7 @@ export default defineConfig({
 	// too, and sharing one deps dir means a test run wipes optimized deps out
 	// from under a running server, which then 504s on innocent routes.
 	cacheDir: "node_modules/.vite-unit",
-	plugins: [svelte({ hot: false })],
+	plugins: [svelte()],
 	resolve: {
 		// ORDER IS LOAD-BEARING: Vite matches aliases in sequence, so the
 		// per-child entries MUST precede the bare `$parent`, which would
