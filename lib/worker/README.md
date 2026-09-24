@@ -19,12 +19,12 @@ fires fetch.
 
 - ⛔ `tiles-local` is the one hand-made DNS record (A → 127.0.0.1, DNS-only);
   prod/dev records come from `wrangler deploy` — see the Worker README.
-- ⛔ No prod/dev host is baked into this child — `routes/+layout.svelte` calls
-  `configureTilesFromEnv()`, which reads `VITE_TILES_HOST` / `VITE_TILES_DEV_HOST`
-  from the `.env` beside vite's root (`rapper/.env`, written by `npm create`).
-  Unset → `null` → the row greys out, and the console warns on the first line.
-  A hardcoded default bills the maintainer's R2 account for every stranger who
-  installs the package.
+- ⛔ No prod/dev host is baked into this child — the parent's `(gc)` layout calls
+  `configureTilesFromEnv()` (`worker-local-dev/tilesFromEnv.ts`), which reads
+  `VITE_TILES_HOST` / `VITE_TILES_DEV_HOST` from the `.env` beside vite's root
+  (`rapper/.env`, from `.env.example`). Unset → `null` → the row greys out, and
+  the console warns on the first line. A hardcoded default bills the
+  maintainer's R2 account for every stranger who clones the repo.
 - A dev build defaults to `worker-local-dev` — the developer starts pointed at their
   own machine and fixes what's in front of them. A shipped phone is locked to
   prod by `getWorkerTarget()`'s `!import.meta.env.DEV` early return (compile-time

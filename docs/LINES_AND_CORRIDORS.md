@@ -1,11 +1,7 @@
 # Lines and corridors
 
 How a LINE feature earns offline coverage, and why it differs from every other
-geometry. Established in ReTreever on 17 June 2026; recovered and written down
-8 September 2026, after it took a full-workspace search to answer "what did we
-do with lines before?"
-
-The authoritative code is [`lib/shared/anchors.ts`](../lib/shared/anchors.ts) —
+geometry. The authoritative code is [`lib/shared/anchors.ts`](../lib/shared/anchors.ts) —
 one canonical map read by BOTH the reconcile and the debug array, so the two
 can never disagree about where a feature's blobs go.
 
@@ -53,17 +49,10 @@ LINE_STEP_KM = GRID_RADIUS_KM * 1.6   // 30 km road disc → 48 km
 ```
 
 The 1.6 factor is the ribbon rule: consecutive discs overlap rather than leaving
-a gap between them. **Which radius feeds it is the part that must match what the
-line actually bakes.**
-
-This was `BAKE_RADIUS_KM * 1.6` = 3.2 km — the spacing that keeps 2 km
-*satellite* discs touching — on the one geometry that never fetches a satellite
-photo. An 86 km line took **28 anchors where 3 cover the same ground**. The
-surplus deduped downstream, so it cost passes through reconcile rather than
-bytes on disk, but the work was real and the ribbon no tighter for it.
-
-If a line ever earns photos, the step becomes a per-disc choice again. The
-ribbon rule survives either way.
+a gap between them. **Which radius feeds it must match what the line actually
+bakes** — the road disc, never the 2 km satellite disc a line does not fetch
+(that spacing put 28 anchors on an 86 km line where 3 cover the ground). If a
+line ever earns photos, the step becomes a per-disc choice again.
 
 ## Drawing a line
 
@@ -96,8 +85,5 @@ vertex — where the walk began.
 
 ## Do not
 
-- ⛔ Ask `rt-vectors` for line tiles. Lines live in the v4 tile pile (`rt-tiles-v3`);
-  using the legacy store caused the "downloading the same blobs over and over"
-  regression.
 - ⛔ Pass `sampleLineAnchors` bare to `flatMap` — it hands the INDEX in as the
   step, and part 1 gets sampled every 1 km.

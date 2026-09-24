@@ -8,28 +8,24 @@ in signal the cache is topped up, and the UI must say how old it is.
 
 ---
 
-## State on 6 Sep 2026 — read before touching anything
+## The parts
 
-| Half | Where | Status |
-|---|---|---|
-| Worker `GET /fires?lng=&lat=&km=` | `workers/worker-local-dev/src/index.ts` (route) + `lib/worker/firesWorker.ts` (pure FIRMS logic) | **live**, v1 payload only |
-| Phone fetch + IndexedDB (v1) | `lib/worker/{worker-local-dev,worker-cloud-prod}/fires/fireFetch.ts`, `routes/fires/fireCache.ts` (`rt-fire-cache`) | works; refresh on (next row) |
-| Bake-loop refresh | `refreshFires()` in `lib/onPhone/bake/bakeService.svelte.ts` | **on** — `FIRE_REFRESH_ENABLED = true` in `lib/shared/bakeFlags.ts` since the `unionHotspots` box-reject fix (30 Aug) |
-| Render layer | v1: `lib/onPhone/render/fireLayer.ts` (`attachFireLayer`) — **live** since 31 Aug 2026, mounted by `OfflineMapPage.svelte` and `/app/offlinev10`; the Fires row in `lib/onPhone/render/wallLegend.ts` carries its four ids. Online: `getCache_mapTools/fireLayer.ts` (`attachFireLayer`), mounted by `MobMapPage.svelte` — **live again since 7 Sep 2026**: the two bisect kill switches (`FIRE_LAYER_ENABLED_ONLINE` in MobMapPage and `FIRES_ENABLED` inside the module) are deleted, not flipped — the `unionHotspots` cost tests they were waiting on pass. | paints the bake's cache |
-| Worker `?v=2` | — | not started |
+| Half | Where |
+|---|---|
+| Worker `GET /fires?lng=&lat=&km=` | `workers/worker-local-dev/src/index.ts` (route) + `lib/worker/firesWorker.ts` (pure FIRMS logic) |
+| Phone fetch + IndexedDB | `lib/worker/worker-local-dev/fires/fireFetch.ts`, `routes/fires/fireCache.ts` (`rt-fire-cache`) |
+| The pass | `routes/fires/fireService.ts`, started by the host's `(getcache)` layout with the blob centres; `FIRE_REFRESH_ENABLED` in `lib/shared/bakeFlags.ts` |
+| Render layer | offline: `lib/onPhone/render/fireLayer.ts` (`attachFireLayer`), the Fires row in `lib/onPhone/render/wallLegend.ts` carries its ids; online: `getCache_OnlineMap/lib/fire/fireLayer.ts`, mounted by `MobMapPage.svelte` |
 
-ReTreever mounts the v1 phone half through `retreeverPorts.ts`; this repo's
+ReTreever mounts the phone half through `retreeverPorts.ts`; this repo's
 rapper demo omits the `fires` port and never reaches for hotspots.
 
-### The bisect, and how it ended
-
-v1 held every raw detection on the phone and re-derived geometry from it on
-every pan (cross-disc union, supersede test, convex hulls, urban classifier,
-five memo layers). Measured 2026-08-10 on an idle page: **~4,000 MB heap, then
-the tab crashed; 119% CPU**. Fires off, the same page was 963 MB and the
-online map 274 MB. `FIRE_REFRESH_ENABLED = false` was the flag that proved it;
-the `unionHotspots` box-reject in `fireCache.ts` (its two `fireCache.test.ts`
-cost tests are the spec) is what let it go back to `true`.
+**The phone must not re-derive geometry from raw detections on every pan.**
+Cross-disc union, supersede test, convex hulls and the urban classifier run
+per pan once cost ~4,000 MB of heap and a crashed tab on an idle page. The
+`unionHotspots` box-reject in `fireCache.ts` (its two `fireCache.test.ts` cost
+tests are the spec) is what makes the refresh affordable; keep those tests red
+on regression.
 
 ---
 
@@ -115,9 +111,8 @@ ever land — CWFIS / NIFC WFIGS / EFFIS were specced and never built.
 
 ## Render contract — what the layer must do
 
-The v1 layer is back (`lib/onPhone/render/fireLayer.ts`, 31 Aug 2026) and these
-rules are its spec. They were each bought with a field report, and the
-paint-side helpers still exist in
+These rules are the spec of `lib/onPhone/render/fireLayer.ts`. Each was
+bought with a field report; the paint-side helpers live in
 `routes/fires/` (`fireRelevance.ts`, `fireOutline.ts`, `fireSeverity.ts`,
 `fireHotspotCopy.ts`, `fireClassifyCache.ts`, `masks/`, `lib/places/`).
 

@@ -5,9 +5,7 @@ that hands in the two port bundles plus `MapDrawControls` and `fireOrigins`,
 which live in a repo this one may not import.
 
 The blob is cut on z10 tiles (~26 km at lat 49). Its own files, its own
-store, its own sprites, its own tier setting; nothing is shared with the
-retired V8 and V9 (deleted 6 Sep 2026 — V8 cut on the pin's 60 km box, V9
-on whole z8 tiles ~104 km across; both are in git history).
+store, its own sprites, its own tier setting.
 
 What it stands on (bucket, Worker, phone, libraries) and the laws it obeys:
 [`docs/OFFLINE_PLAN.md`](../../docs/OFFLINE_PLAN.md).
@@ -62,9 +60,7 @@ set difference against the keys on disk and never a guess about what the
 Worker had. Each row carries a dot — green whole, red with "N missing ·
 repair" — and the head counts the blobs that are not whole, with "repair all".
 Repair (`repairBlob`) is the ordinary download for that spot: it fetches only
-what is missing and keeps the row's birth time. Blobs downloaded before
-7 Sep 2026 have no rows for their empty tiles and show as not whole once;
-repair fetches those empties (no bytes) and they stay green after.
+what is missing and keeps the row's birth time.
 
 **The kept light**: at boot the engine asks `navigator.storage.persist()`
 (`keepStorage` in `store.ts`) and the blobs dock shows the answer — green
@@ -104,8 +100,8 @@ refresh.
 
 ## Pins, the ruler and the library
 
-Since 6 Sep 2026 (evening) the queue lives in `blobService.ts`, started once by
-`(getcache)/+layout@.svelte` beside the old bake service. A pin dropped or
+The queue lives in `blobService.ts`, started once by
+`(getcache)/+layout@.svelte` beside the bake service. A pin dropped or
 moved anywhere in the app — the online map above all — earns its blob the
 moment it lands, while there is still signal; people open the offline map when
 they need it, and by then it is too late. The page only listens (`onBlob`) to
@@ -169,18 +165,16 @@ it is at or under the line. `__v10.fix(lng, lat)` in dev feeds a fix by hand.
 
 ## The online map's chrome
 
-Inside the phone V10 mounts the ONLINE map's tools, the way `/app/offline`
-does: eye and crow (`MapTopControls`), the tool drawer with its zoom and
+Inside the phone V10 mounts the ONLINE map's tools: eye and crow (`MapTopControls`), the tool drawer with its zoom and
 map-name pills (`MapDrawControls`, `offline`, with the pyramid layer switches
 in its BASEMAP card), and the scale bar. The camera is the shared saved one
 (`mapViewport`), and the crow hops to `/app/map?at=lat,lng&z=`, which the
 online map now reads and writes beside its `#z/lat/lng` hash. So the two
 maps open on the same spot from either side.
 
-Since 6 Sep 2026 `OFFLINE_MAP_ROUTE` (`lastMapRoute.svelte.ts`) is
-`/app/offlinev10`: the online crow, the MAP tab and every "See on map" eye
-land here, and the crow carries `?at&z`. The old `/app/offline` is reachable
-only by typing its URL. The drawer's LEGEND card opens the shared `MapLegend`
+`OFFLINE_MAP_ROUTE` (`lastMapRoute.svelte.ts`) is `/app/offlinev10`: the
+online crow, the MAP tab and every "See on map" eye land here, and the crow
+carries `?at&z`. The drawer's LEGEND card opens the shared `MapLegend`
 with the DARK palette's rows (`LEGEND` in style.ts); GRID is the online
 grid and draws from z13, the same as on `/app/map`.
 
@@ -188,5 +182,5 @@ The three cards wear the shared `.dev-card` shell and copy the old map's
 panel layout; their state comes from V10 only (no bake service, no paint
 watcher). Sizes are MB everywhere.
 
-Sprites: `static/offlineV10/sprites/dark*`.
+Sprites: the host's `static/offlineV10/sprites/dark*`.
 Route folder is lowercase because the getcache host 301s every path to lowercase.
