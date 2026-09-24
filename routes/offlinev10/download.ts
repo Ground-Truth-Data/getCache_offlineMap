@@ -1,14 +1,7 @@
 /**
- * Download one blob: the whole pyramid MIN_Z..MAX_Z under the pin's anchor tiles,
- * fetched from the Worker with a wide pool, written to the store in batches.
- * Tiles already on disk are skipped — two blobs that overlap share, they
- * never merge.
- *
- * Every tile of the blob ends up as a row, an empty one (204 from the Worker)
- * as a 0-byte row: the store can then say whether a blob is whole by looking,
- * never by guessing what the Worker had. A download that fails for any reason
- * — the budget, the network, the Worker — takes back every tile it wrote, so
- * nothing sits on disk without a blob to own it.
+ * Download one blob. Tiles already on disk are skipped: overlapping blobs share, never merge.
+ * An empty tile (204) lands as a 0-byte row, so the store can tell a whole blob by looking.
+ * A failed download takes back every tile it wrote, so nothing sits on disk without a blob.
  */
 
 import { tileUrl } from "../../lib/worker/worker-local-dev/tilesHost";
@@ -40,7 +33,7 @@ export interface Progress {
 
 export interface DownloadOpts {
 	photo?: boolean;
-	/** a repair keeps the row's birth time, so the blob does not jump to FOCUSED */
+	/** a repair keeps the row's birth time */
 	keep?: Region;
 }
 
@@ -91,7 +84,6 @@ export async function downloadRegion(
 	return region;
 }
 
-/** The pool: fetch every tile in `todo`, write in batches, record each key the moment it is on disk. */
 async function fetchInto(
 	todo: Tile[],
 	p: Progress,
@@ -99,7 +91,7 @@ async function fetchInto(
 	t0: number,
 	onProgress?: (p: Progress) => void,
 ): Promise<void> {
-	// The store is the wall; this is the early stop, so the pool does not fetch a whole blob it cannot keep.
+	// The store is the wall; this early stop saves fetching a blob it cannot keep.
 	const room = budgetBytes() - (await usedBytes());
 	let pending: Array<[string, ArrayBuffer]> = [];
 	let flushing: Promise<void> = Promise.resolve();
@@ -152,7 +144,7 @@ async function fetchInto(
 			Array.from({ length: Math.min(POOL, todo.length) }, worker),
 		);
 	} catch (e) {
-		// a batch may still be landing; `written` is only complete once it has, and the rollback reads it
+		// `written` is only complete once the last batch lands, and the rollback reads it
 		await flushing.catch(() => undefined);
 		throw e;
 	}

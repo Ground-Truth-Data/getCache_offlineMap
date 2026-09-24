@@ -1,11 +1,5 @@
 <script lang="ts">
-/**
- * CURRENT SESSION — main-thread memory (now / avg / peak + a session
- * sparkline), the freezes (every main-thread stall over 50 ms, stamped with
- * what the page was doing), the live download, the last blob's clock, and
- * tile reads.
- * The card is the old map's; every number is V10's.
- */
+/** Main-thread memory, freezes over 50 ms, the live download, the last blob's clock, and tile reads. */
 import { onMount } from "svelte";
 import type { Progress } from "./download";
 import { readCounts, resetReadCounts } from "./protocol";
@@ -26,16 +20,13 @@ let {
 	progress: Progress | null;
 	last: Region | null;
 	regions: Region[];
-	/** bytes on disk per photo key */
 	photos: Record<string, PhotoInfo>;
 	tier: WorkerTarget;
 	kept?: Kept;
 	budgetMb?: number;
-	/** tile bytes on disk */
 	bytes?: number;
 } = $props();
 
-/** A blob plus its photo's bytes and source (null until baked) — the JSON shape. */
 const lastPhoto = $derived(last ? photos[photoKey(last.lng, last.lat)] : undefined);
 const withPhoto = (r: Region) => {
 	const p = photos[photoKey(r.lng, r.lat)];
@@ -60,18 +51,16 @@ let miss = $state(0);
 let net = $state(0);
 let exportState = $state<"idle" | "busy" | "ok" | "err">("idle");
 
-/** A main-thread stall, stamped with what the page was doing when it hit. */
 interface Freeze {
 	/** ms since the dock mounted */
 	at: number;
 	ms: number;
 	heapMb: number | null;
 	downloading: boolean;
-	/** tile reads answered since the last tick — the burst the stall landed in */
+	/** tile reads since the last tick */
 	reads: number;
 }
 const MAX_FREEZES = 12;
-/** A stall this long is the "it froze" the user reports; shorter ones are jank. */
 const FREEZE_RED_MS = 300;
 let freezes = $state<Freeze[]>([]);
 let freezeCount = $state(0);
@@ -150,7 +139,6 @@ onMount(() => {
 			resetReadCounts();
 		}
 	}, 1000);
-	// Long tasks are the freeze itself, measured by the browser; buffered so the boot stalls are in the list too.
 	let stalls: PerformanceObserver | null = null;
 	try {
 		stalls = new PerformanceObserver((list) => {
@@ -169,7 +157,7 @@ onMount(() => {
 		});
 		stalls.observe({ type: "longtask", buffered: true });
 	} catch {
-		// no long-task timing in this browser — the block shows nothing, never a false "none"
+		// no long-task timing in this browser
 		stalls = null;
 	}
 	return () => {
@@ -286,7 +274,6 @@ onMount(() => {
 </div>
 
 <style>
-/* Shell + title come from devCard.css (.dev-card); the memory block matches the old map's .memrow/.sparkwrap. */
 .export {
 	margin-left: auto;
 	display: inline-flex;
@@ -327,7 +314,6 @@ onMount(() => {
 .freeze-sum { display: flex; gap: 0.35em; align-items: baseline; font-variant-numeric: tabular-nums; }
 .freeze-sum .num, .clock .num { font-weight: 700; }
 .red { color: var(--red); }
-/* LIVE ROW — dim when idle so it never competes with the numbers, lit while working. */
 .live { display: flex; align-items: baseline; gap: 0.35em; padding: 10px 0 0; font-variant-numeric: tabular-nums; }
 .live.on strong { color: var(--gold); }
 .secs { font-weight: 700; }

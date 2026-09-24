@@ -7,8 +7,6 @@ const UP_THE_ROAD: LngLat = [-119.61, 49.55];
 const NOW = 1_757_000_000_000;
 const GEOM = "w|dl}AfmlbcFgyg@vhK_ry@~oR";
 
-// The cache is IndexedDB; the service's contract with it is read/write, so the
-// store itself is the seam, not the browser.
 const disk = new Map<string, Route>();
 vi.mock("./routeCache", () => ({
 	routeKey: (to: LngLat) => `${to[0].toFixed(5)},${to[1].toFixed(5)}`,
@@ -63,7 +61,6 @@ describe("directions, asked online and kept", () => {
 
 		expect(live).toBe(false);
 		expect(fetchFn).not.toHaveBeenCalled();
-		// The age is the driver's, not the moment they re-asked.
 		expect(route.fetchedAt).toBe(NOW);
 	});
 
@@ -86,7 +83,6 @@ describe("directions, asked online and kept", () => {
 			onLine: () => true,
 		});
 
-		// navigator.onLine still says true; the request itself dies.
 		const dying = vi.fn(async () => {
 			throw new Error("network");
 		}) as unknown as typeof fetch;

@@ -1,13 +1,9 @@
 /**
- * Google's encoded-polyline format, which Mapbox Directions also returns.
- *
- * Decoding it here rather than asking for GeoJSON is deliberate: `geometries=polyline6`
- * is roughly a third of the bytes of the same line as coordinates, and this is
- * fetched on the edge of coverage where the request either completes in one
- * shot or not at all.
+ * Google's encoded-polyline format. Asked for over GeoJSON because it is a third of the bytes,
+ * and the route is fetched at the edge of coverage.
  */
 
-/** Decode an encoded polyline into [lng, lat] pairs. `precision` is 5 for `polyline`, 6 for `polyline6`. */
+/** [lng, lat] pairs; `precision` is 5 for `polyline`, 6 for `polyline6`. */
 export function decodePolyline(
 	encoded: string,
 	precision = 6,

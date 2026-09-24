@@ -1,15 +1,4 @@
-/**
- * wallLegend.ts — the layer TOGGLES and the read-only colour KEY.
- *
- * Both describe the same stack from the user's side, so they live together and
- * next to `wallStyle.ts`, which is the thing they describe. The old page kept
- * all three apart and the legend went stale: it listed land-cover rows that
- * were dropped at decode time and therefore never on the map at all.
- *
- * ⚠️ THESE MUST MATCH `wallStyle.ts` / `wallLabels.ts`. The ids below are the
- * real layer ids; `offlineLaws.test.ts` checks that every id here exists in the
- * stack, so a rename fails the build instead of silently disabling a switch.
- */
+/** The layer toggles and the read-only colour key. Keep in sync with wallStyle.ts / wallLabels.ts. */
 
 import {
     PATH_LINE,
@@ -19,36 +8,19 @@ import {
 } from "./offlineColors";
 import type { PackRead } from "../../contract/packLayers";
 
-/** One switch in MapDrawControls' BASEMAP popover. */
 export interface LayerToggle {
     readonly key: string;
     readonly label: string;
     readonly ids: readonly string[];
-    /** HOW this layer is drawn, in one or two words, shown greyed beside the
-     *  label. Not a description of what the layer IS — the label says that —
-     *  but of the mechanism, because the mechanism is what you are debugging:
-     *  "always on" cannot be the cause of a missing feature, "cluster" and
-     *  "pyramid" can, and they fail differently. */
+    /** The draw mechanism, not the content: "cluster" and "pyramid" fail differently. */
     readonly hint?: string;
-    /** WHICH DOWNLOAD this layer draws from — the circuit key in
-     *  workMeter.svelte.ts whose circle the CONFIG row shows. Roads, labels,
-     *  places and hospitals all ride in the one pack, so they share `pack`. */
+    /** The circuit key in workMeter.svelte.ts. */
     readonly feed?: "sat" | "pack" | "fires";
-    /** WHAT THIS LAYER READS OUT OF THE PACK — source-layer + the kinds its
-     *  style filters on. The debug report checks each read against the
-     *  contract (`packShips` in contract/packLayers.ts) to say whether the
-     *  pack is MEANT to carry it, instead of the old hard-coded "roads only".
-     *  Must match the filters in wallStyle.ts / wallLabels.ts. */
+    /** What this layer reads from the pack; must match the filters in wallStyle.ts / wallLabels.ts. */
     readonly reads?: readonly PackRead[];
 }
 
-/**
- * The on/off switches, in the order they render.
- *
- * `sat` is special: its `v4-sat` id is a STAND-IN, not a real layer. Per-pin
- * photo layers (`v4-sat-<key>-l`) are mounted dynamically by the page's
- * reconcile, so the page sweeps every `v4-sat-*` layer when this key toggles.
- */
+/** `sat`'s id is a stand-in: per-pin photo layers are `v4-sat-<key>-l`, swept by prefix. */
 export const LAYER_TOGGLES: readonly LayerToggle[] = [
     {
         key: "sat",
@@ -63,9 +35,6 @@ export const LAYER_TOGGLES: readonly LayerToggle[] = [
         ids: [
             "v4-water-fill",
             "v4-water-line",
-            // the z6 tier's own roads — same feed, same colours, the band
-            // below the disc's floor; leaving it out kept it painted when the
-            // toggle swept the disc's layers only.
             "v4-roads-shallow",
             "v4-roads",
             "v4-path",
@@ -79,9 +48,6 @@ export const LAYER_TOGGLES: readonly LayerToggle[] = [
             { layer: "water", kinds: ["water", "lake", "river", "canal"] },
         ],
     },
-    // LAND COVER TOGGLE REMOVED — the fills are gone (wallStyle.ts). A switch
-    // for layers that do not exist is a dead control, and offlineLaws.test.ts
-    // fails on ids that are not in the stack.
     {
         key: "labels",
         label: "Labels",
@@ -89,7 +55,7 @@ export const LAYER_TOGGLES: readonly LayerToggle[] = [
         hint: "pyramid",
         feed: "pack",
         reads: [
-            // kind_detail, NOT kind — every v4 places feature is kind:locality
+            // kind_detail: every places feature is kind:locality
             {
                 layer: "places",
                 key: "kind_detail",
@@ -98,10 +64,7 @@ export const LAYER_TOGGLES: readonly LayerToggle[] = [
             { layer: "roads" },
         ],
     },
-    // ⚠️ PLACES SITS ABOVE HOSPITALS, on Chris's instruction 28 Aug 2026 (it
-    // was below Fires until that morning). Order is by what he looks at first
-    // in the field, not by mechanism — the `hint` column still names the
-    // mechanism, so the pyramid/cluster comparison is a glance, not a position.
+    // Ordered by what is looked at first in the field, not by mechanism.
     {
         key: "camps",
         label: "Places",
@@ -118,9 +81,7 @@ export const LAYER_TOGGLES: readonly LayerToggle[] = [
         feed: "pack",
         reads: [{ layer: "pois", kinds: ["hospital"] }],
     },
-    // Fires draw dynamically — attachFireLayer() (fireLayer.ts) adds these ids
-    // on map ready, so they are NOT in wallStyle.ts. Ordinary toggle, no expiry
-    // (that rule is for the field-facing MapLegend.svelte only, not this debugger).
+    // Added by attachFireLayer() on map ready, so not in wallStyle.ts.
     {
         key: "fires",
         label: "Fires",
@@ -135,26 +96,16 @@ export const LAYER_TOGGLES: readonly LayerToggle[] = [
     },
 ] as const;
 
-/** Toggle keys `resetLayersAllOn()` must NOT force back on. Empty here —
- *  every row in LAYER_TOGGLES defaults on. */
+/** Toggle keys `resetLayersAllOn()` must not force back on. */
 export const OPT_IN_LAYERS: readonly string[] = [];
 
-/** A row in the read-only colour key. The swatch is drawn to match how the
- *  feature renders: a solid line for roads, a dashed line for trails, a rail
- *  hatch for railways, a filled chip for water bodies. */
 export interface LegendEntry {
     label: string;
     color: string;
     swatch: "line" | "dashed" | "fill" | "rail";
 }
 
-/**
- * ONLY what this map actually paints.
- *
- * Land cover is absent ON PURPOSE: those fills carry PLACEHOLDER hexes the user
- * has not signed off (Law 4), and a legend that names an unapproved colour
- * makes it look decided. Add the rows when the real hexes land.
- */
+/** Only what this map actually paints. */
 export const LEGEND: readonly LegendEntry[] = [
     { label: "Roads", color: ROAD_LINE, swatch: "line" },
     { label: "Major roads / highways", color: ROAD_MAJOR_LINE, swatch: "line" },

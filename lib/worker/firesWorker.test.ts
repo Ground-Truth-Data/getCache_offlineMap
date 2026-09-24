@@ -1,8 +1,3 @@
-/**
- * fires.test.ts
- * ⚠️ LIES tests: a network failure, bad key, or HTML error body must never surface as "zero fires near you".
- */
-
 import { describe, expect, it } from "vitest";
 import {
 	bboxForRadius,
@@ -15,11 +10,10 @@ import {
 	parseFiresCsv,
 } from "./firesWorker";
 
-// ⚠️ Real API header (captured 2026-08-07) differs from the docs: extra `instrument` column, no `type`. Index-based parsing would misread `instrument` as `confidence` — keep this fixture byte-accurate to the live feed.
+// The real header differs from the docs (extra `instrument`, no `type`); keep this byte-accurate to the live feed.
 const HEADER =
 	"latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_ti5,frp,daynight";
 
-/** One row matching HEADER exactly (14 fields, `instrument` present, no `type`). */
 const row = (
 	lat: number,
 	lng: number,
@@ -44,7 +38,6 @@ describe("parseAcqTime", () => {
 	});
 
 	it("does NOT shift the day (the UTC date trap)", () => {
-		// UTC date trap: late-UTC on the 7th must stay the 7th regardless of host timezone — ISO-slice would roll it to the 6th.
 		const t = parseAcqTime("2026-08-07", "2350");
 		expect(new Date(t).getUTCDate()).toBe(7);
 		expect(new Date(t).getUTCHours()).toBe(23);
@@ -94,13 +87,12 @@ describe("parseFiresCsv", () => {
 	});
 
 	it("trims the bbox corners down to the DISC", () => {
-		// ~700 km east — inside the 500 km bbox's corner, outside the disc.
+		// ~700 km east: inside the bbox corner, outside the disc.
 		const csv = [HEADER, row(45.4, -66.7)].join("\n");
 		expect(parseFiresCsv(csv, OTTAWA[0], OTTAWA[1], 500)).toHaveLength(0);
 	});
 
 	it("parses a VERBATIM live row (captured from the real API 2026-08-07)", () => {
-		// Byte-for-byte from a real response — `instrument` sits where docs put `confidence`; index-based parsing would misread "VIIRS" as confidence.
 		const live = [
 			HEADER,
 			"45.34053,-73.52417,305.66,0.4,0.44,2026-08-07,629,N20,VIIRS,n,2.0NRT,289.95,0.93,N",
@@ -108,9 +100,9 @@ describe("parseFiresCsv", () => {
 		const out = parseFiresCsv(live, -73.5, 45.3, 500);
 		expect(out).toHaveLength(1);
 		expect(out[0].coordinates).toEqual([-73.52417, 45.34053]);
-		expect(out[0].confidence).toBe("nominal"); // NOT "low" from misreading "VIIRS"
+		expect(out[0].confidence).toBe("nominal");
 		expect(out[0].frp).toBe(0.93);
-		expect(out[0].t).toBe(Date.UTC(2026, 7, 7, 6, 29)); // "629" → 06:29 UTC
+		expect(out[0].t).toBe(Date.UTC(2026, 7, 7, 6, 29));
 	});
 
 	it("reads columns BY NAME, surviving a reordered feed", () => {
@@ -186,7 +178,6 @@ describe("firmsUrl", () => {
 
 describe("DAY_RANGE — the UTC-midnight blackout", () => {
 	it("asks for MORE THAN ONE calendar day", () => {
-		// ⚠️ FIRMS's day range is a CALENDAR-DAY filter, not rolling 24h — DAY_RANGE=1 can return 0 rows just after UTC midnight (5pm BC) while dozens of real fires burn; never drop below 2.
 		expect(DAY_RANGE).toBeGreaterThanOrEqual(2);
 	});
 
@@ -195,7 +186,6 @@ describe("DAY_RANGE — the UTC-midnight blackout", () => {
 	});
 
 	it("puts the day range in the URL, so the fetch actually asks for it", () => {
-		// Guards the wiring — a correct DAY_RANGE that never reaches the URL reproduces the blackout.
 		const u = firmsUrl("KEY123", "VIIRS_NOAA20_NRT", [-80, 40, -70, 50]);
 		expect(u.endsWith(`/${DAY_RANGE}`)).toBe(true);
 	});
@@ -211,7 +201,6 @@ describe("fetchFires — must never lie about zero fires", () => {
 			res(okCsv),
 		);
 		expect(r.sourcesOk).toBe(3);
-		// Same fire from all three satellites → deduped to one dot.
 		expect(r.collection.features).toHaveLength(1);
 		expect(r.collection.features[0].geometry.coordinates).toEqual([-75.6, 45.5]);
 	});
@@ -249,10 +238,8 @@ describe("fetchFires — must never lie about zero fires", () => {
 	});
 });
 
-// ⚠️ px/dn are OPTIONAL popup detail, never load-bearing — a feed missing them must degrade to a plainer popup, never a hard failure.
 describe("optional popup columns — px (footprint) and dn (day/night)", () => {
 	it("takes the LARGER of scan/track as the pixel footprint", () => {
-		// The fixture row carries scan=0.4, track=0.36.
 		const [f] = parseFiresCsv(`${HEADER}\n${row(45, -76)}`, -76, 45, 100);
 		expect(f.px).toBe(0.4);
 	});
@@ -263,14 +250,12 @@ describe("optional popup columns — px (footprint) and dn (day/night)", () => {
 	});
 
 	it("parses fine when scan/track/daynight are ABSENT — popup just says less", () => {
-		// A feed trimmed to the load-bearing columns only.
 		const lean = "latitude,longitude,acq_date,acq_time,confidence,frp";
 		const leanRow = "45,-76,2026-08-07,1830,n,12.5";
 		const out = parseFiresCsv(`${lean}\n${leanRow}`, -76, 45, 100);
 		expect(out).toHaveLength(1);
 		expect(out[0].px).toBeUndefined();
 		expect(out[0].dn).toBeUndefined();
-		// The load-bearing fields still arrived.
 		expect(out[0].frp).toBe(12.5);
 		expect(out[0].confidence).toBe("nominal");
 	});

@@ -1,40 +1,8 @@
 #!/usr/bin/env node
-/**
- * bakeHospitals.mjs — bake of the WORLD hospital pack the tiles Worker's
- * /hospitals route serves (see workers/<tier>/src/hospitals.ts). The pack is
- * BUNDLED INTO THE WORKER (a wrangler Data module) — never uploaded to the R2
- * bucket, which holds roads only.
- *
- * Source: OSM `amenity=hospital` via Overpass — the same OpenStreetMap data
- * `planet.pmtiles` is built from. The archive itself cannot be the extraction
- * source: hospitals only fully materialize in its z15 tiles (min_zoom runs
- * 13–16, features appear at min_zoom−1 — measured on sampleOttawa 1 Sep 2026:
- * z12 holds 13 of 30), and no local copy of the 127 GB archive exists to walk.
- * Overpass also carries `emergency=*`, which Protomaps' pois layer drops.
- *
- * Country blocks (the block law — see hospitalBlocks/ and the refresh-hospitals
- * skill): a country with a trusted national registry gets its ENTIRE block from
- * that registry — every OSM row inside the country is dropped and the
- * registry's rows added. Never row-merged; dedupe is by construction.
- *
- * Output: worker-local-dev/src/hospitalsWorld.v1.bin —
- *   [uint32 LE indexLen][index JSON][cell JSON blobs, concatenated]
- *   index = { v, cellDeg, count, generated, cells: { "cy_cx": [offset, len] } }
- *   offsets are relative to the first byte AFTER the index. Each cell blob is
- *   a JSON array of [lng, lat, name, emergency?, phone?] — emergency a string
- *   ("yes"/"ambulance_station"/…) or null when unknown, phone a string;
- *   trailing null/absent fields are trimmed, so [lng, lat, name] is valid.
- * Same header shape as the /pack wire format (packBuilder.ts serializePack),
- * so both sides of the bucket speak one dialect.
- *
- * Run:      node bakeHospitals.mjs
- * Then:     set HOSPITALS_BUILD in worker-local-dev/src/index.ts to the value
- *           this script prints, and deploy — the responses are edge-cached
- *           immutable, so that const IS the cache buster. A re-bake that
- *           changes the pack FORMAT ships under a new filename (v2, …).
- *           The deploy scripts sync worker-local-dev/src into the cloud
- *           folders, .bin included — edit/bake in worker-local-dev only.
- */
+// Bakes the world hospital pack the Worker's /hospitals route serves, from OSM
+// amenity=hospital via Overpass; a country with a trusted registry (hospitalBlocks/)
+// has every OSM row inside it replaced by the registry's rows. Format is in
+// hospitals.ts. Bake in worker-local-dev only; the deploy scripts sync the .bin.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { makeEntry } from "./hospitalBlocks/lib.mjs";
@@ -43,8 +11,7 @@ import * as blockUs from "./hospitalBlocks/us.mjs";
 
 const BLOCKS = [blockFr, blockUs];
 
-// ⚠️ boxes are (S, W, N, E), sized for what Overpass will answer in one query.
-// They overlap on purpose — dedupe below makes overlap free, gaps are the bug.
+// (S, W, N, E), sized for one Overpass answer each. Overlap is free (dedupe below); a gap drops a continent.
 const REGIONS = [
 	["north-america", 5, -170, 84, -50],
 	["greenland", 58, -75, 84, -10],
@@ -91,8 +58,7 @@ async function fetchRegion(name, s, w, n, e) {
 				body: `data=${encodeURIComponent(query)}`,
 				headers: {
 					"Content-Type": "application/x-www-form-urlencoded",
-					// overpass-api.de's front server 406es Node's default UA — identify
-					// per the OSM API usage policy instead.
+					// overpass-api.de 406es Node's default UA.
 					"User-Agent": "getcache-hospitals-bake/1.0 (https://getcache.org)",
 				},
 			});
@@ -107,12 +73,11 @@ async function fetchRegion(name, s, w, n, e) {
 	throw new Error(`[${name}] all attempts failed — a gap here would silently drop a continent`);
 }
 
-// Per-region cache in .bake-cache/ — Overpass drops regions under load, and a
-// resumable run must not re-download a continent to retry an island.
+// Overpass drops regions under load; a rerun must not re-download a continent to retry an island.
 const CACHE_DIR = new URL("./.bake-cache/", import.meta.url).pathname;
 mkdirSync(CACHE_DIR, { recursive: true });
 
-const byCoord = new Map(); // "lat,lng" @5dp → entry; dedupes region overlap
+const byCoord = new Map();
 for (const [name, s, w, n, e] of REGIONS) {
 	const cacheFile = `${CACHE_DIR}${name}.json`;
 	let elements;
@@ -122,21 +87,17 @@ for (const [name, s, w, n, e] of REGIONS) {
 	} else {
 		elements = await fetchRegion(name, s, w, n, e);
 		writeFileSync(cacheFile, JSON.stringify(elements));
-		await sleep(5000); // be nice to the free servers
+		await sleep(5000);
 	}
 	let kept = 0;
 	for (const el of elements) {
 		const lat = el.lat ?? el.center?.lat;
 		const lon = el.lon ?? el.center?.lon;
 		if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-		// emergency is tri-state: yes / no / untagged. An explicit "no" answered
-		// the question — drop it (a confirmed no-ER hospital is noise on a
-		// safety layer). Untagged stays: absence means "unknown", never "no ER",
-		// and most of the world's real ERs are untagged. (Chris, 1 Sep 2026.)
+		// An explicit "no" is dropped; untagged stays, because most real ERs are untagged.
 		if (el.tags?.emergency === "no") continue;
 		const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
 		if (byCoord.has(key)) continue;
-		// emergency=* carried through raw when tagged (yes, ambulance_station, …).
 		const emergency =
 			typeof el.tags?.emergency === "string" ? el.tags.emergency : null;
 		const phone = (el.tags?.phone ?? el.tags?.["contact:phone"])?.trim();
@@ -149,7 +110,6 @@ for (const [name, s, w, n, e] of REGIONS) {
 	console.log(`[${name}] fetched ${elements.length}, new after dedupe ${kept} (total ${byCoord.size})`);
 }
 
-// ── country blocks: registry replaces OSM wholesale inside its country ──────
 for (const block of BLOCKS) {
 	const contains = await block.bounds();
 	let dropped = 0;
@@ -161,8 +121,8 @@ for (const block of BLOCKS) {
 	}
 	const rows = await block.fetch();
 	let added = 0;
-	let outside = 0; // e.g. FINESS in St-Pierre-et-Miquelon, CMS in Puerto Rico —
-	let collided = 0; // separate NE features, so those stay OSM-covered.
+	let outside = 0; // e.g. CMS rows in Puerto Rico: a separate NE feature, stays OSM-covered
+	let collided = 0;
 	for (const entry of rows) {
 		if (!contains(entry[0], entry[1])) {
 			outside++;
@@ -185,12 +145,11 @@ for (const block of BLOCKS) {
 }
 
 if (byCoord.size < 50_000) {
-	// OSM holds ~190k hospitals; far fewer means a region silently came back thin.
+	// OSM holds ~190k; far fewer means a region came back thin.
 	throw new Error(`only ${byCoord.size} hospitals — refusing to bake a hollow world`);
 }
 
-// ── bucket into 5° cells and serialize ──────────────────────────────────────
-const cells = new Map(); // "cy_cx" → entries[]
+const cells = new Map();
 for (const entry of byCoord.values()) {
 	const [lng, lat] = entry;
 	const cy = Math.min(35, Math.max(0, Math.floor((lat + 90) / CELL_DEG)));

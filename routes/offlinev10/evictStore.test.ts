@@ -1,8 +1,4 @@
-/**
- * The policy is pure and tested next door; this asks the only question that
- * cannot be answered there — does the axe actually reach the disk when the
- * wall is hit, or does `putTiles` still just throw?
- */
+/** The policy is tested next door; this asks whether the axe reaches the disk. */
 import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it } from "vitest";
 import { setBudgetMb } from "./budget";
@@ -33,7 +29,7 @@ function region(id: string, at: number, lng: number, lat: number): Region {
 	};
 }
 
-/** Distinct spots, so no two blobs share tiles and each one's bytes are its own. */
+// Far enough apart that no two blobs share tiles.
 const SPOTS: Array<[number, number]> = [
 	[-119.59, 49.49],
 	[-117.42, 47.65],
@@ -47,13 +43,11 @@ beforeEach(async () => {
 
 describe("eviction reaches the disk", () => {
 	it("frees the oldest blob instead of throwing when the budget is full", async () => {
-		// Three blobs, each a megabyte of tiles, on a four-megabyte budget.
 		setBudgetMb(4);
 		for (let i = 0; i < 3; i++) {
 			const [lng, lat] = SPOTS[i];
 			const r = region(`b${i}`, 1000 + i, lng, lat);
 			await putRegion(r);
-			// A tile from the blob's OWN range, so its size is attributable to it.
 			await putTiles([[tileKey(rangeTiles(r.range)[0]), new ArrayBuffer(MB)]]);
 		}
 		expect((await listRegions()).map((r) => r.id).sort()).toEqual([
@@ -62,7 +56,6 @@ describe("eviction reaches the disk", () => {
 			"b2",
 		]);
 
-		// A fourth megabyte crosses the line: the oldest goes, the write lands.
 		await expect(
 			putTiles([["3/0/0", new ArrayBuffer(2 * MB)]]),
 		).resolves.toBeUndefined();
@@ -82,7 +75,6 @@ describe("eviction reaches the disk", () => {
 		await expect(
 			putTiles([["huge/0/0", new ArrayBuffer(99 * MB)]]),
 		).rejects.toThrow(/budget/i);
-		// the refusal must not have cleared the map on its way out
 		expect((await listRegions()).map((r) => r.id)).toEqual(["keep"]);
 	});
 

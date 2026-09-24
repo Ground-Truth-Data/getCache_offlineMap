@@ -50,8 +50,7 @@ function ok(): Response {
 }
 
 beforeEach(() => {
-    // PIN THE TIER and give it a host — fetchAreaFires asks tilesHost() for the URL,
-    // and nothing is baked in: an unconfigured tier answers null and it refuses.
+    // An unconfigured tier answers null and the pass refuses.
     setWorkerTarget("worker-cloud-prod");
     configureTilesHost("https://tiles.example.test");
     cache.clear();
@@ -82,8 +81,6 @@ describe("the fire pass", () => {
     it("centres inside one disc's reach collapse to a single fetch", async () => {
         const fetch = vi.fn(async () => ok());
         vi.stubGlobal("fetch", fetch);
-        // The Ottawa cluster from a real pass: eighteen blob centres, the closest
-        // pair 40 m apart, every one of them inside the same 500 km disc.
         const cluster: Array<[number, number]> = [
             [-78.3877, 45.412],
             [-78.3872, 45.4117],
@@ -101,7 +98,6 @@ describe("the fire pass", () => {
     it("centres further apart than the trigger each get their own disc", async () => {
         const fetch = vi.fn(async () => ok());
         vi.stubGlobal("fetch", fetch);
-        // Penticton BC and Klamath Falls OR — ~430 km apart, past FIRE_TRIGGER_KM.
         expect(await refreshFires([PENTICTON, [-121.4207, 42.261]])).toBe(2);
         expect(fetch).toHaveBeenCalledTimes(2);
     });
@@ -124,9 +120,7 @@ describe("no clock — a backgrounded app must not download", () => {
 		readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
 
 	it("neither pass schedules itself on a timer", () => {
-		// People switch away from an app, they do not quit it. A timer here
-		// downloads all day for nobody: a left-open week cost ~40 MB against
-		// ~1 MB for the same actual use. `visibilitychange` is the trigger.
+		// People switch away from an app, they do not quit it; a timer downloads all day for nobody.
 		for (const rel of [
 			"./fireService.ts",
 			"../hospitals/hospitalService.ts",

@@ -1,4 +1,4 @@
-// ⛔ Both /offline and /offline/debug must call this shared mount — it stays pure (map, blob, its own registries only); area SELECTION stays with the caller.
+// Pure: map, blob and its own registries only. Area selection stays with the caller.
 import type * as mapboxgl from "maplibre-gl";
 import type maplibregl from "maplibre-gl";
 import {
@@ -10,69 +10,41 @@ import {
 import { SAT_INSERT_BEFORE } from "../render/wallStyle";
 import { kmToDegSpan } from "../../shared/kmGeo";
 
-/** One mounted-photo set, owned by one map. Created per map, disposed with it. */
 export interface SatelliteMount {
     /** Mount the already-baked photo for this centre, if one is on disk. */
     display(center: [number, number]): Promise<void>;
-    /**
-     * Law 5 enforcer — mount the photos NEAR this camera, unmount the ones far
-     * outside it. Returns how many photos are on the map after the pass.
-     */
+    /** Mount the photos near this camera, unmount the far ones; returns how many are on the map. */
     reconcile(
         camera: Bounds,
         anchors: readonly [number, number][],
         zoom?: number,
     ): Promise<number>;
-    /** Drop a photo and release its blob. */
     unmount(key: string): void;
-    /** Keys currently on the map — the caller's sweep reads this. */
     mounted(): ReadonlySet<string>;
-    /** Revoke every object URL and forget everything. Call on teardown. */
+    /** Revoke every object URL and forget everything. */
     dispose(): void;
 }
 
-/** MapLibre layer id for an area key — `,` and `-` are not id-safe. */
+/** `,` and `-` are not id-safe. */
 export function satLayerId(key: string): string {
     return `v4-sat-${key.replace(/[^a-z0-9]/gi, "_")}`;
 }
 
-// ── THE VIEWPORT CULL (direction2.6) ────────────────────────────────────────
-// Before this, the page mounted EVERY baked photo on disk, forever: RAM grew
-// with the PIN COUNT (~9 MB decoded per 1536-px photo — 321 pins ≈ 2.9 GB),
-// not the screen (Law 5). The cull is geometry plus ONE zoom floor: a photo
-// inside the camera is mounted at every zoom from SAT_MIN_Z up; what it
-// reacts to is distance from the screen. Two rings give hysteresis — mount
-// near, unmount far — so a photo near the edge does not flap on every pan,
-// and a re-entry remounts from IndexedDB (a millisecond read) before the disc
-// can scroll into view (Law 3, no blink).
+// The viewport cull: RAM scales with photos on screen, not pin count. Two
+// rings give hysteresis so a photo near the edge does not flap on every pan.
 
-/** Camera zoom below which NO photo mounts. The floor was z10 when a photo
- *  covered 30 km and read as a "Kleenex stain" over the roads; at 2 km it is
- *  a few pixels instead, so the old arithmetic no longer bites.
- *
- *  z6.5 was tried and walked back: it holds most of the store on screen at
- *  once, and the session that ran there peaked at 543 MB with 12 frame
- *  stalls. z7.5 keeps the low-zoom photos that made the change worth making
- *  and stops one level short of the whole-store camera.
- *
- *  ⚠️ THE CULL IS WHAT MAKES THIS SAFE, NOT THE FLOOR. Cost scales with the
- *  photos actually ON SCREEN, and the two-ring cull bounds that; the floor
- *  only stops the pointless case. Going lower again means measuring RAM
- *  under a camera holding MOST of the store, not just one more level.
- *  Photos fade in over the half level above this, so crossing it eases. */
+/** Camera zoom below which no photo mounts. Lower holds most of the store
+ *  on screen at once (z6.5 peaked at 543 MB); the cull, not the floor, is
+ *  what bounds cost. */
 export const SAT_MIN_Z = 7.5;
-/** How far above SAT_MIN_Z a photo takes to reach full opacity. */
 const SAT_FADE_SPAN = 0.5;
-/** Cross-fade on mount/unmount, ms — long enough to read as an ease, short
- *  enough that a pan never shows a half-faded photo. */
 const SAT_FADE_MS = 300;
 
-/** Whole viewports added per side of the camera before a photo may MOUNT. */
+/** Whole viewports per side of the camera before a photo may mount. */
 export const SAT_MOUNT_VIEWPORTS = 1;
-/** Whole viewports per side beyond which a mounted photo is UNMOUNTED — wider than the mount ring on purpose (hysteresis). */
+/** Wider than the mount ring on purpose (hysteresis). */
 export const SAT_UNMOUNT_VIEWPORTS = 2;
 
-/** Camera bounds grown by `n` viewport spans per side. */
 function expanded(camera: Bounds, n: number): Bounds {
     const [w, s, e, no] = camera;
     const dx = (e - w) * n;
@@ -80,7 +52,6 @@ function expanded(camera: Bounds, n: number): Bounds {
     return [w - dx, s - dy, e + dx, no + dy];
 }
 
-/** Does the photo's disc (±BAKE_RADIUS_KM around the centre) intersect a [w,s,e,n] box? Lng span is lat-dependent (shared/kmGeo math). */
 function discIntersects(center: [number, number], b: Bounds): boolean {
     const { dLat, dLng } = kmToDegSpan(BAKE_RADIUS_KM, center[1]);
     return (
@@ -92,26 +63,18 @@ function discIntersects(center: [number, number], b: Bounds): boolean {
 }
 
 export interface PhotoCullPlan {
-    /** Anchors whose photo should be mounted now (inside the mount ring). */
     mount: [number, number][];
-    /** Keys of anchors inside the (wider) keep ring — a mounted photo OUTSIDE this set gets unmounted. */
+    /** A mounted photo outside this set gets unmounted. */
     keep: Set<string>;
 }
 
-/**
- * PURE — which photos belong on the map for this camera. No map, no IndexedDB:
- * testable with plain numbers (Law 7). ⚠️ Antimeridian-crossing cameras are out
- * of scope — getBounds() spans the world there anyway, which mounts everything,
- * which is the correct (presence-preserving) answer for a world view.
- */
+/** Pure: which photos belong on the map for this camera. Antimeridian cameras span the world and mount everything, which is correct. */
 export function photoCullPlan(
     camera: Bounds,
     anchors: readonly [number, number][],
     zoom: number = SAT_MIN_Z,
 ): PhotoCullPlan {
-    // Below the floor the plan is empty on BOTH sides: nothing mounts and
-    // nothing is kept, so the sweep unmounts every photo the moment the
-    // camera crosses it.
+    // Empty on both sides below the floor, so the sweep unmounts everything.
     if (zoom < SAT_MIN_Z) return { mount: [], keep: new Set() };
     const mountRing = expanded(camera, SAT_MOUNT_VIEWPORTS);
     const keepRing = expanded(camera, SAT_UNMOUNT_VIEWPORTS);
@@ -130,9 +93,8 @@ export function createSatelliteMount(
     insertBefore: string = SAT_INSERT_BEFORE,
 ): SatelliteMount {
     const mountedSat = new Set<string>();
-    // A display() resumed after dispose() would touch a removed map (its style is null); the flag stops it.
     let disposed = false;
-    // Per-key object-URL registry — createObjectURL pins the blob in memory until revoked; without this, unmount strands it (steady RAM climb).
+    // createObjectURL pins the blob in memory until revoked.
     const satUrls = new Map<string, string>();
 
     const mountSat = (key: string, blob: Blob, bounds: Bounds): void => {
@@ -142,7 +104,7 @@ export function createSatelliteMount(
             | maplibregl.ImageSource
             | undefined;
         if (existing) {
-            // An already-mounted photo must still follow its new bounds — a re-bake can move them, and a stale mount pins the old footprint.
+            // A re-bake can move the bounds; a stale mount pins the old footprint.
             const [uw, us, ue, un] = bounds;
             const url = URL.createObjectURL(blob);
             const prev = satUrls.get(key);
@@ -157,10 +119,10 @@ export function createSatelliteMount(
                         [uw, us],
                     ] as never,
                 });
-                // Only revoke after the swap succeeded — revoking a URL the source is still reading blanks the photo.
+                // Revoking a URL the source is still reading blanks the photo.
                 if (prev) URL.revokeObjectURL(prev);
             } catch {
-                // codestyle-allow-swallow: a failed in-place update leaves the previous (valid) image mounted. The next pass retries.
+                // codestyle-allow-swallow: the previous image stays mounted; the next pass retries.
                 satUrls.set(key, prev ?? url);
             }
             mountedSat.add(key);
@@ -197,7 +159,6 @@ export function createSatelliteMount(
                     ],
                 },
             } as mapboxgl.LayerSpecification,
-            // Under the roads, so streets draw on top of the photo — the style owns that ordering rule.
             map.getLayer(insertBefore) ? insertBefore : undefined,
         );
         mountedSat.add(key);
@@ -217,7 +178,6 @@ export function createSatelliteMount(
     };
 
     return {
-        // Read-only — getSatImageByKey is a pure IndexedDB read; the app-wide bake service is the only thing that fetches.
         async display(center: [number, number]): Promise<void> {
             const key = satImageKey(center);
             if (disposed || mountedSat.has(key)) return;
@@ -230,9 +190,6 @@ export function createSatelliteMount(
             zoom: number = SAT_MIN_Z,
         ): Promise<number> {
             const { mount, keep } = photoCullPlan(camera, anchors, zoom);
-            // The sweep runs BEFORE mounting (reconcile invariant) — unmount
-            // everything outside the keep ring, revoking each object URL or
-            // the blob stays pinned (steady RAM climb).
             for (const key of [...mountedSat]) if (!keep.has(key)) unmount(key);
             let shown = 0;
             for (const c of mount) {

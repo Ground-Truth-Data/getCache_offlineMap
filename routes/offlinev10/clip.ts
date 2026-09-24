@@ -1,11 +1,9 @@
 /**
- * Clip a raw MVT tile to rectangles, so nothing outside the gold border
- * reaches the map: a parent tile above the cut is wider than the blob. Walks
- * the protobuf and rewrites each feature's geometry; everything else — ids,
- * tags, the keys/values tables — is copied byte for byte. Never GeoJSON.
+ * Clip a raw MVT tile to rectangles, so nothing outside the gold border reaches the map.
+ * Rewrites each feature's geometry in the protobuf; everything else is copied byte for byte.
  */
 
-/** A rectangle as fractions of the tile (0..1 across, y down). */
+/** Fractions of the tile, 0..1, y down. */
 export interface Rect {
 	x0: number;
 	y0: number;
@@ -62,7 +60,6 @@ function writeBytesField(
 	for (let i = 0; i < bytes.length; i++) out.push(bytes[i]);
 }
 
-/** Every MoveTo/LineTo run in a geometry, as absolute tile-unit points; ClosePath ends a ring. */
 function decodeGeometry(geom: Uint8Array): Pt[][] {
 	const parts: Pt[][] = [];
 	let cur: Pt[] = [];
@@ -92,7 +89,6 @@ function decodeGeometry(geom: Uint8Array): Pt[][] {
 	return parts;
 }
 
-/** Round to tile units and drop repeated vertices; a ring also drops a closing repeat of its first. */
 function tidy(pts: Pt[], ring: boolean): Pt[] {
 	const out: Pt[] = [];
 	for (const [x, y] of pts) {
@@ -117,7 +113,7 @@ function ringArea2(r: Pt[]): number {
 	return a;
 }
 
-/** Sutherland–Hodgman against one rectangle; orientation is preserved. */
+/** Sutherland–Hodgman */
 function clipRing(ring: Pt[], r: Rect): Pt[] {
 	type Edge = (p: Pt) => boolean;
 	const edges: Array<[Edge, (a: Pt, b: Pt) => Pt]> = [
@@ -143,7 +139,6 @@ function clipRing(ring: Pt[], r: Rect): Pt[] {
 	return out;
 }
 
-/** Where segment a→b crosses axis-aligned line coord[axis] = v. */
 function cross(a: Pt, b: Pt, axis: 0 | 1, v: number): Pt {
 	const t = (v - a[axis]) / (b[axis] - a[axis]);
 	const o = axis === 0 ? 1 : 0;
@@ -151,7 +146,7 @@ function cross(a: Pt, b: Pt, axis: 0 | 1, v: number): Pt {
 	return axis === 0 ? [v, w] : [w, v];
 }
 
-/** Liang–Barsky: the part of a→b inside r, or null. */
+/** Liang–Barsky */
 function clipSegment(a: Pt, b: Pt, r: Rect): [Pt, Pt] | null {
 	const dx = b[0] - a[0];
 	const dy = b[1] - a[1];
@@ -229,7 +224,6 @@ function encodeParts(parts: Pt[][], type: number): number[] {
 	return out;
 }
 
-/** The feature's geometry clipped to the rectangles (tile units), or null when nothing is left. */
 function clipGeometry(
 	geom: Uint8Array,
 	type: number,
@@ -312,7 +306,6 @@ function layerExtent(layer: Uint8Array): number {
 	return 4096;
 }
 
-/** The layer with its features clipped, or null when none survive. */
 function clipLayer(layer: Uint8Array, rects: Rect[]): number[] | null {
 	const extent = layerExtent(layer);
 	const scaled = rects.map((r) => ({
@@ -348,16 +341,8 @@ function clipLayer(layer: Uint8Array, rects: Rect[]): number[] | null {
 }
 
 /**
- * The same rectangles, cut so none overlaps another — the union unchanged.
- *
- * ⛔ Overlap is not cosmetic here: clipping runs ONCE PER RECT and keeps every
- * result, so ground two blobs share is emitted twice. A semi-transparent fill
- * (park, lake) then composites against itself and the shared strip reads as a
- * darker rectangle with hard edges — three blobs, three coats.
- *
- * Sweep both axes: every rect edge becomes a grid line, and each grid cell is
- * emitted once if any rect covers it. Rect counts here are single digits (one
- * per blob covering this tile), so the O(n²) grid is free.
+ * The same rectangles cut so none overlaps: clipping runs once per rect, so shared ground
+ * would be emitted twice and a semi-transparent fill composites against itself.
  */
 export function disjoint(rects: Rect[]): Rect[] {
 	if (rects.length < 2) return rects;
@@ -370,8 +355,7 @@ export function disjoint(rects: Rect[]): Rect[] {
 			const x1 = xs[i + 1];
 			const y0 = ys[j];
 			const y1 = ys[j + 1];
-			// Midpoint decides membership — a cell is wholly inside a rect or
-			// wholly outside it, because every rect edge is a grid line.
+			// Every rect edge is a grid line, so a cell is wholly in or out.
 			const mx = (x0 + x1) / 2;
 			const my = (y0 + y1) / 2;
 			if (rects.some((r) => mx > r.x0 && mx < r.x1 && my > r.y0 && my < r.y1))
@@ -381,7 +365,7 @@ export function disjoint(rects: Rect[]): Rect[] {
 	return out;
 }
 
-/** The tile with every layer clipped to the rectangles; layers left empty are dropped. */
+/** Layers left empty are dropped. */
 export function clipTile(data: Uint8Array, rects: Rect[]): Uint8Array {
 	const cuts = disjoint(rects);
 	const out: number[] = [];

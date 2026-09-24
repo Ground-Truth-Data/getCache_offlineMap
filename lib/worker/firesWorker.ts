@@ -1,37 +1,31 @@
-// ⚠️ FIRMS MAP_KEY is a Worker secret — never put it in the app bundle.
-// ⚠️ fetchedAt drives the "as of Xh ago" staleness stamp — keep it wired end to end.
-
 const FIRMS_BASE = "https://firms.modaps.eosdis.nasa.gov/api/area/csv";
 
-// ⚠️ MODIS excluded — its 0–100 confidence scale doesn't match VIIRS l/n/h.
+// MODIS excluded: its 0–100 confidence scale does not match VIIRS l/n/h.
 export const FIRMS_SOURCES = [
 	"VIIRS_NOAA20_NRT",
 	"VIIRS_SNPP_NRT",
 	"VIIRS_NOAA21_NRT",
 ] as const;
 
-// ⚠️ never below 2 — DAY_RANGE=1 means "today, UTC", not "last 24h", and blanks the layer nightly at UTC midnight.
+// Never below 2: DAY_RANGE=1 means "today, UTC", not "last 24h", and blanks the layer at UTC midnight.
 export const DAY_RANGE = 2;
 
 export const DEFAULT_RADIUS_KM = 500;
 
-/** hard ceiling on a hand-edited URL */
 export const MAX_RADIUS_KM = 800;
 
-/** ⚠️ VIIRS confidence is categorical l/n/h — not the MODIS 0–100 scale */
 export type FireConfidence = "low" | "nominal" | "high";
 
 export interface FireFeature {
-	/** ⚠️ [lng, lat] — GeoJSON order, not the CSV's lat-first */
+	/** [lng, lat], GeoJSON order, not the CSV's lat-first. */
 	readonly coordinates: readonly [number, number];
 	/** acquisition time, UTC epoch ms */
 	readonly t: number;
 	readonly confidence: FireConfidence;
 	/** fire radiative power, MW */
 	readonly frp: number;
-	/** pixel footprint km (max of scan/track) — a hot cell, not a burning square */
+	/** pixel footprint km (max of scan/track) */
 	readonly px?: number;
-	/** day or night overpass */
 	readonly dn?: "D" | "N";
 }
 
@@ -83,7 +77,7 @@ export function distanceKm(
 	return 2 * EARTH_RADIUS_KM * Math.asin(Math.min(1, Math.sqrt(s)));
 }
 
-// ⚠️ unknown codes are treated as WEAKEST — never promoted to a confirmed fire.
+// Unknown codes are the weakest reading, never promoted.
 function parseConfidence(raw: string): FireConfidence {
 	switch (raw.trim().toLowerCase()) {
 		case "h":
@@ -97,7 +91,7 @@ function parseConfidence(raw: string): FireConfidence {
 	}
 }
 
-/** ⚠️ Date.UTC from explicit parts, never ISO-string slicing — local-timezone slicing shifts the day by up to 24h */
+/** Date.UTC from explicit parts: ISO-string slicing shifts the day in local time. */
 export function parseAcqTime(acqDate: string, acqTime: string): number {
 	const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(acqDate.trim());
 	if (m === null) return Number.NaN;
@@ -108,7 +102,7 @@ export function parseAcqTime(acqDate: string, acqTime: string): number {
 	return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), hours, mins);
 }
 
-/** ⚠️ columns read BY HEADER NAME, never by index — a reordered feed would silently poison every coordinate */
+/** Columns are read by header name: a reordered feed would silently poison every coordinate. */
 export function parseFiresCsv(
 	csv: string,
 	centreLng: number,
@@ -134,7 +128,7 @@ export function parseFiresCsv(
 	const iTime = col("acq_time");
 	const iConf = col("confidence");
 	const iFrp = col("frp");
-	// ⚠️ optional columns must not go through col() — a feed missing them degrades the popup, never blanks the layer.
+	// Optional columns: a feed missing them degrades the popup, never blanks the layer.
 	const soft = (name: string): number => header.indexOf(name);
 	const iScan = soft("scan");
 	const iTrack = soft("track");
@@ -148,7 +142,7 @@ export function parseFiresCsv(
 		const lat = Number(f[iLat]);
 		const lng = Number(f[iLng]);
 		if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-		// ⚠️ trim the bbox to a disc — corners carry fires up to 40% past the stated radius.
+		// Trim the bbox to a disc; corners reach 40% past the radius.
 		if (distanceKm(centreLng, centreLat, lng, lat) > radiusKm) continue;
 		const t = parseAcqTime(f[iDate] ?? "", f[iTime] ?? "");
 		if (!Number.isFinite(t)) continue;
@@ -172,7 +166,7 @@ export function parseFiresCsv(
 	return out;
 }
 
-/** same ~375m cell within the same hour → keep strongest FRP */
+/** Same ~375 m cell within the same hour keeps the strongest FRP. */
 export function dedupeFires(features: readonly FireFeature[]): FireFeature[] {
 	const best = new Map<string, FireFeature>();
 	for (const f of features) {
@@ -197,7 +191,7 @@ export function firmsUrl(
 	return `${FIRMS_BASE}/${mapKey}/${source}/${area}/${days}`;
 }
 
-/** ⚠️ throws when every source fails — never return an empty collection, it lies as "no fires near you"; a partial failure returns normally via sourcesOk */
+/** Throws when every source fails: an empty collection lies as "no fires near you". */
 export async function fetchFires(
 	mapKey: string,
 	lng: number,
@@ -214,7 +208,7 @@ export async function fetchFires(
 				throw new Error(`FIRMS ${source} responded ${res.status}`);
 			}
 			const body = await res.text();
-			// ⚠️ a bad/over-quota key returns 200 with an HTML body, which would parse as zero fires.
+			// A bad or over-quota key returns 200 with an HTML body.
 			if (body.trimStart().startsWith("<") || !body.includes("latitude")) {
 				throw new Error(
 					`FIRMS ${source} returned a non-CSV body (bad key or quota?)`,
@@ -242,7 +236,7 @@ export async function fetchFires(
 			features: merged.map((f) => ({
 				type: "Feature" as const,
 				geometry: { type: "Point" as const, coordinates: f.coordinates },
-				// ⚠️ omit optional keys, never send null — absent means "feed didn't say".
+				// Absent means "feed didn't say"; never null.
 				properties: {
 					t: f.t,
 					c: f.confidence,

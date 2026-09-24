@@ -8,13 +8,11 @@ import {
 } from "./fireOutline";
 
 const CELL = 0.00375;
-/** n cells east of a base point — guaranteed distinct cells. */
 const row = (n: number, lng = -121, lat = 50) =>
 	Array.from({ length: n }, (_, i) => ({
 		coordinates: [lng + i * CELL, lat] as [number, number],
 	}));
 
-/** A compact blob of `n × n` cells. */
 const blob = (n: number, lng = -121, lat = 50) => {
 	const out: { coordinates: [number, number] }[] = [];
 	for (let x = 0; x < n; x++)
@@ -40,7 +38,7 @@ describe("convexHull", () => {
 			[2, 0],
 			[2, 2],
 			[0, 2],
-			[1, 1], // inside
+			[1, 1],
 		]);
 		expect(h).toHaveLength(4);
 		expect(h).not.toContainEqual([1, 1]);
@@ -60,13 +58,11 @@ describe("fireOutlines — one line per fire", () => {
 	});
 
 	it("draws SEPARATE outlines for fires far apart", () => {
-		// must never join fires ~100km apart — false "area between the dots" claim
 		const fc = fireOutlines([...blob(4), ...blob(4, -120, 50)]);
 		expect(fc.features).toHaveLength(2);
 	});
 
 	it("JOINS detections a few hundred metres apart — one fire, one line", () => {
-		// different satellites' offset pixels must not become two fires
 		const a = blob(3);
 		const b = blob(3, -121 + 2 * CELL, 50);
 		expect(fireOutlines([...a, ...b]).features).toHaveLength(1);
@@ -87,13 +83,11 @@ describe("fireOutlines — one line per fire", () => {
 	});
 
 	it("carries NO properties — it is not tappable and makes no claims", () => {
-		// no properties — a card/area readout would misrepresent the hull as surveyed (22,328 ha error)
 		const fc = fireOutlines(blob(5));
 		expect(fc.features[0].properties).toEqual({});
 	});
 
 	it("survives garbage coordinates rather than throwing", () => {
-		// Fires must never break the map.
 		const junk = [
 			{ coordinates: [Number.NaN, 50] as [number, number] },
 			{ coordinates: [-121, Number.POSITIVE_INFINITY] as [number, number] },
@@ -108,7 +102,6 @@ describe("fireOutlines — one line per fire", () => {
 	});
 
 	it("stays cheap at province scale", () => {
-		// floor-check: fails if an O(n²) distance matrix creeps back in (measured ~52ms/142 outlines)
 		const many: { coordinates: [number, number] }[] = [];
 		for (let i = 0; i < 20_000; i++) {
 			many.push({
@@ -122,7 +115,6 @@ describe("fireOutlines — one line per fire", () => {
 	});
 
 	it("the hull ENCLOSES every detection it was built from", () => {
-		// promise: the fire is inside the hull — a point outside would break it
 		const pts = blob(6);
 		const ring = (fireOutlines(pts).features[0].geometry as GeoJSON.Polygon)
 			.coordinates[0];
@@ -137,7 +129,6 @@ describe("fireOutlines — one line per fire", () => {
 	});
 });
 
-// ⛔ the line must not bisect flames — raw hull runs through detection centres, leaving border flames straddling it
 describe("the margin — the outline sits OUTSIDE every detection", () => {
 	it("pushes the ring outward from the centre", () => {
 		const square: [number, number][] = [
@@ -165,7 +156,6 @@ describe("the margin — the outline sits OUTSIDE every detection", () => {
 	});
 
 	it("scales longitude by latitude so the gap is even on the GROUND", () => {
-		// without cos(lat) correction, line hugs tighter east-west further north (~64% at 50°N)
 		const at = (lat: number) => {
 			const r: [number, number][] = [
 				[0, lat],
@@ -180,7 +170,6 @@ describe("the margin — the outline sits OUTSIDE every detection", () => {
 	});
 
 	it("EVERY detection ends up strictly inside its own outline", () => {
-		// no flame may sit on or outside the line
 		const pts = blob(6);
 		const ring = (fireOutlines(pts).features[0].geometry as GeoJSON.Polygon)
 			.coordinates[0];
@@ -195,20 +184,17 @@ describe("the margin — the outline sits OUTSIDE every detection", () => {
 	});
 
 	it("the gap is ONE FLAME WIDE — a few hundred metres, never kilometres", () => {
-		// regression guard: first margin (4 cells/~1.7km) left an empty swath that silently claimed unburnt ground
 		const pts = blob(6, -121, 49);
 		const ring = (fireOutlines(pts).features[0].geometry as GeoJSON.Polygon)
 			.coordinates[0];
 		const lats = pts.map((p) => p.coordinates[1]);
 		const ringLats = ring.map((p) => p[1]);
-		// How far past the northernmost detection does the line sit, in metres?
 		const gapM = (Math.max(...ringLats) - Math.max(...lats)) * 111_320;
-		expect(gapM).toBeGreaterThan(100); // still clears the icon
-		expect(gapM).toBeLessThan(700); // and never a kilometre-wide swath
+		expect(gapM).toBeGreaterThan(100);
+		expect(gapM).toBeLessThan(700);
 	});
 
 	it("the gap does NOT grow with the size of the fire", () => {
-		// fixed offset, not a percentage — province-sized blob gets the same gap as a small one
 		const gapOf = (n: number) => {
 			const pts = blob(n, -121, 49);
 			const ring = (fireOutlines(pts).features[0].geometry as GeoJSON.Polygon)
@@ -238,10 +224,8 @@ describe("the margin — the outline sits OUTSIDE every detection", () => {
 	});
 });
 
-// ⛔ outlines disappear when zoomed out — undissolved, they'd become dozens of noisy red specks at regional zoom
-// ⛔ DO NOT DELETE — fire render layer has no home yet (moved out of deleted online-map folder 28 Aug); re-point at getCache_OnlineMap and unskip when it lands
+// TODO: re-point `src` at the fire render layer's source and unskip.
 describe.skip("the outline layer is zoom-gated", () => {
-	// orphaned by the map move; "" keeps this block collectable instead of breaking the other ~30 live tests at import
 	const src = "";
 	const block = src.slice(src.indexOf("id: ids.outline,"));
 	const layer = block.slice(0, block.indexOf("\n\t});"));
@@ -251,12 +235,10 @@ describe.skip("the outline layer is zoom-gated", () => {
 	});
 
 	it("waits for BLOCK scale — this is a tree-planting app", () => {
-		// 11 (clusterMaxZoom) was tried and rejected — reads as pollution while still surveying; 13 means "looking at ONE fire"
 		expect(src).toMatch(/const OUTLINE_MIN_ZOOM = 13;/);
 	});
 
 	it("is gated ABOVE the zoom where clusters hand over", () => {
-		// outline must never appear while clusters still show counted blobs — that combo reads as a fire app
 		const clusterMax = Number(src.match(/clusterMaxZoom: (\d+)/)?.[1]);
 		const outlineMin = Number(src.match(/OUTLINE_MIN_ZOOM = (\d+)/)?.[1]);
 		expect(outlineMin).toBeGreaterThan(clusterMax);
@@ -274,13 +256,11 @@ describe.skip("the outline layer is zoom-gated", () => {
 	});
 });
 
-// ⚠️ memo must not lie: a memo that never misses is worse than none — it would freeze outlines while fires move
 describe("fireOutlines — the per-pan memo", () => {
 	it("returns the SAME object for unchanged data (a pan must not recompute)", () => {
 		__resetOutlineMemoForTest();
 		const spots = blob(4);
 		const first = fireOutlines(spots);
-		// pan rebuilds an array with identical contents — identity memoing would miss, so the key is the CELL SET
 		const second = fireOutlines([...spots]);
 		expect(second).toBe(first);
 	});
@@ -290,7 +270,6 @@ describe("fireOutlines — the per-pan memo", () => {
 		const first = fireOutlines(blob(4));
 		const moved = fireOutlines(blob(4, -120, 50));
 		expect(moved).not.toBe(first);
-		// ...and the new answer describes the new place, not the cached one.
 		const ring = (moved.features[0].geometry as GeoJSON.Polygon).coordinates[0];
 		expect(ring.every(([lng]) => lng > -120.1)).toBe(true);
 	});
@@ -303,7 +282,6 @@ describe("fireOutlines — the per-pan memo", () => {
 	});
 
 	it("distinguishes a group SPLITTING from one that merely moved", () => {
-		// same cell count, different arrangement — a length-only key would miss this, drawing one outline over two fires
 		__resetOutlineMemoForTest();
 		const together = fireOutlines(blob(4));
 		const apart = fireOutlines([...blob(2), ...blob(2, -119, 48)]);
@@ -311,19 +289,16 @@ describe("fireOutlines — the per-pan memo", () => {
 	});
 });
 
-// ⚠️ stableKey is not optional in practice — a wrong key risks a STALE HIT: outlines frozen while fires move (measured 52ms → 0.5ms with the right key)
 describe("fireOutlines — stableKey", () => {
 	it("hits across rebuilt `shown` arrays when given a stable key", () => {
 		__resetOutlineMemoForTest();
 		const all = blob(4);
-		// Exactly the paint() shape: fresh filter each call, stable upstream array.
 		const first = fireOutlines([...all], all);
 		const second = fireOutlines([...all], all);
 		expect(second).toBe(first);
 	});
 
 	it("⛔ does NOT serve a stale outline when `shown` shrinks under a stable key", () => {
-		// refineUrban path: `all` stays same but `shown` shrinks — a memo keyed only on `all` would show outlines for fires no longer drawn
 		__resetOutlineMemoForTest();
 		const all = [...blob(4), ...blob(4, -119, 48)];
 		const both = fireOutlines([...all], all);

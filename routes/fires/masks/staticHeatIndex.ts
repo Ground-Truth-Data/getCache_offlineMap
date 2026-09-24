@@ -1,8 +1,6 @@
 /**
- * Loads the persistent-heat-source mask (see staticHeatSources.ts for the rule).
- * LAZY (loads on first fire-layer attach), ONCE (concurrent callers share one in-flight promise).
- * ⚠️ NEVER FATAL — fails toward SHOWING FIRES: a missing mask flags nothing as industrial rather than risk suppressing a real fire.
- * Rebuild yearly via scripts/buildStaticHeatMask.py as industry changes.
+ * Loads the persistent-heat-source mask lazily, once, and never fatally: a missing mask flags
+ * nothing. Rebuild yearly via scripts/buildStaticHeatMask.py.
  */
 
 const ASSET_URL = "/mobileAssets/static-heat-sources.json";
@@ -36,17 +34,15 @@ export async function loadStaticMask(): Promise<Set<string>> {
 	return inFlight;
 }
 
-/** Already-loaded mask, or empty set — lets a synchronous render use it when warm without an await, and fail toward showing fires when not. */
+/** Empty before the load, which flags nothing. */
 export function peekStaticMask(): Set<string> {
 	return cache ?? new Set();
 }
 
-/** Start the load without waiting. */
 export function warmStaticMask(): void {
 	if (cache === null && inFlight === null) void loadStaticMask();
 }
 
-/** Test seam. */
 export function __resetStaticMaskForTest(): void {
 	cache = null;
 	inFlight = null;

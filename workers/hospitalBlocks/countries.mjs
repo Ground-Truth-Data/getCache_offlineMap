@@ -1,7 +1,4 @@
-// Country containment for the block law: every OSM row inside an adapter's
-// country is dropped and replaced by the registry's rows, so "inside" must be
-// one shared, deterministic answer. Natural Earth 1:10m admin-0 countries
-// (public domain) is that answer — cached beside the Overpass regions.
+// "Inside a country" must be one deterministic answer: Natural Earth 1:10m admin-0.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -34,8 +31,7 @@ async function loadFeatures() {
 	return featuresPromise;
 }
 
-/** Even-odd ray cast: does the ring cross an eastward ray from (lng, lat) an
- *  odd number of times? */
+/** Even-odd ray cast. */
 export function inRing(lng, lat, ring) {
 	let inside = false;
 	for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -50,9 +46,7 @@ export function inRing(lng, lat, ring) {
 	return inside;
 }
 
-/** (lng, lat) tester for one GeoJSON (Multi)Polygon feature. Even-odd across
- *  every ring of a polygon, so holes count out; per-polygon bbox prefilter
- *  keeps a world-sized point sweep cheap. */
+/** (lng, lat) tester for one (Multi)Polygon; even-odd across rings so holes count out. */
 export function featureTester(feature) {
 	const g = feature.geometry;
 	const polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
@@ -77,10 +71,7 @@ export function featureTester(feature) {
 	};
 }
 
-/** Tester for the admin-0 feature with the given NAME (e.g. "France" — which
- *  in Natural Earth includes the overseas départements; dependencies like
- *  Puerto Rico or Saint-Pierre-et-Miquelon are separate features and stay
- *  OSM-covered). */
+/** Dependencies (Puerto Rico, Saint-Pierre-et-Miquelon) are separate NE features and stay OSM-covered. */
 export async function countryContains(neName) {
 	const features = await loadFeatures();
 	const f = features.find((ft) => ft.properties.NAME === neName);

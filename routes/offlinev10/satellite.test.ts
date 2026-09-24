@@ -92,13 +92,12 @@ describe("the photo pass", () => {
 	});
 
 	it("photoInfo reads bytes per key without touching the pixels", async () => {
-		// the pause test above leaves the pass paused into real time — step past it
+		// the pause test above leaves the pass paused into real time
 		vi.useFakeTimers();
 		vi.advanceTimersByTime(PHOTO_RETRY_MS + 1);
 		await bakePhotos([PENTICTON]);
 		const sizes = await photoInfo();
 		expect(sizes[photoKey(...PENTICTON)].bytes).toBe(2048);
-		// the photos' total goes to the tile store, which counts it against the budget
 		expect(photoBytesReported).toBe(
 			Object.values(sizes).reduce((a, p) => a + p.bytes, 0),
 		);

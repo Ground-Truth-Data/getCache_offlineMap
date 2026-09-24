@@ -98,7 +98,6 @@ describe("asking a router for the way there", () => {
 describe("the straight line", () => {
 	it("measures real ground, not degrees", () => {
 		const r = directRoute(PENTICTON, UP_THE_ROAD, { now });
-		// ~5.9 km up the valley — a degree count would read 0.06.
 		expect(r.metres).toBeGreaterThan(5_000);
 		expect(r.metres).toBeLessThan(7_000);
 	});

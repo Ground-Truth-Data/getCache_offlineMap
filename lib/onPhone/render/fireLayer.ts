@@ -1,11 +1,4 @@
-/**
- * fireLayer — the offline map's fire renderer, same look as the online map:
- * terracotta clusters coloured by the WORST fire inside, one flame glyph per
- * detection at every zoom, a thin red hull around each group from z8.
- *
- * Paints what the bake service already stored (fireCache, via the host's
- * `fires` port). Never fetches — the bake owns downloads.
- */
+/** The offline map's fire renderer. Paints what the bake stored; never fetches. */
 import maplibregl from "maplibre-gl";
 import fireIconUrl from "../../assets/fire_icon.webp";
 import fireIntensity1 from "../../assets/fire_intensity/1-fire_intensity.webp";
@@ -58,7 +51,6 @@ export const FIRE_LAYER_IDS = {
     outline: "v4-fire-outline",
 } as const;
 
-/** The visible layers, for wallLegend's toggle row and paintWatch. */
 export const FIRE_LAYER_ID_LIST: readonly string[] = [
     FIRE_LAYER_IDS.cluster,
     FIRE_LAYER_IDS.clusterIcon,
@@ -66,10 +58,7 @@ export const FIRE_LAYER_ID_LIST: readonly string[] = [
     FIRE_LAYER_IDS.outline,
 ];
 
-
-// Terracotta, never red: red is the destructive-action colour in this design
-// system, and a hotspot is information, not a button. Severity is a warmer
-// step within the same family.
+// Terracotta, never red: red is the destructive-action colour.
 const FIRE_DOT = "#b36940";
 const FIRE_HOT = "#d18a5e";
 const FIRE_ICON = "rt-fire-flame";
@@ -85,15 +74,12 @@ export interface FireLayerHandle {
 }
 
 export interface FireLayerOptions {
-    /** Where the user has a stake: pin anchors, live fix. Relevance is
-     *  measured from these, never from the screen box — at continental zoom
-     *  the screen IS the continent. Empty → the map centre stands in. */
+    /** Pin anchors and live fix; relevance is measured from these, never the screen box. */
     readonly origins?: () => readonly (readonly [number, number])[];
 }
 
-// MapLibre fires `styleimagemissing` and warns in the same tick unless a
-// listener has already called `addImage`, so the flame must be decoded BEFORE
-// any layer can ask for it. Once per page; lazy because `Image` is absent in SSR.
+// Decoded before any layer can ask for it: MapLibre warns in the same tick
+// as `styleimagemissing`. Lazy because `Image` is absent in SSR.
 let flame: HTMLImageElement | null = null;
 let flameLoad: Promise<void> | null = null;
 function flameDecoded(): Promise<void> {
@@ -104,7 +90,6 @@ function flameDecoded(): Promise<void> {
             await img.decode();
             flame = img;
         } catch (err) {
-            // Single detections have no fallback mark, so this is load-bearing.
             console.warn(
                 "[fire] flame icon failed to load — single detections will NOT render (clusters still will)",
                 err,
@@ -122,8 +107,7 @@ function addFireLayers(map: maplibregl.Map): void {
     ensureFireIcon(map);
     if (map.getSource(FIRE_LAYER_IDS.src)) return;
 
-    // Outline first so it sits UNDER the flames; its own source because it is
-    // polygons and must never be clustered.
+    // Outline first so it sits under the flames; its own source so it is never clustered.
     map.addSource(FIRE_LAYER_IDS.outlineSrc, { type: "geojson", data: EMPTY });
     map.addLayer({
         id: FIRE_LAYER_IDS.outline,
@@ -132,9 +116,7 @@ function addFireLayers(map: maplibregl.Map): void {
         minzoom: FIRE_OUTLINE_MIN_ZOOM,
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
-            // The one sanctioned red: every wildfire agency draws a fire boundary
-            // in it. Thin and unfilled — a hull around satellite pixels, not a
-            // surveyed perimeter.
+            // The one sanctioned red: every wildfire agency draws a boundary in it.
             "line-color": "#d9422b",
             "line-width": [
                 "interpolate",
@@ -166,9 +148,7 @@ function addFireLayers(map: maplibregl.Map): void {
         clusterRadius: FIRE_CLUSTER_RADIUS,
         clusterMaxZoom: FIRE_CLUSTER_MAX_ZOOM,
         clusterProperties: {
-            // Max, never sum: merging many mild fires must not read as an inferno.
-            // Industrial FRP excluded — a flare stack must not colour the wildfire
-            // beside it.
+            // Max, never sum; industrial FRP excluded so a flare stack cannot colour the fire beside it.
             maxFrp: [
                 "max",
                 [
@@ -182,8 +162,6 @@ function addFireLayers(map: maplibregl.Map): void {
         },
     });
 
-    // Capped small and translucent: "a lot over there", not a hazard banner.
-    // Terrain, roads and the user's own pins read straight through.
     map.addLayer({
         id: FIRE_LAYER_IDS.cluster,
         type: "circle",
@@ -199,8 +177,7 @@ function addFireLayers(map: maplibregl.Map): void {
                 200,
                 FIRE_HOT,
             ],
-            // The only dim: every member is an industrial heat source — a
-            // different KIND of thing, not a lesser fire.
+            // Dimmed only when every member is an industrial heat source.
             "circle-opacity": [
                 "case",
                 [
@@ -227,8 +204,7 @@ function addFireLayers(map: maplibregl.Map): void {
         },
     });
 
-    // The flame INSIDE the circle. No count label: pixels-per-blob is not a fact
-    // anyone acts on, and "1.8k" beside a flame reads as scale of disaster.
+    // No count label: "1.8k" beside a flame reads as scale of disaster.
     map.addLayer({
         id: FIRE_LAYER_IDS.clusterIcon,
         type: "symbol",
@@ -252,8 +228,7 @@ function addFireLayers(map: maplibregl.Map): void {
         },
     });
 
-    // One detection, one flame, at every zoom. No minzoom and no fade: a hotspot
-    // either passed the gate and IS a fire, or it is not on the map.
+    // No minzoom and no fade: a hotspot either passed the gate or is not on the map.
     map.addLayer({
         id: FIRE_LAYER_IDS.flame,
         type: "symbol",
@@ -286,12 +261,9 @@ function addFireLayers(map: maplibregl.Map): void {
     });
 }
 
-// ── THE TAP CARD ─────────────────────────────────────────────────────────────
-// Labelled rows, not sentences. Order is meaning: what it is → where/when →
-// how strong → then the caveat, before the reader has formed a conclusion.
-// Styles: `.rt-fire-*` in rapper/gc/mobile.css (shared with the online map).
+// Tap card styles: `.rt-fire-*` in rapper/gc/mobile.css, shared with the online map.
 
-/** Newest `fetchedAt` among painted discs — "when did we last go and look?" */
+/** Newest `fetchedAt` among painted discs. */
 let lastPingedAt: number | null = null;
 
 function esc(s: string): string {
@@ -302,8 +274,6 @@ function esc(s: string): string {
         .replace(/"/g, "&quot;");
 }
 
-// Artwork ring, one file per level, gold → red. The "N of 5" text beside it is
-// the accessible carrier; the ring is the at-a-glance echo.
 const INTENSITY_ICONS = [
     fireIntensity1,
     fireIntensity2,
@@ -316,9 +286,8 @@ function intensityIconSrc(level: number): string {
     return INTENSITY_ICONS[lvl - 1];
 }
 
-// True red and true green: orange would blend into the fire palette. Red-up /
-// green-down is a colourblind confusion pair, so the SHAPE carries direction
-// too and the Status row spells it out in words. Never drop the Status row.
+// Red/green is a colourblind confusion pair, so the shape carries direction
+// too and the Status row spells it out. Never drop the Status row.
 const TREND_RED = "#e63329";
 const TREND_GREEN = "#3fb95a";
 
@@ -353,8 +322,7 @@ function cardHtml(title: string, rows: readonly CardRow[]): string {
     return `<div class="rt-fire-card"><h4>${esc(title)}</h4>${body}</div>`;
 }
 
-// "18 km NE of Whitecourt", only if the gazetteer is already warm — a tap must
-// open instantly, never wait on a 5 MB fetch. Warmed at attach.
+// Only if the gazetteer is already warm: a tap must never wait on a 5 MB fetch.
 function whereFor(at: [number, number]): string | null {
     const places = peekPlaces();
     if (places === null || places.length === 0) return null;
@@ -362,8 +330,6 @@ function whereFor(at: [number, number]): string | null {
     return ref.primary === null ? null : ref.text;
 }
 
-// "42 km NE" is measured from the NEAREST anchor, so it describes distance
-// from ground the reader cares about, not from a phone a province away.
 function anchorNearest(
     origins: readonly (readonly [number, number])[],
     at: readonly [number, number],
@@ -380,9 +346,7 @@ function anchorNearest(
     return best;
 }
 
-// The card sits clear of the glyph it describes; a dotted trail
-// (`.rt-fire-popup::after`) ties the two. Diagonal anchors keep ~0 gap since a
-// 45° trail cannot be drawn and the corner already touches the glyph.
+// Diagonal anchors keep ~0 gap: the dotted trail (`.rt-fire-popup::after`) cannot be drawn at 45°.
 const FIRE_POPUP_OFFSET = 16;
 const firePopupOptions: maplibregl.PopupOptions = {
     closeButton: true,
@@ -401,9 +365,8 @@ const firePopupOptions: maplibregl.PopupOptions = {
     },
 };
 
-// The renderer focuses the close button on open; on the iOS WebView the first
-// touch on a freshly-focused control is eaten as a focus gesture and `click`
-// never fires. `pointerup` is delivered straight from the input pipeline.
+// iOS WebView eats the first touch on a freshly-focused control as a focus
+// gesture, so `click` never fires; `pointerup` does.
 function wireCloseButton(popup: maplibregl.Popup): void {
     const btn = popup
         .getElement()
@@ -440,12 +403,7 @@ function pointOf(
     };
 }
 
-/**
- * Attach the fire layer. Idempotent per style; re-adds itself on style.load.
- * Returns a disposer that is also callable as `.repaint()` — the page calls
- * repaint when the fires circuit lands, so bytes on disk become pixels without
- * a reload.
- */
+/** Attach the fire layer; re-adds itself on style.load. The disposer also carries `.repaint()`. */
 export function attachFireLayer(
     map: maplibregl.Map,
     opts: FireLayerOptions = {},
@@ -462,7 +420,6 @@ export function attachFireLayer(
             : [[c0.lng, c0.lat]];
         const entries = await fireEntriesNear(origin, HARD_CUTOFF_KM);
         await flameDecoded();
-        // The reads awaited; a route change may have removed the map meanwhile.
         if (disposed) return;
         addFireLayers(map);
         const { hotspots: all } = unionHotspots(entries);
@@ -478,8 +435,7 @@ export function attachFireLayer(
             staticMask: peekStaticMask(),
             toGeoJSON: hotspotsToGeoJSON,
             isStatic: isStaticSource,
-            // Reads a cache, never classifies: unknown → shown. A suppressed real
-            // fire is the failure this layer exists to prevent.
+            // Reads a cache, never classifies: unknown is shown.
             isUrban: (lng, lat) => peekUrbanVerdict(lng, lat) === true,
         });
         const src = map.getSource(FIRE_LAYER_IDS.src) as
@@ -492,24 +448,20 @@ export function attachFireLayer(
         const outlineSrc = map.getSource(FIRE_LAYER_IDS.outlineSrc) as
             | maplibregl.GeoJSONSource
             | undefined;
-        // `all` is the memo key (reference-stable until the cache changes);
-        // the hull is built from `shown` so it never disagrees with the flames.
+        // `all` is the memo key; the hull is built from `shown` so it matches the flames.
         outlineSrc?.setData(fireOutlines(shown, all));
     };
 
     const onStyle = (): void => void paint();
     map.on("style.load", onStyle);
-    // A style swap can drop the flame with no event of its own. MapLibre only
-    // accepts an image added synchronously inside this listener.
+    // MapLibre only accepts an image added synchronously inside this listener.
     const onMissing = (e: { id: string }): void => {
         if (e.id === FIRE_ICON) ensureFireIcon(map);
     };
     map.on("styleimagemissing", onMissing);
     void paint();
 
-    // ── Tap a flame → the honest card. Tap a cluster → its SUMMARY, never a
-    // zoom: someone tapping a blob is asking "what is that?", and moving the
-    // map makes them chase it down three zoom levels before they learn anything.
+    // Tapping a cluster opens its summary, never a zoom.
     let popup: maplibregl.Popup | null = null;
     const open = (at: [number, number], html: string): void => {
         if (disposed) return;
@@ -544,8 +496,6 @@ export function attachFireLayer(
             | maplibregl.GeoJSONSource
             | undefined;
         if (!Number.isFinite(clusterId) || !src) return;
-        // getClusterLeaves is the only way to reach a cluster's members —
-        // clusterProperties aggregate scalars but cannot hand back the rows.
         void src.getClusterLeaves(clusterId, count || 1000, 0).then(
             (leaves) => {
                 if (disposed) return;
@@ -561,8 +511,7 @@ export function attachFireLayer(
                         ),
                     );
                 if (members.length === 0) return;
-                // "Industrial" only when the WHOLE cluster is — a mixed cluster
-                // is a fire that happens to include a flare.
+                // A mixed cluster is a fire that happens to include a flare.
                 const mask = peekStaticMask();
                 const allIndustrial = members.every((m) =>
                     isStaticSource(m.coordinates[0], m.coordinates[1], mask),

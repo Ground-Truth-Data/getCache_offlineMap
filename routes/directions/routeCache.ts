@@ -1,18 +1,12 @@
 /**
- * The fetched route on disk, so it is still there when the radio is not.
- *
- * ⚠️ Stored records keep `fetchedAt` and the UI must show it — a remembered
- * route painted as a live one is the dangerous failure here (the fire cache
- * carries the same warning for the same reason).
- *
- * Own IndexedDB store, never TinyBase: a route is a local-only payload of a few
- * thousand coordinates that nobody else needs a copy of.
+ * The fetched route on disk, for when the radio is not. Records keep `fetchedAt` and the UI
+ * must show it: a remembered route painted as live is the dangerous failure here.
  */
 
 import { makeKeyedIdbStore } from "../../lib/onPhone/store/keyedIdbStore";
 import type { LngLat, Route } from "./routeContract";
 
-/** Bump when the stored shape changes — an old record then reads as absent. */
+/** Bump when the stored shape changes; an old record then reads as absent. */
 export const ROUTE_CACHE_VERSION = 1;
 
 interface StoredRoute extends Route {
@@ -24,7 +18,7 @@ const idb = makeKeyedIdbStore<StoredRoute>({
 	storeName: "routes",
 });
 
-/** Keyed by DESTINATION, not by the pair: asking again from a new spot replaces the stale line rather than leaving two routes to the same place. */
+/** Keyed by destination, so asking again from a new spot replaces the stale line. */
 export function routeKey(to: LngLat): string {
 	return `${to[0].toFixed(5)},${to[1].toFixed(5)}`;
 }
@@ -44,7 +38,7 @@ export async function deleteRoute(to: LngLat): Promise<void> {
 	await idb.delete(routeKey(to));
 }
 
-/** Every saved route, newest first — what the drawer lists. */
+/** Newest first. */
 export async function allRoutes(): Promise<Route[]> {
 	const all = await idb.getAll();
 	return all

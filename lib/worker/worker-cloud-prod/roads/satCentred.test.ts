@@ -1,11 +1,6 @@
-/**
- * ⛔ THE FIX IS A CROP, NOT A BOUNDS EDIT — shrinking only `bounds` squashes the image; canvas extent and bounds both derive from the pin's box so they shrink together.
- * ⚠️ SAME ROOT CAUSE as the roads blob drawing off-centre: an extent snapped to a tile grid instead of the pin.
- */
 import { describe, expect, it } from "vitest";
 import { kmToDegSpan } from "../../../shared/kmGeo";
 
-/** The tile-grid box the imagery tiles cover, as the bake computes it. */
 function tileGridBox(lng: number, lat: number, radiusKm: number, z: number) {
 	const { dLat, dLng } = kmToDegSpan(radiusKm, lat);
 	const n = 2 ** z;
@@ -27,7 +22,7 @@ function tileGridBox(lng: number, lat: number, radiusKm: number, z: number) {
 	};
 }
 
-/** The crop the bake applies — must match satelliteImage.ts exactly. */
+/** Keep in sync with the crop in satelliteImage.ts. */
 function cropBox(lng: number, lat: number, radiusKm: number, z: number) {
 	const b = tileGridBox(lng, lat, radiusKm, z);
 	const span = kmToDegSpan(radiusKm, lat);
@@ -39,7 +34,6 @@ function cropBox(lng: number, lat: number, radiusKm: number, z: number) {
 	};
 }
 
-/** Metres between a box's centre and the pin. */
 function offsetM(
 	box: { w: number; e: number; s: number; n: number },
 	lng: number,
@@ -75,7 +69,6 @@ describe("the satellite photo is centred", () => {
 	});
 
 	it("the crop never expands past the fetched tiles", () => {
-		// Cropping outward would show blank canvas where no imagery was fetched.
 		for (const [lng, lat] of ANCHORS) {
 			const b = tileGridBox(lng, lat, 2, 14);
 			const c = cropBox(lng, lat, 2, 14);
@@ -87,7 +80,7 @@ describe("the satellite photo is centred", () => {
 	});
 
 	it("⛔ the bake crops the CANVAS, not just the stored bounds", async () => {
-		// ⚠️ shrinking bounds alone squashes the image — both must derive from the same crop box.
+		// Shrinking bounds alone squashes the image.
 		const { readFileSync } = await import("node:fs");
 		const { fileURLToPath } = await import("node:url");
 		const src = readFileSync(

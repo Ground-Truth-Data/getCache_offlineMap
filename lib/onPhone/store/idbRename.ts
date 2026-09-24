@@ -1,4 +1,3 @@
-/** ⚠️ Must NOT create the DB if it doesn't exist — `indexedDB.open(name)` with no version silently creates an empty, store-less DB (the bug that poisoned the renamed boxes). */
 async function dbExists(name: string): Promise<boolean> {
 	try {
 		if (typeof indexedDB.databases === "function") {
@@ -7,18 +6,17 @@ async function dbExists(name: string): Promise<boolean> {
 		}
 	} catch {
 	}
-	// No indexedDB.databases() support (older Firefox) — bias to true; the open below cannot create anyway.
+	// No databases() (older Firefox): bias to true; the open cannot create anyway.
 	return true;
 }
 
-/** A versionless open CREATES an empty, store-less database when the name is absent. Aborting the upgrade that creation would run leaves nothing behind, so a probe can never poison a name the real owner opens later. */
+/** A versionless open creates an empty, store-less database; aborting its upgrade leaves nothing behind. */
 function neverCreate(req: IDBOpenDBRequest): void {
 	req.onupgradeneeded = () => {
 		req.transaction?.abort();
 	};
 }
 
-/** Does a database of this name exist AND hold at least one record? */
 async function dbHasData(name: string, store: string): Promise<boolean> {
 	if (!(await dbExists(name))) return false;
 	return new Promise((resolve) => {
@@ -45,12 +43,10 @@ async function dbHasData(name: string, store: string): Promise<boolean> {
 			};
 		};
 		req.onerror = () => resolve(false);
-		// A blocked open (another tab holds it) — don't hang; treat as unknown.
 		req.onblocked = () => resolve(false);
 	});
 }
 
-/** Read every [key, value] pair out of a single-store, explicitly-keyed DB. */
 async function readAll(
 	name: string,
 	store: string,
@@ -89,7 +85,6 @@ async function readAll(
 	});
 }
 
-/** Write [key, value] pairs into a freshly-created single-store DB (version 1). */
 async function writeAll(
 	name: string,
 	store: string,
@@ -127,7 +122,7 @@ async function writeAll(
 	});
 }
 
-/** Delete `name` IF it exists but does NOT contain `store` (a poisoned shell). */
+/** Delete `name` if it exists without `store` (a poisoned shell). */
 async function deleteIfShell(name: string, store: string): Promise<void> {
 	if (!(await dbExists(name))) return;
 	const isShell = await new Promise<boolean>((resolve) => {
@@ -161,7 +156,7 @@ export async function migrateIdbDatabase(
 ): Promise<void> {
 	if (typeof indexedDB === "undefined") return;
 	try {
-		// Heals a poisoned SHELL (dest DB exists but lacks its store) — left alone it blocks the module from ever creating its store.
+		// A shell left alone blocks the module from ever creating its store.
 		await deleteIfShell(newName, store);
 
 		if (await dbHasData(newName, store)) return;
@@ -176,17 +171,11 @@ export async function migrateIdbDatabase(
 			);
 		}
 	} catch {
-		// Best-effort — never throw; a failed migration must not be able to break boot.
+		// A failed migration must not break boot.
 	}
 }
 
-/** Does any objectStore in this database hold at least one record?
- *
- *  Counting every store needs the TRANSACTION's own outcome, not just each
- *  request's: a transaction that aborts fires `onabort` and leaves its pending
- *  requests silent, so a promise resolved only from request callbacks never
- *  settles. Every await in this file is a one-time migration at boot, and a
- *  promise that cannot settle there stops the app from opening at all. */
+/** Settles on the transaction's outcome: an aborted transaction leaves its requests silent, and boot awaits this. */
 function anyStoreHasData(db: IDBDatabase): Promise<boolean> {
 	const names = Array.from(db.objectStoreNames);
 	if (names.length === 0) return Promise.resolve(false);
@@ -211,7 +200,6 @@ export async function cloneEntireIdbDatabase(
 ): Promise<void> {
 	if (typeof indexedDB === "undefined") return;
 
-	// Open WITHOUT creating — only open a name that already exists, or leave a store-less shell (the bug that broke renamed boxes).
 	const openPlain = async (name: string): Promise<IDBDatabase | null> => {
 		if (!(await dbExists(name))) return null;
 		return new Promise((resolve) => {
@@ -265,7 +253,6 @@ export async function cloneEntireIdbDatabase(
 				cur.onsuccess = () => {
 					const c = cur.result;
 					if (c) {
-						// Inline keyPath → key travels inside value; out-of-line key → must capture it explicitly.
 						dump.rows.push({ key: c.key, value: c.value });
 						c.continue();
 					}
@@ -300,7 +287,7 @@ export async function cloneEntireIdbDatabase(
 				for (const d of dumps) {
 					const os = tx.objectStore(d.name);
 					for (const { key, value } of d.rows) {
-						// keyPath store → key is inline, must NOT pass a key arg.
+						// A keyPath store refuses an explicit key arg.
 						if (d.keyPath != null) os.put(value);
 						else os.put(value, key);
 					}
@@ -326,20 +313,16 @@ export async function cloneEntireIdbDatabase(
 			);
 		}
 	} catch {
-		// Best-effort: never let a clone failure break boot.
+		// A clone failure must not break boot.
 	}
 }
 
-/** ⛔ Table names are the caller's, not this child's — never hardcode ReTreever-specific names here. */
-/** ⚠️ Must run before the persister loads — the schema no longer declares old names, so running late silently drops both tables. */
+/** Table names are the caller's; never hardcode host-specific names here. Must run before the persister loads. */
 export interface TableRename {
-	/** Old table id in the persister's `t` store. */
 	from: string;
-	/** New table id. A populated destination always wins. */
+	/** A populated destination always wins. */
 	to: string;
-	/** Optional per-row cell rename applied while moving THIS table. With
-	 *  `from === to` the table stays and only the cell is rewritten in place.
-	 *  `value` maps one old cell value to a new one (a renamed sentinel). */
+	/** Per-row cell rename while moving this table; with `from === to` only the cell is rewritten. */
 	cell?: {
 		from: string;
 		to: string;
@@ -396,7 +379,6 @@ export async function renameQaTablesInIdb(
 						return n;
 					};
 					if (from === to) {
-						// Same table: rewrite the record in place, never delete it.
 						if (moveCell() > 0) {
 							os.put({ k: to, v: rows });
 							moved++;
@@ -405,7 +387,6 @@ export async function renameQaTablesInIdb(
 					}
 					const existing = os.get(to);
 					existing.onsuccess = () => {
-						// A populated destination record wins (never clobber newer data) — drop the stale old-name record.
 						if (!existing.result) {
 							moveCell();
 							os.put({ k: to, v: rows });
@@ -426,6 +407,6 @@ export async function renameQaTablesInIdb(
 			);
 		}
 	} catch {
-		// Best-effort: never let the rename break boot — old records stay for retry.
+		// Old records stay for retry; the rename must not break boot.
 	}
 }

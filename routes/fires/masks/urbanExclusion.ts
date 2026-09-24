@@ -1,17 +1,12 @@
 /**
- * urbanExclusion.ts — no wildfires inside the city.
- *
- * A detection inside (or within URBAN_BUFFER_KM of) a mapped urban area is excluded, everywhere in the world, unconditionally.
- * ⚠️ Deliberately EXCLUDES rather than flags — the only place in this layer that hides data; city fires aren't a tree planter's business.
- * Pure geometry; polygons are injected. Loading lives in `urbanIndex.ts`.
+ * A detection inside or within URBAN_BUFFER_KM of a mapped urban area is EXCLUDED, not flagged:
+ * the only place in this layer that hides data. City fires are not a tree planter's business.
  */
 
 import { bboxInRegion, type RegionBox } from "../../../lib/shared/assetRegion";
 
-/** Ring of [lng, lat] pairs. */
 export type Ring = readonly (readonly number[])[];
 
-/** One urban area, pre-bounded so the hot path can reject fast. */
 export interface UrbanPoly {
 	readonly minX: number;
 	readonly minY: number;
@@ -20,7 +15,7 @@ export interface UrbanPoly {
 	readonly ring: Ring;
 }
 
-/** 5 km, measured — how far outside a mapped urban edge still counts as "city". Don't raise casually: every extra km eats real bush. */
+/** Every extra km eats real bush. */
 export const URBAN_BUFFER_KM = 5;
 
 const KM_PER_DEG_LAT = 110.57;
@@ -42,7 +37,7 @@ export function pointInRing(lng: number, lat: number, ring: Ring): boolean {
 	return inside;
 }
 
-/** Approximate km from a point to a ring's nearest VERTEX. */
+/** To the nearest VERTEX, not edge. */
 export function kmToRing(lng: number, lat: number, ring: Ring): number {
 	const kmPerDegLng = 111.32 * Math.cos((lat * Math.PI) / 180);
 	let best = Number.POSITIVE_INFINITY;
@@ -55,10 +50,9 @@ export function kmToRing(lng: number, lat: number, ring: Ring): number {
 	return best;
 }
 
-/** Prepare raw GeoJSON polygons for fast repeated testing. */
 export function prepareUrban(
 	features: readonly { geometry: { type: string; coordinates: unknown } }[],
-	/** Keep only polygons overlapping this window; null/omitted = keep the whole world — the correct fallback, since a wrongly windowed asset silently stops excluding city hotspots. */
+	/** null keeps the whole world: a wrongly windowed asset silently stops excluding city hotspots */
 	region: RegionBox | null = null,
 ): UrbanPoly[] {
 	const out: UrbanPoly[] = [];
@@ -82,7 +76,7 @@ export function prepareUrban(
 	return out;
 }
 
-/** Is this detection in (or near) a city? Returns false when there are no polygons — a missing asset must never hide fires. */
+/** False with no polygons: a missing asset must never hide fires. */
 export function isUrban(
 	lng: number,
 	lat: number,
@@ -90,7 +84,6 @@ export function isUrban(
 	bufferKm: number = URBAN_BUFFER_KM,
 ): boolean {
 	if (polys.length === 0) return false;
-	// Degrees of padding for the bbox pre-filter; a cheap reject before the exact test.
 	const padY = bufferKm / KM_PER_DEG_LAT;
 	const padX = padY / Math.max(0.15, Math.cos((lat * Math.PI) / 180));
 	for (const p of polys) {

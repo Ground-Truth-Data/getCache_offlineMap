@@ -9,7 +9,7 @@ import {
 	prepareUrban,
 } from "./urbanExclusion";
 
-// Populated by ./fetchAssets.sh; absent in a bare clone → the suite SKIPS.
+// Populated by ./fetchAssets.sh; absent in a bare clone, so the suite skips.
 const URBAN = fileURLToPath(
 	new URL("../../../static/mobileAssets/worldBase/base/min/urban.json", import.meta.url),
 );
@@ -85,7 +85,6 @@ describeAssets("it works OUTSIDE North America — this is a world rule", () => 
 
 describeAssets("the buffer", () => {
 	it("is 5 km — measured, not guessed", () => {
-		// Don't raise this buffer casually — every extra km eats real bush.
 		expect(URBAN_BUFFER_KM).toBe(5);
 	});
 
@@ -97,7 +96,6 @@ describeAssets("the buffer", () => {
 
 describe("fails toward SHOWING fires", () => {
 	it("excludes nothing when the asset failed to load", () => {
-		// A half-loaded asset must never suppress a real fire.
 		expect(isUrban(-123.12, 49.28, [], 5)).toBe(false);
 	});
 });
@@ -116,7 +114,6 @@ describe("geometry primitives", () => {
 	});
 
 	it("kmToRing measures a sane distance", () => {
-		// ~1 degree of latitude north of the top edge ≈ 110 km.
 		const d = kmToRing(0, 2, square);
 		expect(d).toBeGreaterThan(100);
 		expect(d).toBeLessThan(120);

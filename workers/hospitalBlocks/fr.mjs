@@ -1,19 +1,7 @@
-// France block — the national FINESS registry replaces every OSM row inside
-// the Natural Earth "France" feature (métropole + overseas départements).
-//
-// Facilities: Atlasanté « Référentiel Finess (t_finess) » on data.gouv.fr —
-// ships WGS84 coordinates (geoloc_4326_*) plus a precision field directly.
-// ER flag: « FINESS Extraction des autorisations d'activités de soin »,
-// activity 14 = Médecine d'urgence, joined by ET FINESS number — OR'd with
-// t_finess's own san_urg column, because the legacy stock file runs thin
-// (471 ETs vs 668 san_urg=OUI on 2026-09-01; both are the registry stating
-// "has urgences", so the row rules require carrying either through). The
-// legacy extraction's successor is the FINESS+ daily flow at
-// github.com/ansforge/finess. No authorisation anywhere → null (unknown),
-// never "no".
-//
-// Resource URLs are discovered through the data.gouv.fr dataset API each cold
-// run — the static URLs carry an upload timestamp and rot on refresh.
+// France: FINESS (t_finess on data.gouv.fr) replaces OSM inside the Natural
+// Earth "France" feature. ER = activity 14 in the authorisations file OR
+// san_urg=OUI; the authorisations file alone runs thin. Resource URLs are
+// discovered through the dataset API because the static ones rot on refresh.
 
 import {
 	BLOCKS_CACHE,
@@ -32,11 +20,7 @@ export async function bounds() {
 	return countryContains("France");
 }
 
-// FINESS categories kept: every categ_lib that reads as a hospital / inpatient
-// care establishment, mirroring OSM's amenity=hospital breadth. The niv2 1100
-// « Etablissements Hospitaliers » group also holds outpatient mental-health
-// structures (CMP, CATTP, ateliers/appartements thérapeutiques, postcure…) —
-// those are not hospitals and are not kept.
+// Inpatient establishments only; the 1100 group's outpatient mental-health structures are not hospitals.
 export const HOSPITAL_CATEGORIES = new Set([
 	"101", // Centre Hospitalier Régional (C.H.R.)
 	"106", // Centre hospitalier, ex Hôpital local
@@ -54,8 +38,7 @@ export const HOSPITAL_CATEGORIES = new Set([
 	"697", // Groupement de coopération sanitaire - Etablissement de santé (6 hold ER authorisations)
 ]);
 
-/** ET FINESS numbers holding activity 14 (Médecine d'urgence). The file is
- *  semicolon-separated, sectioned by a row-type first field; activity rows are
+/** ET FINESS numbers holding activity 14 (Médecine d'urgence); rows are
  *  `activiteoffresoin;<EJ finess>;<EJ name>;<activity code>;…;<ET finess>;…`. */
 export function parseActivity14(text) {
 	const out = new Set();
@@ -66,9 +49,7 @@ export function parseActivity14(text) {
 	return out;
 }
 
-/** t_finess CSV → canonical entries, filtered per the row rules. ERs sort
- *  first so a same-coordinate collapse in the bake keeps the ER row (286 rows
- *  only geolocate to the mairie, stacking a town's facilities on one point). */
+/** ERs sort first so a same-coordinate collapse in the bake keeps the ER row. */
 export function parseFiness(csvText, activity14) {
 	const rows = parseCsv(csvText);
 	const col = colIndex(rows[0], [

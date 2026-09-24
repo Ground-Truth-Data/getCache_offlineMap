@@ -1,48 +1,15 @@
 /**
- * WHAT THE PACK SHIPS — the one list of source-layers (and the feature kinds
- * inside each) that a blob tile carries. Worker and phone both read THIS file.
- *
- * ══════════════════════════════════════════════════════════════════════════
- *   roads (all) · water (lakes + rivers) · places (city…hamlet) · pois (hospital, camp_site)
- * ══════════════════════════════════════════════════════════════════════════
- *
- * ⛔ WHY THIS IS A CONTRACT, NOT A WORKER CONSTANT. The keep-set used to live
- * only in `workers/worker-local-dev/src/packBuilder.ts`, and the phone's debug report answered
- * "does the pack hold this layer?" with `t.key === "vector"` — a hard-coded
- * "roads only" that could never learn otherwise. MEASURED 28 Aug 2026 on a
- * live pack: ONE source layer, `roads`, so Labels / Places / Hospitals all
- * reported `arrived:false` and nobody could tell a Worker gap from a phone
- * bug. Now the Worker filters BY this table and the report reads FROM it, so
- * the two cannot disagree — the same "one source, re-exported" rule as
- * `grid.ts` and `blob.ts`.
- *
- * ⚠️ THE ATTRIBUTE KEY MATTERS. Protomaps v4 tags every `places` feature
- * `kind: "locality"` and puts city/town/village/hamlet in `kind_detail`. The
- * old allowlist matched `kind` against "city" — MEASURED across the 324 z13
- * tiles of one disc: 214 places features, ALL `kind:locality`, so every one
- * was dropped and the layer shipped as a husk (then dropped as empty). The
- * phone's town-label filter made the identical mistake, so even a pack that
- * carried places would have drawn none. Each rule names its key.
- *
- * ── MEASURED (raw z13 feature bytes, one 30 km disc, lat 43.4, 28 Aug 2026) ──
- *     roads        444,675 B  2,394 feats   (everything — the whole pack today)
- *     water         66,858 B  polygons kind=water + 574 B lake
- *     river/canal   16,973 B  170 line feats
- *     stream        50,041 B  295 line feats   ← DROPPED: a third of the water
- *                                                 bytes for creeks sub-pixel at
- *                                                 any zoom the disc is drawn at
- *     places         7,159 B  214 pts (179 hamlets)
- *     pois             174 B  3 hospitals + 4 camp sites
- * Shipping the rows kept below adds ~92 kB raw to a 445 kB roads-only pack.
+ * What the pack ships: the one list of source-layers and kinds a blob tile
+ * carries. The Worker filters BY this table and the phone's report reads FROM
+ * it, so the two cannot disagree. Each rule names its attribute key because
+ * Protomaps v4 files city/town/village/hamlet under `kind_detail`, not `kind`.
  */
 
-/** One source-layer the pack carries, and which of its features survive. */
 export interface PackLayerRule {
-    /** The feature attribute the allowlist is matched against. Omitted = `kind`. */
+    /** Attribute the allowlist matches. Omitted = `kind`. */
     readonly key?: string;
-    /** Feature values (of `key`) that ship. Omitted = the WHOLE layer ships. */
+    /** Omitted = the WHOLE layer ships. */
     readonly kinds?: readonly string[];
-    /** One line for a human reading a debug report. */
     readonly why: string;
 }
 
@@ -65,35 +32,19 @@ export const PACK_LAYERS: Readonly<Record<string, PackLayerRule>> = {
     },
 };
 
-/** The source-layer names the pack keeps, in table order. */
 export const PACK_LAYER_NAMES: readonly string[] = Object.keys(PACK_LAYERS);
 
 /**
- * THE SHALLOW (z6) TIER's keep-set — the pack's own layers with roads thinned
- * to highways and major roads. Worker-side only (the phone never filters the
- * shallow tile; it paints what arrives), but it lives in the contract so the
- * debug report and any future phone-side assertion read the same truth.
- *
- * The shallow wall is CONTEXT BETWEEN BLOBS: highways, major roads, water.
- * Small roads live only inside a pin's disc (Chris, 5 Sep 2026). A z6 tile
- * spans ~600 km; with minor_road in it the phone parsed a province of
- * driveways and the tile worker sat at 1.4 GB. The phone stopped drawing them
- * (wallStyle.ts MINOR_ROAD_Z) — this rule stops shipping them, so the bytes
- * never cross the wire or get decoded.
- *
- * ⛔ THE DISC TILE IS NOT THINNED HERE, AND CANNOT BE. The disc is ONE z8 tile
- * per cell overzoomed to every deeper level (blob.ts BLOB_ZOOMS) — the same
- * bytes paint z8 and z14, so dropping minor_road from it removes the small
- * roads at z11+ too. Thinning the disc below z11 at the source needs a second
- * disc tier in its own namespace and source, like `shallow/`; until then the
- * phone's minzoom gate is the only lever for disc zooms.
+ * The shallow (z6) tier's keep-set: small roads live only inside a pin's disc,
+ * because a z6 tile spans ~600 km and minor_road in it is a province of
+ * driveways. The disc tile cannot be thinned this way: it is ONE z8 tile
+ * overzoomed to every deeper level, so dropping minor_road there removes the
+ * small roads at z11+ too; the phone's minzoom gate is the only lever for it.
  */
 export const SHALLOW_LAYER_RULES: Readonly<Record<string, PackLayerRule>> = {
     ...PACK_LAYERS,
     roads: {
-        // ⛔ THE ARCHIVE'S OWN VOCABULARY — `major_road`, never the short
-        // "major": that matched NOTHING (there is no "medium" in Protomaps at
-        // all), so the built z6 shipped highways alone. Measured 2 Sep 2026.
+        // The archive's vocabulary is `major_road`; a short "major" matches nothing.
         kinds: ["highway", "major_road"],
         why: "highways + major roads only, in the ARCHIVE vocabulary (*_road) — small roads ship only inside the z8 disc",
     },
@@ -102,23 +53,18 @@ export const SHALLOW_LAYER_RULES: Readonly<Record<string, PackLayerRule>> = {
 /** One thing a style layer reads out of the pack. */
 export interface PackRead {
     readonly layer: string;
-    /** Attribute key the style filters on. Omitted = `kind`. */
+    /** Omitted = `kind`. */
     readonly key?: string;
-    /** Values the style filters for. Omitted = it reads the whole layer. */
+    /** Omitted = it reads the whole layer. */
     readonly kinds?: readonly string[];
 }
 
-/**
- * Does the pack carry what this read asks for? TRUE only when the layer ships
- * AND every kind the style filters on survives the Worker's allowlist under the
- * SAME attribute key — a style reading `kind:"city"` against a pack that keeps
- * `kind_detail:"city"` gets `false`, which is exactly the mismatch that hid.
- */
+/** TRUE only when every kind the style filters on survives the allowlist under the SAME attribute key. */
 export function packShips(read: PackRead): boolean {
     const rule = PACK_LAYERS[read.layer];
     if (!rule) return false;
     if (!rule.kinds) return true;
-    if (!read.kinds) return false; // style wants the whole layer, pack ships a subset
+    if (!read.kinds) return false;
     if ((read.key ?? "kind") !== (rule.key ?? "kind")) return false;
     return read.kinds.every((k) => rule.kinds!.includes(k));
 }

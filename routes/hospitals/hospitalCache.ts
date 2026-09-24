@@ -1,13 +1,7 @@
 /**
- * hospitalCache — the hospitals both maps paint from, and WHICH of them belong
- * on screen. Same law as fires: measured from the user's ANCHORS (live fix +
- * ground touched in 30 days), never the camera; past HOSPITAL_RADIUS_KM from
- * every anchor nothing renders. What we download is what we may draw, so the
- * radius is one number: the disc the Worker is asked for and the wall.
- *
- * One IndexedDB (`rt-hospital-cache`), one disc per anchor, the Worker's
- * FeatureCollection stored verbatim and parsed only on paint. Hospitals change
- * glacially, so a disc is fresh for a month.
+ * The hospitals both maps paint from. Same law as fires: measured from the user's anchors, never
+ * the camera; past HOSPITAL_RADIUS_KM from every anchor nothing renders. The radius is one number,
+ * the disc the Worker is asked for and the wall. One disc per anchor, stored verbatim, parsed on paint.
  */
 
 import { distKm } from "../fires/fireRelevance";
@@ -35,10 +29,7 @@ export function hospitalKey(lng: number, lat: number): string {
 	return `${lng.toFixed(4)},${lat.toFixed(4)}`;
 }
 
-// ── the two seams: discs landing, and a map asking for ground ──
-
 const landed = new Set<() => void>();
-/** A disc landed or left — the hospital layer repaints on this. */
 export function onHospitals(fn: () => void): () => void {
 	landed.add(fn);
 	return () => {
@@ -50,7 +41,7 @@ export function notifyHospitals(): void {
 }
 
 const wanted = new Set<(centres: readonly LngLat[]) => void>();
-/** The pass subscribes here; a map calls `wantHospitals` with its anchors and the pass fetches what is missing. Keeps the pages free of any Worker URL. */
+/** The pass subscribes here, so the pages stay free of any Worker URL. */
 export function onHospitalsWanted(
 	fn: (centres: readonly LngLat[]) => void,
 ): () => void {
@@ -62,8 +53,6 @@ export function onHospitalsWanted(
 export function wantHospitals(centres: readonly LngLat[]): void {
 	for (const fn of wanted) fn(centres);
 }
-
-// ── IndexedDB ──
 
 let dbp: Promise<IDBDatabase> | null = null;
 
@@ -136,7 +125,7 @@ export function isFresh(disc: HospitalDisc, now = Date.now()): boolean {
 	);
 }
 
-/** Is `at` already inside a fresh disc? A disc only counts when the whole wall around `at` fits inside it. */
+/** A disc only counts when the whole wall around `at` fits inside it. */
 export function coveredBy(
 	at: LngLat,
 	discs: readonly HospitalDisc[],
@@ -149,11 +138,7 @@ export function coveredBy(
 	);
 }
 
-/**
- * THE gate — every hospital the maps draw passes through here. Every cached
- * disc merged, a hospital counted once however many discs hold it, then only
- * those inside the wall of SOME anchor. No anchors → nothing.
- */
+/** The gate every drawn hospital passes through: discs merged, each hospital once, inside the wall of some anchor. */
 export async function hospitalCollection(
 	origins: readonly LngLat[],
 ): Promise<GeoJSON.FeatureCollection> {

@@ -1,103 +1,70 @@
 import { SvelteMap } from "svelte/reactivity";
 
 export interface WorkStat {
-	/** Label shown in the panel. */
 	name: string;
-	/** Completed runs since page load. */
 	runs: number;
-	/** ms of the most recent completed run. */
 	lastMs: number;
-	/** ms of the slowest run seen. */
 	maxMs: number;
-	/** Total ms spent in this operation since load — the "power bill". */
 	totalMs: number;
 	/** Wall-clock start of the in-flight run, or null when idle. */
 	startedAt: number | null;
 	/** Set by the caller when a fresh run was requested mid-flight. */
 	queued: boolean;
-	/** Runs that ended by throwing. */
 	errors: number;
-	/** Times the operation was TRIGGERED but returned at the door without doing anything (breaker latched, already running, nothing to do). */
+	/** Triggered but returned at the door (breaker latched, already running, nothing to do). */
 	skips: number;
-	/** Why the last skip happened, for the panel to show verbatim. */
 	lastSkip: string;
 }
 
-/** A payload handed across a boundary (setData to Mapbox worker, postMessage, cache write) — separate from WorkStat: this tracks bytes×frequency, not time. */
+/** A payload handed across a boundary: bytes × frequency, not time. */
 export interface PayloadStat {
-	/** Label shown in the panel — the source id. */
 	name: string;
-	/** Times a payload was handed over since page load. */
 	sends: number;
-	/** KB of the most recent payload. */
 	lastKb: number;
-	/** KB of the largest payload seen. */
 	maxKb: number;
-	/** Total KB pushed across the boundary since load — the re-parse bill. */
 	totalKb: number;
-	/** Features in the most recent payload, or -1 when not a FeatureCollection. */
+	/** -1 when not a FeatureCollection. */
 	lastFeatures: number;
 }
 
-// ⛔ NOT `$state(new Map())`. Svelte 5 proxies arrays and plain objects only —
-// a Map wrapped in $state is the SAME plain Map, so `stats.set()` in slot()
-// was invisible to every `$derived(workStats())`. MEASURED, 28 Aug 2026, on
-// the rapper tier: the meter mounts before the 20 s boot bake, `rows` was
-// computed once as `[]` and never again, so it said "no bake pass has run yet"
-// under a bake that had run three times. And inside a row the `{#if
-// r.startedAt !== null}` never re-checked while `now - r.startedAt` did, so a
-// finished run read `▶ 1787956047.3s` — `now - null`, the epoch.
-//
-// Two layers, both needed: the SvelteMap versions the KEY set (a new slot
-// re-runs `workStats()`), and each slot is a `$state` proxy so its counters
-// (`runs`, `startedAt`, `queued`…) are fine-grained reactive in the panel.
+// SvelteMap, not `$state(new Map())`: Svelte 5 does not proxy Map, so the
+// key set would never re-run `workStats()`. Each slot is its own $state proxy
+// so counters stay fine-grained reactive.
 const stats = new SvelteMap<string, WorkStat>();
 const payloads = new SvelteMap<string, PayloadStat>();
 
-/** CIRCUITS: idle=nothing asked (grey), transit=request out (yellow), ok=bytes on disk (STILL yellow — not on screen), drawn=features seen in the viewport (green), err=request broke (red). */
-/** ⛔ Probe reachability alone must never light green — only a real data call does; probes are used only to grey out / offer retry. */
-/** ⛔ `ok` is the DOWNLOAD boundary, not the paint boundary. Only paintWatch.ts (on map idle, counting rendered features) can turn a row green — a circuit writer never says "drawn". */
-/** Keys: worker:<tier> tile Worker per tier, sat satellite bake, pack roads/labels/places/hosp, fires hotspots — layers sharing a download share its circuit (see LayerToggle.feed in wallLegend.ts). */
+/** idle grey · transit yellow · ok = bytes on disk, STILL yellow · drawn = seen in the viewport, green · err red.
+ *  Only paintWatch.ts can turn a row green; a circuit writer never says "drawn", and a probe never lights anything. */
 export type CircuitState = "idle" | "transit" | "ok" | "drawn" | "err";
 export interface CircuitStat {
 	key: string;
-	/** Download-side state only — never `drawn`; see light(). */
 	state: Exclude<CircuitState, "drawn">;
 	/** Epoch ms of the last change. */
 	at: number;
-	/** What arrived, or why it broke — the call's own words. */
 	note: string;
-	/** Epoch ms the request went out (null = never asked since reset). */
 	askedAt: number | null;
-	/** Epoch ms the bytes landed on disk (null = not yet / broke). */
 	arrivedAt: number | null;
 }
 
-/** What the map ACTUALLY PAINTED for one layer row, counted on the last idle — the only witness that can turn a row green. */
+/** What the map ACTUALLY PAINTED for one layer row on the last idle. */
 export interface PaintStat {
 	key: string;
-	/** Rendered features (or mounted photos) of this layer inside the viewport. */
 	count: number;
-	/** Epoch ms of the idle that counted them. */
 	at: number;
-	/** Epoch ms of the first idle that saw count > 0 AFTER the feed's current arrivedAt — the "drawn" moment. Reset when a newer arrival lands. */
+	/** First idle that saw count > 0 AFTER the feed's current arrivedAt; reset when a newer arrival lands. */
 	drawnAt: number | null;
 }
 
-// SvelteMap, not $state(new Map()) — Svelte 5 doesn't proxy Map, so writes below REPLACE the entry rather than mutate in place.
 const circuits = new SvelteMap<string, CircuitStat>();
 const paints = new SvelteMap<string, PaintStat>();
 const probes = new SvelteMap<string, boolean>();
 const circuitListeners = new Set<(c: CircuitStat) => void>();
 
-/** Give-up horizon (Chris, 31 Aug 2026: "count down to 30 seconds and then stop…
- *  even 30 seconds is really long") — a transit still unanswered after this long is
- *  declared err so the counting badge STOPS; a late arrival still lands and un-errs
- *  the row. */
+/** A transit unanswered this long is declared err so the badge stops counting; a late arrival still un-errs it. */
 const GIVE_UP_MS = 30_000;
 const giveUpTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-/** focusArea: set on pin-drop tap, cleared by resetCircuits() — while set, notes tagged with a different area are ignored (prevents a background reconcile pin overwriting the one just dropped); untagged notes (fires, probes) always land. */
+/** While set, notes tagged with a different area are ignored so a background reconcile cannot overwrite the pin just dropped; untagged notes always land. */
 let focusArea: string | null = null;
 export function focusCircuits(areaKey: string | null): void {
 	focusArea = areaKey;
@@ -113,15 +80,10 @@ export function noteCircuit(
 ): void {
 	if (focusArea && areaKey && areaKey !== focusArea) return;
 	const prev = circuits.get(key);
-	// DELIVERED-LATCH: once bytes arrived since the user's ask (resetCircuits = the pin
-	// drop), only an err or the next reset may touch this circuit — background re-bakes
-	// restarting the stopwatch is what made "dl 8.9s" snap back to "dl 1.0s".
+	// Delivered latch: once bytes arrived, only an err or the next reset may touch this circuit, or background re-bakes restart the stopwatch.
 	if (prev?.arrivedAt != null && state !== "err") return;
-	// A repeat "asking…" while already yellow is the same ask — t0 stays.
+	// A repeat "asking…" while already yellow is the same ask; t0 stays.
 	if (state === "transit" && prev?.state === "transit") return;
-	// The write is IMMEDIATE: an event happens, its time is recorded, nothing else.
-	// (A 1s cosmetic "yellow hold" used to defer this write; the paint witness could
-	// only credit "seen" after it landed, so every fast download read exactly 1.0s.)
 	const now = Date.now();
 	const next: CircuitStat = {
 		key,
@@ -129,8 +91,7 @@ export function noteCircuit(
 		at: now,
 		note,
 		askedAt: state === "transit" ? now : (prev?.askedAt ?? null),
-		// A new ask forgets the old arrival (or the row stays green on last time's
-		// bytes); an err un-delivers, so a retry after a break can measure again.
+		// A new ask forgets the old arrival; an err un-delivers so a retry can measure again.
 		arrivedAt: state === "ok" ? now : null,
 	};
 	circuits.set(key, next);
@@ -147,21 +108,20 @@ export function noteCircuit(
 			}, GIVE_UP_MS),
 		);
 }
-/** Called on every circuit write — paintWatch uses it to force a repaint when bytes land, so an already-idle map still gets re-counted. */
+/** Called on every circuit write; paintWatch forces a repaint when bytes land so an already-idle map is re-counted. */
 export function subscribeCircuits(fn: (c: CircuitStat) => void): () => void {
 	circuitListeners.add(fn);
 	return () => circuitListeners.delete(fn);
 }
-/** One circuit, or undefined = never called (render grey). */
+/** undefined = never called (render grey). */
 export function circuitOf(key: string): CircuitStat | undefined {
 	return circuits.get(key);
 }
-/** Every circuit that has ever been called, insertion order. */
 export function allCircuits(): CircuitStat[] {
 	return [...circuits.values()];
 }
 
-/** Record what the map painted for one layer row on this idle. `drawnAt` latches on the first non-zero count and is dropped when the feed's arrival is newer than it — light() does the "after arrival" comparison against whichever circuit is asking. */
+/** `drawnAt` latches on the first non-zero count and drops when the feed's arrival is newer. */
 export function notePaint(layerKey: string, feedKey: string | undefined, count: number): void {
 	const now = Date.now();
 	const prev = paints.get(layerKey);
@@ -181,21 +141,17 @@ export function allPaints(): PaintStat[] {
 export interface Light {
 	state: CircuitState;
 	circuit?: CircuitStat;
-	/** The paint that earned `drawn`, when state is drawn. */
 	paint?: PaintStat;
-	/** ms from ask to bytes on disk. */
+	/** ask → bytes on disk */
 	transitMs: number | null;
-	/** ms from bytes on disk to first sighting in the viewport — the gap this whole model exists to expose. */
+	/** bytes on disk → first sighting in the viewport */
 	paintLagMs: number | null;
-	/** ms from ask to first sighting on SCREEN — the user's whole wait; null until drawn. */
+	/** ask → first sighting on screen; null until drawn */
 	seenMs: number | null;
-	/** true when bytes arrived and a LATER idle counted ZERO of this row's features —
-	 *  the wait may never end because the area holds none. The row should say so
-	 *  instead of counting forever (an eternal "dl 43s…" sends readers hunting a
-	 *  phantom rendering bug). */
+	/** Bytes arrived and a LATER idle counted ZERO of this row's features: the area holds none, so stop counting. */
 	settledEmpty?: boolean;
 }
-/** THE COLOUR OF A ROW. The feed's download state, promoted to `drawn` (green) ONLY when at least one of `layerKeys` was painted after the feed's current arrival. `ok` stays yellow: bytes on disk are not pixels on screen. */
+/** The colour of a row: `drawn` ONLY when one of `layerKeys` was painted after the feed's current arrival. */
 export function light(circuitKey: string | undefined, layerKeys: readonly string[]): Light {
 	const circuit = circuitKey ? circuits.get(circuitKey) : undefined;
 	if (!circuit) return { state: "idle", transitMs: null, paintLagMs: null, seenMs: null };
@@ -226,26 +182,25 @@ export function light(circuitKey: string | undefined, layerKeys: readonly string
 	};
 }
 
-/** Back to grey — called the moment a pin is dropped, so circles describe THIS ask, not the last one; a drop that triggers nothing stays grey ("not even asking"). */
+/** Back to grey on pin drop, so circles describe THIS ask. */
 export function resetCircuits(areaKey: string | null = null): void {
 	focusArea = areaKey;
-	// Stale give-up timers must die with the old ask, or one could red-out the NEXT ask early.
+	// Or a stale timer reds out the NEXT ask early.
 	for (const t of giveUpTimers.values()) clearTimeout(t);
 	giveUpTimers.clear();
 	circuits.clear();
 	paints.clear();
 }
 
-/** Probe result per tier — reachability for greying/retry ONLY. */
+/** Reachability, for greying/retry ONLY. */
 export function noteProbe(tier: string, ok: boolean): void {
 	probes.set(tier, ok);
 }
-/** undefined = not probed yet. */
 export function probeOf(tier: string): boolean | undefined {
 	return probes.get(tier);
 }
 
-/** The whole panel as one plain object, for pasting into a chat — window.__meter() (dev console) and the panel's "copy JSON" button both hand out exactly this. */
+/** The whole panel as one plain object; window.__meter() and the panel's "copy JSON" hand out exactly this. */
 export function meterSnapshot() {
 	return {
 		at: new Date().toISOString(),
@@ -271,12 +226,11 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
 	(window as unknown as { __meter: () => unknown }).__meter = meterSnapshot;
 }
 
-/** Every tracked payload, stable order (insertion). Read in the panel. */
 export function payloadStats(): PayloadStat[] {
 	return [...payloads.values()];
 }
 
-/** Record a payload handed across a boundary — takes an already-serialised string when available; do NOT re-stringify an object just to measure it, that reintroduces the allocation the strings-not-object-graphs rewrite deleted. Objects report 0 KB (features only). */
+/** Never re-stringify an object just to measure it; objects report 0 KB (features only). */
 export function notePayload(name: string, data: unknown): void {
 	let s = payloads.get(name);
 	if (!s) {
@@ -323,27 +277,25 @@ function slot(name: string): WorkStat {
 	return fresh;
 }
 
-/** Every tracked operation, stable order (insertion). Read in the panel. */
 export function workStats(): WorkStat[] {
 	return [...stats.values()];
 }
 
-/** Mark that a run was ASKED FOR while one was already in flight — a queued that stays permanently true means the op can't keep up with its trigger rate. */
+/** A queued that stays permanently true means the op can't keep up with its trigger rate. */
 export function noteQueued(name: string, queued = true): void {
 	slot(name).queued = queued;
 }
 
-/** Record that a trigger fired but declined to run, and why — call at EVERY early return or the panel can't tell "idle" from "refusing". */
+/** Call at EVERY early return or the panel can't tell "idle" from "refusing". */
 export function noteSkip(name: string, why: string): void {
 	const s = slot(name);
 	s.skips++;
 	s.lastSkip = why;
 }
 
-/** Time one run of fn — returns whatever fn returns; a throw is recorded and re-thrown, so wrapping never changes behaviour. */
+/** Time one run of fn; a throw is recorded and re-thrown. */
 export async function track<T>(name: string, fn: () => Promise<T>): Promise<T> {
 	const s = slot(name);
-	// Nested/overlapping runs share the slot; the LAST start wins for the "running for Ns" read-out.
 	s.startedAt = Date.now();
 	const t0 = performance.now();
 	try {
@@ -361,14 +313,14 @@ export async function track<T>(name: string, fn: () => Promise<T>): Promise<T> {
 	}
 }
 
-/** Manual bracket for code that can't wrap in a callback (own try/finally) — call at the start, call the returned fn in finally; same accounting as track(). */
+/** Manual bracket for code that can't wrap in a callback; call the returned fn in finally. */
 export function beginWork(name: string): (failed?: boolean) => void {
 	const s = slot(name);
 	s.startedAt = Date.now();
 	const t0 = performance.now();
 	let closed = false;
 	return (failed = false) => {
-		if (closed) return; // double-call must not double-count
+		if (closed) return;
 		closed = true;
 		const ms = performance.now() - t0;
 		s.runs++;
@@ -380,7 +332,7 @@ export function beginWork(name: string): (failed?: boolean) => void {
 	};
 }
 
-/** Zero the counters (the panel's Reset) — the in-flight run is untouched. */
+/** Zero the counters; the in-flight run is untouched. */
 export function resetWorkStats(): void {
 	for (const s of stats.values()) {
 		s.runs = 0;
@@ -391,7 +343,6 @@ export function resetWorkStats(): void {
 		s.skips = 0;
 		s.lastSkip = "";
 	}
-	// Payloads reset too — a Reset that zeroed only half the panel would describe two different time windows.
 	for (const p of payloads.values()) {
 		p.sends = 0;
 		p.lastKb = 0;
@@ -399,7 +350,7 @@ export function resetWorkStats(): void {
 		p.totalKb = 0;
 		p.lastFeatures = -1;
 	}
-	// Circuits go back to grey so the NEXT call is what you watch; probes stay — they're a fact about the network, not a counter.
+	// Probes stay: a fact about the network, not a counter.
 	circuits.clear();
 	paints.clear();
 }

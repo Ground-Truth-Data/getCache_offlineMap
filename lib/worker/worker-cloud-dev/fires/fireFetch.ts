@@ -1,5 +1,4 @@
-// ⚠️ failure MUST throw — an empty list on network error reads as "no fires near you".
-// ⚠️ NEVER let a fetch hang — lie-fi leaves a bare fetch pending forever; hence the AbortController timeout.
+// Failure must throw: an empty list reads as "no fires near you".
 
 import { guardPackDownload } from "../../../onPhone/store/downloadGuard";
 import { firesUrl } from "../tilesHost";
@@ -12,20 +11,11 @@ const FIRE_TIMEOUT_MS = 20_000;
 
 export interface FireFetchResult {
 	hotspots: FireHotspot[];
-	/** X-Fetched-At — ⚠️ not our clock, which overstates freshness by up to the cache TTL */
+	/** X-Fetched-At, not our clock, which overstates freshness by up to the cache TTL. */
 	fetchedAt: number;
-	/** X-Sources-Ok — satellites that reported, of three */
+	/** X-Sources-Ok: satellites that reported, of three. */
 	sourcesOk: number;
-	/**
-	 * Decompressed JSON size — NOT the download. The Worker serves this gzipped
-	 * (measured: 2.1 MB of JSON over fire-heavy ground arrives as ~156 KB), so
-	 * the transfer is roughly a thirteenth of this on dense ground and the
-	 * figure alone reads as a runaway fetch.
-	 * ⚠️ The wire size cannot be had here: a gzip-streamed response carries no
-	 * Content-Length, and the route exposes only X-Fetched-At / X-Sources-Ok
-	 * to JS. Report it from the Worker or not at all — don't re-add a client
-	 * read that silently returns null.
-	 */
+	/** Decompressed JSON size, ~13× the download; the wire size is unreadable here (gzip-streamed, no Content-Length). */
 	bytes: number;
 }
 
@@ -37,7 +27,6 @@ interface FireGeoJSON {
 			t?: number;
 			c?: string;
 			frp?: number;
-			/** pixel footprint km; day/night pass — optional */
 			px?: number;
 			dn?: string;
 		};
@@ -45,11 +34,9 @@ interface FireGeoJSON {
 }
 
 function toConfidence(raw: unknown): FireHotspot["c"] {
-	// ⚠️ unknown codes fall to the WEAKEST reading — never silently promoted.
 	return raw === "high" ? "high" : raw === "nominal" ? "nominal" : "low";
 }
 
-// ⚠️ guardPackDownload is the tile downloader's circuit-breaker too — a runaway bake loop can't hammer this endpoint.
 export async function fetchAreaFires(
 	lng: number,
 	lat: number,
@@ -103,7 +90,7 @@ export async function fetchAreaFires(
 			t,
 			c: toConfidence(f.properties?.c),
 			frp: Number.isFinite(f.properties?.frp) ? (f.properties?.frp as number) : 0,
-			// ⚠️ never default px to 0 — "unknown" and "0" are different claims.
+			// Never default px to 0: "unknown" and "0" are different claims.
 			...(Number.isFinite(f.properties?.px)
 				? { px: f.properties?.px as number }
 				: {}),
@@ -113,7 +100,6 @@ export async function fetchAreaFires(
 		});
 	}
 
-	// ⚠️ own clock only when the header is missing — a custom header reads null unless CORS-exposed.
 	const headerAt = Number(res.headers.get("X-Fetched-At"));
 	const sourcesOk = Number(res.headers.get("X-Sources-Ok"));
 

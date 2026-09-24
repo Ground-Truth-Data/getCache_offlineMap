@@ -1,12 +1,6 @@
 /**
- * The photo pass: one satellite photo per blob, baked by the old map's
- * bakeSatelliteImage into the shared photo store (gc-offlineSatellite).
- *
- * A blob in the wilderness is a green field with a pin on it — no road, no
- * river, no name for a hundred kilometres. The photo is the frame of
- * reference: forest, clearcut, lake, scree. It is small (BAKE_RADIUS_KM
- * around the blob's centre) and it is baked once; only the geometry stamp
- * (BAKE_VERSION) ever re-bakes it.
+ * The photo pass: one small satellite photo per blob, baked once. A blob in the wilderness
+ * is a green field with a pin on it; the photo is the frame of reference.
  */
 
 import {
@@ -25,13 +19,7 @@ import { passQueue } from "../../lib/shared/passQueue";
 import { onBlob } from "./blobService";
 import { notePhotoBytes, regionsSnapshot } from "./store";
 
-/** How long a dead or throttled imagery host pauses the pass. EOX backs off the same way the old map did. */
-/**
- * Photo narration — one line per photo fetched. Kept, never deleted: it is the
- * only per-photo account of what the pass pulled. Off unless
- * /app/offlinev10/debug turns it on, because a pan bakes ten of these and
- * buries everything else. A failure still warns unconditionally.
- */
+// The only per-photo account of what the pass pulled; off unless the debug route turns it on.
 let narrate = false;
 export function setPhotoNarration(on: boolean): void {
 	narrate = on;
@@ -42,7 +30,6 @@ function say(...args: unknown[]): void {
 
 export const PHOTO_RETRY_MS = 60_000;
 export { BAKE_RADIUS_KM as PHOTO_RADIUS_KM };
-/** What a photo is, for the docks and the JSON export: PHOTO_RADIUS_KM around the pin, from the first source whose box holds it. */
 export const PHOTO_SPEC = {
 	radiusKm: BAKE_RADIUS_KM,
 	sources: PHOTO_SOURCES.map(({ name, zoom, canvasPx }) => ({
@@ -54,16 +41,14 @@ export const PHOTO_SPEC = {
 
 export interface PhotoInfo {
 	bytes: number;
-	/** PhotoSource name; photos from before there was a choice are EOX */
 	source: string;
-	/** the zoom and canvas the photo was baked at, from the photo itself; the EOX row's for the oldest */
 	zoom: number;
 	canvasPx: number;
 }
 
 const WORLD = PHOTO_SOURCES[PHOTO_SOURCES.length - 1];
 
-/** Bytes, source, zoom and canvas per photo key — metadata only, never the pixels. The photos' total is reported to the tile store, which counts it against the budget. */
+/** Metadata per photo key, never the pixels; the total is reported to the tile store's budget. */
 export async function photoInfo(): Promise<Record<string, PhotoInfo>> {
 	const out: Record<string, PhotoInfo> = {};
 	let total = 0;
@@ -80,14 +65,12 @@ export async function photoInfo(): Promise<Record<string, PhotoInfo>> {
 	return out;
 }
 
-/** The source a pin here would get — for the dock row before its photo lands. */
 export function photoSourceFor(lng: number, lat: number): string {
 	return photoSourcesFor(lng, lat)[0].name;
 }
 
 const listeners = new Set<() => void>();
 
-/** Called after every photo that lands. */
 export function onPhoto(fn: () => void): () => void {
 	listeners.add(fn);
 	return () => {
@@ -101,12 +84,12 @@ export function photoKey(lng: number, lat: number): string {
 
 let pausedUntil = 0;
 
-/** Centres ride the queue as their photo keys — primitives, so a re-ask dedupes. */
+// Centres ride the queue as their photo keys: primitives, so a re-ask dedupes.
 const askQueue = passQueue<string>((keys) =>
 	pass(keys.map((k) => k.split(",").map(Number) as [number, number])),
 );
 
-/** Bake a photo for every centre without one. Returns how many landed. One pass at a time; a centre asked for mid-pass gets the next one — two pins dropped in the same second BOTH get their photo. */
+/** Bake a photo for every centre without one; returns how many landed. */
 export function bakePhotos(
 	centres: readonly [number, number][],
 ): Promise<number> {
@@ -129,7 +112,6 @@ async function pass(centres: readonly [number, number][]): Promise<number> {
 			);
 		}
 		if (!img) {
-			// No tiles came back: the host is down, throttled, or we are on lie-fi.
 			// The remaining centres would only fail against the same host.
 			pausedUntil = Date.now() + PHOTO_RETRY_MS;
 			console.warn(
@@ -146,7 +128,6 @@ async function pass(centres: readonly [number, number][]): Promise<number> {
 	return landed;
 }
 
-/** Every blob on disk that wants one — a follow-me blob has no pin and no photo. */
 export async function bakeAllPhotos(): Promise<number> {
 	const regions = await regionsSnapshot().regions;
 	return bakePhotos(
@@ -156,7 +137,6 @@ export async function bakeAllPhotos(): Promise<number> {
 	);
 }
 
-/** A blob's photo goes with the blob. */
 export async function dropPhoto(lng: number, lat: number): Promise<void> {
 	await deleteSatImage(photoKey(lng, lat));
 }
@@ -166,11 +146,9 @@ let stop: (() => void) | null = null;
 export function startPhotoService(): () => void {
 	if (stop)
 		return () => {
-			/* already running — the first start's stop owns shutdown */
+			/* the first start's stop owns shutdown */
 		};
 	const all = (): void => {
-		// Event-driven, no caller to reject to — see the fires and hospitals
-		// passes. Photos are best-effort; the next blob or online event retries.
 		bakeAllPhotos().catch((e) => {
 			console.warn("[photos] bake-all failed", e);
 		});

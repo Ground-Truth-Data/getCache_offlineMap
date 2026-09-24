@@ -1,10 +1,4 @@
-/**
- * A blob's name: the nearest town in its own tiles. Thirty rows of
- * coordinates are unreadable; "Oliver · 12 km" is not. The z10 anchor tiles
- * carry every locality the style would ever label inside the blob, down to
- * villages that only show at z11, so the name comes off the disk with no
- * request, offline, once, when the blob lands.
- */
+/** A blob's name: the nearest town in its own anchor tiles, read off the disk once when the blob lands. */
 
 import { VectorTile } from "@mapbox/vector-tile";
 import Pbf from "pbf";
@@ -34,16 +28,8 @@ function haversineKm(
 	return 2 * EARTH_R_KM * Math.asin(Math.sqrt(h));
 }
 
-/**
- * A name someone in the bush can actually read back over the radio.
- *
- * The tiles carry `name` in the LOCAL script — a blob near Addis reports its
- * town in Ge'ez, which is unreadable here and unrenderable in a Latin-only
- * glyph set, so it lands as tofu boxes. Latin `name` wins untouched (French,
- * and Cree written in Latin, are exactly what we want); only a name with no
- * Latin letters at all hands over to `name:en`, then `name:latin`. When
- * nothing readable exists the local name still beats no name.
- */
+// The local-script `name` wins when it has any Latin letters (French, Cree); otherwise
+// `name:en`, then `name:latin`, since the bundled glyph set renders Ge'ez as tofu.
 const HAS_LATIN = /\p{Script=Latin}/u;
 
 function readableName(props: Record<string, unknown>): string {
@@ -54,7 +40,6 @@ function readableName(props: Record<string, unknown>): string {
 	return str("name:en") || str("name:latin") || local;
 }
 
-/** Every locality in one tile, as lng/lat points. */
 export function localitiesIn(
 	data: Uint8Array,
 	z: number,
@@ -82,7 +67,7 @@ export function localitiesIn(
 	return out;
 }
 
-/** The nearest town to the pin among the blob's anchor tiles on disk; null when they hold none. */
+/** Null when the blob's tiles hold no town. */
 export async function nearestPlace(
 	range: Range,
 	lng: number,
@@ -101,7 +86,6 @@ export async function nearestPlace(
 	return best;
 }
 
-/** The row label: the town, and how far when it is not right here. */
 export function placeLabel(p: Place): string {
 	return p.km < 1.5 ? p.name : `${p.name} · ${Math.round(p.km)} km`;
 }

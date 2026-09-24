@@ -43,24 +43,22 @@ describe("fireArrival — the TTL bypass", () => {
 		expect(takeFireArrival("map")).toBe(true);
 	});
 
-	/** ⛔ the two readers must stay separate — one flag consumed by whoever asked first let the bake service's 20s tick eat the map's refresh before ensure() ran, so the disc under the user's eyes never updated. */
 	it("EACH reader gets its own — one path must never eat the other's", () => {
 		noteFireArrival();
 		expect(takeFireArrival("bake")).toBe(true);
-		expect(takeFireArrival("map")).toBe(true); // ← false in the broken version
+		expect(takeFireArrival("map")).toBe(true);
 	});
 
 	it("consuming one path does not arm or disarm the other", () => {
 		noteFireArrival();
 		expect(takeFireArrival("map")).toBe(true);
 		expect(takeFireArrival("map")).toBe(false);
-		expect(takeFireArrival("bake")).toBe(true); // still owed
+		expect(takeFireArrival("bake")).toBe(true);
 	});
 });
 
-/** ⛔ both fetch paths must arm from the same TTL — arming only one fixes one map and leaves the other showing stale dots (routes/fires/docs/FIRES.md). */
+// TODO: re-point `bake` and `layer` at the bake service and the fire render layer, then unskip.
 describe.skip("both fetch paths honour the arrival", () => {
-	// ⚠️ skipped for the v5 rebuild (v4 offline route/bake service deleted) — re-point at v5's route and unskip; do NOT delete, this guard caught real drift.
 	const bake = "";
 	const layer = "";
 
@@ -102,7 +100,6 @@ describe.skip("both fetch paths honour the arrival", () => {
 	});
 
 	it("the 20 s reconcile loop NEVER arms it", () => {
-		// guards against turning an hourly fetch into a permanent poll — only the three arrival moments may arm; never the interval.
 		const arms = [...bake.matchAll(/noteFireArrival\(\)/g)].length;
 		expect(arms).toBe(3); // app open, visibilitychange, online
 		expect(bake).not.toMatch(/setInterval\([^)]*noteFireArrival/);
@@ -113,7 +110,6 @@ describe.skip("both fetch paths honour the arrival", () => {
 	});
 });
 
-/** ⛔ peek vs consume — ensure() has THREE racing call sites; consuming on first read marked the debt paid before any of them actually fetched, so the phone sat on 6h-old data. */
 describe("peek vs settle — the debt survives until a fetch happens", () => {
 	it("peek does NOT consume", () => {
 		noteFireArrival();

@@ -1,24 +1,14 @@
-/**
- * How much offline map a phone may hold, tiles and photos together. The
- * browser's own quota is bigger and not ours to spend; a phone that fills
- * itself with maps has no room for the day's photos. Enforced at the tile
- * store's write boundary (putTiles), so no download path can slip past it.
- */
+/** How much offline map a phone may hold, tiles and photos together; enforced at the tile store's write boundary. */
 
 export const BUDGET_MB = 1024;
-/**
- * How many blobs a phone may hold. A second wall beside the megabytes: a
- * thousand small blobs cost little disk but make the dock unreadable and the
- * coverage geometry slow, and a phone carrying more places than a person
- * visits is holding someone else's map.
- */
+/** A second wall: a thousand small blobs cost little disk but make the coverage geometry slow. */
 export const BLOB_COUNT_CAP = 1000;
-/** The dev CONFIG card cycles through these so the wall can be hit in minutes, not after a gigabyte. */
+/** The dev CONFIG card cycles through these so the wall can be hit in minutes. */
 export const BUDGET_PRESETS_MB = [BUDGET_MB, 256, 64, 16] as const;
 
 const KEY = "gc-offlineV10:budgetMb";
 
-/** The budget in force. A shipped build never reads the override: import.meta.env.DEV is compile-time, so the branch is gone on a phone. */
+/** A shipped build never reads the override: the DEV branch is compiled away. */
 export function budgetMb(): number {
 	if (!import.meta.env.DEV) return BUDGET_MB;
 	try {
@@ -34,12 +24,7 @@ export function budgetBytes(): number {
 	return budgetMb() * 1048576;
 }
 
-/**
- * What one blob costs on disk: its roads AND its photo. A photo often
- * outweighs the roads it covers, so a figure that counts tiles alone
- * understates the row — and the row's own sub-lines, which do show both,
- * then visibly fail to add up to their own header.
- */
+/** Roads AND photo: a photo often outweighs the roads it covers. */
 export function blobBytes(tileBytes: number, photoBytes = 0): number {
 	return tileBytes + photoBytes;
 }
@@ -56,10 +41,8 @@ export function setBudgetMb(mb: number): void {
 
 export class BudgetError extends Error {
 	constructor(
-		/** bytes on disk, tiles and photos */
 		public readonly used: number,
 		public readonly budget: number,
-		/** the bytes that would have crossed the line */
 		public readonly adding: number,
 	) {
 		super(

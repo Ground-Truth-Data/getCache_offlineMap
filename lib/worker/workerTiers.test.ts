@@ -1,4 +1,3 @@
-// ⚠️ neither host is baked in — both are injected at boot; a hardcoded origin would bill whoever owns it.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 beforeEach(() => {
@@ -38,10 +37,8 @@ describe("worker tiers", () => {
 			setItem: (k: string, v: string) => void store.set(k, v),
 		});
 		const m = await import("./worker-local-dev/tilesHost");
-		// no override written → the cloud-dev default holds, even with every worker down
 		expect(m.getWorkerTarget()).toBe(m.DEFAULT_TARGET);
-		// ⛔ the old `{ fallback: true }` second parameter must stay deleted — it let boot
-		// code auto-select production, which billed the maintainer's R2 on fresh installs
+		// No second parameter: a machine fallback would auto-select production.
 		expect(m.setWorkerTarget.length).toBe(1);
 		m.setWorkerTarget("worker-cloud-dev");
 		expect(store.get("rt_worker_target")).toBe("worker-cloud-dev");
@@ -55,7 +52,6 @@ describe("worker tiers", () => {
 			import("./worker-cloud-dev/tilesHost"),
 			import("./worker-cloud-prod/tilesHost"),
 		]);
-		// ⛔ all three copies must export the same tier surface — a tier added to only one is the drift this catches.
 		expect(Object.keys(a).sort()).toEqual(Object.keys(b).sort());
 		expect(Object.keys(a).sort()).toEqual(Object.keys(c).sort());
 	});

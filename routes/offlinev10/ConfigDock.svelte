@@ -1,9 +1,7 @@
 <script lang="ts">
 /**
- * CONFIG — which tiles Worker blobs come from, read-through, and one switch
- * per pyramid layer. THE CIRCLE: grey = never asked · yellow = asked, or on
- * disk but not on screen · green = painted in the viewport after the bytes
- * landed · red = broke. The dl label is a stopwatch, ask → seen.
+ * Which tiles Worker blobs come from, read-through, and one switch per pyramid layer.
+ * The circle: grey never asked · yellow asked or on disk · green painted in the viewport · red broke.
  */
 import { onMount } from "svelte";
 import { type WorkerTarget, hostFor, probeTarget } from "../../lib/worker/worker-local-dev/tilesHost";
@@ -42,7 +40,6 @@ let {
 	dlMs?: number | null;
 	layers?: LayerRow[];
 	onLayer: (key: string) => void;
-	/** the budget in force; a tap cycles the presets so the wall can be hit in minutes */
 	budgetMb?: number;
 	onBudget: (mb: number) => void;
 } = $props();
@@ -153,18 +150,17 @@ onMount(() => {
 </div>
 
 <style>
-/* Shell + title come from devCard.css (.dev-card) — same look as CURRENT SESSION and OFFLINE BLOBS. */
 .cfg-title { font-family: "Inter", -apple-system, sans-serif; font-weight: 800; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 10px 0 6px; }
 .cfg-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; background: none; border: 0; color: var(--muted); font: inherit; padding: 3px 0; cursor: pointer; text-align: left; }
 .cfg-label { flex: 0 0 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cfg-row.sel { color: #ffd24a; font-weight: 600; }
-/* Dimmed but CLICKABLE — the click is the retry. */
+/* still clickable: the click is the retry */
 .cfg-row.dead { opacity: 0.55; }
 .cfg-hint { flex: 1 1 auto; min-width: 0; margin-left: 6px; color: var(--muted); font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cfg-row.sel .cfg-hint { color: var(--muted); }
 .dead-tag { flex: 1 1 auto; min-width: 0; margin-left: auto; color: var(--muted); font-size: 0.85em; text-align: right; white-space: nowrap; }
 .dl { flex: 0 0 auto; margin-left: auto; color: var(--muted); font-size: 0.85em; white-space: nowrap; }
-/* THE CIRCLE — muted grey (not black) so "never asked" doesn't read as failure; `ok` is the SAME yellow as transit: to the user it is still "not there yet". */
+/* `ok` is the same yellow as transit: to the user it is still "not there yet" */
 .circ { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; margin-left: auto; margin-right: 8px; background: #4a4a4a; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }
 .circ.blank { background: transparent; box-shadow: none; }
 .circ.ok { background: #e0b428; }

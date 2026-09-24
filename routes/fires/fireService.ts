@@ -1,15 +1,7 @@
 /**
- * The fire pass, app-wide. Hotspots go stale by the hour, tiles never do, so
- * the pass is its own thing: every centre the app hands over (each blob's)
- * gets a FIRE_RADIUS_KM fire disc from the tiles Worker, kept in the fire
- * cache the flame layer paints from. A FRESH disc within FIRE_TRIGGER_KM
- * already covers a centre; the cache's TTL says when it has gone stale. The
- * pass runs when the app says a centre landed, on coming back online, and on
- * coming back to the front — never on a clock, so a backgrounded app costs
- * nothing. A dead feed pauses the pass for a minute, never the map.
- *
- * The Worker's address comes from tilesHost.ts, configured by the app at boot
- * — this package names no host of its own.
+ * The fire pass, app-wide: every centre the app hands over gets a fire disc from the tiles Worker.
+ * Runs when a centre lands, on coming back online and on coming to the front, never on a clock.
+ * A dead feed pauses the pass for a minute, never the map.
  */
 
 import { FIRE_RADIUS_KM } from "../../lib/shared/fireContract";
@@ -34,7 +26,6 @@ type LngLat = readonly [number, number];
 
 const listeners = new Set<() => void>();
 
-/** Fires landed in the cache — the flame layer repaints on this. */
 export function onFires(fn: () => void): () => void {
     listeners.add(fn);
     return () => {
@@ -42,19 +33,18 @@ export function onFires(fn: () => void): () => void {
     };
 }
 
-/** The cache's own key shape for an area centre. */
 export function fireKey(lng: number, lat: number): string {
     return `${lng.toFixed(4)},${lat.toFixed(4)}`;
 }
 
 let pausedUntil = 0;
 
-/** Centres ride the queue as their cache keys — primitives, so a re-ask dedupes. */
+// Centres ride the queue as their cache keys: primitives, so a re-ask dedupes.
 const askQueue = passQueue<string>((keys) =>
     pass(keys.map((k) => k.split(",").map(Number) as unknown as LngLat)),
 );
 
-/** Fetch a fire disc for every centre that no fresh disc covers. Returns how many discs landed. One pass at a time; a centre asked for mid-pass gets the next one. */
+/** Fetch a fire disc for every centre no fresh disc covers; returns how many landed. */
 export function refreshFires(centres: readonly LngLat[]): Promise<number> {
     return askQueue(centres.map(([lng, lat]) => fireKey(lng, lat)));
 }
@@ -108,24 +98,16 @@ async function pass(centres: readonly LngLat[]): Promise<number> {
 interface FireFetchLog {
     at: string;
     hotspots: number;
-    /** Decompressed JSON; the download is ~1/13th of it. See fireFetch.ts. */
+    /** decompressed; the download is ~1/13th of it */
     jsonKB: number;
     satellites: string;
 }
 
-/**
- * ONE line per pass, not per disc. Every disc printing its own line made a
- * quiet pass indistinguishable from a runaway one — the thirty-three-line
- * burst that exposed the duplicate-disc bug read exactly like normal traffic.
- * The per-disc detail stays, one fold down, for when a pass looks wrong.
- */
+/** One line per pass, so a quiet pass and a runaway one look different. */
 function reportPass(fetched: readonly FireFetchLog[]): void {
     if (fetched.length === 0) return;
     const hotspots = fetched.reduce((n, f) => n + f.hotspots, 0);
-    // Says "uncompressed" because that is all this side can honestly measure —
-    // the response is gzipped and a streamed one carries no Content-Length, so
-    // the download is roughly a thirteenth of the number printed. Naming it
-    // stops the figure being read as the cost.
+    // A streamed gzip response carries no Content-Length, so uncompressed is all this side can measure.
     const kb = fetched.reduce((n, f) => n + f.jsonKB, 0);
     const degraded = fetched.filter((f) => f.satellites !== "3/3").length;
     console.groupCollapsed(
@@ -136,31 +118,27 @@ function reportPass(fetched: readonly FireFetchLog[]): void {
 }
 
 export interface FireServiceOptions {
-    /** Every centre that wants a disc — read at every run. */
+    /** every centre that wants a disc, read at every run */
     centres: () => Promise<readonly LngLat[]> | readonly LngLat[];
-    /** Where the user has a stake — live fix, pin anchors. Ground far from these earns no fire disc. Omitted → every centre is fetched, as before. */
+    /** where the user has a stake; ground far from these earns no disc. Omitted → every centre is fetched */
     here?: () => readonly LngLat[];
-    /** The app's own signal that a centre landed; call `refresh` with it (or with nothing for all), return the unsubscribe. */
+    /** the app's signal that a centre landed; call `refresh` with it (or nothing for all), return the unsubscribe */
     onCentresChanged?: (
         refresh: (centres?: readonly LngLat[]) => void,
     ) => () => void;
 }
 
 let stop: (() => void) | null = null;
-/** Where the user actually is. Unset (or empty) means unknown — every centre then passes, see fireCentresWorthFetching. */
 let here: (() => readonly LngLat[]) | null = null;
 
 export function startFireService(opts: FireServiceOptions): () => void {
     if (stop)
         return () => {
-            /* already running — the first start's stop owns shutdown */
+            /* the first start's stop owns shutdown */
         };
     here = opts.here ?? null;
     const refresh = (centres?: readonly LngLat[]): void => {
-        // Fired from timers, visibility and online events — there is no caller
-        // to hand a rejection to, so `void` alone leaves an unhandled one when
-        // the Worker is unreachable. Fires are best-effort: log and let the
-        // next tick retry.
+        // Fired from events with no caller to hand a rejection to.
         (centres
             ? refreshFires(centres)
             : Promise.resolve(opts.centres()).then(refreshFires)
@@ -169,14 +147,7 @@ export function startFireService(opts: FireServiceOptions): () => void {
         });
     };
     const all = (): void => refresh();
-    // ⛔ NO TIMER. The pass runs when the user LOOKS, never on a clock: a
-    // backgrounded app is the normal state of a phone app — people switch
-    // away, they do not quit — and an interval there downloads all day for
-    // nobody. A left-open week cost ~40 MB against ~1 MB for the same use.
-    //
-    // Nothing is lost: coming back to the app fires `visible`, and the cache's
-    // TTL decides whether that look actually fetches, so a user checking ten
-    // times an hour still downloads once.
+    // No timer: a backgrounded app is a phone's normal state, and an interval there downloads all day for nobody.
     const visible = (): void => {
         if (document.visibilityState === "visible") all();
     };

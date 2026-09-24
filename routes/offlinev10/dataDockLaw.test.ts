@@ -1,11 +1,6 @@
 /**
- * THE METER LAW. `startDataMeter` counts the entries already in the buffer the
- * moment it is called, so calling it from inside an `$effect` writes reactive
- * state that the same component reads — `effect_update_depth_exceeded`, an
- * error boundary, and a black page. Only /app/offlinev10/debug mounts DataDock,
- * which is why the plain map survived it.
- *
- * Read as source, because the bug is WHERE the call sits, not what it returns.
+ * `startDataMeter` writes reactive state the dock reads, so from inside an `$effect` it loops
+ * and takes the page down. Read as source, because the bug is WHERE the call sits.
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
@@ -15,7 +10,6 @@ const DOCK = read("./DataDock.svelte");
 
 describe("THE METER LAW", () => {
 	it("never starts the meter from inside an $effect", () => {
-		// `$effect(() => startDataMeter())` — the exact shape that looped.
 		expect(DOCK).not.toMatch(/\$effect\s*\(\s*\(\s*\)\s*=>\s*startDataMeter/);
 	});
 
@@ -25,7 +19,6 @@ describe("THE METER LAW", () => {
 	});
 
 	it("stops the meter when the dock goes, so a remount does not stack observers", () => {
-		// onMount's return is the teardown; without it a second visit leaks.
 		expect(DOCK).toMatch(/onMount\s*\(\s*\(\s*\)\s*=>\s*startDataMeter\s*\(\s*\)\s*\)/);
 	});
 });

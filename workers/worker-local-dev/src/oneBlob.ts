@@ -2,63 +2,34 @@ import { readVarint, skipField, unzigzag, writeVarint } from "./mvtBytes";
 import { BLOB_TILE_Z } from "./grid";
 import type { TileId } from "./geo";
 
-/**
- * The blob tile's coordinate grid.
- *
- * ⛔ NOT 4096. Over a 60 km span that would be ~15 m per unit and roads would
- * visibly stair-step when zoomed in. 16384 gives ~3.7 m. Raising it further
- * pushes coordinates into wider varints for diminishing visual gain.
- */
+/** Not 4096: over a 60 km span that is ~15 m per unit and roads stair-step; 16384 gives ~3.7 m. */
 export const BLOB_EXTENT = 16384;
 
-/** Re-exported so existing importers keep working; defined in grid.ts. */
 export { BLOB_TILE_Z };
 
-/** Zigzag DECODE. */
 function zz(v: number): number {
 	return (v >>> 1) ^ -(v & 1);
 }
 
-/** Web-mercator normalised X (0..1) for a longitude. */
 function mercX(lng: number): number {
 	return (lng + 180) / 360;
 }
 
-/** Web-mercator normalised Y (0..1) for a latitude. */
 function mercY(lat: number): number {
 	const s = Math.sin((lat * Math.PI) / 180);
 	return 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI);
 }
 
-/**
- * The blob's own frame: the world-normalised box the single tile covers.
- *
- * ⛔ THERE IS NO CENTRE AND NO RADIUS HERE ANY MORE. The blob is a GRID CELL —
- * a square, snapped to the world (see grid.ts) — so the frame is just its box.
- * The disc's `cx`/`cy`/`r` are deleted along with the clip that used them:
- * a square needs no clip, because the cell edge IS the boundary and source
- * tiles are already squares.
- */
+/** Normalised mercator bounds of the blob tile. */
 export interface BlobFrame {
-	/** Normalised mercator bounds of the blob tile. */
 	x0: number;
 	y0: number;
 	x1: number;
 	y1: number;
 }
 
-/**
- * The frame for ONE SLIPPY TILE — the world-normalised box it covers.
- *
- * The blob's geometry is remapped into this, so BLOB_EXTENT units span exactly
- * that tile. At z10 (~27 km) that is ~1.7 m per unit — finer than the old disc's
- * 3.7 m, because the frame got smaller while the extent stayed put.
- *
- * ⛔ IT MUST BE THE TILE'S OWN BOX, NOT THE CELL'S. A cell covers several z10
- * addresses; framing all of them to the cell would draw the cell's roads once
- * per address, each offset by the difference between the two boxes. Each tile
- * carries only its own ground.
- */
+/** The frame must be the tile's OWN box, never the cell's: a cell spans several
+ *  addresses, and framing them all to the cell draws its roads once per address, offset. */
 export function boxFrame(box: {
 	w: number;
 	s: number;
@@ -83,29 +54,20 @@ export function tileFrame(tile: TileId): BlobFrame {
 	};
 }
 
-/** One source tile plus the bounds it covers, ready to be re-homed. */
 export interface SourceTile {
 	tile: TileId;
 	data: Uint8Array;
 }
 
-/**
- * A layer split into its parts.
- *
- * ⛔ `keys` and `values` MUST be parsed, not copied. A feature's `tags` are
- * PAIRS OF INDICES into its OWN tile's keys/values tables. Merging tiles while
- * keeping only the first tile's tables makes every other tile's features point
- * at the wrong strings — MEASURED on screen: an interstate highway rendered as
- * a foot trail, because its `kind` index resolved to "path" in the surviving
- * table. Silent, and it corrupts meaning rather than geometry.
- */
+// `keys`/`values` are parsed, not copied: a feature's tags index its OWN tile's
+// tables, so merging on the first tile's tables renders a highway as a foot trail.
 interface LayerParts {
 	name: string;
-	/** Layer fields that are NOT name/keys/values/features/extent (e.g. version). */
+	/** Layer fields other than name/keys/values/features/extent (e.g. version). */
 	header: number[];
 	features: Uint8Array[];
 	keys: string[];
-	/** Raw encoded Value messages, kept verbatim — they may be any scalar type. */
+	/** Raw encoded Value messages; any scalar type. */
 	values: Uint8Array[];
 	extent: number;
 }
@@ -155,8 +117,6 @@ function splitLayer(layer: Uint8Array): LayerParts {
 		if (field === 5 && wire === 0) {
 			const [v, after] = readVarint(layer, p);
 			extent = v;
-			// The merged layer declares BLOB_EXTENT, so the child's own extent is
-			// dropped here and re-emitted once by `buildBlobTile`.
 			p = after;
 			continue;
 		}
@@ -167,18 +127,13 @@ function splitLayer(layer: Uint8Array): LayerParts {
 	return { name, header, features, keys, values, extent };
 }
 
-/** A Value message's bytes as a lookup key, so identical values dedupe. */
 function valueId(v: Uint8Array): string {
 	let s = "";
 	for (let i = 0; i < v.length; i++) s += String.fromCharCode(v[i]);
 	return s;
 }
 
-/**
- * Rewrite one feature's `tags` (field 2) from the source layer's tables into
- * the merged layer's tables. Geometry and everything else are untouched here —
- * this runs BEFORE the geometry remap, on the raw feature bytes.
- */
+/** Rewrite one feature's `tags` from the source layer's tables into the merged layer's. */
 function remapTags(
 	feature: Uint8Array,
 	keyMap: number[],
@@ -218,7 +173,6 @@ function remapTags(
 	return new Uint8Array(out);
 }
 
-/** Split a tile into its layers. */
 function splitTile(data: Uint8Array): Uint8Array[] {
 	const layers: Uint8Array[] = [];
 	let p = 0;
@@ -239,24 +193,14 @@ function splitTile(data: Uint8Array): Uint8Array[] {
 	return layers;
 }
 
-/**
- * Re-home one feature's geometry from its source tile into the blob's grid, and
- * clip it to the disc in the same pass.
- *
- * Returns null when nothing of the feature lands inside the circle — that is
- * the ONE clip in this design, replacing the per-tile clip the pyramid needed.
- *
- * Never decodes to GeoJSON: it walks the packed varint stream, maps each
- * coordinate, and writes it straight back.
- */
+/** Re-home one feature's geometry into the blob's grid and trim it to the cell in
+ *  one pass over the packed varints; null when nothing lands inside. */
 function remapAndClip(
 	geom: Uint8Array,
 	src: { x0: number; y0: number; sx: number; sy: number; extent: number },
 	frame: BlobFrame,
-	/** Optional sink for the SAME runs, in blob-grid units — used to draw the
-	 *  zoom-out picture without walking the geometry a second time. */
+	/** Sink for the same runs in blob-grid units, so the zoom-out picture needs no second walk. */
 	collect?: Array<Array<[number, number]>>,
-	/** MVT GeomType: 1 POINT, 2 LINESTRING, 3 POLYGON. Default 2. */
 	type: GeomType = 2,
 ): number[] | null {
 	const lines: Array<Array<[number, number]>> = [];
@@ -264,14 +208,8 @@ function remapAndClip(
 	let x = 0;
 	let y = 0;
 	let p = 0;
-	// ⛔ POINTS ARE NOT LINES. This walker was written for roads: a run of
-	// vertices, kept if it has two or more. A POI or a place label is ONE
-	// MoveTo with no LineTo, so `cur.length` is 1, nothing is pushed, and the
-	// feature returns null — every hospital, camp site and town name in every
-	// pack was dropped HERE, after the keep-set had already let it through,
-	// and the emptied layer was then discarded as a "husk". MEASURED 28 Aug
-	// 2026: the live blob had one source layer, `roads`, with `pois` in the
-	// keep-set the whole time. A point is kept iff it lies inside the cell.
+	// A point is one MoveTo with no LineTo; the line walker below would drop it
+	// as a one-vertex run. Kept iff it lies inside the cell.
 	if (type === 1) {
 		const pts: Array<[number, number]> = [];
 		while (p < geom.length) {
@@ -279,7 +217,7 @@ function remapAndClip(
 			[cmd, p] = readVarint(geom, p);
 			const id = cmd & 0x7;
 			const count = cmd >> 3;
-			if (id !== 1) break; // a point geometry is MoveTo only
+			if (id !== 1) break;
 			for (let i = 0; i < count && p < geom.length; i++) {
 				let dx: number;
 				let dy: number;
@@ -310,7 +248,7 @@ function remapAndClip(
 		[cmd, p] = readVarint(geom, p);
 		const id = cmd & 0x7;
 		const count = cmd >> 3;
-		if (id === 7) continue; // ClosePath — rings are re-closed on output below
+		if (id === 7) continue; // ClosePath: rings are re-closed on output
 		for (let i = 0; i < count && p < geom.length; i++) {
 			let dx: number;
 			let dy: number;
@@ -318,7 +256,6 @@ function remapAndClip(
 			[dy, p] = readVarint(geom, p);
 			x += zz(dx);
 			y += zz(dy);
-			// source tile units → world normalised → blob grid units
 			const wx = src.x0 + (x / src.extent) * src.sx;
 			const wy = src.y0 + (y / src.extent) * src.sy;
 			const bx = Math.round(((wx - frame.x0) / (frame.x1 - frame.x0)) * BLOB_EXTENT);
@@ -334,12 +271,9 @@ function remapAndClip(
 	if (cur.length > 1) lines.push(cur);
 	if (!lines.length) return null;
 
-	// ⛔ POLYGONS ARE NOT TRIMMED. The edge trim below splits a run at the cell
-	// edge, which turns a lake's ring into open arcs — a fill layer then closes
-	// each arc on itself and paints slivers. A ring is kept WHOLE iff any vertex
-	// lies in the cell (whole tiles, always a superset — the same rule as the
-	// pack itself), re-emitted with its ClosePath, winding preserved (the frame
-	// mapping is a positive scale on both axes).
+	// Polygons are never trimmed: splitting a ring at the cell edge leaves open
+	// arcs that a fill layer closes on themselves. A ring is kept whole iff any
+	// vertex lies in the cell.
 	if (type === 3) {
 		const inCellPt = (pt: [number, number]): boolean =>
 			pt[0] >= 0 && pt[0] <= BLOB_EXTENT && pt[1] >= 0 && pt[1] <= BLOB_EXTENT;
@@ -359,26 +293,14 @@ function remapAndClip(
 				px = ring[i][0];
 				py = ring[i][1];
 			}
-			out.push((1 << 3) | 7); // ClosePath
+			out.push((1 << 3) | 7);
 		}
 		return out;
 	}
 
-	// ── THE EDGE TRIM (this is NOT the old disc clip) ────────────────────────
-	//
-	// Source tiles are squares that STRADDLE the cell edge, so a z13 tile can
-	// push ~3.4 km of geometry past it — MEASURED at 36% extra area over a 40 km
-	// cell, duplicated in the neighbour's blob and drawn twice.
-	//
-	// ⛔ WHY THIS DOES NOT REINTRODUCE THE SEAM. The old clip cut against a
-	// CIRCLE CENTRED ON THE PIN, so two pins cut the same road at two different
-	// arcs and the pieces did not meet. This cuts against the CELL BOX, which is
-	// snapped to the world: the neighbour cuts the same road at the SAME line
-	// from the other side, so the two halves join exactly. Shared edge, not
-	// coincidental overlap — that is the whole reason for the grid.
-	//
-	// Whole vertices only, with one vertex of slack outside so a road visibly
-	// reaches the edge instead of stopping short of it.
+	// Trim lines to the cell box: source tiles straddle the edge, and the box is
+	// snapped to the world so the neighbour cuts the same road at the same line.
+	// One vertex of slack outside so a road visibly reaches the edge.
 	const runs: Array<Array<[number, number]>> = [];
 	const inCell = (pt: [number, number]): boolean =>
 		pt[0] >= 0 && pt[0] <= BLOB_EXTENT && pt[1] >= 0 && pt[1] <= BLOB_EXTENT;
@@ -403,12 +325,12 @@ function remapAndClip(
 	let px = 0;
 	let py = 0;
 	for (const run of runs) {
-		out.push((1 << 3) | 1); // MoveTo, 1
+		out.push((1 << 3) | 1);
 		out.push(unzigzag(run[0][0] - px), unzigzag(run[0][1] - py));
 		px = run[0][0];
 		py = run[0][1];
 		if (run.length > 1) {
-			out.push(((run.length - 1) << 3) | 2); // LineTo, n-1
+			out.push(((run.length - 1) << 3) | 2);
 			for (let i = 1; i < run.length; i++) {
 				out.push(unzigzag(run[i][0] - px), unzigzag(run[i][1] - py));
 				px = run[i][0];
@@ -419,7 +341,7 @@ function remapAndClip(
 	return out;
 }
 
-/** MVT Feature.type (field 3): 1 POINT, 2 LINESTRING, 3 POLYGON. */
+/** MVT Feature.type: 1 POINT, 2 LINESTRING, 3 POLYGON. */
 type GeomType = 1 | 2 | 3;
 function featureGeomType(feature: Uint8Array): GeomType {
 	let p = 0;
@@ -435,10 +357,9 @@ function featureGeomType(feature: Uint8Array): GeomType {
 		}
 		p = skipField(feature, wire, p);
 	}
-	return 2; // MVT: UNKNOWN — treat as a line, the historical behaviour
+	return 2;
 }
 
-/** Rewrite a whole feature: geometry remapped + clipped, everything else copied. */
 function remapFeature(
 	feature: Uint8Array,
 	src: { x0: number; y0: number; sx: number; sy: number; extent: number },
@@ -458,7 +379,7 @@ function remapFeature(
 			let len: number;
 			[len, p] = readVarint(feature, p);
 			const vals = remapAndClip(feature.subarray(p, p + len), src, frame, undefined, type);
-			if (!vals) return null; // nothing inside the circle
+			if (!vals) return null;
 			const body: number[] = [];
 			for (const v of vals) writeVarint(body, v);
 			writeVarint(out, tag);
@@ -475,15 +396,7 @@ function remapFeature(
 	return wrote ? new Uint8Array(out) : null;
 }
 
-/**
- * Build THE blob: every source tile's features re-homed into one tile covering
- * the whole disc, clipped to the circle, ready to serve at any zoom.
- *
- * ⚠️ The merged layer reuses the FIRST contributing tile's keys/values tables.
- * Every tile here comes from the same Protomaps archive and the app reads only
- * `kind`, so the tables agree in practice. Anything relying on arbitrary
- * attributes must rebuild the tables instead.
- */
+/** Build one blob: every source tile's features re-homed into one tile framed to `frame`. */
 export function buildBlobTile(
 	sources: SourceTile[],
 	frame: BlobFrame,
@@ -514,9 +427,6 @@ export function buildBlobTile(
 				byName.set(parts.name, dst);
 			}
 
-			// MERGE THE TABLES, and build index maps from THIS tile's tables into
-			// the merged ones. Without this a feature's `kind` index resolves to a
-			// different string (a highway rendered as a foot trail).
 			const keyMap: number[] = parts.keys.map((k) => {
 				let i = dst.keys.indexOf(k);
 				if (i === -1) {
@@ -555,29 +465,24 @@ export function buildBlobTile(
 
 	const out: number[] = [];
 	for (const layer of byName.values()) {
-		if (!layer.features.length) continue; // never ship a husk layer
+		if (!layer.features.length) continue;
 		const body: number[] = [];
-		// name (field 1)
 		const nameBytes = new TextEncoder().encode(layer.name);
 		writeVarint(body, (1 << 3) | 2);
 		writeVarint(body, nameBytes.length);
 		for (const b of nameBytes) body.push(b);
-		// keys (field 3) — the MERGED table every feature's tags now index into
 		for (const k of layer.keys) {
 			const kb = new TextEncoder().encode(k);
 			writeVarint(body, (3 << 3) | 2);
 			writeVarint(body, kb.length);
 			for (const b of kb) body.push(b);
 		}
-		// values (field 4) — raw Value messages, copied verbatim
 		for (const v of layer.values) {
 			writeVarint(body, (4 << 3) | 2);
 			writeVarint(body, v.length);
 			for (let i = 0; i < v.length; i++) body.push(v[i]);
 		}
-		// anything else the source layer carried (e.g. version)
 		for (const b of layer.header) body.push(b);
-		// The blob's own extent, declared once.
 		writeVarint(body, (5 << 3) | 0);
 		writeVarint(body, BLOB_EXTENT);
 		for (const f of layer.features) {

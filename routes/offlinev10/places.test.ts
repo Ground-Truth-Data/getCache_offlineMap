@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { localitiesIn, placeLabel } from "./places";
 import { ANCHOR_Z, latToY, lngToX } from "./tiles";
 
-// ── a tiny MVT encoder: one `places` layer of points with string tags ───────
+// A tiny MVT encoder: one `places` layer of points with string tags.
 function varint(out: number[], v: number): void {
 	let n = v;
 	while (n > 0x7f) {
@@ -71,10 +71,8 @@ describe("localitiesIn", () => {
 		]);
 		const out = localitiesIn(tile, ANCHOR_Z, X, Y);
 		expect(out.map((p) => p.name)).toEqual(["Oliver", "Kaleden"]);
-		// the point at 100/4096 across the tile is inside the tile's own box
 		expect(lngToX(out[0].lng, ANCHOR_Z)).toBe(X);
 		expect(latToY(out[0].lat, ANCHOR_Z)).toBe(Y);
-		// and further east/south than the first
 		expect(out[1].lng).toBeGreaterThan(out[0].lng);
 		expect(out[1].lat).toBeLessThan(out[0].lat);
 	});

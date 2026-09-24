@@ -1,18 +1,7 @@
 /**
- * THE blob engine, app-wide. Started once by the (getcache) layout, so a pin
- * dropped or moved anywhere — the online map above all — earns its blob the
- * moment it lands, while there is still signal. People open the offline map
- * when they need it, and by then it is too late to fetch anything.
- *
- * One queue, one download at a time, in drop order; the V10 page, the dock
- * buttons and follow-me all feed this queue and listen here for what lands.
- *
- * A blob is its pin's spot, not its ground. A pin inside an older blob's
- * tiles still earns its own row and its own photo — the download finds every
- * tile on disk and fetches nothing. Only the same spot is skipped.
- *
- * A deleted pin takes its blob and photo with it. Blobs with no pin — map
- * centre, follow-me — have no pin to lose, so only the dock deletes them.
+ * The blob engine, app-wide: a pin dropped anywhere earns its blob while there is still signal.
+ * One queue, one download at a time. A blob is its pin's spot, not its ground: a pin inside an
+ * older blob's tiles still earns its own row and photo, fetching nothing. A deleted pin takes its blob.
  */
 
 import {
@@ -49,12 +38,7 @@ interface Ask {
 	keep?: Region;
 }
 
-/**
- * Blob narration — every KB fetched, one line per photo. Kept, never deleted:
- * it is the only account of what the engine actually pulled. Off unless
- * /app/offlinev10/debug turns it on, because ten lines per pan buries
- * everything else in the console.
- */
+// The only account of what the engine pulled; off unless the debug route turns it on.
 let narrate = false;
 export function setBlobNarration(on: boolean): void {
 	narrate = on;
@@ -80,7 +64,6 @@ export function onBlob(fn: (e: BlobEvent) => void): () => void {
 	};
 }
 
-/** A download running or waiting — follow-me must not stack another behind it. */
 export function blobBusy(): boolean {
 	return draining || queue.length > 0;
 }
@@ -89,13 +72,12 @@ export function blobInFlight(): InFlight | null {
 	return current;
 }
 
-/** A blob already on disk at this exact spot. */
 async function onDisk(id: string): Promise<boolean> {
 	const regions = await regionsSnapshot().regions;
 	return regions.some((r) => r.id === id);
 }
 
-/** True when a blob was actually queued; false when disk or the queue already has this spot. `photo: false` for a blob with no pin (follow-me). */
+/** True when actually queued; false when disk or the queue already has this spot. `photo: false` for a blob with no pin. */
 export async function queueBlob(
 	lng: number,
 	lat: number,
@@ -104,7 +86,7 @@ export async function queueBlob(
 	const id = regionId(lng, lat);
 	if (queued.has(id)) return false;
 	if (await onDisk(id)) return false;
-	// a second ask for the same spot can land during the await above
+	// A second ask for the same spot can land during the await.
 	if (queued.has(id)) return false;
 	queued.add(id);
 	queue.push({ at: [lng, lat], photo: opts.photo !== false });
@@ -112,7 +94,7 @@ export async function queueBlob(
 	return true;
 }
 
-/** Fetch what a blob on disk is missing — after an eviction, or a download cut short. The row stays where it is. */
+/** Fetch what a blob on disk is missing; the row stays where it is. */
 export async function repairBlob(r: Region): Promise<boolean> {
 	if (queued.has(r.id)) return false;
 	queued.add(r.id);
@@ -163,7 +145,6 @@ async function download({ at, photo, keep }: Ask): Promise<void> {
 	}
 }
 
-/** The blob and photo at a pin's spot, when the pin goes. Nothing to do when no blob was ever made there. */
 async function removeBlob(id: string, at: [number, number]): Promise<void> {
 	const regions = await regionsSnapshot().regions;
 	if (!regions.some((r) => r.id === id)) return;
@@ -178,28 +159,18 @@ async function removeBlob(id: string, at: [number, number]): Promise<void> {
 let stop: (() => void) | null = null;
 
 /**
- * Watch the app's places: every pin earns its blob, oldest queued behind
- * newest by the order the host reports them.
- *
- * A corridor (a line, a polygon, a plot) bakes here too, at each of its
- * anchors, with NO photo — roads are what you follow a line for, and a photo
- * per anchor is what makes long geometry expensive.
- *
- * Nothing here decides what the phone can afford. The walls are the budget
- * and the blob-count cap, enforced in the store, and a full disk evicts the
- * oldest blob rather than refusing the newest pin. Re-baking is free:
- * `queueBlob` returns early on a spot already on disk, which is the real
- * "have I got this?" answer.
+ * Every pin earns its blob. A corridor bakes at each anchor with NO photo: a photo per
+ * anchor is what makes long geometry expensive. Affordability is the store's wall, not this one's.
  */
 export function startBlobService(ports: HostPorts): () => void {
 	if (stop)
 		return () => {
-			/* already running — the first start's stop owns shutdown */
+			/* the first start's stop owns shutdown */
 		};
 	say("[offlineV10] blob engine on — every pin earns a blob");
-	// Ask while there is nothing to lose yet; the answer is a light on the blobs dock.
+	// Ask while there is nothing to lose yet.
 	void keepStorage();
-	// Every pin spot seen while the host was ready; a spot that leaves this set was deleted (or moved — the new spot earns its own blob).
+	// A spot that leaves this set was deleted or moved.
 	let seen: Map<string, [number, number]> | null = null;
 	const off = ports.onPlacesChanged(() => {
 		if (!ports.ready()) return;

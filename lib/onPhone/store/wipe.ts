@@ -1,5 +1,3 @@
-/** ⚠️ /offline must always show exactly what's on disk — one flash of stale data breaks that promise and the user can no longer trust what they see. */
-
 import {
 	latchOfflineReadsForWipe,
 	unlatchOfflineReadsAfterFailedWipe,
@@ -14,32 +12,18 @@ export const WIPE_DBS = [
 	"rt-mapRegistry",
 ] as const;
 
-/** ⛔ NEVER add these to WIPE_DBS. The user's own data lives here. */
+/** Never add these to WIPE_DBS: the user's own data lives here. */
 export const NEVER_WIPE = ["rt-treeStuff"] as const;
 
-/** Boxes STILL WRITTEN TO. A wipe the user asked for may take them — they
- *  re-download and the page says so. A retirement sweep may NOT: it runs
- *  unasked at boot, and nothing refills what it takes.
- *
- *  `gc-offlineSatellite` holds V10's photos (`satellite.ts` → `satelliteImage`)
- *  and `rt-mapRegistry` is that photo store's own bookkeeping — the budget and
- *  LRU `photoDedup`/`bakeService` read on every bake. V10's tiles live in
- *  `gc-offlineV10`, which was never on the wipe list at all.
- *
- *  Kept beside WIPE_DBS because the bug was two questions sharing one list:
- *  "what does a wipe clear" and "what is obsolete" are not the same set, and
- *  `retireOldOffline` read the first as if it were the second. Satellite had
- *  already been subtracted BY NAME after it bit once; the registry behind it
- *  had not, so every boot deleted the budget ledger under the live photos. */
+/** Still written to. A wipe the user asked for may take them; the unasked
+ *  boot-time retirement sweep may not, since nothing refills what it takes. */
 export const V10_LIVE_DBS = [
 	"gc-offlineSatellite",
 	"rt-mapRegistry",
 ] as const;
 
 export interface WipeResult {
-	/** Database name → how it went. */
 	readonly deleted: Record<string, "gone" | "blocked" | "absent">;
-	/** True when every target is confirmed gone. */
 	readonly clean: boolean;
 }
 
@@ -48,17 +32,15 @@ function deleteDb(name: string): Promise<"gone" | "blocked"> {
 		const req = indexedDB.deleteDatabase(name);
 		req.onsuccess = () => resolve("gone");
 		req.onerror = () => resolve("blocked");
-		// ⚠️ onblocked is not a failure — it means the delete is queued behind an open connection; onsuccess still fires once it closes, so wait rather than reporting blocked immediately.
+		// onblocked means queued behind an open connection; onsuccess still fires once it closes.
 		req.onblocked = () => {
 			setTimeout(() => resolve("blocked"), BLOCKED_GRACE_MS);
 		};
 	});
 }
 
-/** How long to let a queued delete finish before calling it blocked. */
 const BLOCKED_GRACE_MS = 3000;
-
-/** How long to let in-flight IndexedDB transactions (short: a put batch or key probe) drain after stopping the bake service. */
+/** Lets in-flight transactions drain after stopping the bake service. */
 const IN_FLIGHT_GRACE_MS = 400;
 
 export async function wipeOfflineData(
@@ -66,14 +48,14 @@ export async function wipeOfflineData(
 ): Promise<WipeResult> {
 	console.warn("[wipe] ── starting ──");
 	const existing = new Set<string>();
-	// `databases()` is not in older Safari; absent means we just try them all.
+	// `databases()` is not in older Safari; absent means try them all.
 	if (typeof indexedDB.databases === "function") {
 		try {
 			for (const d of await indexedDB.databases()) {
 				if (d.name) existing.add(d.name);
 			}
 		} catch {
-			/* fall through — attempt every name */
+			/* attempt every name */
 		}
 	}
 
@@ -83,7 +65,7 @@ export async function wipeOfflineData(
 			deleted[name] = "absent";
 			continue;
 		}
-		// The count opens the DB versionless, which CREATES it when absent — count only what the catalogue proved is there.
+		// A versionless open creates the DB when absent, so count only what the catalogue proved is there.
 		if (name === "gc-offlineTiles" && existing.has(name)) {
 			try {
 				console.warn(`[wipe] tiles on disk before: ${await countTiles()}`);
@@ -97,9 +79,6 @@ export async function wipeOfflineData(
 	}
 
 	const clean = Object.values(deleted).every((v) => v !== "blocked");
-	// Names the targets, because the caller chooses them: the boot-time
-	// retirement sweep passes two dead boxes, and a blanket "every offline
-	// database is gone" reads as data loss to whoever finds it in a console.
 	console.warn(
 		clean
 			? `[wipe] ✅ CLEAN — ${names.join(", ")} gone.`
@@ -109,9 +88,7 @@ export async function wipeOfflineData(
 	return { deleted, clean };
 }
 
-/** ⚠️ Close connections and CONFIRM every delete before reloading — reloading first re-opens the DBs and cancels the queued deletes (reload wins the race). */
-
-/** ⛔ Fns to stop before wiping (pollers/services on a timer) — registered by the CALLER, never imported here; importing pulls in the whole app and breaks this module's tests. */
+// Registered by the caller, never imported here: importing pulls in the whole app.
 const stoppers = new Set<() => void>();
 
 /** Register something to stop before the wipe (e.g. the bake service). */
@@ -120,32 +97,29 @@ export function registerWipeStopper(fn: () => void): () => void {
 	return () => stoppers.delete(fn);
 }
 
-/** ⚠️ Reuses the existing registry (registerOfflineDbReset/resetOfflineDbHandles) rather than adding a second — two registries means a module can register with one and not the other, and the wipe blocks on an unknown handle. */
-
+/** Stops, latches reads, deletes and confirms before reloading: a reload first re-opens the DBs and cancels the queued deletes. */
 export async function wipeOfflineDataAndReload(): Promise<void> {
-	// 1) STOP THE APP. ⚠️ Closing cached handles alone is not enough — the bake service reopens the tile DB every ~20s and blocks the delete just as hard as a cached handle.
+	// Closing handles alone is not enough: the bake service reopens the tile DB every tick.
 	for (const stop of stoppers) {
 		try {
 			stop();
 		} catch {
-			/* best-effort: a failed stopper just means that delete may block */
+			/* that delete may block */
 		}
 	}
-	// Let any transaction already in flight finish and release its lock.
 	await new Promise((r) => setTimeout(r, IN_FLIGHT_GRACE_MS));
 
-	// 2) ⛔ Latch reads off FIRST, then drop handles — closing handles alone isn't enough since idbGetTile reopens the DB on every tile request and re-blocks the delete.
+	// Latch first: idbGetTile reopens the DB on every tile request.
 	latchOfflineReadsForWipe();
 	resetOfflineDbHandles();
 
-	// 3) Delete and WAIT. No reload until these actually finish.
 	const res = await wipeOfflineData();
 
 	if (!res.clean) {
-		// Must restore reads here (data's still there) — leaving the latch on through a failed wipe would make every tile read a permanent silent miss.
+		// The data is still there; a latch left on makes every read a silent miss.
 		unlatchOfflineReadsAfterFailedWipe();
 
-		// Do NOT reload here — that recreates the databases and hides the failure; tell the human instead.
+		// A reload here would recreate the databases and hide the failure.
 		console.error(
 			"[wipe] FAILED — databases still held open, nothing was deleted.",
 			res.deleted,
@@ -154,12 +128,10 @@ export async function wipeOfflineDataAndReload(): Promise<void> {
 		throw new Error("wipe blocked: " + JSON.stringify(res.deleted));
 	}
 
-	// 4) Provably empty → safe to reload.
 	console.log("[wipe] clean:", res.deleted);
 	location.reload();
 }
 
-/** How many tiles are in the store right now (diagnostic only). */
 function countTiles(): Promise<number> {
 	return new Promise((resolve) => {
 		const req = indexedDB.open("gc-offlineTiles");
@@ -170,8 +142,7 @@ function countTiles(): Promise<number> {
 				resolve(0);
 				return;
 			}
-			// The transaction's own outcome, not the request's: an aborted
-			// transaction leaves `count` silent, and this promise is awaited.
+			// An aborted transaction leaves `count` silent.
 			const tx = db.transaction("tiles", "readonly");
 			const c = tx.objectStore("tiles").count();
 			tx.oncomplete = () => {

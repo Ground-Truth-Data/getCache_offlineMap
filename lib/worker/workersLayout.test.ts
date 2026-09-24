@@ -1,14 +1,5 @@
-/**
- * THREE WORKER FOLDERS, NAMED LIKE THE THREE TIERS, SIDE BY SIDE.
- *
- * workers/worker-local-dev is the one that gets edited and run on the developer's
- * machine; workers/worker-cloud-dev and workers/worker-cloud-prod are the record of what each
- * cloud tier is running, overwritten by their own deploy scripts on every
- * deploy (Chris, 31 Aug 2026: "three directories called the three [tiers],
- * all lined up"). Same shape as the worker-local-dev/ + worker-cloud-prod/ client copies in
- * this folder, and the same failure mode guarded: a tier folder silently
- * going missing, or the old single worker/ coming back in a merge.
- */
+// workers/worker-local-dev is edited and run locally; the two cloud folders are
+// the record of what each tier runs, overwritten by their deploy scripts.
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -26,8 +17,6 @@ describe("workers/ layout", () => {
 	});
 
 	it("keeps the local runner in worker-local-dev and a deploy script in each cloud tier", () => {
-		// the local tier runs bare `wrangler dev` against the real planet bucket —
-		// setupLocalTiles.sh and its sample extracts were deleted with that move
 		const localScripts = JSON.parse(
 			readFileSync(at("worker-local-dev/package.json"), "utf8"),
 		).scripts;

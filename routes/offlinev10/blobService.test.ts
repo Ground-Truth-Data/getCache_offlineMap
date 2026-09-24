@@ -89,9 +89,7 @@ function fakePorts(
 }
 
 beforeEach(async () => {
-	// The queue, its in-flight id set and `stop` are module state: a test that
-	// ends mid-download leaves a spot queued, and the next test's `queueBlob`
-	// reports it as already asked for. Let the engine finish before clearing.
+	// The queue is module state; a test that ends mid-download leaves a spot queued for the next.
 	for (let i = 0; i < 20 && blobBusy(); i++) {
 		release?.();
 		await new Promise((r) => setTimeout(r, 0));
@@ -109,11 +107,8 @@ describe("blob service", () => {
 		];
 		const { ports, changed, listening } = fakePorts(() => list);
 		const stop = startBlobService(ports);
-		// the engine asks the browser to keep the store at boot, while there is nothing to lose
 		expect(keepAsked).toBe(1);
 		await tick();
-		// the pin predates this page and still earns its blob: the walls are
-		// the budget and the count cap, not the clock
 		expect(downloads).toEqual([PENTICTON]);
 		list.push({ anchors: [SPOKANE], lastTouched: soon(), corridor: false });
 		changed();
@@ -146,7 +141,6 @@ describe("blob service", () => {
 		release?.();
 		await tick();
 		await tick();
-		// roads are the point of a line; a photo per anchor is what makes one expensive
 		expect(disk.map((r) => r.photo)).toEqual([false, false]);
 		stop();
 	});
@@ -166,8 +160,6 @@ describe("blob service", () => {
 	});
 
 	it("an old pin takes a PHOTO, where a corridor of the same age does not", async () => {
-		// The one thing age never decided: a pin is a place you stood, so it
-		// earns its photo whenever it was dropped. Only `corridor` says no.
 		const list = [{ anchors: [PENTICTON], lastTouched: ago(), corridor: false }];
 		const { ports, listening } = fakePorts(() => list);
 		const stop = startBlobService(ports);
@@ -216,17 +208,14 @@ describe("blob service", () => {
 		release?.();
 		await tick();
 		await tick();
-		// Penticton landed; Spokane is still mid-download, so it has no blob yet
 		expect(disk.map((r) => r.id)).toEqual([
 			`${PENTICTON[1].toFixed(5)},${PENTICTON[0].toFixed(5)}`,
 		]);
-		// the pin whose blob has not landed: deleting it drops nothing
 		list.splice(1, 1);
 		changed();
 		await tick();
 		expect(disk.length).toBe(1);
 		expect(photosDropped).toEqual([]);
-		// the blob's pin goes: blob and photo go with it
 		list.splice(0, 1);
 		changed();
 		await tick();

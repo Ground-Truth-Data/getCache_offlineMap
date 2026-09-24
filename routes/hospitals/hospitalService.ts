@@ -1,14 +1,6 @@
 /**
- * The hospital pass, app-wide. A HOSPITAL_RADIUS_KM disc per ANCHOR — the
- * live fix and the ground touched in 30 days, the same set the fire wall is
- * measured from — from the tiles Worker into the shared hospital cache both
- * maps paint from. Hospitals change glacially, so a disc is fresh for a month.
- * The pass runs when a map asks (`wantHospitals`), when the app says the
- * anchors changed, on coming back online or to the front, and daily. A dead
- * feed pauses the pass for a minute, never the map.
- *
- * The Worker's address comes from tilesHost.ts, configured by the app at boot
- * — this package names no host of its own.
+ * The hospital pass, app-wide: a disc per anchor from the tiles Worker into the cache both maps paint from.
+ * Runs when a map asks, when the anchors change, on coming back online or to the front. Never on a clock.
  */
 
 import { passQueue } from "../../lib/shared/passQueue";
@@ -26,7 +18,7 @@ import {
 export const HOSPITAL_RETRY_MS = 60_000;
 const HOSPITAL_TIMEOUT_MS = 20_000;
 
-/** The Worker's disc as text, validated as a FeatureCollection and nothing more. */
+/** The Worker's disc as text, validated as a FeatureCollection and no more. */
 export async function fetchHospitals(
 	lng: number,
 	lat: number,
@@ -41,7 +33,7 @@ export async function fetchHospitals(
 	let text: string;
 	let radiusKm = 0;
 	try {
-		// The edge cache protects the Worker; a browser copy only ever serves a stale answer under a year-long immutable header.
+		// no-store: the edge cache protects the Worker, and a browser copy would sit under a year-long immutable header.
 		const res = await fetch(url, { signal: ctl.signal, cache: "no-store" });
 		if (!res.ok) throw new Error(`hospitals endpoint responded ${res.status}`);
 		text = await res.text();
@@ -57,19 +49,19 @@ export async function fetchHospitals(
 	return {
 		geojson: text,
 		count: parsed.features.length,
-		// A Worker that says nothing served its default disc of 200 km.
+		// A Worker that says nothing served its default 200 km disc.
 		radiusKm: Number.isFinite(radiusKm) && radiusKm > 0 ? radiusKm : 200,
 	};
 }
 
 let pausedUntil = 0;
 
-/** Anchors ride the queue as their disc keys — primitives, so a re-ask dedupes. */
+// Anchors ride the queue as their disc keys: primitives, so a re-ask dedupes.
 const askQueue = passQueue<string>((keys) =>
 	pass(keys.map((k) => k.split(",").map(Number) as unknown as LngLat)),
 );
 
-/** Fetch a disc for every centre no fresh disc covers. Returns how many landed. One pass at a time; an anchor asked for mid-pass gets the next one. */
+/** Fetch a disc for every centre no fresh disc covers; returns how many landed. */
 export function refreshHospitals(centres: readonly LngLat[]): Promise<number> {
 	return askQueue(centres.map(([lng, lat]) => hospitalKey(lng, lat)));
 }
@@ -107,9 +99,9 @@ async function pass(centres: readonly LngLat[]): Promise<number> {
 }
 
 export interface HospitalServiceOptions {
-	/** Read at every run — the live fix and the recently touched ground, never a camera. */
+	/** read at every run; never a camera */
 	anchors: () => readonly LngLat[];
-	/** The app's own signal that the anchor set changed (a pin landed); call `refresh`, return the unsubscribe. */
+	/** the app's signal that the anchor set changed; call `refresh`, return the unsubscribe */
 	onAnchorsChanged?: (refresh: () => void) => () => void;
 }
 
@@ -118,11 +110,9 @@ let stop: (() => void) | null = null;
 export function startHospitalService(opts: HospitalServiceOptions): () => void {
 	if (stop)
 		return () => {
-			/* already running — the first start's stop owns shutdown */
+			/* the first start's stop owns shutdown */
 		};
 	const all = (): void => {
-		// Same as the fires pass: driven by events, not by a caller, so a
-		// bare `void` turns an unreachable Worker into an unhandled rejection.
 		refreshHospitals(opts.anchors()).catch((e) => {
 			console.warn("[hospitals] refresh failed", e);
 		});
@@ -138,9 +128,6 @@ export function startHospitalService(opts: HospitalServiceOptions): () => void {
 	const offAnchors = opts.onAnchorsChanged?.(all) ?? (() => undefined);
 	window.addEventListener("online", all);
 	document.addEventListener("visibilitychange", visible);
-	// ⛔ NO TIMER — same rule as the fires pass: the pass runs when the user
-	// LOOKS, never on a clock. Hospitals barely change, so a backgrounded app
-	// ticking against them bought nothing at all.
 	all();
 	stop = () => {
 		offWanted();

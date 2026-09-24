@@ -1,4 +1,4 @@
-// ⛔ ALL THREE environments (worker-local-dev, worker-cloud-dev AND worker-cloud-prod) must exist and hold identical bytes; never delete one as a "duplicate", never edit this test to pass.
+// All three tiers must exist and hold identical bytes; never delete one as a "duplicate".
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,17 +8,10 @@ const R2_WORKER = fileURLToPath(new URL(".", import.meta.url));
 
 const ENVIRONMENTS = ["worker-local-dev", "worker-cloud-dev", "worker-cloud-prod"] as const;
 
-/** files each environment must contain — an empty dir is not an env */
 const REQUIRED = ["tilesHost.ts", "roads/packDownload.ts", "fires/fireFetch.ts"];
 
-/**
- * Lines that MUST differ per tier, matched as a prefix. Everything else in
- * every file is drift. Exempting a whole FILE would hide the rest of it —
- * tilesHost.ts differs by one constant, and blanket-exempting it is how prod
- * quietly lost its no-host diagnostic.
- */
+/** Lines that must differ per tier, matched as a prefix. Never exempt a whole file: the rest of it then rots unseen. */
 const EXPECTED_DRIFT_LINES = [
-	// each tier points at itself by definition
 	"export const DEFAULT_TARGET",
 ];
 
@@ -74,7 +67,6 @@ describe("worker keeps ALL THREE environments", () => {
 		return walk(join(R2_WORKER, env)).sort();
 	};
 
-	// ⛔ if this fails the environments have diverged — relax the test deliberately, never delete a folder to fix it.
 	it("every environment carries the same file names (identical is CORRECT)", () => {
 		const names = ENVIRONMENTS.map(filesOf);
 
@@ -89,14 +81,6 @@ describe("worker keeps ALL THREE environments", () => {
 		}
 	});
 
-	// ⛔ THE REAL GUARD. The three tiers are the same code at three stages of
-	// readiness, so a file that differs is a tier left behind — how prod came
-	// to lose the Worker's own error text and a whole exported function while
-	// every test stayed green. Names match even when bodies rot, so the check
-	// above cannot see it.
-	//
-	// A deliberate per-tier difference goes in EXPECTED_DRIFT_LINES with its
-	// reason. Anything else is a tier that did not get the update.
 	it("every environment carries the same file CONTENTS (bytes, not names)", () => {
 		const drifted: string[] = [];
 		for (const rel of filesOf(ENVIRONMENTS[0])) {

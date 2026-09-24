@@ -1,23 +1,10 @@
 /**
- * Layer-level merge of MVT blobs that share the SAME address (same z/x/y frame).
- *
- * ⛔ NOT BYTE-CONCAT. Every pin's blob carries a layer named `roads`, and the MVT
- * parser indexes layers BY NAME — `layers[name] = layer` keeps only the LAST
- * duplicate and silently discards the others. Two pins owning one address meant
- * the whole tile flipped to one pin (the farthest, since keysForAddress sorts
- * ascending and concat order = winner order) whenever a pack landed and the
- * source re-requested — roads vanishing/appearing in axis-aligned strips
- * wherever the two pins' radius boxes differ (2026-09-01).
- *
- * The merge is frame-identical to the Worker's `buildBlobTile` table logic
- * (oneBlob.ts): features are copied VERBATIM — same frame, so no geometry remap
- * is needed — but every feature's `tags` are re-indexed from its own tile's
- * keys/values tables into the merged tables. ⚠️ parsing the tables is not
- * optional: tags are PAIRS OF INDICES into the tile's OWN tables, and skipping
- * the remap renders an interstate as a foot trail (measured on screen).
+ * Layer-level merge of MVT blobs that share one z/x/y frame. Not byte-concat:
+ * the MVT parser indexes layers by name and keeps only the last duplicate.
+ * Features copy verbatim (same frame) but tags are index pairs into the
+ * tile's own tables, so they are re-indexed into the merged tables.
  */
 
-/** Read a varint at `pos`. Returns [value, nextPos]. */
 function readVarint(buf: Uint8Array, pos: number): [number, number] {
 	let result = 0;
 	let shift = 0;
@@ -32,12 +19,7 @@ function readVarint(buf: Uint8Array, pos: number): [number, number] {
 	return [result, p];
 }
 
-/**
- * Amortised byte writer over ONE growing Uint8Array. ⛔ do NOT go back to
- * `number[]` with a byte per `push()`: boxing hundreds of thousands of small
- * ints per merge was the ~290 MB spike / 1–2 s freeze per zoom change
- * (2026-09-02).
- */
+/** One growing Uint8Array; a `number[]` with a byte per push was a 290 MB spike per zoom change. */
 class Writer {
 	private buf: Uint8Array<ArrayBuffer>;
 	private len = 0;
@@ -75,7 +57,6 @@ class Writer {
 	}
 }
 
-/** Byte length a value's varint will occupy — sizing pass, no allocation. */
 function varintLen(v: number): number {
 	let n = 1;
 	while (v > 0x7f) {
@@ -85,7 +66,6 @@ function varintLen(v: number): number {
 	return n;
 }
 
-/** Write a varint straight into a pre-sized buffer; returns bytes written. */
 function writeVarintTo(buf: Uint8Array, pos: number, value: number): number {
 	let v = value;
 	let p = pos;
@@ -97,11 +77,9 @@ function writeVarintTo(buf: Uint8Array, pos: number, value: number): number {
 	return p - pos;
 }
 
-// module-level and REUSED — a fresh TextDecoder per field was per-byte churn
 const DECODER = new TextDecoder();
 const ENCODER = new TextEncoder();
 
-/** Skip one protobuf field's payload; returns the new position. */
 function skipField(buf: Uint8Array, wire: number, pos: number): number {
 	let p = pos;
 	if (wire === 0) [, p] = readVarint(buf, p);
@@ -114,7 +92,6 @@ function skipField(buf: Uint8Array, wire: number, pos: number): number {
 	return p;
 }
 
-/** Split a tile message into its raw Layer messages (field 3). */
 function splitTile(data: Uint8Array): Uint8Array[] {
 	const layers: Uint8Array[] = [];
 	let p = 0;
@@ -135,14 +112,13 @@ function splitTile(data: Uint8Array): Uint8Array[] {
 	return layers;
 }
 
-/** A layer split into its parts (frame-identical to oneBlob.ts's LayerParts). */
 interface LayerParts {
 	name: string;
-	/** Layer fields that are NOT name/keys/values/features/extent (e.g. version), kept as raw segments. */
+	/** Fields other than name/keys/values/features/extent, as raw segments. */
 	header: Uint8Array[];
 	features: Uint8Array[];
 	keys: string[];
-	/** Raw encoded Value messages, kept verbatim — they may be any scalar type. */
+	/** Raw Value messages; they may be any scalar type. */
 	values: Uint8Array[];
 	extent: number;
 }
@@ -196,31 +172,24 @@ function splitLayer(layer: Uint8Array): LayerParts {
 			continue;
 		}
 		const next = skipField(layer, wire, p);
-		// verbatim SEGMENT copy, not byte-per-push
 		header.push(layer.subarray(start, next));
 		p = next;
 	}
 	return { name, header, features, keys, values, extent };
 }
 
-/** A Value message's bytes as a lookup key, so identical values dedupe. */
 function valueId(v: Uint8Array): string {
 	let s = "";
 	for (let i = 0; i < v.length; i++) s += String.fromCharCode(v[i]);
 	return s;
 }
 
-/**
- * Rewrite one feature's `tags` (field 2) from the source layer's tables into
- * the merged layer's tables. Geometry and everything else are untouched —
- * same frame, so the geometry is already correct as-is.
- */
+/** Rewrite one feature's `tags` from the source tables into the merged tables. */
 function remapTags(
 	feature: Uint8Array,
 	keyMap: number[],
 	valMap: number[],
 ): Uint8Array {
-	// pass 1 — locate EVERY tags field (field 2) and pre-resolve its index pairs
 	const spans: Array<{ start: number; end: number; indices: number[] }> = [];
 	let p = 0;
 	while (p < feature.length) {
@@ -246,9 +215,8 @@ function remapTags(
 			p = skipField(feature, wire, p);
 		}
 	}
-	if (!spans.length) return feature; // zero-copy — nothing to remap
-	// pass 2 — size the output ONCE, then splice in one pre-allocated buffer.
-	// The rewritten tag header is canonical: field 2, wire 2 → one 0x12 byte.
+	if (!spans.length) return feature;
+	// The rewritten tag header is canonical: field 2, wire 2, one byte.
 	let size = feature.length;
 	for (const s of spans) {
 		let bodyLen = 0;
@@ -260,7 +228,7 @@ function remapTags(
 	let w = 0;
 	let r = 0;
 	for (const s of spans) {
-		out.set(feature.subarray(r, s.start), w); // bytes before the tags field
+		out.set(feature.subarray(r, s.start), w);
 		w += s.start - r;
 		out[w++] = (2 << 3) | 2;
 		let bodyLen = 0;
@@ -273,14 +241,8 @@ function remapTags(
 	return out;
 }
 
-/**
- * Merge blob tiles of the SAME address into ONE tile: same-named layers fuse
- * into a single layer (one `roads`), keys/values tables merged with per-feature
- * tag remap, features copied verbatim. Order-independent — every owner draws.
- */
+/** Merge same-address tiles into one: same-named layers fuse, order-independent. */
 export function mergeSameFrameTiles(parts: readonly Uint8Array[]): Uint8Array<ArrayBuffer> {
-	// keyIndex/valIndex ride along so table dedupe is O(1) per entry — the old
-	// indexOf/findIndex scans made table merge O(n²) on real tiles (2026-09-02).
 	const byName = new Map<
 		string,
 		{
@@ -311,9 +273,6 @@ export function mergeSameFrameTiles(parts: readonly Uint8Array[]): Uint8Array<Ar
 				byName.set(src.name, dst);
 			}
 
-			// MERGE THE TABLES and re-index this tile's tags into them — same
-			// law as oneBlob.ts: without the remap a `kind` index resolves to a
-			// different string (a highway rendered as a foot trail).
 			const keyMap: number[] = src.keys.map((k) => {
 				let i = dst.keyIndex.get(k);
 				if (i === undefined) {
@@ -339,34 +298,26 @@ export function mergeSameFrameTiles(parts: readonly Uint8Array[]): Uint8Array<Ar
 		}
 	}
 
-	// ONE amortised buffer per message (Writer) — the previous byte-per-push
-	// into JS number[] arrays was the 290 MB spike / 1–2 s freeze per zoom
-	// gesture (2026-09-02). Wire format is unchanged.
 	const out = new Writer();
 	for (const layer of byName.values()) {
-		if (!layer.parts.features.length) continue; // never ship a husk layer
+		if (!layer.parts.features.length) continue;
 		const body = new Writer();
-		// name (field 1)
 		const nameBytes = ENCODER.encode(layer.parts.name);
 		body.varint((1 << 3) | 2);
 		body.varint(nameBytes.length);
 		body.bytes(nameBytes);
-		// keys (field 3) — the MERGED table every feature's tags now index into
 		for (const k of layer.parts.keys) {
 			const kb = ENCODER.encode(k);
 			body.varint((3 << 3) | 2);
 			body.varint(kb.length);
 			body.bytes(kb);
 		}
-		// values (field 4) — raw Value messages, copied verbatim
 		for (const v of layer.parts.values) {
 			body.varint((4 << 3) | 2);
 			body.varint(v.length);
 			body.bytes(v);
 		}
-		// anything else the source layer carried (e.g. version)
 		for (const seg of layer.parts.header) body.bytes(seg);
-		// extent, declared once
 		body.varint((5 << 3) | 0);
 		body.varint(layer.parts.extent);
 		for (const f of layer.parts.features) {

@@ -66,7 +66,6 @@ describe("the per-pan memo — never at the cost of correctness", () => {
 	});
 
 	it("invalidate is safe to call at any time, including twice", () => {
-		// Writers call it unconditionally — it must never throw or corrupt state.
 		expect(() => {
 			invalidateFireEntries();
 			invalidateFireEntries();
@@ -77,10 +76,9 @@ describe("the per-pan memo — never at the cost of correctness", () => {
 	});
 });
 
-// discCouldRender must fail toward reading too MUCH, never too little — testing a disc's CENTRE against the wall (not its edge) would silently hide a fire the user can see.
 describe("discCouldRender — the read filter must never hide a visible fire", () => {
-	const WALL = 500; // HARD_CUTOFF_KM
-	const HOME: readonly [number, number] = [-75.7, 45.4]; // Ottawa
+	const WALL = 500;
+	const HOME: readonly [number, number] = [-75.7, 45.4];
 	const disc = (center: [number, number], radiusKm = 500) => ({
 		center,
 		radiusKm,
@@ -93,12 +91,11 @@ describe("discCouldRender — the read filter must never hide a visible fire", (
 	it("keeps a FAR-CENTRED disc whose edge still reaches inside the wall", () => {
 		const farCentre = disc([-64.3, 45.4]);
 		const centreDist = 900;
-		expect(centreDist).toBeGreaterThan(WALL); // centre IS beyond the wall
+		expect(centreDist).toBeGreaterThan(WALL);
 		expect(discCouldRender(farCentre, [HOME], WALL)).toBe(true);
 	});
 
 	it("drops a disc that cannot reach the wall from any origin", () => {
-		// Vancouver — ~3,500 km from Ottawa, far past wall + radius (1,000 km).
 		expect(discCouldRender(disc([-123.1, 49.3]), [HOME], WALL)).toBe(false);
 	});
 
@@ -114,15 +111,13 @@ describe("discCouldRender — the read filter must never hide a visible fire", (
 	});
 
 	it("a bigger disc reaches further — radius is part of the test, not decoration", () => {
-		const centre: [number, number] = [-64.3, 45.4]; // ~900 km out
+		const centre: [number, number] = [-64.3, 45.4];
 		expect(discCouldRender(disc(centre, 100), [HOME], WALL)).toBe(false);
 		expect(discCouldRender(disc(centre, 500), [HOME], WALL)).toBe(true);
 	});
 });
 
-// invariant: the read must return the SAME ARRAY OBJECT when disc selection hasn't changed — keying on origins instead (they change every pan) minted a new array per pan and cost 44.5% of the main thread.
 describe("memo identity — a new array on every pan is a performance bug", () => {
-	// two origin sets selecting the SAME discs must produce the SAME key, or every pan mints a new array and the memo chain dies.
 	const WALL = 500;
 	const disc = (center: [number, number]) => ({ center, radiusKm: 500 });
 	const keyOf = (
@@ -141,7 +136,7 @@ describe("memo identity — a new array on every pan is a performance bug", () =
 		const before = keyOf(DISCS, [[-75.7, 45.4]]);
 		const after = keyOf(DISCS, [[-75.75, 45.45]]);
 		expect(after).toBe(before);
-		expect(before).not.toBe(""); // guard: the test would be vacuous if empty
+		expect(before).not.toBe("");
 	});
 
 	it("crossing into a new disc's range DOES change the key", () => {
@@ -177,7 +172,6 @@ describe("unionHotspots", () => {
 	it("returns an honest empty state with a null timestamp", () => {
 		const u = unionHotspots([]);
 		expect(u.hotspots).toEqual([]);
-		// null, NOT Date.now() — an empty cache must not claim to be fresh.
 		expect(u.oldestFetchedAt).toBeNull();
 	});
 
@@ -195,7 +189,7 @@ describe("unionHotspots", () => {
 			entry(T0, [spot(-75.6002, 45.5002, 25)]),
 		]);
 		expect(u.hotspots).toHaveLength(1);
-		expect(u.hotspots[0].frp).toBe(25); // keeps the strongest reading
+		expect(u.hotspots[0].frp).toBe(25);
 	});
 
 	it("reports the OLDEST fetch time, so a fresh area can't vouch for a stale one", () => {
@@ -243,7 +237,6 @@ describe("hotspotsToGeoJSON", () => {
 	});
 
 	it("copies coordinates so a later mutation can't corrupt the GL source", () => {
-		// Mapbox boundary law: plain JSON, no shared/proxied references.
 		const h = spot(-75.6, 45.5);
 		const fc = hotspotsToGeoJSON([h]);
 		const coords = (fc.features[0].geometry as GeoJSON.Point).coordinates;
@@ -255,7 +248,6 @@ describe("hotspotsToGeoJSON", () => {
 	});
 });
 
-/** ⛔ a fire the satellite looked for and did NOT find is OUT — newer evidence about the same ground must supersede older sightings, or a day-old detection paints as a live fire. */
 describe("superseded ground — newer evidence wins", () => {
 	const HOUR = 3_600_000;
 	const NOW = 1_800_000_000_000;
@@ -275,28 +267,24 @@ describe("superseded ground — newer evidence wins", () => {
 	});
 
 	it("drops a day-old fire when a NEWER fetch covered that ground", () => {
-		// THE BUG, exactly as measured.
 		const stale = disc(NOW - 23.5 * HOUR, HARRISON, [
 			{ coordinates: HARRISON, t: NOW - 23 * HOUR, frp: 12 },
 		]);
-		const fresh = disc(NOW, HARRISON, []); // looked again — nothing there
+		const fresh = disc(NOW, HARRISON, []);
 		const { hotspots } = unionHotspots([stale, fresh]);
 		expect(hotspots).toHaveLength(0);
 	});
 
 	it("KEEPS it when no newer fetch covered that ground", () => {
-		// Law 1: only discard on newer evidence about THAT spot — a fire nobody has re-checked keeps its last known sighting.
 		const stale = disc(NOW - 23.5 * HOUR, HARRISON, [
 			{ coordinates: HARRISON, t: NOW - 23 * HOUR, frp: 12 },
 		]);
-		// Fresh disc 2,000 km away — covers nothing near Harrison.
 		const elsewhere = disc(NOW, [-79.4, 43.7], []);
 		const { hotspots } = unionHotspots([stale, elsewhere]);
 		expect(hotspots).toHaveLength(1);
 	});
 
 	it("keeps a fire the newest fetch DID report", () => {
-		// The ordinary case: still burning, still listed.
 		const fresh = disc(NOW, HARRISON, [
 			{ coordinates: HARRISON, t: NOW - 20 * 60_000, frp: 40 },
 		]);
@@ -305,7 +293,6 @@ describe("superseded ground — newer evidence wins", () => {
 	});
 
 	it("does not erase a fire detected just BEFORE the newest fetch", () => {
-		// NASA's processing lag — a detection minutes before our fetch isn't in that fetch's data yet; without slack we'd erase live fires.
 		const older = disc(NOW - HOUR, HARRISON, [
 			{ coordinates: HARRISON, t: NOW - 10 * 60_000, frp: 30 },
 		]);
@@ -315,7 +302,6 @@ describe("superseded ground — newer evidence wins", () => {
 	});
 
 	it("a stale disc cannot erase a fire from a FRESHER disc", () => {
-		// Only LATER fetches supersede — order in the array must not matter.
 		const fresh = disc(NOW, HARRISON, [
 			{ coordinates: HARRISON, t: NOW - 30 * 60_000, frp: 55 },
 		]);
@@ -325,7 +311,6 @@ describe("superseded ground — newer evidence wins", () => {
 	});
 });
 
-// DON'T let this rot back — isCoverageFresh answers freshness from the LIGHT shape on purpose; reaching for allFireEntries() again quietly restores a 73,225-hotspot memory leak.
 describe("coverage freshness — the light shape", () => {
 	const cov = (fetchedAt: number) => ({
 		center: [-75.7, 45.4] as [number, number],
@@ -335,26 +320,21 @@ describe("coverage freshness — the light shape", () => {
 
 	it("matches isFresh's TTL boundary exactly", () => {
 		const now = T0;
-		// isCoverageFresh and isFresh must never drift — disagreement means fetching when the cache says fresh, or skipping when it says stale.
 		expect(isCoverageFresh(cov(now - FIRE_TTL_MS + 1_000), now)).toBe(true);
 		expect(isCoverageFresh(cov(now - FIRE_TTL_MS - 1_000), now)).toBe(false);
 	});
 
 	it("needs NO hotspots to answer", () => {
-		// must stay answerable with no hotspots key — if a future change requires a full entry here, the memory fix is gone.
 		expect(isCoverageFresh(cov(T0), T0)).toBe(true);
 	});
 });
 
-/** ⛔ two caches compound, they don't overlap — the phone TTL must stay under the edge cache's 1h, or a copy taken already-stale sits for a second full window. */
 describe("the phone's TTL — bounded by the edge, not by eagerness", () => {
 	it("is long enough not to re-ask inside FIRMS' own refresh", () => {
-		// FIRMS refreshes hourly; asking far more often cannot surface newer fires.
 		expect(FIRE_TTL_MS).toBeGreaterThanOrEqual(30 * 60 * 1000);
 	});
 
 	it("stays UNDER the edge cache's hour, so the two cannot compound", () => {
-		// at or above the edge TTL (3600s) a phone can hold an already-stale copy for a second full window.
 		expect(FIRE_TTL_MS).toBeLessThan(60 * 60 * 1000);
 	});
 
@@ -364,12 +344,12 @@ describe("the phone's TTL — bounded by the edge, not by eagerness", () => {
 	});
 });
 
-// ⚠️ COST budget, not correctness — if these fail, do NOT raise the budget; it means the union loop went quadratic again (was 119% idle CPU / millions of trig calls, fixed via box-reject + newest-first break).
+// A cost budget: if these fail, the union loop went quadratic again. Do not raise the budget.
 describe("unionHotspots stays cheap as the cache grows — the 119% CPU bug", () => {
 	const NOW = 1_800_000_000_000;
 	const HOUR = 3_600_000;
 
-	/** each disc needs a UNIQUE centre and each hotspot a position that survives toFixed(3) dedupe — otherwise the fixture silently collapses and the test measures less data than it claims. */
+	/** Unique centres and positions that survive toFixed(3) dedupe, or the fixture silently collapses. */
 	const scatter = (n: number, per: number): FireCacheEntry[] =>
 		Array.from({ length: n }, (_, i) => {
 			const centre: [number, number] = [
@@ -383,7 +363,6 @@ describe("unionHotspots stays cheap as the cache grows — the 119% CPU bug", ()
 				radiusKm: 30,
 				sourcesOk: 3,
 				hotspots: Array.from({ length: per }, (_, j) => ({
-					// 0.002° spacing stays distinct at toFixed(3) dedupe; per up to ~2,500 keeps hotspots inside the 30km disc radius.
 					coordinates: [
 						centre[0] + (j % 64) * 0.002,
 						centre[1] + Math.floor(j / 64) * 0.002,
@@ -395,7 +374,7 @@ describe("unionHotspots stays cheap as the cache grows — the 119% CPU bug", ()
 			};
 		});
 
-	/** exact kmBetween call COUNT, never wall-clock time — a ms-based ratio is flaky by construction (CI-load dependent); the call count can't be gamed by a faster machine. */
+	/** Call count, never wall-clock time: a ms ratio is flaky by construction. */
 	const countDistanceCalls = (entries: FireCacheEntry[]): number => {
 		invalidateFireEntries();
 		kmBetweenCalls = 0;
@@ -404,14 +383,13 @@ describe("unionHotspots stays cheap as the cache grows — the 119% CPU bug", ()
 	};
 
 	it("scales LINEARLY in disc count — the cubic term is gone", () => {
-		// regression guard: doubling discs should roughly double calls, not quadruple (old loop). 2.5× threshold leaves room for legitimately-overlapping boundary discs.
+		// 2.5× leaves room for legitimately overlapping boundary discs.
 		const small = countDistanceCalls(scatter(15, 400));
 		const large = countDistanceCalls(scatter(30, 400));
 		expect(large / Math.max(small, 1)).toBeLessThan(2.5);
 	});
 
 	it("absorbs a realistic full cache without millions of trig calls", () => {
-		// box reject must keep calls to a small multiple of the hotspot count, never a multiple of hotspots × discs (old loop: ~10^6 calls/union).
 		const entries = scatter(30, 2_450);
 		const hotspots = 30 * 2_450;
 		const calls = countDistanceCalls(entries);
@@ -419,7 +397,7 @@ describe("unionHotspots stays cheap as the cache grows — the 119% CPU bug", ()
 	});
 
 	it("rejects far discs by box rather than by trigonometry", () => {
-		// grid discs at 1° pitch / 30km radius must not overlap, or the box pre-reject never fires and this block measures the wrong thing.
+		// The scatter discs must not overlap, or the box pre-reject never fires.
 		const [a, b] = scatter(2, 1);
 		const apart = Math.hypot(
 			(b.center[0] - a.center[0]) * 111 * Math.cos((a.center[1] * Math.PI) / 180),
@@ -429,7 +407,7 @@ describe("unionHotspots stays cheap as the cache grows — the 119% CPU bug", ()
 	});
 
 	it("still supersedes correctly at scale — speed must not cost truth", () => {
-		// optimisation is only legitimate if the answer is unchanged — the older sighting must still be dropped; the pair sits well clear of the scatter grid or it would supersede noise and measure the wrong thing.
+		// The pair sits well clear of the scatter grid or it would supersede noise.
 		const ground: [number, number] = [-95, 52];
 		const noise = scatter(25, 100);
 		const stale: FireCacheEntry = {
@@ -452,7 +430,6 @@ describe("unionHotspots stays cheap as the cache grows — the 119% CPU bug", ()
 		};
 		invalidateFireEntries();
 		const { hotspots } = unionHotspots([...noise, stale, fresh]);
-		// every scattered fire survives (nothing newer covers them); the superseded one is gone.
 		expect(hotspots).toHaveLength(25 * 100);
 	});
 });

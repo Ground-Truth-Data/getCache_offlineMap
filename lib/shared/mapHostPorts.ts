@@ -1,51 +1,24 @@
 /**
- * mapHostPorts.ts — THE MAP UI'S DOOR TO ITS HOST.
- *
- * Every map component and store in lib/mapUi/ and lib/mapState/ used to live
- * in ReTreever/src/lib and reach the proprietary side directly — `$lib` icon
- * system, share sheet, GPS permission, the TinyBase-backed map store, the
- * quality-704 plot stores. They moved into this child on 28 Aug 2026 ("all map
- * code in ONE place"), and a child may not import `$lib` (childBoundary.test.ts)
- * or name a parent (noParentNames.test.ts). So everything they need from the
- * host comes IN through this file, as a typed prop, the same way HostPorts in
- * ./hostPorts.ts feeds the offline engine.
- *
- * RULES
- * - Structural types only. The host's real store is ASSIGNED to MapHostStore;
- *   it never has to import this file to conform, and this file never imports
- *   the host. The assignment in ReTreever (retreeverMapPorts.ts) is the
- *   type-check at the boundary.
- * - Narrow. A member appears here because a file under lib/mapUi or
- *   lib/mapState USES it. Add the member the day a mover needs it; do not
- *   mirror the host's whole interface "for later".
- * - Components come in as components (Svelte 5 `Component`), rendered with
- *   `<ports.Icon .../>`. One Icon definition in the host; none copied here.
- * - Optional groups (`q704?`, `scenes?`) are for components only some hosts
- *   have. A component that needs one renders nothing (or its fallback) when it
- *   is absent — it never crashes, per deps.json `_channel_why`.
+ * The map UI's door to its host. Structural types only, so the host never
+ * imports this file to conform. Narrow: a member is here because lib/mapUi or
+ * lib/mapState uses it. Optional groups (`q704?`, `scenes?`) exist only in
+ * some hosts; a component that needs one renders nothing when it is absent.
  */
 import type { Component } from "svelte";
 import type { Feature } from "geojson";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// [store] — the host's map session store, as the map UI sees it
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** A text label baked onto a PDF ground-overlay. Mirrors the host's
- *  OverlayLabel; only the fields the overlay manager reads. */
+/** A text label baked onto a PDF ground-overlay. */
 export interface MapHostOverlayLabel {
-	/** The text itself, e.g. "2427". */
 	t: string;
-	/** Label centre as [lng, lat]. */
+	/** [lng, lat] */
 	p: [number, number];
 	/** Text height in ground metres. */
 	m: number;
-	/** Rotation, degrees clockwise. */
+	/** Degrees clockwise. */
 	r: number;
 }
 
-/** One feature row of the active map. Structural mirror of the host's
- *  MapSessionFeature — the host's type is assignable to this. */
+/** One feature row of the active map. */
 export interface MapHostFeature {
 	mapFeatureKey: string;
 	featureName: string;
@@ -71,7 +44,6 @@ export interface MapHostFeature {
 	lastTouched: string;
 }
 
-/** One map session (a "map" the user is in). */
 export interface MapHostSession {
 	mapKey: string;
 	mapTitle: string;
@@ -83,8 +55,6 @@ export interface MapHostSession {
 	features: MapHostFeature[];
 }
 
-/** The slice of the host's MapStore the map UI touches. Reactive getters on
- *  the host side (Svelte 5 runes) read through fine as plain properties. */
 export interface MapHostStore {
 	readonly activeMapKey: string | null;
 	readonly activeMap: MapHostSession | null;
@@ -100,16 +70,9 @@ export interface MapHostStore {
 		abstraction?: string | null,
 		opts?: Record<string, unknown>,
 	): string;
-	/** EVERY KEY IS NAMED, and that is the point of this type.
-	 *
-	 *  This patch carried `[extra: string]: unknown`, which meant a host could
-	 *  accept five keys and drop the rest without anything failing to compile —
-	 *  the map sent `landName` for months and naming a block wrote nothing at
-	 *  all. A key that is not listed here is now a build error at the call site
-	 *  rather than a silent no-op on a planter's phone.
-	 *
-	 *  Adding a key means adding it here AND routing it in every host. If a host
-	 *  genuinely cannot store one, it should say so — not accept it quietly. */
+	/** Every key is named, never `[extra: string]`: an unlisted key must be a
+	 *  build error, not a silent no-op in a host that drops it. Adding a key
+	 *  means routing it in every host. */
 	updateFeature(
 		mapFeatureKey: string,
 		patch: {
@@ -119,12 +82,10 @@ export interface MapHostStore {
 			featureData?: string;
 			contacts?: string[];
 			geometry?: Feature | null;
-			/** Who last edited the shape; hosts that track it stamp the row. */
 			lastEditedBy?: string;
 			/** The BLOCK this shape is the ground of, "" to release it. */
 			landName?: string;
-			/** Styling, stored inside the geometry's own properties.
-			 *  `null`/`false`/`""` REMOVE the prop — off is an absence. */
+			/** Stored in the geometry's properties; `null`/`false`/`""` REMOVE the prop. */
 			fillOpacity?: number | null;
 			titleShown?: boolean;
 			displayName?: string;
@@ -132,10 +93,6 @@ export interface MapHostStore {
 	): void;
 	deleteFeature(mapFeatureKey: string): void;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// [ui] — host furniture the map components render or call
-// ─────────────────────────────────────────────────────────────────────────────
 
 export interface IconProps {
 	name: string;
@@ -145,7 +102,7 @@ export interface IconProps {
 	class?: string;
 }
 
-/** One row of the host's share sheet. Mirrors SharePicker's ShareFormat. */
+/** One row of the host's share sheet. */
 export interface MapShareRow {
 	ext: string;
 	label?: string;
@@ -154,91 +111,59 @@ export interface MapShareRow {
 	[extra: string]: unknown;
 }
 
-/** The file formats a map can be shared as. THE definition — the host's
- *  kmzExport re-exports it. */
+/** THE definition; the host's kmzExport re-exports it. */
 export type MapShareFormat = "getcache" | "kmz" | "kml";
 
 export interface MapUiPorts {
-	/** The app's line-icon component. */
 	Icon: Component<IconProps>;
 	MaskedIcon: Component<Record<string, unknown>>;
 	EmojiPin: Component<Record<string, unknown>>;
 	GoldButton: Component<Record<string, unknown>>;
 	SharePicker: Component<Record<string, unknown>>;
-	/** The feature editor body FeatureMapPopover defers ALL content to
-	 *  (host-owned: it edits the host's store). Added 28 Aug 2026. */
+	/** The feature editor body; host-owned because it edits the host's store. */
 	FeatureDetail: Component<Record<string, unknown>>;
-	/** The online/offline crow switch MapTopControls stacks under the eye.
-	 *  Added 28 Aug 2026. */
 	CrowSwitch: Component<Record<string, unknown>>;
 	copyToClipboard(text: string): Promise<boolean>;
-	/** Log-and-continue for a swallowed error. */
 	reportSwallowed(scope: string, err: unknown, extra?: Record<string, unknown>): void;
-	/** TEMP remote diagnostic breadcrumb (host's /api/devlog). Optional — added
-	 *  28 Aug 2026 for overlayManager's "overlay-mounted" event; a host without
-	 *  it is skipped, never crashed. */
+	/** TEMP remote diagnostic breadcrumb (host's /api/devlog). */
 	devlog?(data: Record<string, unknown>): void;
 	/** Svelte action that lifts a node into the host's overlay layer. */
 	overlayPortal(node: HTMLElement): { destroy(): void } | void;
-	/** The blinking eye used by legend toggles. */
 	createEyeToggle(): {
 		srcFor(on: boolean, key?: string): string;
 		isSettledOff(on: boolean, key?: string): boolean;
 		play(on: boolean, key?: string): void;
 		destroy(): void;
 	};
-	/** The eye that blinks ONCE and then acts — a button, not a switch, so it
-	 *  has no on/off to read back. BlobsDock's "see this blob on the map". */
+	/** Blinks ONCE then acts: a button, not a switch. */
 	createEyeBlink(): {
 		srcFor(key?: string): string;
 		blinkThen(action: () => void, key?: string): Promise<void>;
 		destroy(): void;
 	};
-	/** MaskedIcon's multi-frame sibling: predecodes every frame up front so a
-	 *  blink does not flash on its first play. Takes `frames`, which MaskedIcon
-	 *  has no prop for — they are not interchangeable. */
+	/** Predecodes every frame so a blink does not flash on first play; not interchangeable with MaskedIcon. */
 	MaskedFrameIcon: Component<Record<string, unknown>>;
-	/** Every frame srcFor() can emit, for MaskedFrameIcon's predecode. */
 	eyeAllFrames: string[];
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// [gps] — location permission + error reporting
-// ─────────────────────────────────────────────────────────────────────────────
 
 export interface MapGpsPorts {
 	isGranted(): Promise<boolean>;
 	reportError(scope: string, err: unknown, extra?: Record<string, unknown>): void;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// [scenes] — frame-animation asset facts (MapTopControls)
-// ─────────────────────────────────────────────────────────────────────────────
-
 export interface MapScenePorts {
 	assetFacts(dir: string): { startFrame: number; frameCount: number; fps: number };
 	framePath(dir: string, frameNumber: number): string;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// [q704] — quality-704 plot popover (PlotMapPopoverV2). Optional: only the
-// GetCache host has inspections.
-// ─────────────────────────────────────────────────────────────────────────────
+// Quality-704 mirrors: only the fields PlotMapPopoverV2 reads or writes.
 
-// Structural mirrors of the host's quality-704 types (q704.ts PlotRow /
-// BlockHeader, quality704Plots PlotPinData / PendingDrop / ActivePlotEdit).
-// ONLY the fields PlotMapPopoverV2 reads or writes — the host's real types are
-// assignable to these; these never import the host. (28 Aug 2026)
-
-/** One species split of a plot's `planted` count. */
 export interface MapQ704Species {
 	name: string;
 	count: number | null;
 }
 
-/** One plot row of the ACTIVE inspection, as the popover's deck edits it.
- *  Mirrors q704.ts PlotRow — required fields match the host's exactly so a row
- *  the popover builds in memory is a legal host row. */
+/** Required fields match the host's PlotRow exactly, so a row built here is a legal host row. */
 export interface MapQ704PlotRow {
 	id: string;
 	plotNo?: number;
@@ -253,8 +178,6 @@ export interface MapQ704PlotRow {
 	committed: boolean;
 }
 
-/** The inspection header the deck binds to. Mirrors quality704Core BlockHeader
- *  (speciesChoices optional on read — older rows have no cell). */
 export interface MapQ704BlockHeader {
 	name?: string;
 	landKey: string;
@@ -265,7 +188,6 @@ export interface MapQ704BlockHeader {
 	speciesChoices?: string[];
 }
 
-/** Popover data for one plot pin. Mirrors quality704Plots PlotPinData. */
 export interface MapQ704PlotPinData {
 	plotNo: number;
 	displayNo: number;
@@ -276,14 +198,13 @@ export interface MapQ704PlotPinData {
 	comment: string;
 }
 
-/** The in-flight (uncounted, memory-only) map drop. Mirrors PendingDrop. */
+/** The in-flight, memory-only map drop. */
 export interface MapQ704PendingDrop {
 	plotNo: number;
 	rowKey: string;
 	gridCode: string;
 }
 
-/** The per-plot targeted write. Mirrors quality704Plots ActivePlotEdit. */
 export interface MapQ704PlotEdit {
 	planted?: number | null;
 	plantableSpotsOverride?: number | null;
@@ -293,11 +214,9 @@ export interface MapQ704PlotEdit {
 	species?: MapQ704Species[] | undefined;
 }
 
-/** Discriminated write outcome — mirrors ActivePlotWriteOutcome. "missing" is
- *  a REFUSED write the caller must surface, never fold into "unchanged". */
+/** "missing" is a REFUSED write the caller must surface, never fold into "unchanged". */
 export type MapQ704WriteOutcome = "updated" | "unchanged" | "missing";
 
-/** The deck props the popover passes (a subset of the host deck's props). */
 export interface MapQ704DeckProps {
 	block?: MapQ704BlockHeader & { speciesChoices: string[] };
 	rows?: MapQ704PlotRow[];
@@ -309,7 +228,7 @@ export interface MapQ704DeckProps {
 	mapNumberFor?: (row: MapQ704PlotRow) => number;
 }
 
-/** The deck's `bind:this` surface — the two imperative calls the popover makes. */
+/** The deck's `bind:this` surface. */
 export interface MapQ704DeckExports {
 	focusRow(rowId: string): void;
 	openPlantedFor(rowId: string): void;
@@ -324,8 +243,7 @@ export interface MapQ704CelebrateHostProps {
 	target: HTMLElement | null;
 }
 
-/** The draw drawer's `bind:this` surface — what the offline page calls on the
- *  host-supplied MapDrawControls. */
+/** The host-supplied MapDrawControls' `bind:this` surface. */
 export interface MapDrawControlsExports {
 	importFile(file: File): void;
 	requestMyLocation(): Promise<void>;
@@ -335,7 +253,6 @@ export interface MapQ704Ports {
 	Quality704Deck: Component<MapQ704DeckProps, MapQ704DeckExports>;
 	FaultChip: Component<MapQ704FaultChipProps>;
 	CelebrateHost: Component<MapQ704CelebrateHostProps>;
-	/** The reward-arm controller; `onInputComplete()` fires the celebration. */
 	celebrate: { onInputComplete(): void };
 	/** Svelte action: `<button use:atvShare>` arms the ATV ride on tap. */
 	atvShare(
@@ -343,20 +260,16 @@ export interface MapQ704Ports {
 		opts?: { exit?: "left" | "right" | "auto" },
 	): { update?(next?: { exit?: "left" | "right" | "auto" }): void; destroy(): void } | void;
 	loadInspection(): Promise<{ block: MapQ704BlockHeader; rows: MapQ704PlotRow[] } | null>;
-	/** gpsFeatureKey → the DYNAMIC per-map plot number the user sees. */
+	/** gpsFeatureKey → the per-map plot number the user sees. */
 	activeMapNumbering(): Map<string, number>;
 	plotByGpsKey(gpsFeatureKey: string): MapQ704PlotPinData | null;
 	plotFullCodeByGpsKey(gpsFeatureKey: string): string;
-	/** Write one ACTIVE plot row by its deck row id (`q`-prefixed or the bare store key). */
+	/** `rowId` is `q`-prefixed or the bare store key. */
 	updateActivePlot(rowId: string, fields: MapQ704PlotEdit): MapQ704WriteOutcome;
 	setActiveSpeciesChoices(choices: string[]): void;
 	getPendingDrop(): MapQ704PendingDrop | null;
 	pendingDropPinData(): MapQ704PlotPinData | null;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// THE prop
-// ─────────────────────────────────────────────────────────────────────────────
 
 export interface MapHostPorts {
 	store: MapHostStore;

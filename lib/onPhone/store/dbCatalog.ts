@@ -1,30 +1,23 @@
-/** ⚠️ Single source of truth for classifying this origin's IndexedDB DBs — register every new store here (isLiveBase or APP_DB) or it's misclassified as legacy and offered up for wipe. */
+/** Classifies this origin's IndexedDB DBs. A store not registered here is legacy and offered up for wipe. */
 
 import {
 	currentDbName,
 	SANDBOX_SUFFIX,
 } from "../../shared/sandboxDbNames";
 
-/** TinyBase store (live user data, not offline-map). */
+/** TinyBase store: live user data. */
 export const APP_DB = "rt-treeStuff";
 
-// ⚠️ Don't delete these DB name literals — the DBs still exist on old devices and become unreachable storage orphans if unnamed here.
-/** v4 Cloudflare tile pile. Dead — v5 does not write it. */
 export const V4_TILES_DB = "gc-offlineTiles";
-/** v3/v4 baked vector line art. Dead — v5 does not write it. */
 export const LEGACY_VECTORS_DB_NAME = "rt-vectors";
-/** Shared satellite photo blobs. ⛔ Keep this in sync with satelliteImage.ts's real DB name — a stale value here misclassifies live photos as legacy and offers them up for wipe. */
+/** Keep in sync with satelliteImage.ts's DB name, or live photos classify as legacy. */
 export const SAT_DB = "gc-offlineSatellite";
-/** Pre-rename name; recognised so a device still holding the old DB is classified LIVE (migration source), never wipeable. */
+/** Recognised so a device still holding it is classified live (migration source). */
 export const SAT_DB_LEGACY_NAME = "rt-satellite";
-/** Shared offline-coverage registry. */
 export const REGISTRY_DB = "rt-mapRegistry";
-/** Wildfire hotspots per area (v4FireCache); MUST stay registered here or /blobs offers to wipe the layer's only offline copy. */
 export const FIRE_DB = "rt-fire-cache";
 
-/** Strip a world suffix (`-sandbox`, `-sandbox-<name>`) down to the store's
- *  base name, so a named world's DBs classify as the other world's, never as
- *  legacy weight the inspector offers to wipe. */
+/** Strip a world suffix (`-sandbox`, `-sandbox-<name>`) to the base name. */
 export function baseDbName(db: string): string {
 	const i = db.indexOf(SANDBOX_SUFFIX);
 	return i === -1 ? db : db.slice(0, i);
@@ -35,47 +28,44 @@ export function otherWorldDbName(base: string): string {
 	return currentDbName(base) === base ? base + SANDBOX_SUFFIX : base;
 }
 
-/** True for a V4 wall-map vector-tile pile (either world); callers skip these in per-blob scans — tens of thousands of tiny blobs hang the page. */
+/** Callers skip these in per-blob scans: tens of thousands of tiny blobs hang the page. */
 export function isV4Tiles(db: string): boolean {
 	const b = baseDbName(db);
 	return b === V4_TILES_DB || b.startsWith("retreever-v4-tiles");
 }
 
-/** Base names of the live offline stores (this world OR the sandbox world). */
+/** Base names of the live offline stores, either world. */
 export function isLiveBase(b: string): boolean {
 	return (
-		// ONLY the current tile pile (DB_NAME) is live — an OLD version suffix must count as LEGACY, not hidden as "live".
 		b === V4_TILES_DB ||
 		b === SAT_DB ||
 		b === SAT_DB_LEGACY_NAME ||
 		b === REGISTRY_DB ||
 		b === FIRE_DB ||
-		// v3 is still the shipping offline map — PROTECT rt-vectors from legacy-wipe until v3 is unplugged, then this line can be dropped.
 		b === LEGACY_VECTORS_DB_NAME
 	);
 }
 
-/** Live offline DBs of the CURRENT world — resolved via currentDbName() for this page-load's mode. */
+/** Live offline DBs of the current world. */
 export function isLiveV4(db: string): boolean {
 	const b = baseDbName(db);
 	return isLiveBase(b) && db === currentDbName(b);
 }
 
-/** The OTHER world's protected data (sandbox twin in real mode, or vice versa); never legacy, never wipeable. */
+/** The other world's data: never legacy, never wipeable. */
 export function isOtherWorld(db: string): boolean {
 	const b = baseDbName(db);
 	return (isLiveBase(b) || b === APP_DB) && db !== currentDbName(b);
 }
 
-/** Dead weight: neither a live store nor an app DB, in EITHER world. */
 export function isLegacyDb(db: string): boolean {
 	return !isLiveV4(db) && !isOtherWorld(db) && baseDbName(db) !== APP_DB;
 }
 
-/** ⛔ Imagery a re-download would restore, so sign-out keeps it — anything NOT listed here is treated as the signed-in person's own data and destroyed. Adding a store that holds user data to this list leaks it to the next person at the browser. */
+/** Imagery a re-download restores, so sign-out keeps it. A store holding user data here leaks it to the next person at the browser. */
 const IMPERSONAL_BASES = [V4_TILES_DB, SAT_DB, SAT_DB_LEGACY_NAME];
 
-/** True when a database must not outlive the signed-in session. Covers both worlds — the sandbox twin holds real edits too. */
+/** True when a database must not outlive the signed-in session, either world. */
 export function isPersonalDb(db: string): boolean {
 	return !IMPERSONAL_BASES.includes(baseDbName(db));
 }

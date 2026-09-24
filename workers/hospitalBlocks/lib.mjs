@@ -1,6 +1,4 @@
-// Shared plumbing for country-block adapters (see fr.mjs / us.mjs and the
-// block law in .claude/skills/refresh-hospitals/SKILL.md). Plain Node only —
-// the bake has no npm deps and must stay that way.
+// Plain Node only: the bake has no npm deps.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -11,9 +9,7 @@ export const BLOCKS_CACHE = new URL("../.bake-cache/blocks/", import.meta.url)
 export const BAKE_UA =
 	"getcache-hospitals-bake/1.0 (https://getcache.org)";
 
-/** Download once into the cache; reruns read the file and never touch the
- *  network. `url` may be a thunk (e.g. a resource-discovery API call) so a
- *  cache hit skips discovery too. */
+/** `url` may be a thunk so a cache hit skips resource discovery too. */
 export async function cachedDownload(url, cacheFile) {
 	if (existsSync(cacheFile)) return readFileSync(cacheFile, "utf8");
 	const resolved = typeof url === "function" ? await url() : url;
@@ -27,8 +23,7 @@ export async function cachedDownload(url, cacheFile) {
 	return body;
 }
 
-/** RFC-4180 CSV → array of row arrays. Handles quoted fields with embedded
- *  delimiters/quotes/newlines, CRLF, and a leading UTF-8 BOM. */
+/** RFC-4180 CSV → rows; handles quoted fields, CRLF and a leading BOM. */
 export function parseCsv(text, delim = ",") {
 	if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
 	const rows = [];
@@ -81,8 +76,7 @@ export function parseCsv(text, delim = ",") {
 	return rows;
 }
 
-/** Header row → {name: index}; a missing column throws so a silently
- *  reshuffled export fails loudly instead of shipping garbage. */
+/** A missing column throws so a reshuffled export fails loudly. */
 export function colIndex(header, names) {
 	const map = {};
 	for (const name of names) {
@@ -93,10 +87,7 @@ export function colIndex(header, names) {
 	return map;
 }
 
-/** Canonical pack entry [lng, lat, name, emergency, phone] with trailing
- *  null/absent fields trimmed, so old-shape entries stay valid. emergency is a
- *  string ("yes"/"ambulance_station"/…) or null for unknown; null survives
- *  only as a placeholder before a phone. */
+/** [lng, lat, name, emergency, phone] with trailing null/absent fields trimmed. */
 export function makeEntry(lng, lat, name, emergency = null, phone = undefined) {
 	const e = [Number(lng.toFixed(5)), Number(lat.toFixed(5)), name, emergency, phone];
 	while (e.length > 3 && (e[e.length - 1] === null || e[e.length - 1] === undefined))

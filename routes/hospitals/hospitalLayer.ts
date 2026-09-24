@@ -1,10 +1,6 @@
 /**
- * hospitalLayer — the hospital pins, ONE implementation for both maps (the
- * online Mapbox map and the offline MapLibre map): the same teardrop pin,
- * icon-only clusters under z11, and one tap card in the fire card's clothes.
- * Paints from hospitalCache; never fetches — it asks (`wantHospitals`) and the
- * pass answers. No text layers: the two maps have different glyph servers, and
- * a symbol layer whose glyphs 404 stalls its whole source.
+ * The hospital pins, one implementation for both maps. Paints from hospitalCache; never fetches.
+ * No text layers: the two maps have different glyph servers, and a symbol layer whose glyphs 404 stalls its whole source.
  */
 
 import type maplibregl from "maplibre-gl";
@@ -24,7 +20,6 @@ export const HOSPITAL_LAYER_IDS = {
 	icon: "rt-hospital-icon",
 } as const;
 
-/** The visible layers, for the legend rows and paint checks. */
 export const HOSPITAL_LAYER_ID_LIST: readonly string[] = [
 	HOSPITAL_LAYER_IDS.cluster,
 	HOSPITAL_LAYER_IDS.icon,
@@ -46,16 +41,15 @@ export interface HospitalLayerHandle {
 }
 
 export interface HospitalLayerOptions {
-	/** Where the user has a stake: live fix, pins touched lately. The wall is measured from these, never the screen. */
+	/** the wall is measured from these, never the screen */
 	readonly origins: () => readonly LngLat[];
-	/** The card's "My location" button — the app's own locate action, never raw geolocation here. Omitted → no button. */
+	/** the app's own locate action; omitted → no button */
 	readonly onShowMyLocation?: () => void;
 }
 
 type Popup = maplibregl.Popup;
 
-// MapLibre v4 `loadImage(url)` returns a promise; Mapbox 3 takes a callback
-// and ignores a missing one, so a promise wrapped around it never settles.
+// MapLibre's `loadImage(url)` returns a promise; Mapbox's takes a callback and ignores a missing one.
 function loadImage(
 	map: maplibregl.Map,
 	url: string,
@@ -88,7 +82,6 @@ function addLayers(map: maplibregl.Map): void {
 		clusterRadius: 120,
 		clusterMaxZoom: 11,
 	});
-	// A cluster shows the same pin — in an emergency the user zooms in anyway.
 	map.addLayer({
 		id: HOSPITAL_LAYER_IDS.cluster,
 		type: "symbol",
@@ -112,7 +105,7 @@ function addLayers(map: maplibregl.Map): void {
 			"icon-image": PIN,
 			"icon-size": PIN_SIZE,
 			"icon-allow-overlap": false,
-			// the pin is a teardrop whose TIP is the coordinate; `center` drifts by half an icon-height of pixels as you zoom
+			// The teardrop's TIP is the coordinate; `center` drifts as you zoom.
 			"icon-anchor": "bottom",
 		},
 	});
@@ -130,8 +123,7 @@ export function hospitalCardHtml(opts: {
 	readonly fromYouKm?: number | null;
 	readonly locateButton: boolean;
 }): string {
-	// The number copies on tap (and from the little button beside it) — in the
-	// field it goes into a text or the sat phone, not this device's dialler.
+	// The number copies rather than dials: in the field it goes into a text or the sat phone.
 	const phoneRow = opts.phone
 		? `<div class="rt-hospital-row"><span class="rt-hospital-k">Phone</span><span class="rt-hospital-v"><button type="button" class="rt-hospital-tel" data-copy="${esc(opts.phone)}">${esc(opts.phone)}</button><button type="button" class="rt-hospital-copy" data-copy="${esc(opts.phone)}" aria-label="Copy phone number">${COPY_GLYPH}</button></span></div>`
 		: "";
@@ -152,9 +144,7 @@ export function hospitalCardHtml(opts: {
 	);
 }
 
-// The renderer focuses the close button on open; on the iOS WebView the first
-// touch on a freshly-focused control is eaten as a focus gesture and `click`
-// never fires. `pointerup` is delivered straight from the input pipeline.
+// On the iOS WebView the first touch on a freshly-focused control is eaten as a focus gesture and `click` never fires.
 function wireCloseButton(popup: Popup): void {
 	const btn = popup
 		.getElement()
@@ -207,11 +197,7 @@ function nearestKm(at: LngLat, origins: readonly LngLat[]): number | null {
 	return Number.isFinite(best) ? best : null;
 }
 
-/**
- * Attach the hospital layer. Paints the cache, asks the pass for the anchors'
- * discs, repaints as they land. Returns a disposer that also carries
- * `repaint()`.
- */
+/** Returns a disposer that also carries `repaint()`. */
 export function attachHospitalLayer(
 	map: maplibregl.Map,
 	opts: HospitalLayerOptions,
@@ -222,11 +208,7 @@ export function attachHospitalLayer(
 
 	const paint = async (): Promise<void> => {
 		const fc = await hospitalCollection(opts.origins());
-		// CHECKED AFTER THE AWAIT, AND WITH isStyleLoaded. getStyle() is truthy
-		// the moment a Style object exists — long before addSource will accept
-		// anything — so it passes during a basemap swap and addLayers throws
-		// "Style is not done loading" into a promise nobody catches. The
-		// style.load listener below repaints, so returning here loses nothing.
+		// isStyleLoaded, not getStyle(): the latter is truthy during a basemap swap, long before addSource accepts anything.
 		if (!isLive() || !map.isStyleLoaded()) return;
 		addLayers(map);
 		const src = map.getSource(HOSPITAL_LAYER_IDS.src) as
@@ -249,10 +231,6 @@ export function attachHospitalLayer(
 				},
 			);
 	const repaint = (): void => {
-		// `void p.then(f)` discards the promise, it does not handle it: anything
-		// paint throws became an unhandled rejection with no stack behind it.
-		// Hospitals are a secondary layer — a failed repaint must report, not
-		// surface as a bare toast over the map.
 		void ready.then(paint).catch((err) => {
 			console.warn("[hospitals] repaint failed", err);
 		});
@@ -260,7 +238,7 @@ export function attachHospitalLayer(
 	repaint();
 	wantHospitals(opts.origins());
 	const offLanded = onHospitals(repaint);
-	// A style swap (basemap picker) drops every custom layer; put them back.
+	// A style swap drops every custom layer.
 	const onStyle = (): void => {
 		if (!map.hasImage(PIN)) {
 			void loadImage(map, hospitalPinUrl)
@@ -273,12 +251,7 @@ export function attachHospitalLayer(
 				});
 		} else repaint();
 	};
-	// styledata, NOT style.load: style.load fires once per style and BEFORE the
-	// style is loaded enough to accept a symbol layer, so paint's isStyleLoaded
-	// guard would return and nothing would put the hospitals back. styledata
-	// keeps firing as the style settles, so one of them lands on a ready style.
-	// paint is idempotent (addLayers early-returns on an existing source), so
-	// the repeats cost nothing.
+	// styledata, not style.load: style.load fires before the style accepts a symbol layer; styledata keeps firing until one lands on a ready style.
 	map.on("styledata", onStyle);
 
 	const show = (
@@ -326,7 +299,7 @@ export function attachHospitalLayer(
 		const [lng, lat] = f.geometry.coordinates;
 		show([lng, lat], f.properties);
 	};
-	// A cluster names its first member: in an emergency the user zooms in anyway.
+	// A cluster names its first member.
 	const onCluster = (e: maplibregl.MapLayerMouseEvent): void => {
 		const f = e.features?.[0];
 		if (!f || f.geometry.type !== "Point") return;
@@ -339,7 +312,6 @@ export function attachHospitalLayer(
 			show([lng, lat], null);
 			return;
 		}
-		// Mapbox's getClusterLeaves takes a callback and returns nothing; MapLibre's returns a promise.
 		const done = (leaves: GeoJSON.Feature[] | null | undefined): void => {
 			if (!isLive()) return;
 			const leaf = leaves?.[0];

@@ -3,8 +3,6 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { LOCAL_DEV_HOST } from "./worker-local-dev/tilesHost";
 
-// ⛔ three tier names only — tiles-prod / tiles-dev / tiles-local (→ 127.0.0.1); enforced by test, not doc.
-
 const ALLOWED = [
 	"tiles-prod.getcache.org",
 	"tiles-dev.getcache.org",
@@ -29,7 +27,7 @@ describe("tile hostnames — dev, prod, local and nothing else", () => {
 	it("no file in the child spells a tile host any other way", () => {
 		const offenders: string[] = [];
 		for (const f of sourceFiles(CHILD_ROOT)) {
-			if (f.endsWith("tierNaming.test.ts")) continue; // ALLOWED lives here
+			if (f.endsWith("tierNaming.test.ts")) continue;
 			const text = readFileSync(f, "utf8");
 			for (const m of text.match(TILE_HOST) ?? []) {
 				if (!ALLOWED.includes(m)) {
@@ -45,7 +43,6 @@ describe("tile hostnames — dev, prod, local and nothing else", () => {
 	});
 
 	it("the child bakes in NO production hostname at all", () => {
-		// ⛔ the child cannot name our infrastructure — prod arrives via VITE_TILES_HOST at boot; the absence IS the guarantee.
 		const src = readFileSync(join(__dirname, "worker-local-dev", "tilesHost.ts"), "utf8");
 		const code = src
 			.split("\n")
@@ -55,7 +52,6 @@ describe("tile hostnames — dev, prod, local and nothing else", () => {
 	});
 
 	it("the local tier is loopback or the local NAME — never a cloud host", () => {
-		// ⚠️ anything but loopback/tiles-local means local silently became remote and bills someone.
 		expect(LOCAL_DEV_HOST).toMatch(
 			/^https?:\/\/(127\.0\.0\.1|localhost|tiles-local\.getcache\.org):8787$/,
 		);

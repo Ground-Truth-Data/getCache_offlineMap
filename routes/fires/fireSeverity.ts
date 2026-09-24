@@ -1,15 +1,11 @@
-/**
- * ⚠️ FRP cut points are the user's starting guess, not measured — tune against real clusters; kept in one named table, not scattered through render code.
- * Pure functions. No map, no DOM, no fetch.
- */
+/** Pure functions: no map, no DOM, no fetch. */
 
-/** Level 1–5. Drives wording, and later could drive colour. */
 export type SeverityLevel = 1 | 2 | 3 | 4 | 5;
 
 export interface SeverityRow {
 	readonly sizeBand: "spot" | "small" | "large" | "major";
 	readonly sizeMinKm2: number;
-	/** Exclusive upper bound; Infinity for the open-ended top band. */
+	/** exclusive */
 	readonly sizeMaxKm2: number;
 	readonly frpBand: "low" | "moderate" | "high" | "extreme";
 	readonly frpMinMw: number;
@@ -19,23 +15,16 @@ export interface SeverityRow {
 	readonly headline: string;
 }
 
-/**
- * ⚠️ Size bands are MEASURED, not guessed — a southern BC fire-season sample tops out at 30.5 km², so the old 50 km² "major" cut was unreachable.
- * ⚠️ LOAD-BEARING: SPOT_MAX must stay above one VIIRS pixel (0.1406 km²) and below two, so a single detection is always "spot" — a test depends on it.
- */
-/**
- * ⚠️ FRP cut points are MEASURED (p50/p75/p90 of live FIRMS data), not the original 10/50/200 guess, which dumped 70% of fires into "low".
- * ⚠️ These are cut points on a distribution — re-measure against a fire-season sample before moving them; changing them changes what every card says.
- */
+// Cut points measured on live FIRMS data (p50/p75/p90); re-measure against a fire-season sample before moving them.
 export const FRP_MODERATE_MW = 3;
 export const FRP_HIGH_MW = 15;
 export const FRP_EXTREME_MW = 90;
 
-export const SIZE_SPOT_MAX_KM2 = 0.25; //   25 ha — one pixel, up to two
-export const SIZE_SMALL_MAX_KM2 = 3; //    300 ha — around the median
-export const SIZE_LARGE_MAX_KM2 = 15; // 1,500 ha — p90..p95
+/** Must stay above one VIIRS pixel (0.1406 km²) and below two, so a single detection is always "spot". */
+export const SIZE_SPOT_MAX_KM2 = 0.25;
+export const SIZE_SMALL_MAX_KM2 = 3;
+export const SIZE_LARGE_MAX_KM2 = 15;
 
-/** The severity matrix, verbatim from the spec. */
 export const SEVERITY_TABLE: readonly SeverityRow[] = [
 	{
 		sizeBand: "spot",
@@ -218,7 +207,7 @@ export const SEVERITY_TABLE: readonly SeverityRow[] = [
 	},
 ];
 
-/** Look up severity for area (km²) and peak FRP (MW). Always returns a row — NaN/negative input maps to the gentlest band rather than throwing. */
+/** Always returns a row; NaN/negative input maps to the gentlest band. */
 export function severityFor(areaKm2: number, peakFrpMw: number): SeverityRow {
 	const a = Number.isFinite(areaKm2) && areaKm2 > 0 ? areaKm2 : 0;
 	const f = Number.isFinite(peakFrpMw) && peakFrpMw > 0 ? peakFrpMw : 0;
@@ -229,18 +218,16 @@ export function severityFor(areaKm2: number, peakFrpMw: number): SeverityRow {
 			f >= r.frpMinMw &&
 			f < r.frpMaxMw,
 	);
-	// Unreachable while the table covers 0..∞ on both axes; kept as a fallback since a table is data that gets edited.
 	return hit ?? SEVERITY_TABLE[0];
 }
 
-/** What the fire is doing between passes. Independent of how bad it is. */
 export type TrendBand = "new" | "growing" | "steady" | "quieter" | "absent";
 
 export interface TrendResult {
 	readonly band: TrendBand;
-	/** Full sentence, for prose. */
+	/** full sentence */
 	readonly line: string;
-	/** Two-or-three words, for a labelled row. */
+	/** two or three words, for a labelled row */
 	readonly status: string;
 }
 
@@ -252,7 +239,6 @@ export const TREND_LINES: Readonly<Record<TrendBand, string>> = {
 	absent: "Nothing detected on last pass",
 };
 
-/** Two-or-three word status for a labelled row (distinct from TREND_LINES' full sentences). */
 export const TREND_STATUS: Readonly<Record<TrendBand, string>> = {
 	new: "Newly spotted",
 	growing: "Growing",
@@ -261,20 +247,19 @@ export const TREND_STATUS: Readonly<Record<TrendBand, string>> = {
 	absent: "Not seen last pass",
 };
 
-/** Fewest satellite passes before a direction is claimed at all. */
+/** Fewest satellite passes before a direction is claimed. */
 export const TREND_MIN_PASSES = 3;
 
-/** Ratio cut points between the EARLIER and LATER halves' mean peak FRP. */
+/** Ratio between the EARLIER and LATER halves' mean peak FRP. */
 export const TREND_GROWING_RATIO = 1.5;
 export const TREND_QUIETER_RATIO = 0.67;
 
-/** Groups detections within this window into one satellite pass (one overpass writes many rows across a few minutes). */
+/** One overpass writes many rows across a few minutes. */
 export const PASS_BUCKET_MS = 30 * 60 * 1000;
 
 /**
- * Trend from a cluster's own detections: groups by satellite pass (peak FRP per pass), compares the EARLIER half of passes against the LATER half.
- * ⚠️ Not the last two passes — measured to disagree with a fire's full history 64% of the time (FRP swings 0.20–3.43× pass-to-pass for reasons unrelated to the fire).
- * ⚠️ `absent` is deliberately NOT inferred here — claiming "nothing detected on last pass" without knowing the satellite covered this ground would be false comfort.
+ * Earlier half of passes against the later half, never the last two: FRP swings 0.2–3.4× pass to pass.
+ * `absent` is never inferred here: the satellite may not have covered this ground.
  */
 export function trendFor(
 	detections: readonly { t: number; frp: number }[],
@@ -291,13 +276,11 @@ export function trendFor(
 	if (passes.length < TREND_MIN_PASSES)
 		return { band: "new", line: TREND_LINES.new, status: TREND_STATUS.new };
 
-	// Odd count gives the later half the extra pass — recent end weighted more.
 	const mid = Math.floor(passes.length / 2);
 	const mean = (xs: readonly [number, number][]): number =>
 		xs.reduce((a, p) => a + p[1], 0) / xs.length;
 	const earlyFrp = mean(passes.slice(0, mid));
 	const lateFrp = mean(passes.slice(mid));
-	// Earlier half with no measurable heat can't anchor a ratio — treat as the first reading.
 	if (earlyFrp <= 0)
 		return { band: "new", line: TREND_LINES.new, status: TREND_STATUS.new };
 

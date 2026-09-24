@@ -1,18 +1,7 @@
 /**
- * Ask a router for the way there, ONLINE — this is the only code in the app
- * that computes a route, and it never runs on the phone's own data.
- *
- * The offline map cannot route: its tiles carry road SHAPES and a road's kind,
- * but no junctions, no node ids, and a road crossing a tile boundary is two
- * unrelated lines. Two tracks that appear to meet on screen may not meet on the
- * ground, and nothing in a rendering tile can tell those apart. So the answer
- * is fetched while there is signal and kept, rather than guessed later.
- *
- * ⛔ A REFUSAL IS NOT A FAILURE. Mapbox returns NoRoute for exactly the ground
- * this app exists for — a cutblock at the end of forestry road nobody mapped
- * as drivable. Showing nothing there would be worse than useless, so the
- * fallback is the straight bearing line, clearly marked `direct` so the UI can
- * say it is a heading and not a road.
+ * The only code that computes a route, and only online: rendering tiles carry road shapes
+ * but no junctions, so the phone cannot route on its own data. A NoRoute from the router is
+ * the expected answer at a cutblock, not a failure: it falls back to the straight bearing line.
  */
 
 import { decodePolyline } from "./polyline";
@@ -21,19 +10,17 @@ import { kmBetween } from "../../lib/shared/kmGeo";
 
 const API = "https://api.mapbox.com/directions/v5/mapbox/driving";
 
-/** Longer than a map tile fetch on purpose: this is asked once, by hand, and a slow answer still beats none. */
+/** Asked once, by hand; a slow answer beats none. */
 const TIMEOUT_MS = 15_000;
 
 export interface RouteOptions {
 	token: string;
 	toName?: string;
 	signal?: AbortSignal;
-	/** Seam for tests. */
 	fetchFn?: typeof fetch;
 	now?: () => number;
 }
 
-/** The straight line, when no road route exists. Two points, no duration — it predicts nothing. */
 export function directRoute(
 	from: LngLat,
 	to: LngLat,
@@ -51,12 +38,7 @@ export function directRoute(
 	};
 }
 
-/**
- * Fetch the driving route. Falls back to {@link directRoute} when the router
- * has no road answer — never throws for that case, since it is the expected
- * one in the bush. Throws only when the ASK itself failed (offline, bad token,
- * timeout), because then the caller must tell the driver to try while in range.
- */
+/** Falls back to {@link directRoute} when the router has no road answer; throws only when the ask itself failed. */
 export async function fetchRoute(
 	from: LngLat,
 	to: LngLat,
@@ -69,7 +51,6 @@ export async function fetchRoute(
 
 	const timer = new AbortController();
 	const bail = setTimeout(() => timer.abort(), TIMEOUT_MS);
-	// The caller's own abort must still reach the request.
 	opts.signal?.addEventListener("abort", () => timer.abort(), { once: true });
 
 	let body: {
@@ -85,7 +66,6 @@ export async function fetchRoute(
 	}
 
 	const best = body.routes?.[0];
-	// NoRoute, NoSegment, an empty list — all mean "no road answer", not "ask failed".
 	if (!best?.geometry) return directRoute(from, to, { toName, now });
 
 	const coordinates = decodePolyline(best.geometry, 6);

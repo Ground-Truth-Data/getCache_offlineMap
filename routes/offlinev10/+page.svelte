@@ -1,12 +1,7 @@
 <script lang="ts">
 /**
- * /app/offlineV10 — V9 cut on the z10 grid: a blob is whole z10 tiles and
- * the pyramids under them, so the gold border IS the data's edge at every
- * zoom, and a blob is a few MB. The dev rails are the old map's three cards, fed by V10.
- * The in-phone chrome is the ONLINE map's — eye/crow, the tool drawer with its
- * zoom and map-name pills, the scale bar — and the camera is the shared saved
- * one, so hopping between /app/map and here lands on the same spot.
- * URL shape matches /app/offline: ?at=lat,lng&z=13.50
+ * The offline map: a blob is whole z10 tiles and the pyramids under them, so the gold
+ * border IS the data's edge at every zoom. Chrome and saved camera are the online map's.
  */
 import { dev } from "$app/environment";
 import { goto, replaceState } from "$app/navigation";
@@ -52,10 +47,8 @@ let host = $state<HTMLDivElement>();
 let map: maplibregl.Map | null = null;
 let fireHandle: FireLayerHandle | null = null;
 let hospitalHandle: HospitalLayerHandle | null = null;
-/** The blobs' photos, mounted near the camera and unmounted far from it, the old map's cull. */
 let photos: SatelliteMount | null = null;
 let regions = $state<Region[]>([]);
-/** Bytes and source per photo key, for the docks — refreshed as photos land and blobs go. */
 let photoMeta = $state<Record<string, PhotoInfo>>({});
 let tiles = $state(0);
 let bytes = $state(0);
@@ -65,18 +58,15 @@ let last = $state<Region | null>(null);
 let tier = $state<WorkerTarget>(getWorkerTarget());
 let readThrough = $state(false);
 let budgetMb = $state(readBudgetMb());
-/** Whether the browser agreed to keep the store — asked at boot by the engine, answered here. */
 let kept = $state<Kept>("unknown");
 /** Per blob id, tiles not on disk; 0 is whole. */
 let missing = $state<Record<string, number>>({});
-/** Why the last download did not land; cleared when the next one starts. */
 let failure = $state<string | null>(null);
-/** THE CIRCLE — grey never asked · yellow asked or on disk · green painted · red broke. */
+/** grey never asked · yellow asked or on disk · green painted · red broke */
 let light = $state<Light>("idle");
 let dlStart = $state<number | null>(null);
 let dlMs = $state<number | null>(null);
 let layerRows = $state<LayerRow[]>([]);
-/** The online map's chrome, bound the way /app/offline binds it. */
 let mapForTools = $state<MapboxMap | null>(null);
 let drawControlsRef: ReturnType<NonNullable<typeof MapDrawControls>> | undefined = $state();
 let mapOnly = $state(false);
@@ -84,12 +74,7 @@ let legendOpen = $state(false);
 let armKind = $state<"line" | "polygon" | "pin" | null>(null);
 let dropPinAt = $state<[number, number] | null>(null);
 let measureEvent = $state<{ lng: number; lat: number; n: number } | null>(null);
-/**
- * THE HOST'S TWO DOORS. This child builds neither: `mapPorts` is the UI, GPS
- * and store surface, `places` every pin of every map. The fire and hospital
- * walls read their anchors from `mapPorts.store.allMaps` — live fix plus ground
- * touched in 30 days, the same set the online map uses.
- */
+/** The host's doors; every one optional, since a host with no Get Cache app behind it supplies none. */
 let {
 	mapPorts = soloMapPorts(),
 	places = soloHostPorts(),
@@ -97,54 +82,40 @@ let {
 	fireOrigins = soloFireOrigins,
 	debug = false,
 }: {
-	/** OPTIONAL: a host with no Get Cache app behind it (rapper, a bare
-	 *  `npm create` install) supplies none, and the solo bundle is the honest
-	 *  empty answer rather than a stand-in. Required once made the page throw
-	 *  on `ports.scenes` before any of the child's own optional-port guards
-	 *  could run. */
 	mapPorts?: MapHostPorts;
 	places?: HostPorts;
-	/** The shared tool drawer — ruler, draw palette, locate, grid, tracks. It
-	 *  lives in a PRIVATE repo this one may not import, so the host hands it in.
-	 *  OPTIONAL: an open-core host has no drawer to give, and the map is whole
-	 *  without it — pan, zoom, blobs and every layer are the child's own. */
+	/** The tool drawer lives in a PRIVATE repo this one may not import, so the host hands it in. */
 	MapDrawControls?: Component<Record<string, unknown>, MapDrawControlsExports>;
-	/** Anchor set → the points the fire and hospital walls are measured from.
-	 *  Same private repo. Defaults to the camera alone, which is what the full
-	 *  one returns for a user with no fix and no touched ground. */
+	/** The points the fire and hospital walls are measured from. */
 	fireOrigins?: (
 		mapCentre: readonly [number, number],
 		maps: MapHostPorts["store"]["allMaps"],
 	) => Array<readonly [number, number]>;
-	/** Mounts the three instrument docks. Only /app/offlinev10/debug passes
-	 *  true — the plain route is the map a user sees. */
+	/** Mounts the instrument docks; only /app/offlinev10/debug passes true. */
 	debug?: boolean;
 } = $props();
-/** Where the user has a stake — the camera only when there is no fix and no touched ground. */
 function origins(m: maplibregl.Map): readonly (readonly [number, number])[] {
 	const c = m.getCenter();
 	return fireOrigins([c.lng, c.lat], mapPorts.store.allMaps);
 }
 let measureN = 0;
-/** The blue dot's latest live fix; the margin is how much map is left around it, recomputed as blobs land. */
 let fix = $state<[number, number] | null>(null);
 const margin = $derived(fix ? marginKm(fix[0], fix[1], regions.map((r) => rangeBox(r.range))) : null);
 let lastEval: [number, number] | null = null;
 
-/** ?at&z in the URL wins (?lng&lat is the blob inspector's spelling); else the camera the online map last saved; else home. */
+/** ?at&z wins (?lng&lat is the blob inspector's spelling); else the saved camera; else home. */
 function readUrl(): { center: [number, number]; zoom: number } {
 	const q = page.url.searchParams;
 	const at = q.get("at") ?? (q.has("lat") && q.has("lng") ? `${q.get("lat")},${q.get("lng")}` : null);
 	const z = Number(q.get("z"));
 	const [lat, lng] = (at ?? "").split(",").map(Number);
-	// A swapped or empty pair (at=, parses as 0,0) falls through to the saved camera, never onto the map.
+	// `at=` parses as 0,0
 	if (validLatLng(lat, lng) && !(lat === 0 && lng === 0)) return { center: [lng, lat], zoom: Number.isFinite(z) && z > 0 ? z : 10 };
 	const saved = loadCamera();
 	if (saved) return { center: saved.center, zoom: saved.zoom };
 	return { center: MAP_HOME_CENTER, zoom: 6 };
 }
 
-/** The same view on the online map, in the URL shape both pages read. */
 function onlineUrl(): string {
 	if (!map) return ONLINE_MAP_ROUTE;
 	const c = map.getCenter();
@@ -172,7 +143,7 @@ async function refresh(): Promise<void> {
 	void nameOldBlobs();
 }
 
-/** Blobs from before names existed get theirs once, from their own tiles; a blob whose tiles hold no town is marked looked-at so this never runs for it again. Rows are read fresh: a $state proxy cannot be structured-cloned into IndexedDB. */
+/** Names unnamed blobs once. Rows are read fresh: a $state proxy cannot be structured-cloned into IndexedDB. */
 let naming = false;
 async function nameOldBlobs(): Promise<void> {
 	if (naming) return;
@@ -199,12 +170,10 @@ function onPhotoLanded(): void {
 
 const PHOTO_ROW = "photo";
 
-/** The mounted photos' layer ids — they come and go with the camera, so they are read on use. */
 function photoIds(): string[] {
 	return [...(photos?.mounted() ?? [])].map((k) => `${satLayerId(k)}-l`);
 }
 
-/** Mount the photos near the camera, drop the far ones, then keep the LAYERS switch honest for the newcomers. */
 function reconcilePhotos(): void {
 	const m = map;
 	if (!m || !photos) return;
@@ -216,7 +185,7 @@ function reconcilePhotos(): void {
 		});
 }
 
-/** The border is the OUTLINE of the anchor tiles on disk: a tile's side is drawn only when the tile across it is not on disk, so blobs that touch read as one shape with no seams. */
+/** A tile's side is drawn only when the tile across it is not on disk, so touching blobs read as one shape. */
 function outline(): GeoJSON.Feature[] {
 	const disk = new Set<string>();
 	for (const r of regions)
@@ -250,7 +219,6 @@ function invalidatePlanet(): void {
 	(map?.getSource(PLANET) as maplibregl.VectorTileSource | undefined)?.setTiles([PLANET_TILES]);
 }
 
-/** A blob is on disk (wherever it was earned): show it, then time the paint. */
 async function landed(r: Region): Promise<void> {
 	light = "ok";
 	busy = false;
@@ -259,11 +227,7 @@ async function landed(r: Region): Promise<void> {
 	invalidatePlanet();
 	await refresh();
 	last = r;
-	// `idle` means the map has nothing left to do, so ANY camera move keeps the
-	// clock running: one blob read 94.8s against a 1–3s norm because the map was
-	// panned while it landed. The number was never paint time. Watch for a move
-	// and mark the reading interrupted rather than reporting a number that
-	// silently means something else.
+	// A camera move keeps `idle` from firing, so the reading is marked interrupted rather than reported.
 	let moved = false;
 	const onMove = (): void => {
 		moved = true;
@@ -290,7 +254,7 @@ async function landed(r: Region): Promise<void> {
 	});
 }
 
-/** The dock's lights follow the app-wide engine, including a download that started on another page. */
+/** Follows the app-wide engine, including a download that started on another page. */
 function followBlobs(): () => void {
 	const now = blobInFlight();
 	if (now) {
@@ -308,9 +272,7 @@ function followBlobs(): () => void {
 			progress = null;
 			failure = null;
 		} else if (e.kind === "progress") progress = e.progress;
-		// Nothing awaits these two, so a rejected IndexedDB read would be an
-		// unhandled rejection AND leave the light green over a panel that had
-		// silently stopped updating. The light must mean what it says.
+		// Nothing awaits these, so a rejection must turn the light red itself.
 		else if (e.kind === "landed")
 			landed(e.region).catch((err) => {
 				light = "err";
@@ -340,7 +302,7 @@ function blobsForPinsInView(): void {
 			if (lng >= b.getWest() && lng <= b.getEast() && lat >= b.getSouth() && lat <= b.getNorth()) void queueBlob(lng, lat);
 }
 
-/** FOLLOW ME — every live fix from the drawer's one GPS watch. Evaluated only after a kilometre of movement; when less than FOLLOW_MARGIN_KM of map is left toward the nearest blob edge, the blob around the person is queued. Never while a download is in flight — in bad signal a slow fetch would otherwise stack up near-duplicates a kilometre apart. */
+/** Follow me: queue the blob around the person when less than FOLLOW_MARGIN_KM of map is left. Never while a download is in flight, or bad signal stacks near-duplicates. */
 function onUserFix(lng: number, lat: number): void {
 	if (!moved(lastEval, [lng, lat])) return;
 	lastEval = [lng, lat];
@@ -379,7 +341,7 @@ async function wipeAll(): Promise<void> {
 	}
 }
 
-/** One switch per pyramid layer, read off the style itself so a renamed layer cannot leave a dead switch. */
+/** One switch per pyramid layer, read off the style so a renamed layer cannot leave a dead switch. */
 function buildLayerRows(m: maplibregl.Map): void {
 	const groups = new Map<string, string[]>();
 	for (const l of m.getStyle().layers) {
@@ -389,11 +351,9 @@ function buildLayerRows(m: maplibregl.Map): void {
 	}
 	layerRows = [
 		...[...groups].map(([key, ids]) => ({ key, label: key, ids, on: true, painted: false })),
-		// the flame layer adds its layers on its first paint, so these ids are looked up on use
+		// fires and hospitals add their layers on first paint; photo ids are read off the mount on use
 		{ key: "fires", label: "fires", ids: [...FIRE_LAYER_ID_LIST], on: true, painted: false },
-		// the pins add their layers on their first paint too
 		{ key: "hospitals", label: "hospitals", ids: [...HOSPITAL_LAYER_ID_LIST], on: true, painted: false },
-		// one raster layer per mounted photo; the ids are read off the mount on use
 		{ key: PHOTO_ROW, label: "photo", ids: [], on: true, painted: false },
 	];
 }
@@ -411,7 +371,7 @@ function toggleLayer(key: string): void {
 	});
 }
 
-/** A switched-off row stays off for layers that arrive later — the flames on their first paint, a photo as it mounts. */
+/** A switched-off row stays off for layers that arrive later. */
 function enforceOff(m: maplibregl.Map): void {
 	for (const r of layerRows) {
 		if (r.on) continue;
@@ -435,7 +395,6 @@ function markPainted(m: maplibregl.Map): void {
 
 onMount(() => {
 	if (!host) return;
-	// STICKY MAP: the MAP tab and every "See on map" eye come back to whichever map was used last.
 	saveLastMapRoute(OFFLINE_MAP_ROUTE);
 	installProtocol();
 	const { center, zoom } = readUrl();
@@ -448,20 +407,16 @@ onMount(() => {
 	});
 	map = m;
 	m.on("moveend", writeUrl);
-	// The drawer speaks Mapbox GL types; this map is MapLibre. Same cast as /app/offline.
 	m.on("load", () => {
 		buildLayerRows(m);
 		refresh();
+		// The drawer speaks Mapbox GL types; this map is MapLibre.
 		mapForTools = m as unknown as MapboxMap;
-		// THE FIRES — the cached hotspots, relevant to the pins, never to the screen; the fire pass in fires.ts keeps the cache filled for every blob.
 		fireHandle = attachFireLayer(m, { origins: () => origins(m) });
-		// THE HOSPITALS — the same wall from the same anchors; the child's hospitalService.ts (started by the layout) keeps the shared cache filled.
 		hospitalHandle = attachHospitalLayer(m, {
 			origins: () => origins(m),
-			// The card's "My location" runs the LOCATE tile's action; the ref is read at click time.
 			onShowMyLocation: () => void drawControlsRef?.requestMyLocation(),
 		});
-		// THE PHOTOS — a blob's own 2 km of satellite under its roads, for the blobs with no road to stand on.
 		photos = createSatelliteMount(m, undefined, PHOTO_INSERT_BEFORE);
 		reconcilePhotos();
 	});
@@ -474,9 +429,7 @@ onMount(() => {
 		"bottom-left",
 	);
 	const detachCamera = attachCameraPersistence(m as unknown as Parameters<typeof attachCameraPersistence>[0]);
-	// The same gesture as /app/map and /app/offline: double-tap or long-press
-	// plants the Snake Ruler's first node; its Save drops the pin, and the pin's
-	// arrival in the store is what earns the blob (watchNewPins).
+	// Double-tap plants the ruler's first node; its Save drops the pin, whose arrival in the store earns the blob.
 	const detachTap = attachDoubleTapToPin(m, {
 		onDrop: () => {},
 		onMeasureSeed: (lng, lat) => {
@@ -489,7 +442,6 @@ onMount(() => {
 	});
 	if (dev) (window as unknown as { __v10?: unknown }).__v10 = { map: m, addBlob: queueBlob, refresh, fix: onUserFix };
 
-	// The engine narrates only where someone is reading it.
 	setBlobNarration(debug);
 	setPhotoNarration(debug);
 	return () => {
@@ -543,12 +495,7 @@ onMount(() => {
 	{/if}
 </div>
 
-<!-- THE THREE INSTRUMENTS. Not dead code, and NEVER to be deleted — they are
-     how this map is debugged, and nothing else reports what is on disk, what a
-     Worker served, or which pyramid layers actually painted. They now live at
-     /app/offlinev10/debug so the plain route stays clean; reaching them is a
-     URL away, which is why an audit finding them unmounted is finding them
-     working. `dev` still walls them out of a build. -->
+<!-- The instrument docks: never delete, they are how this map is debugged. Mounted only at /app/offlinev10/debug. -->
 {#if dev && debug}
 	<EphemeralDock side="left">
 		<DataDock />
@@ -592,6 +539,5 @@ onMount(() => {
 {/if}
 
 <style>
-/* Full-bleed frame, canvas, ctrl overrides and the scale bar come from mobile.css (.mobile-map-fill), shared with /app/map. */
 .map-canvas { background: #34373d; }
 </style>

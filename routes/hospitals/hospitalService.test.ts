@@ -34,8 +34,7 @@ function ok(): Response {
 
 beforeEach(async () => {
 	vi.useRealTimers();
-	// PIN THE TIER and give it a host — the pass asks tilesHost() for the URL, and
-	// nothing is baked in: an unconfigured tier answers null and the pass refuses.
+	// An unconfigured tier answers null and the pass refuses.
 	setWorkerTarget("worker-cloud-prod");
 	configureTilesHost("https://tiles.example.test");
 	for (const d of await allDiscs()) await deleteDisc(d.key);
@@ -57,9 +56,6 @@ describe("the hospital pass", () => {
 
 
 	it("⛔ THE TRACTOR BUG: an anchor asked for mid-pass still gets its disc", async () => {
-		// Two anchors 85 ms apart is the real case (Rosedale, 7 Sep 2026). Here the
-		// first fetch is held open so the second ask lands mid-pass — the old latch
-		// dropped it, and the anchor waited for a retry timer to sweep it up.
 		let release!: () => void;
 		const held = new Promise<void>((r) => {
 			release = r;

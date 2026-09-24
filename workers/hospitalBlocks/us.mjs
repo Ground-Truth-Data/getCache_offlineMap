@@ -1,19 +1,7 @@
-// USA block — the CMS hospital registry replaces every OSM row inside the
-// Natural Earth "United States of America" feature (50 states + DC; the
-// territories are separate NE features, so CMS rows in PR/GU/VI/AS/MP fall
-// outside bounds, are skipped by the bake, and stay OSM-covered).
-//
-// Facilities: CMS Provider Data Catalog « Hospital General Information »
-// (dataset xubh-q36u on data.cms.gov/provider-data, public domain). The CSV
-// carries no coordinates, so rows are geocoded through the US Census Bureau
-// batch geocoder (free, no key) with a onelineaddress retry for batch misses;
-// rows neither can place are skipped and counted — coordinates are never
-// invented. Geocoding is cached per Facility ID (misses included) so reruns
-// are offline-stable.
-//
-// Emergency Services "Yes" → "yes"; "No" → row dropped (explicit no-ER);
-// anything else → null (unknown). The CSV URL is discovered through the
-// metastore API each cold run — the direct URL's hash changes per refresh.
+// USA: CMS « Hospital General Information » replaces OSM inside the Natural
+// Earth "United States of America" feature. The CSV has no coordinates, so rows
+// are geocoded through the free Census Bureau geocoder; rows it cannot place
+// are skipped, never invented.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import {
@@ -37,8 +25,7 @@ export async function bounds() {
 const GEOCODER = "https://geocoding.geo.census.gov/geocoder/locations";
 const BENCHMARK = "Public_AR_Current";
 
-/** CMS CSV → rows still needing coordinates. Explicit "No" for Emergency
- *  Services is the one row-drop; blank/other → null (unknown). */
+/** Explicit "No" for Emergency Services drops the row; blank → null (unknown). */
 export function parseCms(csvText) {
 	const rows = parseCsv(csvText);
 	const col = colIndex(rows[0], [
@@ -70,7 +57,7 @@ export function parseCms(csvText) {
 	return out;
 }
 
-/** Batch-geocoder response CSV → Map id → [lng, lat] | null (No_Match/Tie). */
+/** id → [lng, lat], or null for No_Match/Tie. */
 export function parseBatchGeocode(text) {
 	const out = new Map();
 	for (const r of parseCsv(text)) {
@@ -130,8 +117,7 @@ export async function fetch() {
 		}, `${dir}Hospital_General_Information.csv`),
 	);
 
-	// Geocode cache: one line per Facility ID, misses kept as empty coords so a
-	// rerun never re-asks about an address the geocoder already refused.
+	// Misses are cached as empty coords so a rerun never re-asks a refused address.
 	const cacheFile = `${dir}census-geocoded.csv`;
 	const coords = new Map();
 	if (existsSync(cacheFile)) {
@@ -141,8 +127,6 @@ export async function fetch() {
 			coords.set(id, lng ? [Number(lng), Number(lat)] : null);
 		}
 	}
-	// Persist after every batch/retry burst — a killed run must not re-ask the
-	// geocoder about addresses it already answered.
 	const persist = () => {
 		mkdirSync(dir, { recursive: true });
 		writeFileSync(

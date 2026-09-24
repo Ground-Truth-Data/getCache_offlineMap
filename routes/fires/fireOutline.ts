@@ -1,35 +1,29 @@
 /**
- * fireOutline.ts — a thin red line around each group of fire detections.
- * ⚠️ NOT a fire perimeter — a reading aid over satellite pixels, never a surveyed authority; dots stay primary, no tap target/card/area readout.
- * ⚠️ A memo placed after the expensive part is not a memo — re-measure the PAN cost (not the cold build) when touching this file.
+ * A thin red line around each group of fire detections: a reading aid over satellite pixels,
+ * never a surveyed perimeter, so no tap target, card or area readout.
  */
 
-/** Grid quantum — one VIIRS pixel. Mirrors `CELL_DEG` in staticHeatSources. */
+/** One VIIRS pixel; keep in sync with `CELL_DEG` in staticHeatSources. */
 const CELL_DEG = 0.00375;
 
-/** How many cells apart two detections still count as one fire (2 cells ≈ 750 m — joins offset satellite passes, not unrelated fires). */
+/** Cells apart that still count as one fire: joins offset satellite passes, not unrelated fires. */
 const JOIN_CELLS = 2;
 
-/** Below this many cells, no outline is drawn — a line around 1-2 dots is noise; the dots themselves are never suppressed. */
+/** A line around 1-2 dots is noise; the dots themselves are never suppressed. */
 const MIN_CELLS = 5;
 
-/**
- * How far OUTSIDE the outermost detections the line is drawn (0.8 cells ≈ 300 m — nudge in hundredths, never whole cells).
- * ⚠️ No margin → hull runs through detection centres, border flames straddle the line.
- * ⚠️ Too big a margin is worse than none — 4 cells (1.5km) silently claimed unburnt ground; keep it ~one flame icon wide.
- */
+/** About one flame icon wide. No margin and border flames straddle the line; whole cells claim unburnt ground. */
 const OUTLINE_MARGIN_DEG = CELL_DEG * 0.8;
 
-type Cell = number; // packed grid key, see cellOf
+type Cell = number;
 
-/** Module-scope memo shared by both maps (key = cell set); never mutated here — callers clone it across the GL worker boundary. Bounded: one entry, replaced on change. */
+// One memo entry shared by both maps; callers clone it across the GL worker boundary.
 let outlineMemoKey: string | null = null;
 let outlineMemo: GeoJSON.FeatureCollection | null = null;
-/** Fast-path key for the memo (checked before any work). WeakRef — a strong ref here would leak the 36k-element hotspot array. */
+/** WeakRef: a strong ref would leak the hotspot array. */
 let outlineMemoSrc: WeakRef<object> | null = null;
 let outlineMemoLen = -1;
 
-/** Drop the memo. Exported for tests, which need each case to compute fresh. */
 export function __resetOutlineMemoForTest(): void {
 	outlineMemoKey = null;
 	outlineMemo = null;
@@ -37,9 +31,8 @@ export function __resetOutlineMemoForTest(): void {
 	outlineMemoLen = -1;
 }
 
-/** Pack a grid coordinate into one number — primitive Set/Map keys measured ~3× faster than strings at this volume. */
+/** Primitive keys are ~3× faster than strings at this volume; ±2^20 cells covers the globe. */
 function pack(gx: number, gy: number): Cell {
-	// gy is offset into upper bits; ±2^20 cells covers the whole globe at 375m with room to spare.
 	return gx * 4_194_304 + gy;
 }
 
@@ -50,7 +43,7 @@ function cellOf(lng: number, lat: number): { gx: number; gy: number } {
 	};
 }
 
-/** Convex hull, monotone chain. Returns the ring in order, WITHOUT repeating the first point (caller closes it for GeoJSON). */
+/** Monotone chain; the ring does not repeat its first point. */
 export function convexHull(
 	points: readonly (readonly [number, number])[],
 ): [number, number][] {
@@ -86,10 +79,7 @@ export function convexHull(
 	return [...lower, ...upper].map((p) => [p[0], p[1]]);
 }
 
-/**
- * Push every vertex outward from the ring's centroid so the line clears detections instead of bisecting them.
- * Longitude scaled by cos(lat) — skipping this makes the line visibly tighter east-west further north (~64% at 50°N).
- */
+/** Push every vertex outward from the centroid; longitude scaled by cos(lat) or the line tightens east-west further north. */
 export function expandRing(
 	ring: readonly (readonly [number, number])[],
 	marginDeg: number,
@@ -105,11 +95,9 @@ export function expandRing(
 	cy /= ring.length;
 	const lngScale = Math.max(0.2, Math.cos((cy * Math.PI) / 180));
 	return ring.map((p) => {
-		// Compare in ground units so a wide-but-short blob expands evenly.
 		const dx = (p[0] - cx) * lngScale;
 		const dy = p[1] - cy;
 		const len = Math.hypot(dx, dy);
-		// vertex exactly on centroid has no outward direction — leave it put, avoids divide-by-zero
 		if (len < 1e-12) return [p[0], p[1]] as [number, number];
 		return [
 			p[0] + ((dx / len) * marginDeg) / lngScale,
@@ -118,14 +106,13 @@ export function expandRing(
 	});
 }
 
-/** Group detections into fires and draw one outline around each — flood fill over the 375m grid, O(cells), no distance matrix. */
+/** Flood fill over the grid, one outline per group; O(cells), no distance matrix. */
 export function fireOutlines(
 	hotspots: readonly { coordinates: readonly [number, number] }[],
-	/** OPTIONAL stable identity for `hotspots`, for the fast-path memo. ⚠️ `hotspots` itself is NOT stable — paint() passes a freshly-filtered `shown` every pan; pass the upstream stable array (e.g. unionHotspots().hotspots) instead, or omit to fall back to slower content hashing. */
+	/** A stable identity for the fast-path memo; `hotspots` itself is rebuilt every pan. Omit for slower content hashing. */
 	stableKey?: object,
 ): GeoJSON.FeatureCollection {
-	// ⚠️ memo placement is the fix — must run BEFORE any work, or "hitting" still costs ~20ms/pan re-bucketing; a memo after the expensive part is not a memo.
-	// ⚠️ deliberately conservative: a miss just recomputes (slow), but a stale hit would freeze outlines while fires move — when in doubt, recompute.
+	// The memo must run BEFORE any work, or a hit still pays the cell bucketing.
 	const fastKey = stableKey ?? hotspots;
 	if (
 		outlineMemo !== null &&
@@ -136,7 +123,7 @@ export function fireOutlines(
 		return outlineMemo;
 	}
 
-	// one representative point per cell — hull only needs cell corners; collapsing 36k detections to 12k cells is most of the speed-up
+	// One point per cell is most of the speed-up.
 	const cellPts = new Map<Cell, [number, number]>();
 	for (const h of hotspots) {
 		const [lng, lat] = h.coordinates;
@@ -146,8 +133,7 @@ export function fireOutlines(
 		if (!cellPts.has(key)) cellPts.set(key, [lng, lat]);
 	}
 
-	// second-tier memo: keyed on the CELL SET (not the hotspot array), since `shown` is rebuilt fresh every paint but cells are the real input.
-	// ⚠️ key is a commutative hash (sum + xor, O(cells), no allocation) — NOT a sorted join, which would just be the same "real work every frame" mistake again.
+	// Second-tier memo keyed on the cell set: a commutative hash, never a sorted join.
 	let sum = 0;
 	let xor = 0;
 	for (const k of cellPts.keys()) {
@@ -156,7 +142,7 @@ export function fireOutlines(
 	}
 	const key = `${cellPts.size}:${sum}:${xor}`;
 	if (key === outlineMemoKey && outlineMemo !== null) {
-		// content matched despite a new array object — adopt it as the fast-path key, or an equal-but-new array pays cell bucketing forever
+		// Adopt the new array as the fast-path key, or an equal-but-new array pays bucketing forever.
 		outlineMemoSrc = new WeakRef(fastKey as object);
 		outlineMemoLen = hotspots.length;
 		return outlineMemo;
@@ -167,7 +153,7 @@ export function fireOutlines(
 
 	for (const start of cellPts.keys()) {
 		if (seen.has(start)) continue;
-		// iterative, never recursive — a province-sized blob is ~1,700 cells deep; recursion would risk the stack on a phone
+		// Iterative: a province-sized blob is ~1,700 cells deep.
 		const stack: Cell[] = [start];
 		seen.add(start);
 		const group: [number, number][] = [];
@@ -195,11 +181,10 @@ export function fireOutlines(
 		if (ring.length < 3) continue;
 		features.push({
 			type: "Feature",
-			// no id/tap target/properties — a card here would make the hull look surveyed
 			properties: {},
 			geometry: {
 				type: "Polygon",
-				coordinates: [[...ring, ring[0]]], // GeoJSON rings must close
+				coordinates: [[...ring, ring[0]]],
 			},
 		});
 	}
@@ -210,7 +195,6 @@ export function fireOutlines(
 	};
 	outlineMemoKey = key;
 	outlineMemo = result;
-	// arm the fast path too, so the NEXT pan over this array skips even the cell bucketing above
 	outlineMemoSrc = new WeakRef(fastKey as object);
 	outlineMemoLen = hotspots.length;
 	return result;

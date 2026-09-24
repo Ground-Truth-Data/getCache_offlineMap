@@ -3,7 +3,6 @@ import { decodePolyline } from "./polyline";
 
 describe("decoding a router's polyline", () => {
 	it("decodes the format's own worked example", () => {
-		// From Google's encoded-polyline spec: (38.5,-120.2) (40.7,-120.95) (43.252,-126.453).
 		expect(decodePolyline("_p~iF~ps|U_ulLnnqC_mqNvxq`@", 5)).toEqual([
 			[-120.2, 38.5],
 			[-120.95, 40.7],
@@ -24,7 +23,6 @@ describe("decoding a router's polyline", () => {
 	});
 
 	it("walks a multi-point line, each pair relative to the last", () => {
-		// Penticton and two points up the road from it.
 		const pts = decodePolyline("w|dl}AfmlbcFgyg@vhK_ry@~oR", 6);
 		expect(pts).toHaveLength(3);
 		expect(pts[0][0]).toBeCloseTo(-119.5937, 5);

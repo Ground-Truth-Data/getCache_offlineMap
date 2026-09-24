@@ -1,14 +1,8 @@
 /**
- * `v10://planet/{z}/{x}/{y}` — MapLibre thinks it is fetching; it is reading
- * the tile store. A miss is a 404 (MapLibre draws nothing there, silently,
- * and falls back to the parent tile). With read-through on, a miss goes to
- * the Worker so the map behaves like the online map outside the blobs —
- * off by default so airplane mode is what you are testing.
- *
- * A tile above the cut is wider than any blob, so it is clipped here, on the
- * way out, to the borders of the blobs it belongs to. The border MapLibre
- * sees is therefore the gold line at every zoom; the raw tile stays on disk
- * because two blobs can share it and each wants a different cut.
+ * `v10://planet/{z}/{x}/{y}`: MapLibre reads the tile store. A miss is a 404; with read-through
+ * on it goes to the Worker instead, off by default so airplane mode is what you are testing.
+ * A tile above the cut is clipped on the way out to the blobs it belongs to; the raw tile
+ * stays on disk because two blobs can share it and each wants a different cut.
  */
 
 import maplibregl from "maplibre-gl";
@@ -47,7 +41,7 @@ function notFound(url: string): Error {
 	return Object.assign(new Error(`no tile: ${url}`), { status: 404 });
 }
 
-/** The blobs' borders as fractions of this tile, for the blobs the tile is part of. */
+/** The borders of the blobs this tile is part of, as fractions of the tile. */
 async function bordersIn(
 	z: number,
 	x: number,
@@ -73,10 +67,7 @@ async function bordersIn(
 
 const clipped = new Map<string, { version: number; data: ArrayBuffer }>();
 
-// MapLibre TRANSFERS whatever we return to the tile worker, which detaches it.
-// So the memo keeps the bytes and every handout is a fresh copy — returning the
-// cached buffer itself made the second read of a key throw DataCloneError
-// ("already detached"), which on a zoom is most of the parent tiles at once.
+// MapLibre transfers the returned buffer to its worker, which detaches it, so every handout is a copy.
 async function clippedTile(
 	key: string,
 	z: number,

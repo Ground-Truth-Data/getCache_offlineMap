@@ -21,9 +21,7 @@ describe("regionRange", () => {
 	const r = regionRange(PIN.lng, PIN.lat);
 	const box = regionBox(PIN.lng, PIN.lat);
 
-	// The count follows from RADIUS_KM and the anchor grid, so it is derived
-	// here rather than written down: a hardcoded range silently becomes a
-	// second, stale spelling of the radius the moment the radius moves.
+	// Derived from RADIUS_KM, never written down: a hardcoded range is a second spelling of the radius.
 	it("is the smallest whole-tile box containing the radius box", () => {
 		const span = (lo: number, hi: number, side: number) => {
 			expect(hi - lo + 1).toBeGreaterThanOrEqual(Math.ceil(side));

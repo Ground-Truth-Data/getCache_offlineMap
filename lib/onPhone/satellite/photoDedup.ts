@@ -1,22 +1,6 @@
 /**
- * photoDedup — a ONE-TIME sweep for photos baked before the reuse rule existed.
- *
- * The key dedups at ~11 m; a photo covers 2 km. Before `photoCovering`, every
- * pin metres from its neighbour minted its own near-identical photo, so a
- * stand of Quality 704 plots left dozens of copies of one piece of ground on
- * disk. The reuse rule stops NEW duplicates; it cannot reach the ones already
- * there.
- *
- * WHAT IT KEEPS: for each cluster, the photo that covers the most ground and
- * has the best source — never the first one found. Nothing is deleted unless a
- * survivor genuinely covers the same ground, so a sweep can never leave an
- * area blank. Plot photos have no survivor requirement: a plot earns no photo
- * at all now, so its copies go.
- *
- * Redundancy is `photoReusableFor`, the same predicate the bake consults before
- * it skips a download. Weighing distance alone made this sweep report photos
- * the bake had minted deliberately — one per beaten source — so the count could
- * never reach zero however often it ran.
+ * Sweep of duplicate photos. Nothing is deleted unless a survivor covers the
+ * same ground by `photoReusableFor`, the predicate the bake itself consults.
  */
 
 import {
@@ -30,7 +14,6 @@ import {
 } from "./satelliteImage";
 
 export interface DedupPlan {
-	/** keys that would be deleted, each with the key that covers it instead */
 	drop: { key: string; coveredBy: string; bytes: number }[];
 	keep: string[];
 	bytes: number;
@@ -41,13 +24,7 @@ function centerOfKey(key: string): [number, number] | null {
 	return Number.isFinite(lng) && Number.isFinite(lat) ? [lng, lat] : null;
 }
 
-/**
- * What the sweep WOULD do — no deletions. The dock calls this first so a
- * number can be shown before anything is destroyed.
- *
- * Greedy by size: the biggest photo in a cluster is the one baked at the
- * widest canvas, so keeping it loses the least detail.
- */
+/** What the sweep would do, no deletions. Greedy by size: the biggest photo loses the least detail. */
 export async function planPhotoDedup(): Promise<DedupPlan> {
 	const meta = (await satImageMeta())
 		.map((m) => ({ ...m, center: centerOfKey(m.key) }))
@@ -70,13 +47,7 @@ export async function planPhotoDedup(): Promise<DedupPlan> {
 	};
 }
 
-/**
- * Run the sweep. Returns the bytes actually freed.
- *
- * The budget record is patched, not dropped: the area keeps its ROAD tiles and
- * its row — only the photo half is cleared. Dropping the record would orphan
- * the tiles from the budget and the space would never come back.
- */
+/** Run the sweep. The record is patched, not dropped: the area keeps its road tiles. */
 export async function runPhotoDedup(): Promise<DedupPlan> {
 	const plan = await planPhotoDedup();
 	for (const d of plan.drop) {
@@ -94,7 +65,6 @@ export async function runPhotoDedup(): Promise<DedupPlan> {
 	return plan;
 }
 
-/** Named so a caller that has already deleted an area's TILES can clear the whole record. */
 export async function dropAreaEntirely(areaKey: string): Promise<void> {
 	await deleteSatImage(areaKey);
 	await dropCoverage(areaKey);

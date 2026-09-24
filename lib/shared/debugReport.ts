@@ -1,33 +1,9 @@
 /**
- * debugReport.ts — ONE snapshot of everything worth knowing about the offline
- * map, as plain JSON. A screenshot plus one of these should be a smoking gun.
- *
- * ⛔ WHY GEOMETRY, NOT JUST BYTES
- *
- * OFFLINE_PLAN.md engineering rule 4: "Every offline bug this project has had was
- * the same shape: correct bytes in the wrong box. Feature counts and byte
- * totals all looked healthy throughout." So a report that says `64 KB · 3,286
- * features` is worthless on its own — that is exactly what the 45 km, 27.9 km
- * and 50 km bugs each printed while broken. The fields that FOUND those bugs
- * are the blob's CORNERS, its REACH in km, and its OFFSET from the pin, and
- * those are mandatory here.
- *
- * ⛔ ONE AREA AT A TIME — never a viewport query.
- *
- * Same rule: "Make sure it can never report another pin's data as this pin's —
- * the equivalent check in the previous attempt queried the whole viewport, so a
- * neighbouring pin's roads made it report success." Every BlobGeometryReport
- * below is built from ONE CoverageRecord and its own areaKey. There is no
- * bounds query anywhere in this file, and there must never be one.
- *
- * ⛔ NO APP IMPORTS. THIS FILE IS THE PORTABLE UNIT.
- *
- * Rule 5: "The offline map must not import app UI components, stores, or
- * utilities. Give it a narrow, explicit interface — it needs a list of
- * {lng, lat} and nothing else." So pins arrive as a PARAMETER; this module
- * never reaches for mapStore or TinyBase. debugReport.portability.test.ts
- * fails the build if that ever changes — which is what keeps this liftable
- * into rapper without archaeology.
+ * One JSON snapshot of the offline map. Geometry (corners, reach, offset) is
+ * mandatory: every offline bug so far was correct bytes in the wrong box.
+ * Each area is built from ITS OWN CoverageRecord — never a viewport query,
+ * which would report a neighbour's roads as this pin's. No app imports: pins
+ * arrive as a parameter (debugReport.portability.test.ts).
  */
 import {
 	BLOB_TILE_Z,
@@ -63,8 +39,7 @@ import {
 	type WorkStat,
 } from "./workMeter.svelte";
 
-/** The schema version of the emitted JSON. Bump when a field's MEANING changes
- *  (a rename or retype), so an old file is never silently misread as a new one. */
+/** Bump when a field's MEANING changes, so an old file is never misread as a new one. */
 export const DEBUG_REPORT_SCHEMA = 1 as const;
 
 export interface LngLatPin {
@@ -72,25 +47,19 @@ export interface LngLatPin {
 	lat: number;
 }
 
-/** Full geometry for ONE area. Only the newest area gets this treatment; the
- *  rest are summarised (see AreaSummary) so the file stays paste-able. */
+/** Full geometry for ONE area (the newest); the rest are AreaSummary. */
 export interface BlobGeometryReport {
 	areaKey: string;
 	pin: LngLatPin;
-	/** The cell this pin resolves to, as `z_ix_iy`. Note the z: a pin near a
-	 *  tile edge is PROMOTED to a shallower tile so its radius fits, so this is
-	 *  not always BLOB_TILE_Z. Reading the constant instead of the real z is the
-	 *  "address and geometry disagree" bug in miniature. */
+	/** `z_ix_iy`; z is not always BLOB_TILE_Z — an edge pin is promoted to a shallower tile. */
 	cell: string;
 	cellZoom: number;
-	/** [w,s], [e,s], [e,n], [w,n] — the box the blob was actually served in. */
+	/** [w,s], [e,s], [e,n], [w,n] */
 	corners: [number, number][];
 	box: { w: number; s: number; e: number; n: number };
-	/** How far the box reaches from the pin, per edge. Compare against
-	 *  gridRadiusKm: a reach of ~55 km against a promised 30 km is the bug. */
+	/** Per edge, compare against gridRadiusKm. */
 	reachKm: { n: number; s: number; e: number; w: number };
-	/** Pin → centre-of-box, in km. THE detector. ~0 is healthy; tens of km is
-	 *  the 45/27.9/50 km class of bug the spec names. */
+	/** Pin → centre-of-box; ~0 is healthy, tens of km is the mis-boxing bug. */
 	offsetKm: number;
 	bytes: number;
 	photoBytes: number;
@@ -98,16 +67,12 @@ export interface BlobGeometryReport {
 	lineCount: number;
 	hasPhoto: boolean;
 	hasLines: boolean;
-	/** The blob-geometry signature this area was built under. `null` means the
-	 *  record predates versioning — treated as stale by the reconcile. */
+	/** `null` = predates versioning, treated as stale. */
 	blobVersion: string | null;
 	lastTouched: string;
 }
 
-/** One compact line per area. No corners array — that is what keeps a few
- *  hundred areas inside a file you can paste into a chat. offsetKm survives
- *  the squeeze because scanning it down the list is how a SYSTEMIC
- *  mis-boxing shows up (every area wrong the same way). */
+/** One line per area, no corners, so hundreds of areas stay paste-able. */
 export interface AreaSummary {
 	areaKey: string;
 	lng: number;
@@ -117,7 +82,6 @@ export interface AreaSummary {
 	lineCount: number;
 	hasPhoto: boolean;
 	hasLines: boolean;
-	/** blobVersion missing or != the version this area should hold. */
 	stale: boolean;
 	lastTouched: string;
 }
@@ -127,12 +91,8 @@ export interface DebugReport {
 	capturedAt: string;
 	route: string;
 	env: {
-		/** "(unconfigured)" when no app called configureTilesHost() — a real
-		 *  state worth seeing in a report, not an absent field. */
+		/** "(unconfigured)" when no app called configureTilesHost(). */
 		tilesHost: string;
-		/** WHICH worker served this session — worker-cloud-prod / worker-local-dev.
-		 *  Without it a report is ambiguous: identical-looking bad output from
-		 *  the two could be different bugs. */
 		workerTarget: WorkerTarget;
 		blobTileZ: number;
 		gridRadiusKm: number;
@@ -144,14 +104,10 @@ export interface DebugReport {
 		lowMb: number | null;
 		peakMb: number | null;
 		sinceLoadMb: number | null;
-		/** Kept as a FIELD, not panel prose: performance.memory reports this
-		 *  realm only. On the offline route the workers hold more than the page,
-		 *  which is precisely why an 800 MB defect hid for weeks. */
+		/** performance.memory reports this realm only; the workers hold more than the page. */
 		note: string;
 	};
-	/** Which map layers were visible when this was captured. A heap number
-	 *  without this is uninterpretable — "310 MB" means nothing until you know
-	 *  whether satellite was on. */
+	/** A heap number means nothing without knowing whether satellite was on. */
 	layers: { key: string; on: boolean }[];
 	bake: {
 		on: boolean;
@@ -164,12 +120,9 @@ export interface DebugReport {
 	work: WorkStat[];
 	payloads: PayloadStat[];
 	budget: { usedBytes: number; totalBytes: number; areas: number };
-	/** The newest area, in full. "The latest blob." */
 	latest: BlobGeometryReport | null;
 	areas: AreaSummary[];
-	/** Pins known to the caller but with NO coverage record — i.e. features the
-	 *  bake has not covered. Empty is healthy; a long list on a settled app is
-	 *  itself the finding. */
+	/** Pins with NO coverage record. Empty is healthy. */
 	uncoveredPins: LngLatPin[];
 }
 
@@ -178,8 +131,6 @@ export const HEAP_NOTE =
 
 /** Geometry for ONE record, derived from ITS OWN key alone. */
 export function geometryFor(rec: CoverageRecord): BlobGeometryReport {
-	// cellOf may PROMOTE an edge pin to a shallower zoom; cellBox reads c.z, so
-	// box and address can never disagree here.
 	const c = cellOf(rec.lng, rec.lat);
 	const b = cellBox(c);
 	const centre: [number, number] = [(b.w + b.e) / 2, (b.s + b.n) / 2];
@@ -233,8 +184,7 @@ function summarise(rec: CoverageRecord, currentVersion: string | null): AreaSumm
 	};
 }
 
-/** Live readings the panel already holds. Passed IN rather than read from a
- *  store, so this module stays free of Svelte state and stays portable. */
+/** Live readings the panel holds, passed IN so this module stays portable. */
 export interface LivePanelState {
 	route?: string;
 	heapNowMb?: number | null;
@@ -248,24 +198,18 @@ export interface LivePanelState {
 	bakeStalled?: boolean;
 	bakeNote?: string;
 	layers?: { key: string; on: boolean }[];
-	/** Every pin the caller knows about. Rule 5's "list of {lng,lat} and
-	 *  nothing else" — used ONLY to report which pins lack coverage. */
+	/** Used ONLY to report which pins lack coverage. */
 	pins?: LngLatPin[];
 	/** The blob signature areas SHOULD hold, for the stale flag. */
 	currentBlobVersion?: string | null;
 }
 
-/**
- * Build the whole report. Reads the coverage registry (its own IndexedDB) and
- * the work meter; everything else arrives via `live`.
- */
+/** Build the whole report; everything not in the coverage registry or work meter arrives via `live`. */
 export async function collectDebugReport(
 	live: LivePanelState = {},
 ): Promise<DebugReport> {
 	const records = await allCoverage();
-	// Newest first — "the latest blob" is the head of this list.
-	// Same rule as OfflineBlobPanel's `focused`: bytes landed, newest bakedAt
-	// (falling back to touch for records written before bakedAt existed).
+	// Same order as OfflineBlobPanel's `focused`: bytes landed, newest bakedAt.
 	const sorted = records
 		.filter((r) => r.hasPhoto || r.hasLines)
 		.sort(
@@ -276,8 +220,7 @@ export async function collectDebugReport(
 
 	const usedBytes = sorted.reduce((n, r) => n + (r.bytes ?? 0), 0);
 
-	// Which known pins have no record at all. Matched on the SAME 4dp key the
-	// satellite baker writes, so this can't drift from how areas are stored.
+	// Same 4dp key the satellite baker writes.
 	const haveKeys = new Set(sorted.map((r) => r.areaKey));
 	const uncoveredPins = (live.pins ?? []).filter(
 		(p) => !haveKeys.has(`${p.lng.toFixed(4)},${p.lat.toFixed(4)}`),
@@ -330,32 +273,17 @@ export async function collectDebugReport(
 	};
 }
 
-/**
- * ONE blob's metadata + the live session's memory reading — NOTHING about the
- * other cached areas. `collectDebugReport`'s `areas` array is every blob on
- * the device (measured: 391 rows → a ~5,000-line file for a single export
- * tap); export json is scoped to "the one in the picture", not a device
- * inventory, so this is the shape that button actually calls.
- */
+/** ONE blob + the live session — what the export button calls; the full
+ *  `areas` inventory runs to thousands of lines. */
 export interface FocusedBlobReport {
 	schema: typeof DEBUG_REPORT_SCHEMA;
-	/** Plain-English rollup, first thing in the file — for the human holding
-	 *  the report, before the developer sections. DERIVED from the sections
-	 *  below by summarizeFocusedReport(), never measured separately, so the
-	 *  headline can't disagree with the detail. */
+	/** DERIVED from the sections below, never measured separately, so headline and detail agree. */
 	summary: ReportSummary;
 	capturedAt: string;
 	route: string;
 	env: DebugReport["env"];
 	heap: DebugReport["heap"];
-	/**
-	 * PER LAYER, THE WHOLE STORY — the block you paste to an AI. Chris, 28 Aug
-	 * 2026: "arrived, rejected, and god willing some kind of reason." So each
-	 * layer says which download it rides on, what that download's circle reads
-	 * right now, whether ITS data is actually in the focused blob, and why not
-	 * in words. `arrived:false` with `status:"ok"` is the important row: the
-	 * download landed but carried nothing for this layer (roads-only pack).
-	 */
+	/** `arrived:false` with `status:"ok"` = the download landed but carried nothing for this layer. */
 	layers: {
 		key: string;
 		label: string;
@@ -371,25 +299,11 @@ export interface FocusedBlobReport {
 		paintLagMs: number | null;
 		paintedCount: number | null;
 		reason: string;
-		/** What is MEANT to accompany a blob for this layer, and where it
-		 *  would live — so a reader can tell MISSING apart from NEVER-PART-
-		 *  OF-THE-DEAL. Chris: "it should at least list the types of data
-		 *  that's meant to accompany a blob… fires are false but that's
-		 *  cause it's not based on pins at the moment." */
+		/** What is MEANT to accompany a blob for this layer — MISSING vs never part of the deal. */
 		expects: string;
 	}[];
-	/** The focused blob's full geometry — corners, reach, offset — same fields
-	 *  `latest` carries in the full report. Null if nothing is cached yet. */
 	blob: BlobGeometryReport | null;
-	/** The work meter — timing rows, the circuits (grey/yellow/green/red per
-	 *  download), the probes. ONE export, not two: this used to be a separate
-	 *  "copy JSON" on the meter's footer, so a report of "the blob is wrong"
-	 *  never said what the circuits read at the time. Chris, 28 Aug 2026:
-	 *  "there shouldn't be TWO kinds." */
 	meter: ReturnType<typeof meterSnapshot>;
-	/** What the device holds, in one line, and the last five arrivals — so a
-	 *  report says "396 areas, 106 MB, last five imports were…" instead of
-	 *  leaving the reader to infer the state of the disk from one blob. */
 	disk: {
 		areas: number;
 		bytes: number;
@@ -403,13 +317,8 @@ export interface FocusedBlobReport {
 	};
 }
 
-/** Per layer: the data a blob is SUPPOSED to carry for it, and where. Kept
- *  as plain sentences — this is read by a person (or an AI) in a paste.
- *
- *  The PACK rows are DERIVED from the contract (`contract/packLayers.ts`) —
- *  the same table the Worker filters by — so this can never again say
- *  "currently NOT shipped" about a layer the Worker ships, or the reverse.
- *  Each row names what the layer READS and whether the pack SHIPS it. */
+// Pack rows are derived from contract/packLayers.ts, the table the Worker
+// filters by, so they cannot disagree with what ships.
 const PACK_WHERE = `inside the z${BLOB_TILE_Z} blob tile(s), keyed pin/<lng>,<lat>/${BLOB_TILE_Z}/x/y in gc-offlineTiles`;
 const EXPECTS_FIXED: Record<string, string> = {
 	sat: "one satellite photo per pin, ~2 km around it, in IndexedDB gc-offlineSatellite (photoBytes)",
@@ -429,10 +338,7 @@ function expectsFor(t: (typeof LAYER_TOGGLES)[number]): string {
 	return `${reads.join("; ")} — ${PACK_WHERE} (pack layers: ${PACK_LAYER_NAMES.join(", ")})`;
 }
 
-/** The plain-English block at the top of an exported report. Every value is a
- *  full sentence in human units (seconds, MB, "26 min ago") — Chris, 31 Aug
- *  2026: "right at the top… time to download… clear for a human like me that's
- *  not super technical." The verbose sections stay; this fronts them. */
+/** Plain-English block at the top of a report; every value a sentence in human units. */
 export interface ReportSummary {
 	note: string;
 	timeToDownload: string;
@@ -462,14 +368,12 @@ function agoText(iso: string | null | undefined, from: Date): string {
 	return `${Math.round(mins / 60 / 24)} days ago`;
 }
 
-/** Pure derivation — reads ONLY the report, so it stays portable and a test
- *  can feed it a canned report with no app running. */
+/** Pure: reads ONLY the report, so a test can feed it a canned one. */
 export function summarizeFocusedReport(
 	r: Omit<FocusedBlobReport, "summary">,
 ): ReportSummary {
 	const now = new Date(r.capturedAt);
 
-	// One entry per FEED (layers sharing a download share its timing).
 	const feeds = new Map<string, number>();
 	for (const l of r.layers) {
 		if (l.feed && l.transitMs != null && !feeds.has(l.feed))
@@ -493,7 +397,6 @@ export function summarizeFocusedReport(
 			: "nothing painted yet") +
 		(empty.length ? ` — nothing to draw for ${empty.map((l) => l.label).join(", ")}` : "");
 
-	// a probe can be missing (never checked yet) — that is not "NOT reachable"
 	const p: Record<string, boolean | undefined> = r.meter.probes ?? {};
 	const probe = (v: boolean | undefined, up: string, down: string) =>
 		v == null ? "not checked" : v ? up : down;
@@ -519,14 +422,12 @@ export function summarizeFocusedReport(
 	};
 }
 
-/** Build a report scoped to ONE blob — the LAST SUCCESSFUL IMPORT, the same
- *  row the blob panel hoists as FOCUSED — instead of every area on the device. */
+/** Report scoped to the LAST SUCCESSFUL IMPORT, the row the blob panel hoists as FOCUSED. */
 export async function collectFocusedBlobReport(
 	live: LivePanelState = {},
 ): Promise<FocusedBlobReport> {
 	const records = await allCoverage();
-	// Same rule as OfflineBlobPanel's `focused`: bytes landed, newest bakedAt
-	// (falling back to touch for records written before bakedAt existed).
+	// Same order as OfflineBlobPanel's `focused`: bytes landed, newest bakedAt.
 	const sorted = records
 		.filter((r) => r.hasPhoto || r.hasLines)
 		.sort(
@@ -564,12 +465,7 @@ export async function collectFocusedBlobReport(
 			const lt = light(feed ?? undefined, [t.key]);
 			const status: CircuitState = lt.state;
 			const top = sorted[0];
-			// WHAT THE PACK IS MEANT TO HOLD FOR THIS LAYER — from the contract
-			// the Worker filters by (contract/packLayers.ts), checked read by
-			// read: every source-layer + kind this toggle's style asks for must
-			// survive the Worker's allowlist under the same attribute key. This
-			// was `t.key === "vector"` — a hard-coded "roads only" that MEASURED
-			// true on 28 Aug 2026 and could never learn otherwise.
+			// Every source-layer + kind this toggle reads must survive the Worker's allowlist.
 			const unshipped = (t.reads ?? []).filter((r) => !packShips(r));
 			const packHoldsThisLayer =
 				feed === "pack" && (t.reads?.length ?? 0) > 0 && unshipped.length === 0;
@@ -631,8 +527,6 @@ export async function collectFocusedBlobReport(
 		},
 		blob: sorted.length > 0 ? geometryFor(sorted[0]) : null,
 	};
-	// summary goes SECOND in the file (after schema) — the human block fronts
-	// the developer sections.
 	const { schema, ...rest } = report;
 	return { schema, summary: summarizeFocusedReport(report), ...rest };
 }
@@ -643,12 +537,7 @@ export function debugReportFilename(at = new Date()): string {
 }
 
 
-/**
- * COMPACT JSON — readable, not sprawling. Objects whose values are all
- * primitives go on ONE line; everything else nests with two spaces. A 400-line
- * pretty-print of a report was mostly newlines; this is the same report at a
- * third the height, still diff-able, still greppable.
- */
+/** JSON with all-primitive objects on ONE line; a third the height of a pretty-print. */
 export function compactJson(v: unknown, indent = ""): string {
 	const isLeaf = (x: unknown) =>
 		x === null || typeof x !== "object";

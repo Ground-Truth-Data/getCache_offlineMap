@@ -12,10 +12,6 @@ import {
 	PLANET_GONE_Z,
 } from "./style";
 
-/**
- * Every landuse fill ships opaque and must STAY opaque — translucency doubles
- * the paint where polygons abut and draws a grid of seams across the map.
- */
 const GROUND_LAYER = new Set<string>();
 
 const OPACITY = /-opacity$/;
@@ -42,7 +38,6 @@ describe("planet fade", () => {
 			(l) => l as { id: string; type: string; paint?: Record<string, unknown> },
 		);
 
-	/** Each layer's paint as the basemap library ships it, before this style edits it. */
 	const own = new Map(
 		layers(PLANET, DARK, { lang: "en" }).map((l) => [
 			l.id,
@@ -68,7 +63,6 @@ describe("planet fade", () => {
 			for (const k of Object.keys(l.paint ?? {}).filter((kk) =>
 				OPACITY.test(kk),
 			)) {
-				// deliberately replacing stock — its ramp is asserted below instead.
 				if (GROUND_LAYER.has(l.id) && k === "fill-opacity") continue;
 				expect(at(l.paint?.[k], l.type, k, z), `${l.id} ${k}`).toBeCloseTo(
 					at(own.get(l.id)?.[k] ?? 1, l.type, k, z),
@@ -77,11 +71,7 @@ describe("planet fade", () => {
 			}
 	});
 
-	// Every paint expression must EVALUATE at every zoom the map can reach, not
-	// just the ones a feature is visible at. A curve that folds down to zero
-	// stops throws "Out of bounds" on the first frame below its own ramp and
-	// takes the whole map with it — invisible to any test that only samples
-	// where it expected the layer to show (13 Sep 2026, z2.59).
+	// A curve that folds down to zero stops throws "Out of bounds" below its own ramp and takes the whole map with it.
 	it("every planet layer evaluates across the whole zoom range", () => {
 		for (const l of planet)
 			for (const k of Object.keys(l.paint ?? {}).filter((kk) =>
@@ -94,9 +84,7 @@ describe("planet fade", () => {
 					).not.toThrow();
 	});
 
-	// A translucent fill doubles its paint wherever two polygons meet, so an
-	// opaque layer turned translucent draws a seam along every shared edge —
-	// which lands on tile boundaries and reads as a grid over the map.
+	// A translucent fill doubles its paint where polygons meet and draws a grid of seams.
 	it("leaves every landuse fill but the wood one opaque", () => {
 		const others = planet.filter(
 			(l) =>
@@ -113,9 +101,6 @@ describe("planet fade", () => {
 			);
 	});
 
-	// The ground must SEPARATE from bare earth, which stock DARK deliberately
-	// does not do — every ground tone ships within ~10 luminance points of
-	// `earth`, and that flatness is what read as "a void with lakes in it".
 	it("lifts the ground clear of bare earth", () => {
 		const lum = (h: string) => {
 			const c = [1, 3, 5].map((i) => Number.parseInt(h.slice(i, i + 2), 16));
@@ -130,8 +115,6 @@ describe("planet fade", () => {
 			).toBeGreaterThan(10);
 	});
 
-	// The stock style cross-fades _a→_b across a zoom. Different values there
-	// make the ground drift colour as you move, which reads as a bug.
 	it("keeps each _a/_b pair equal", () => {
 		const flavor = groundFlavor({ ...DARK });
 		for (const base of ["wood", "park", "scrub"])
@@ -140,7 +123,6 @@ describe("planet fade", () => {
 			);
 	});
 
-	// GROUND_LIFT 0 must be exactly stock, so the dial can always be turned off.
 	it("returns stock colours when the lift is zero", () => {
 		const zero = groundFlavor({ ...DARK }, 0);
 		for (const key of ["wood_a", "park_b", "sand", "industrial"])

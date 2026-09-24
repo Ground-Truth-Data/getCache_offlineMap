@@ -1,16 +1,10 @@
 /**
- * Slippy-tile math for a blob cut on the tile grid. Pure, no DOM.
- *
- * A blob is every ANCHOR_Z tile the pin's RADIUS_KM box touches, the WHOLE
- * pyramid under each of them down to MAX_Z, and the parents above them up to
- * MIN_Z. From ANCHOR_Z down every zoom covers the same ground, so the
- * footprint drawn on the map is the footprint on disk. A parent tile is wider
- * than the blob (z0 is the world), so it is stored raw and clipped to the
- * border when read — see protocol.ts.
+ * Slippy-tile math for a blob: every ANCHOR_Z tile the pin's box touches, the whole pyramid under
+ * each down to MAX_Z, and the parents above up to MIN_Z. A parent is wider than the blob, so it
+ * is stored raw and clipped to the border when read.
  */
 
 export const RADIUS_KM = 42;
-/** Shallowest zoom on disk: the top of the pyramid. z0..z9 is ~15 tiles, ~100 KB each, shared between blobs. */
 export const MIN_Z = 0;
 export const MAX_Z = 13;
 /** The grid the blob is cut on; the border is these tiles' edge. */
@@ -29,7 +23,7 @@ export interface Box {
 	n: number;
 }
 
-/** A blob: an inclusive rectangle of ANCHOR_Z tiles. */
+/** An inclusive rectangle of ANCHOR_Z tiles. */
 export interface Range {
 	x0: number;
 	x1: number;
@@ -69,7 +63,7 @@ export function yToLat(y: number, z: number): number {
 	return (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
 }
 
-/** Web-mercator world fraction, 0..1 on both axes, y down. */
+/** World fraction, 0..1, y down. */
 export function toMerc(lng: number, lat: number): [number, number] {
 	const r = (Math.max(-MAX_LAT, Math.min(MAX_LAT, lat)) * Math.PI) / 180;
 	return [
@@ -87,7 +81,6 @@ export function tileBox(t: Tile): Box {
 	};
 }
 
-/** The pin's box: RADIUS_KM in every direction, longitude stretched by 1/cos(lat). */
 export function regionBox(lng: number, lat: number, radiusKm = RADIUS_KM): Box {
 	const dLat = (radiusKm / EARTH_KM) * 360;
 	const cos = Math.max(Math.cos((lat * Math.PI) / 180), 0.05);
@@ -104,7 +97,6 @@ export function boxesIntersect(a: Box, b: Box): boolean {
 	return a.w < b.e && a.e > b.w && a.s < b.n && a.n > b.s;
 }
 
-/** The ANCHOR_Z tiles the pin's box touches — the blob's address and its border. */
 export function regionRange(lng: number, lat: number): Range {
 	const box = regionBox(lng, lat);
 	const max = 2 ** ANCHOR_Z - 1;
@@ -121,7 +113,6 @@ export function rangeKey(r: Range): string {
 	return `${ANCHOR_Z}/${r.x0}-${r.x1}/${r.y0}-${r.y1}`;
 }
 
-/** The ground the blob covers — one rectangle, since a tile range is always contiguous. */
 export function rangeBox(r: Range): Box {
 	return {
 		w: xToLng(r.x0, ANCHOR_Z),
@@ -131,7 +122,7 @@ export function rangeBox(r: Range): Box {
 	};
 }
 
-/** Is this tile part of the blob — under an anchor tile, or a parent whose ground reaches one? */
+/** Under an anchor tile, or a parent whose ground reaches one. */
 export function rangeContains(r: Range, t: Tile): boolean {
 	if (t.z < MIN_Z || t.z > MAX_Z) return false;
 	if (t.z >= ANCHOR_Z) {
@@ -149,7 +140,7 @@ export function rangeContains(r: Range, t: Tile): boolean {
 	);
 }
 
-/** Every tile the blob needs, shallow levels first so the map paints coarse-to-fine as they land. */
+/** Shallow levels first, so the map paints coarse-to-fine as they land. */
 export function rangeTiles(r: Range): Tile[] {
 	const out: Tile[] = [];
 	for (let z = MIN_Z; z < ANCHOR_Z; z++) {
@@ -170,7 +161,6 @@ export function regionTiles(lng: number, lat: number): Tile[] {
 	return rangeTiles(regionRange(lng, lat));
 }
 
-/** The blob's tiles that are NOT among the keys on disk — empty when the blob is whole. */
 export function missingKeys(r: Range, have: Set<string>): string[] {
 	const out: string[] = [];
 	for (const t of rangeTiles(r)) {

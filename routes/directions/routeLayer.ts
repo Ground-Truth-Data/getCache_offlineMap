@@ -1,18 +1,7 @@
 /**
- * routeLayer — the route on the map, ONE implementation for both maps (online
- * Mapbox, offline MapLibre), like the hospital and fire layers.
- *
- * It draws ABOVE everything: the whole point of the line is that it is visible
- * zoomed out, where the forestry road under it is not (small roads only draw
- * from MINOR_ROAD_Z, because drawing them everywhere cost 2.3 GB of RAM). The
- * line is the road, at every zoom.
- *
- * ⚠️ THE THREE STATES LOOK DIFFERENT, ON PURPOSE.
- *   live road     — solid blue, the line you just asked for
- *   remembered    — dashed blue, so a snapshot can never be mistaken for live
- *   direct        — dotted amber, a HEADING and not a road; it does not follow
- *                   any ground and must never read as though it does
- * Making these one colour would be prettier and is exactly the bug.
+ * The route on the map, one implementation for both maps. Draws above everything: the line
+ * is the road at every zoom. Three states look different on purpose: live road solid blue,
+ * remembered dashed blue, direct dotted amber (a heading, not a road).
  */
 
 import type maplibregl from "maplibre-gl";
@@ -24,11 +13,8 @@ export const ROUTE_LAYER_IDS = {
 	line: "rt-route-line",
 } as const;
 
-/** Google's blue, near enough: the colour a driver already reads as "the way". */
 const ROUTE_BLUE = "#4a90d9";
-/** Terracotta = context, the app's second accent — a heading, not a road. */
 const DIRECT_AMBER = "#c8763c";
-/** Under the line, so it stands off dark tiles and satellite alike. */
 const CASING = "#10243a";
 
 const EMPTY: GeoJSON.FeatureCollection = {
@@ -38,7 +24,7 @@ const EMPTY: GeoJSON.FeatureCollection = {
 
 export interface RouteLayerHandle {
 	(): void;
-	/** Show this route, in the paint its state earns. Null clears the line. */
+	/** null clears the line */
 	show: (route: Route | null, live: boolean) => void;
 }
 
@@ -56,7 +42,6 @@ function collection(route: Route | null): GeoJSON.FeatureCollection {
 	};
 }
 
-/** Dash pattern for the three states — the shape of the line IS the honesty. */
 export function dashFor(
 	route: Route | null,
 	live: boolean,
@@ -78,8 +63,6 @@ export function addRouteLayer(map: maplibregl.Map): RouteLayerHandle {
 		"interpolate",
 		["linear"],
 		["zoom"],
-		// Zoomed out this is the ONLY thing showing the road, so it stays
-		// readable at a glance rather than scaling to nothing.
 		5,
 		3,
 		12,

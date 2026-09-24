@@ -1,11 +1,10 @@
 import { noteProbe } from "../../shared/workMeter.svelte";
-// ⛔ ONE DEFINITION — /pack and /fires both import from here; two literals drift into roads-vs-fires split-brain.
-// ⛔ import.meta.env.DEV is the switch — don't swap for a hostname check or runtime flag; a shipped build would silently depend on an untended Worker.
-// ⛔ NO PRODUCTION HOST IS BAKED IN — a hardcoded default bills the maintainer's R2 account for every stranger who installs this package.
+// No production host is baked in: a hardcoded default bills the maintainer's R2
+// account for every stranger who installs this package.
 let configuredHost: string | null = null;
 let configuredDevHost: string | null = null;
 
-/** ⚠️ call once at app boot, before any tile fetch */
+/** Call once at app boot, before any tile fetch. */
 export function configureTilesHost(host: string): void {
 	configuredHost = host.trim().replace(/\/+$/, "") || null;
 }
@@ -17,42 +16,30 @@ export function configureTilesDevHost(host: string): void {
 export function isTilesHostConfigured(): boolean {
 	return configuredHost !== null;
 }
-// ⛔ tiers are named tiles-prod / tiles-dev / tiles-local — a bare IP here breaks the convention.
 const LOCAL_HOST_NAME = "tiles-local.getcache.org:8787";
 export const LOCAL_DEV_HOST = `http://${LOCAL_HOST_NAME}`;
 
-// ⛔ three tiers only: worker-cloud-prod, worker-cloud-dev, worker-local-dev — don't invent a fourth name.
 export type WorkerTarget = "worker-cloud-prod" | "worker-cloud-dev" | "worker-local-dev";
 
-/** null when the tier's host was never configured */
 export function hostFor(t: WorkerTarget): string | null {
 	if (t === "worker-local-dev") return LOCAL_DEV_HOST;
 	if (t === "worker-cloud-dev") return configuredDevHost;
 	return configuredHost;
 }
 
-// ⚠️ DEV BUILDS START ON THE CLOUD DEV WORKER (Chris, 7 Sep 2026 — replacing the
-// local-first default of 31 Aug: local answers only while a terminal stays open,
-// and a dead target reads as a broken app). It runs the same code as prod on the
-// same bucket, so an experiment here can never reach a shipped build. A shipped
-// build never reads this — getWorkerTarget()'s !DEV early return hard-locks
-// phones to production; THAT line is the safety, not this constant.
+// Dev builds only: a shipped build never reads this, because getWorkerTarget()'s
+// !DEV early return locks phones to production.
 export const DEFAULT_TARGET: WorkerTarget = "worker-cloud-prod";
 
-// ⛔ override exists only in a DEV build — import.meta.env.DEV is compile-time, so this branch is dead code on a phone.
 const OVERRIDE_KEY = "rt_worker_target";
 
-// ⚠️ Only a HUMAN click (sessionStorage) moves the target — no machine fallback.
-// One existed: it landed every fresh install on production whenever local was down,
-// hiding the local-first default and billing the maintainer's R2. Dead-and-selected
-// is a valid state — the panel shows the grey light and the dev starts the worker.
+// Only a human click moves the target; a machine fallback to production bills
+// the maintainer's R2 on every fresh install. Dead-and-selected is a valid state.
 export function getWorkerTarget(): WorkerTarget {
 	if (!import.meta.env.DEV) return "worker-cloud-prod";
 	try {
 		const v = sessionStorage.getItem(OVERRIDE_KEY);
 		if (v === "worker-cloud-prod" || v === "worker-cloud-dev" || v === "worker-local-dev") return v;
-		// Pre-rename stored values (31 Aug 2026) — sessionStorage, so this
-		// mapping only matters to tabs that lived through the rename.
 		if (v === "production") return "worker-cloud-prod";
 		if (v === "r2Dev") return "worker-cloud-dev";
 		if (v === "localDev") return "worker-local-dev";
@@ -71,12 +58,12 @@ export function setWorkerTarget(t: WorkerTarget): void {
 	}
 }
 
-// ⚠️ functions, not constants — a const read at module load can't see a target chosen later.
+// Functions, not constants: a const read at module load cannot see a target chosen later.
 export function tilesHost(): string | null {
 	return hostFor(getWorkerTarget());
 }
 
-/** ⚠️ null when unconfigured — callers MUST check, or null interpolates into the literal URL "null/pack" */
+/** null when unconfigured; callers must check or null interpolates into "null/pack". */
 export function packUrl(): string | null {
 	const h = tilesHost();
 	if (h !== lastAnnouncedPackHost) {
@@ -93,7 +80,7 @@ export function packUrl(): string | null {
 	return h === null ? null : `${h}/pack`;
 }
 
-/** undefined = never announced, null = announced as unconfigured */
+/** undefined = never announced, null = announced as unconfigured. */
 let lastAnnouncedPackHost: string | null | undefined;
 
 export function firesUrl(): string | null {
@@ -101,19 +88,17 @@ export function firesUrl(): string | null {
 	return h === null ? null : `${h}/fires`;
 }
 
-/** One z/x/y vector tile — the whole tiles V10 blobs are made of; null until configured. */
 export function tileUrl(z: number, x: number, y: number): string | null {
 	const h = tilesHost();
 	return h === null ? null : `${h}/${z}/${x}/${y}.pbf`;
 }
 
-/** One z/x/y satellite tile. Goes through our Worker, never MapTiler direct — the key is theirs to spend and stays on the Worker. */
+/** Through our Worker, never MapTiler direct: the key stays on the Worker. */
 export function satelliteTileUrl(z: number, x: number, y: number): string | null {
 	const h = tilesHost();
 	return h === null ? null : `${h}/satellite/${z}/${x}/${y}.jpg`;
 }
 
-/** The /hospitals disc around one anchor — km is the ask AND the wall (routes/hospitals/hospitalCache.ts). */
 export function hospitalsUrl(
 	lng: number,
 	lat: number,
@@ -125,8 +110,6 @@ export function hospitalsUrl(
 
 export const TILES_HOST_LABEL = "see tilesHost()";
 
-// ⚠️ probe with an OPTIONS preflight — never /bench as a liveness check (500 range reads by default).
-/** last failure reason per host */
 const lastProbeFailure: Record<string, string> = {};
 
 export async function probeTarget(
@@ -138,12 +121,13 @@ export async function probeTarget(
 	const ctl = new AbortController();
 	const timer = setTimeout(() => ctl.abort(), timeoutMs);
 	try {
+		// OPTIONS, never /bench: that is 500 range reads.
 		await fetch(`${host}/pack`, {
 			method: "OPTIONS",
 			signal: ctl.signal,
 			mode: "cors",
 		});
-		// ⚠️ any answer, even 4xx, counts as up — greying out on status hides a Worker that's up but answering differently.
+		// Any answer, even 4xx, counts as up.
 		noteProbe(t, true);
 		return true;
 	} catch (err) {

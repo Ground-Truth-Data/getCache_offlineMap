@@ -1,10 +1,7 @@
 /**
- * The map style: Protomaps' stock dark basemap over the blobs (MIN_Z+), and a
- * few plain layers over the bundled Natural Earth pyramid everywhere else.
- * Both paint the same three tones so the handover at the border is invisible:
- * the pyramid's own opaque earth fill covers the world base inside the border,
- * so the border is a window — pyramid inside, world base outside — with no
- * fill of its own. The region is a gold line and nothing else.
+ * Protomaps' stock dark basemap over the blobs, a few plain layers over the bundled
+ * Natural Earth pyramid everywhere else, in the same tones so the handover is invisible.
+ * The region is a gold line and nothing else.
  */
 
 import { DARK, layers } from "@protomaps/basemaps";
@@ -19,24 +16,14 @@ import { ANCHOR_Z, MAX_Z, MIN_Z } from "./tiles";
 export const PLANET = "planet";
 export const BASE = "world-base";
 export const REGIONS = "v10-regions";
-/** A blob's photo goes under this planet layer: over the earth and landuse fills, under the water, the roads and every label. */
+/** A blob's photo sits over the earth and landuse fills, under water, roads and labels. */
 export const PHOTO_INSERT_BEFORE = "water";
 
-/** Gold = commit, the app's own accent: the saved map's edge. */
 const GOLD = "#f5a119";
 
-/**
- * Water's colour is a function of zoom, not a constant.
- *
- * Zoomed out, stock slate IS the ocean — the eye reads a big dark expanse as
- * sea and never questions it. Zoomed in, that same slate sits at the same
- * value as the road greys (#292929–#474747), so a creek in a gully reads as a
- * track. So the slate holds while it is doing the ocean's job and turns blue
- * only once water is a thing you follow, ramped across a zoom so it eases in.
- */
+// Zoomed in, stock slate water sits at the same value as the road greys, so a creek reads as a track; it turns blue over a zoom span.
 const WATER_FAR = DARK.water;
 const WATER_NEAR = "#2B3855";
-/** Where the blue starts, and how many zooms it takes to get there — a wider span eases, a span of 1 snaps. */
 const WATER_SHIFT_Z = 4;
 const WATER_SHIFT_SPAN = 9;
 const waterColor: ExpressionSpecification = [
@@ -49,7 +36,6 @@ const waterColor: ExpressionSpecification = [
 	WATER_NEAR,
 ];
 
-/** The drawer's LEGEND card, in the shape MapLegend reads. */
 export const LEGEND = [
 	{ label: "Roads", color: DARK.major, swatch: "line" },
 	{ label: "Lakes / rivers", color: DARK.water, swatch: "line" },
@@ -59,7 +45,7 @@ export const LEGEND = [
 const BASE_TILES = "/mobileAssets/worldBase/base/tiles";
 const GLYPHS = "/mobileAssets/worldBase/glyphs/{fontstack}/{range}.pbf";
 const SPRITE = "/offlineV10/sprites/dark";
-/** The one face bundled for airplane mode. Bold/italic map onto it. */
+/** The one face bundled for airplane mode; bold/italic map onto it. */
 const FONT = "Noto Sans Regular";
 
 function oneFont(layer: LayerSpecification): LayerSpecification {
@@ -68,12 +54,7 @@ function oneFont(layer: LayerSpecification): LayerSpecification {
 	return layer;
 }
 
-/**
- * Zoomed out, the planet's low tiles carry almost nothing — a highway or two —
- * while the world base underneath still draws its roads. So the planet is
- * invisible up to PLANET_GONE_Z and fully there from PLANET_FULL_Z; between
- * them the base shows through the fade. Its earth fill is what hides the base.
- */
+// The planet's low tiles carry almost nothing, so the world base shows through until the planet fades in.
 export const PLANET_GONE_Z = 6;
 export const PLANET_FULL_Z = 7;
 const OPACITY_KEYS: Partial<Record<LayerSpecification["type"], string[]>> = {
@@ -115,7 +96,7 @@ function valueAt(stops: Stops, z: number): number {
 	return stops[stops.length - 1][1];
 }
 
-/** One zoom curve per expression is the rule, so a layer's own curve is folded into the ramp: sampled at every stop of either, then multiplied. */
+/** One zoom curve per expression, so a layer's own curve is sampled at every stop of either and multiplied into the ramp. */
 function foldRamp(own: unknown): ExpressionSpecification {
 	const base = typeof own === "number" ? ([[0, own]] as Stops) : stopsOf(own);
 	const stops = base ?? ([[0, 1]] as Stops);
@@ -137,29 +118,10 @@ function fadeIn(layer: LayerSpecification): LayerSpecification {
 }
 
 /**
- * THE GROUND, as a flavor override.
- *
- * A Protomaps flavor is 74 named colours, and `layers()` builds the ENTIRE
- * style from it — every fill, line, casing and label. So the ground is styled
- * by handing it different colours, never by patching layers one at a time:
- * that road ends in hand-authoring a basemap, which is what these people
- * already did for us.
- *
- * ⛔ Stock DARK is authored to HIDE the ground — every ground tone sits within
- * 10 luminance points of `earth`, and `wood_a`/`wood_b` are the same colour.
- * That is a deliberate choice for a dark canvas, and it is why the world reads
- * as a void with lakes in it. These lift only the ground keys off `earth`,
- * leaving DARK's roads, water and labels exactly as shipped.
- *
- * ⛔ Keep the `_a`/`_b` pairs EQUAL. The stock style cross-fades between them
- * across a zoom; different values make the ground drift colour as you move,
- * which reads as a bug.
- *
- * ── THE DIAL ───────────────────────────────────────────────────────────────
- * One number: GROUND_LIFT, how far the ground separates from bare earth.
- * 0 = stock DARK (invisible ground). 1 = the values below. Nothing else here
- * needs touching; to restyle the whole map instead, swap the flavor in
- * buildStyle for BLACK / GRAYSCALE / LIGHT / WHITE.
+ * Style the ground by overriding flavor colours, never by patching layers per kind.
+ * Stock DARK hides the ground (every tone within 10 luminance points of `earth`); these lift only the ground keys.
+ * Keep each `_a`/`_b` pair EQUAL: the stock style cross-fades between them across a zoom.
+ * GROUND_LIFT: 0 = stock DARK, 1 = the values below. To restyle the whole map, swap the flavor in buildStyle.
  */
 export const GROUND_LIFT = 1;
 const GROUND: Record<string, string> = {
@@ -181,7 +143,6 @@ const GROUND: Record<string, string> = {
 	pedestrian: "#242424",
 };
 
-/** Stock colour → lifted colour, mixed by `lift` so one number dials the whole palette. */
 export function groundFlavor<T extends Record<string, unknown>>(
 	flavor: T,
 	lift: number = GROUND_LIFT,
@@ -209,13 +170,8 @@ export function buildStyle(origin: string): StyleSpecification {
 	const flavor = groundFlavor({ ...DARK, regular: FONT, bold: FONT, italic: FONT });
 	const planet = layers(PLANET, flavor, { lang: "en" })
 		.filter((l) => l.type !== "background")
-		// Admin borders read as roads on a dark basemap — the online map hides
-		// them for the same reason (mapStyleNatural.ts).
+		// Admin borders read as roads on a dark basemap.
 		.filter((l) => (l as { "source-layer"?: string })["source-layer"] !== "boundaries")
-		// ⚠️ AFTER fadeIn would fight it: fadeIn folds a layer's own zoom curve
-		// into the planet ramp, and only opacity curves are folded — colour is
-		// left alone, so this must be its own expression, set before the labels
-		// are excluded below.
 		.map((l) => {
 			if ((l as { "source-layer"?: string })["source-layer"] !== "water") return l;
 			if (l.type !== "fill" && l.type !== "line") return l;
@@ -292,9 +248,7 @@ export function buildStyle(origin: string): StyleSpecification {
 		},
 	];
 
-	// The border is the outside edge of the anchor tiles on disk — the exact
-	// ground saved, at every zoom — and it is gone by BORDER_GONE_Z, before the
-	// blob's own roads fill the screen.
+	// The border is gone before the blob's own roads fill the screen.
 	const BORDER_GONE_Z = 9;
 	const fade = (hi: number): ExpressionSpecification => [
 		"interpolate",

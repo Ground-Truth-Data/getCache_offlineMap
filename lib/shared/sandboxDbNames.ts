@@ -3,12 +3,7 @@ export const SANDBOX_SUFFIX = "-sandbox";
 /** A world token must be safe inside an IndexedDB name and a localStorage key. */
 const WORLD_TOKEN = /^[a-z0-9][a-z0-9_-]{0,31}$/i;
 
-/**
- * The world this page load runs in, read off `?sandbox=`: "1" is the practice
- * sandbox, any other token a NAMED world (`?sandbox=blue`) — a second full app
- * on the same origin with its own databases, used to play two phones against
- * each other. null = the real app. Reads `location.search` unless given one.
- */
+/** The world off `?sandbox=`: "1" the practice sandbox, any other token a NAMED world, null the real app. */
 export function sandboxWorld(search?: string): string | null {
 	const s =
 		search ?? (typeof location === "undefined" ? "" : location.search);
@@ -17,56 +12,37 @@ export function sandboxWorld(search?: string): string | null {
 	return WORLD_TOKEN.test(v) ? v : null;
 }
 
-/** The suffix a world adds to every DB name: `-sandbox` for the practice
- *  sandbox, `-sandbox-<name>` for a named world. */
+/** `-sandbox` for the practice sandbox, `-sandbox-<name>` for a named world. */
 export function worldSuffix(world: string): string {
-	// Fail loud: a junk token here names a junk database on the origin for good.
+	// A junk token here names a junk database on the origin for good.
 	if (typeof world !== "string" || !WORLD_TOKEN.test(world)) {
 		throw new Error(`[sandboxDbNames] not a world token: ${String(world)}`);
 	}
 	return world === "1" ? SANDBOX_SUFFIX : `${SANDBOX_SUFFIX}-${world}`;
 }
 
-/** Suffix for a localStorage key that must not cross worlds; "" in the real
- *  app. Read from the URL, not the storage flag, so a module-scope seed sees
- *  it before boot has set the flag. */
+/** Suffix for a localStorage key that must not cross worlds; "" in the real app.
+ *  Read from the URL, not the storage flag, so a module-scope seed sees it. */
 export function worldStorageSuffix(): string {
 	const w = sandboxWorld();
 	return w ? worldSuffix(w) : "";
 }
 
-// The world, named the moment this module is evaluated. Nothing has to
-// remember to call it, and nothing can run before it.
+// The world is a property of the page load, so it is named at module scope,
+// never from a store's boot that a page might skip.
 const bornSuffix = worldStorageSuffix();
 publishWorldSuffix(bornSuffix);
 
-/** The world's suffix, published across the open-core wall for the blob layer
- *  (`getCache_OnlineMap/lib/overlay/mobMapStorage`), which may not import
- *  `$lib/mobile` and so cannot ask any of this directly.
- *
- *  WRITTEN FROM THE URL, AT MODULE SCOPE — not from a store's boot. A world is
- *  a property of the page load, and the one caller that used to name it sat
- *  inside V1's `initOnce`, past the early return a V2 page takes: on `/app/map`
- *  it never ran at all, so two sandbox phones wrote their overlays into the
- *  REAL app's `maps` directory. Naming the world where the world is BORN is
- *  what makes that unreachable rather than merely early. */
+/** Published on window for the blob layer across the open-core wall, which cannot import this. */
 function publishWorldSuffix(suffix: string): void {
 	if (typeof window === "undefined") return;
 	(window as { __rt_world_suffix?: string }).__rt_world_suffix = suffix;
 }
 
-// BORN FROM THE URL, like the blob layer's suffix above — not from a store's
-// boot. Every offline box (satellite, tiles, vectors, registry) names itself
-// through `currentDbName`, and the one caller that used to set this sits in
-// V1's `initOnce` past the early return a V2 page takes. On `/app/offlinev10`
-// it never ran, so a sandbox world downloaded its imagery straight into the
-// REAL app's boxes.
 let sandboxActive = bornSuffix !== "";
 let activeSuffix = bornSuffix;
 
-/** Point the IndexedDB name resolver at a world named EXPLICITLY — a caller
- *  that knows better than the URL. The page's own world is already live from
- *  module scope, so nothing has to call this for storage to be correct. */
+/** A caller that knows better than the URL; nothing has to call this for storage to be correct. */
 export function setSandboxStorageActive(active: boolean, world = "1"): void {
 	sandboxActive = active;
 	activeSuffix = active ? worldSuffix(world) : "";
@@ -77,68 +53,63 @@ export function isSandboxStorageActive(): boolean {
 	return sandboxActive;
 }
 
-/** Resolve the live DB name for a base name — `<name>-sandbox` in the
- *  practice sandbox, `<name>-sandbox-<world>` in a named world. */
 export function currentDbName(realName: string): string {
 	return realName + activeSuffix;
 }
 
 const resetFns = new Set<() => void>();
 
-/** Offline module registers a fn that clears its cached open-DB handle. */
+/** Registers a fn that clears a module's cached open-DB handle. */
 export function registerOfflineDbReset(fn: () => void): void {
 	resetFns.add(fn);
 }
 
-/** ⛔ SEPARATE FROM `resetOfflineDbHandles`, DELIBERATELY — sandbox toggling needs reopen, but a wipe needs reads to refuse reopening or `deleteDatabase` blocks. */
+/** Separate from `resetOfflineDbHandles`: a wipe needs reads to REFUSE reopening or `deleteDatabase` blocks. */
 interface WipeLatch {
-	/** Stop this module's reads reopening the DB. */
 	latch: () => void;
-	/** Allow reads again — ONLY when the wipe did not happen. */
+	/** ONLY when the wipe did not happen. */
 	unlatch: () => void;
 }
 
 const wipeLatchFns = new Set<WipeLatch>();
 
-/** A module registers the pair that stops, and restores, its reads during a wipe. */
 export function registerWipeLatch(l: WipeLatch): void {
 	wipeLatchFns.add(l);
 }
 
-/** Latch every registered reader OFF before deleting. Reads become misses. */
+/** Latch every registered reader OFF before deleting; reads become misses. */
 export function latchOfflineReadsForWipe(): void {
 	for (const l of wipeLatchFns) {
 		try {
 			l.latch();
 		} catch {
-			/* best-effort: a failed latch just means that delete may block */
+			/* codestyle-allow-swallow: a failed latch only means that delete may block */
 		}
 	}
 }
 
-/** ⛔ Never call after a successful wipe — this is the only escape from a permanent blackout: a latched read returns null silently forever ("roads disappeared and never came back"). */
+/** Never after a successful wipe: a latched read returns null silently forever. */
 export function unlatchOfflineReadsAfterFailedWipe(): void {
 	for (const l of wipeLatchFns) {
 		try {
 			l.unlatch();
 		} catch {
-			/* best-effort */
+			/* codestyle-allow-swallow */
 		}
 	}
 }
 
-/** Drop every cached offline-DB handle so the next open() reopens correctly. */
 export function resetOfflineDbHandles(): void {
 	for (const fn of resetFns) {
 		try {
 			fn();
 		} catch {
-			/* best-effort: a failed reset just means that module reopens lazily */
+			/* codestyle-allow-swallow: that module reopens lazily */
 		}
 	}
 }
 
-/** Delete every "<name>-sandbox" offline DB — wipes the sandbox's offline cache without touching the real ones. */
+/** Wipes the sandbox's offline cache without touching the real DBs. */
 export async function deleteSandboxOfflineDbs(): Promise<void> {
 	if (typeof indexedDB === "undefined") return;
 	const bases = ["rt-tiles-v3", "rt-satellite", "rt-vectors", "rt-mapRegistry"];

@@ -1,14 +1,13 @@
 /**
- * anchors.ts — canonical "where does a feature get offline blobs" map, shared by the reconcile (`/mobile/offlinev4`) and the debug array (`/app/debug/blobs/array`).
- * Point → one blob at the point. Line → sampled ALONG it (`sampleLineAnchors`) every LINE_STEP_KM, a ribbon not one midpoint. Polygon → ONE blob at centroid (`polygonAnchor`), deters huge polys. PDF/overlay → a blob at each of the four `overlayBounds` corners.
- * Overlap is expected — anchors dedup downstream by `satImageKey`, tile discs share one global deduped pile, nothing bakes twice.
+ * Where a feature gets offline blobs. Point → one; line → a ribbon every
+ * LINE_STEP_KM; polygon → ONE at the centroid (deters huge polys); overlay →
+ * its four corners. Overlap dedups downstream, nothing bakes twice.
  */
 import { kmBetween } from "./kmGeo";
 import { GRID_RADIUS_KM } from "../contract/grid";
 
 export type Pt = [number, number];
 
-/** A geometry's centre [lng,lat] (bbox midpoint), or null if no finite coords. */
 function featureCenter(geom: GeoJSON.Geometry | undefined): Pt | null {
 	if (!geom) return null;
 	const box = { w: Infinity, s: Infinity, e: -Infinity, n: -Infinity };
@@ -30,23 +29,10 @@ function featureCenter(geom: GeoJSON.Geometry | undefined): Pt | null {
 	return [(box.w + box.e) / 2, (box.s + box.n) / 2];
 }
 
-// The step is 1.6× the radius of the disc it must keep continuous, so
-// consecutive discs OVERLAP into one ribbon and never leave a gap.
-//
-// ⚠️ THE DISC IS THE ROAD DISC, NOT THE PHOTO DISC. A line bakes a CORRIDOR:
-// roads only, no photo at all (the blob engine queues a corridor's anchors
-// with `photo: false`, which is the whole of what "corridor" means). This
-// was BAKE_RADIUS_KM * 1.6 = 3.2 km — the spacing that keeps 2 km SATELLITE
-// discs touching, on the one geometry that never fetches one. An 86 km line
-// took ~28 anchors where 5 cover the same ground; the extra 23 deduped
-// downstream, so they cost passes through reconcile rather than bytes, and
-// the ribbon was no tighter for them.
-//
-// If a line ever earns photos, this becomes a per-disc choice again — the
-// ribbon rule (1.6× radius) is the part that holds either way.
+// 1.6× the ROAD disc radius (a line bakes a corridor, no photo), so consecutive discs overlap into one ribbon.
 const LINE_STEP_KM = GRID_RADIUS_KM * 1.6;
 
-/** Walk a polyline, drop an anchor at the start, every `stepKm`, and at the end — overlapping anchors dedup downstream by `satImageKey` (tile discs by the global tile pile). */
+/** An anchor at the start, every `stepKm`, and at the end. */
 function sampleLineAnchors(
 	coords: Pt[],
 	stepKm: number = LINE_STEP_KM,
@@ -57,13 +43,13 @@ function sampleLineAnchors(
 	if (pts.length === 0) return [];
 	if (pts.length === 1) return [pts[0]];
 	const out: Pt[] = [pts[0]];
-	let acc = 0; // km accumulated since the last anchor
+	let acc = 0;
 	for (let i = 1; i < pts.length; i++) {
 		const a = pts[i - 1];
 		const b = pts[i];
 		const segKm = kmBetween(a, b);
 		if (segKm === 0) continue;
-		let t0 = 0; // fraction of THIS segment already consumed
+		let t0 = 0;
 		while (acc + (1 - t0) * segKm >= stepKm) {
 			const t = t0 + (stepKm - acc) / segKm;
 			out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
@@ -77,7 +63,7 @@ function sampleLineAnchors(
 	return out;
 }
 
-/** A polygon's centroid (area-weighted, outer ring) — ONE blob on purpose, deters drawing a giant polygon to vacuum a huge area; falls back to vertex mean for a degenerate (zero-area) ring. */
+/** Area-weighted centroid of the outer ring; vertex mean for a zero-area ring. */
 function polygonAnchor(rings: Pt[][]): Pt[] {
 	const outer = rings?.[0];
 	if (!outer || outer.length < 3) {
@@ -105,34 +91,17 @@ function polygonAnchor(rings: Pt[][]): Pt[] {
 	return [[cx / (6 * a), cy / (6 * a)]];
 }
 
-/** Should this feature seed offline blobs at all? EVERY feature does today (pins, PDF/KML/KMZ, polygons, lines, plots) — kept as a function so every `anchorsOf` call site shares one definition if the policy ever narrows. */
+/** Every feature seeds blobs today; a function so the policy has one home if it narrows. */
 export function isBlobAnchor(_f: {
 	geometry: GeoJSON.Feature | null;
 }): boolean {
 	return true;
 }
 
-/**
- * THE CEILING. No feature earns more than this many blobs, whatever its shape
- * or point count. At 30 km a blob is ~50 MB of roads, so ten is ~500 MB — half
- * a 1 GB budget on ONE feature, which is already generous.
- *
- * This is what makes an import of unknown provenance safe: a traced river with
- * 40,000 vertices, a survey line across a province, a polygon with hundreds of
- * points. The import still succeeds and the feature still draws in full — only
- * the offline baking is capped, so the failure mode is "less map saved", never
- * a refused file or a blown budget.
- */
+/** Ten blobs ≈ 500 MB, half a 1 GB budget on ONE feature; an import of any size still draws in full, only the baking is capped. */
 export const MAX_ANCHORS_PER_FEATURE = 10;
 
-/**
- * Thin a list down to the ceiling, keeping it SPREAD over the whole geometry.
- *
- * Evenly, never the first ten: a 2000 km line would otherwise bake its first
- * 300 km densely and leave everything past that with no map at all. Thinned,
- * the coverage is sparser but reaches both ends. Ends are always kept — they
- * are where someone actually starts and finishes.
- */
+/** Evenly spread, never the first ten, so a long line reaches both ends. */
 function thinToCeiling(pts: Pt[]): Pt[] {
 	if (pts.length <= MAX_ANCHORS_PER_FEATURE) return pts;
 	const out: Pt[] = [];
@@ -142,7 +111,7 @@ function thinToCeiling(pts: Pt[]): Pt[] {
 	return out;
 }
 
-/** The offline-coverage anchors for ANY feature — a LIST, since one blob isn't enough for long geometry (see file header for per-type rules), capped at {@link MAX_ANCHORS_PER_FEATURE}. Callers iterating a feature collection should gate on {@link isBlobAnchor} first. */
+/** The offline-coverage anchors for ANY feature, capped at {@link MAX_ANCHORS_PER_FEATURE}. */
 export function anchorsOf(f: {
 	geometry: GeoJSON.Feature | null;
 	overlayBounds: [number, number, number, number] | null;
@@ -151,7 +120,6 @@ export function anchorsOf(f: {
 	if (!g) {
 		if (f.overlayBounds) {
 			const [w, s, e, n] = f.overlayBounds;
-			// four corners of the PDF/map sheet — covers the whole imported extent (30km road discs from the corners fill the middle in).
 			return [
 				[w, s],
 				[w, n],
@@ -169,8 +137,7 @@ export function anchorsOf(f: {
 		case "LineString":
 			return thinToCeiling(sampleLineAnchors(g.coordinates as Pt[]));
 		case "MultiLineString":
-			// Wrapped, never bare: `flatMap` passes the INDEX as the second
-			// argument, which would land in `stepKm` and space part 1 at 1 km.
+			// Wrapped: bare `flatMap` would pass the index as `stepKm`.
 			return thinToCeiling(
 				(g.coordinates as Pt[][]).flatMap((part) => sampleLineAnchors(part)),
 			);

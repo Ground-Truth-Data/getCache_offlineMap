@@ -1,4 +1,4 @@
-// ⚠️ a wrong probe answer is a cellular-data runaway — the 20 s reconcile re-fetches the pack every pass, forever.
+// A wrong probe answer is a cellular-data runaway: the reconcile re-fetches the pack every pass.
 import "fake-indexeddb/auto";
 import { BLOB_RADIUS_KM, BLOB_ZOOMS } from "../../../contract/roadBlob";
 import { BLOB_MIN_Z } from "../../../contract/blob";
@@ -22,7 +22,6 @@ import {
 
 function putTiles(keys: string[]): Promise<void> {
 	return new Promise((resolve, reject) => {
-		// v2 schema — the helpers seed at the module's DB_VERSION, never a hardcoded 1
 		const req = indexedDB.open(DB_NAME, DB_VERSION);
 		req.onupgradeneeded = () => {
 			if (!req.result.objectStoreNames.contains("tiles"))
@@ -47,7 +46,7 @@ function putTiles(keys: string[]): Promise<void> {
 	});
 }
 
-// ⚠️ each test needs its own centre ≥2° of longitude from the others — rings overlap and state leaks otherwise.
+// Each test needs its own centre ≥2° of longitude from the others, or rings overlap and state leaks.
 describe("offline cell probes (download-runaway regression)", () => {
 	it("empty pile → both probes false (area downloads once)", async () => {
 		expect(await areaTilesPresent(-76, 45)).toBe(false);
@@ -61,7 +60,6 @@ describe("offline cell probes (download-runaway regression)", () => {
 	});
 
 	it("⛔ A MISSING NEIGHBOUR CELL FAILS THE PROBE — partial is not present", async () => {
-		// ⚠️ the stamp promises a SHAPE, so the probe must verify the whole shape — all-but-one must read as absent.
 		const keys = areaTileKeys(-72, 45.0);
 		if (keys.length < 2) return;
 		await putTiles(keys.slice(0, keys.length - 1));
@@ -97,13 +95,11 @@ describe("THE BLOB — one radius, every zoom", () => {
 	});
 
 	it("⛔ ONE RADIUS — every level is the SAME circle", () => {
-		// ⚠️ a second radius is a second EDGE — a bigger shape appearing at one zoom and vanishing at another.
 		expect(new Set(RINGS.map((r) => r.km)).size).toBe(1);
 	});
 
 	it("NO GAPS — every level below the deepest exists", () => {
-		// ⚠️ overzoom only goes UP — a missing level is a zoom at which the blob silently vanishes; z14 is the one legitimate absence (z13 overzooms to cover it).
-		// ⚠️ a raised floor is NOT a gap — a gap has stored levels on BOTH sides; the floor is the source minzoom.
+		// Overzoom only goes up, so a missing level is a zoom at which the blob vanishes; z14 is covered by z13.
 		const zs: number[] = [...BLOB_ZOOMS].sort((a, b) => a - b);
 		const deepest = Math.max(...zs);
 		const floor = Math.min(...zs);
@@ -112,13 +108,11 @@ describe("THE BLOB — one radius, every zoom", () => {
 			if (!zs.includes(z) && z !== 14) missing.push(z);
 		}
 		expect(missing).toEqual([]);
-		// ⚠️ the floor must be a level the renderer is told about, or MapLibre 404s and blanks the map with no error.
 		expect(floor).toBe(BLOB_MIN_Z);
 	});
 
 	it("an anchor's tiles span EVERY zoom the blob declares", () => {
 		const keys = areaTileKeys(-76.168, 45.061);
-		// keys are pin-addressed `pin/<lng>,<lat>/<z>/<x>/<y>` — zoom is the 3rd segment
 		const zooms = [...new Set(keys.map((k) => Number(k.split("/")[2])))].sort(
 			(a, b) => a - b,
 		);
@@ -126,7 +120,6 @@ describe("THE BLOB — one radius, every zoom", () => {
 	});
 
 	it("⛔ THE TILE IS AN ADDRESS, NOT A FOOTPRINT — the CELL bounds the data", () => {
-		// ⚠️ don't reassert the old "no level wider than 4x the blob" rule — the tile number picks the shallowest visible zoom; the CELL bounds the data.
 		const keys = areaTileKeys(-76.168, 45.061);
 		expect(keys.length).toBeGreaterThanOrEqual(1);
 		expect(keys.length).toBeLessThanOrEqual(25);
@@ -138,7 +131,6 @@ describe("THE BLOB — one radius, every zoom", () => {
 	});
 
 	it("the Worker's spec matches the client's, exactly", () => {
-		// ⚠️ a client/Worker zoom mismatch means the phone asks for a tile the Worker never wrote — blank map, no error anywhere.
 		const workerGrid = fileURLToPath(
 			new URL("../../../../workers/worker-local-dev/src/grid.ts", import.meta.url),
 		);
@@ -148,7 +140,7 @@ describe("THE BLOB — one radius, every zoom", () => {
 		const zoomLine = /BLOB_TILE_Z = (\d+)/.exec(
 			readFileSync(resolve(dirname(workerGrid), `${reexport}.ts`), "utf8"),
 		)?.[1] ?? "";
-		// ⚠️ drop empty tokens — Number("") is 0, a phantom zoom 0 fails this for the wrong reason.
+		// Number("") is 0: a phantom zoom 0 fails this for the wrong reason.
 		const workerZooms = zoomLine
 			.split(",")
 			.map((t) => t.trim())
@@ -158,7 +150,6 @@ describe("THE BLOB — one radius, every zoom", () => {
 	});
 });
 
-// ⚠️ a 0-byte tile must never be persisted — Mapbox's worker throws parsing it on every render pass, forever.
 describe("zero-byte tiles — the write boundary", () => {
 	function rawEntries(dbName: string): Promise<Array<[string, number]>> {
 		return new Promise((resolve, reject) => {
@@ -231,7 +222,7 @@ describe("zero-byte tiles — the write boundary", () => {
 		expect(removed).toBe(2);
 		const after = await rawEntries(DB_NAME);
 		expect(after.every(([, n]) => n > 0)).toBe(true);
-		// ⚠️ other specs share this DB — assert on THIS test's keys, not the whole store.
+		// Other specs share this DB.
 		const mine = after.filter(([k]) => k.startsWith("15/900/")).map(([k]) => k);
 		expect(mine.sort()).toEqual(["15/900/1400", "15/900/1402"]);
 	});
@@ -243,7 +234,6 @@ describe("zero-byte tiles — the write boundary", () => {
 	});
 });
 
-// ⚠️ a blocked request must keep its resource type — PNG bytes where protobuf is expected throws "Unimplemented type: 4" on every render pass.
 describe("v4TransformRequest — blocked requests keep their resource type", () => {
 	const ORIGIN = "http://localhost:5173";
 	beforeAll(() => {
@@ -284,7 +274,7 @@ describe("v4TransformRequest — blocked requests keep their resource type", () 
 	});
 
 	it("ABSOLUTISES a root-relative local URL — the blob-worker trap", () => {
-		// ⚠️ Mapbox's worker is a Blob, so its self.location is blob: — a root-relative URL has no origin to resolve against. Do not "restore" a `toBe(rel)` assertion here.
+		// Mapbox's worker is a Blob, so a root-relative URL has no origin to resolve against.
 		const rel = "/mobileAssets/worldBase/glyphs/Noto%20Sans%20Regular/0-255.pbf";
 		expect(v4TransformRequest(rel, "Glyphs").url).toBe(`${ORIGIN}${rel}`);
 	});

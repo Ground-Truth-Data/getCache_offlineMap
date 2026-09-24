@@ -1,19 +1,6 @@
 /**
- * ⚠️ THE STRIPS REFUTATION TEST — real worker bytes through the real storage,
- * decoded by the real parser.
- *
- * `tileMerge.test.ts` proves `mergeSameFrameTiles` on SYNTHETIC blobs. It cannot
- * answer the remaining strips hypothesis: that something about the blobs the REAL
- * worker builder emits (`buildBlobTile` — remapped geometry, merged tag tables,
- * BLOB_EXTENT 16384) breaks MapLibre's real parser after a real store/read round
- * trip. This test closes that hole end-to-end:
- *
- *   buildBlobTile → idb store under REAL pinTileKey → idbGetTileForAddress
- *   → @mapbox/vector-tile + pbf (the parser MapLibre actually uses).
- *
- * If this PASSES, the read path is exonerated and the strips must come from a
- * stale browser build or MapLibre-level caching. If it FAILS, the root cause is
- * in the blob/merge byte format.
+ * Real worker bytes through real storage, decoded by the parser MapLibre uses:
+ * buildBlobTile → idb store under pinTileKey → idbGetTileForAddress → vector-tile + pbf.
  */
 import "fake-indexeddb/auto";
 import { describe, expect, it, vi } from "vitest";
@@ -41,8 +28,6 @@ import {
 	idbGetTileForAddress,
 } from "../../worker/worker-local-dev/roads/packDownload";
 
-// ── minimal protobuf writers (same MVT wire format tileMerge.test uses) ──
-
 function writeVarint(out: number[], value: number): void {
 	let v = value;
 	while (v > 0x7f) {
@@ -60,19 +45,16 @@ function bytesField(field: number, payload: Uint8Array): number[] {
 	return out;
 }
 
-/** A Value message carrying one string (field 1). */
 function strValue(s: string): Uint8Array {
 	return new Uint8Array(bytesField(1, new TextEncoder().encode(s)));
 }
 
-/** Zigzag ENCODE (MVT geometry deltas). */
 function zz(v: number): number {
 	return v >= 0 ? v * 2 : -v * 2 - 1;
 }
 
-/** A 3-vertex LINESTRING starting at (x0,y0) — this owner's unambiguous shape. */
+/** MoveTo(1) + LineTo(2): a 3-vertex linestring from (x0,y0). */
 function lineGeom(x0: number, y0: number): number[] {
-	// MoveTo(1 pair) + LineTo(2 pairs): [9, zz(x0), zz(y0), 18, zz(+60), zz(+10), zz(-20), zz(+40)]
 	return [9, zz(x0), zz(y0), 18, zz(60), zz(10), zz(-20), zz(40)];
 }
 
@@ -110,8 +92,6 @@ function tile(layers: Uint8Array[]): Uint8Array {
 	return new Uint8Array(out);
 }
 
-// ── a source archive tile, the way the worker's fetch sees one ──
-
 const SRC_Z = 13;
 const SRC_EXTENT = 4096;
 
@@ -129,12 +109,7 @@ function srcTileAt(lng: number, lat: number) {
 	};
 }
 
-/**
- * One owner's source tile. The two owners carry the SAME two tags but with
- * keys/values tables in the OPPOSITE order — the worst case for tag-table
- * remapping: if the merge kept only one table, "kind" and "owner" would resolve
- * to the other pin's strings.
- */
+/** The two owners carry the same tags with tables in opposite order: the worst case for tag remapping. */
 function ownerTile(owner: "A" | "B"): Uint8Array {
 	const keys = owner === "A" ? ["kind", "owner"] : ["owner", "kind"];
 	const vals =
@@ -147,16 +122,15 @@ function ownerTile(owner: "A" | "B"): Uint8Array {
 			"roads",
 			keys,
 			vals,
-			[feature([0, 0, 1, 1], g), feature([0, 0, 1, 1], g)], // kind + owner, twice
+			[feature([0, 0, 1, 1], g), feature([0, 0, 1, 1], g)],
 			SRC_EXTENT,
 		),
 	]);
 }
 
-// ── the two pins — close enough that their 30 km boxes share z8 cells ──
-
+// Close enough that their boxes share z8 cells.
 const PIN_A: [number, number] = [-100.5, 45.0];
-const PIN_B: [number, number] = [-100.3, 45.0]; // ~15 km east
+const PIN_B: [number, number] = [-100.3, 45.0];
 
 function putBlobs(items: Array<[string, ArrayBuffer]>): Promise<void> {
 	return new Promise((resolve, reject) => {
@@ -184,7 +158,6 @@ function putBlobs(items: Array<[string, ArrayBuffer]>): Promise<void> {
 	});
 }
 
-/** Build + store one pin's full cell set the way the download path does. */
 async function storePinBlobs(
 	pin: [number, number],
 	owner: "A" | "B",
@@ -192,7 +165,6 @@ async function storePinBlobs(
 	const items: Array<[string, ArrayBuffer]> = [];
 	for (const cell of cellsFor(pin[0], pin[1])) {
 		const box = cellBox(cell);
-		// source tile at the CELL's centre — its roads remap into the interior of the cell frame
 		const src: SourceTile = {
 			tile: srcTileAt((box.w + box.e) / 2, (box.n + box.s) / 2),
 			data: ownerTile(owner),
@@ -250,14 +222,13 @@ describe("TWO NEARBY PINS — real worker blobs, real storage, real parser", () 
 		const t = decode(buf!);
 		expect(Object.keys(t.layers)).toEqual(["roads"]);
 		const roads = t.layers.roads;
-		expect(roads.length).toBe(4); // 2 per pin — byte-concat would show only 2
+		expect(roads.length).toBe(4); // byte-concat would show only 2
 
 		const props = Array.from({ length: roads.length }, (_, i) =>
 			roads.feature(i).properties,
 		);
 		expect(props.filter((p) => p.owner === "A").length).toBe(2);
 		expect(props.filter((p) => p.owner === "B").length).toBe(2);
-		// tags resolve to each owner's OWN strings — the table remap is correct
 		for (const p of props) {
 			if (p.owner === "A") expect(p.kind).toBe("highway");
 			if (p.owner === "B") expect(p.kind).toBe("path");
@@ -281,13 +252,12 @@ describe("TWO NEARBY PINS — real worker blobs, real storage, real parser", () 
 			(await idbGetTile(pinTileKey(PIN_B[0], PIN_B[1], cell)))!,
 		).layers.roads;
 
-		// same frame (same cell) → the merge must copy geometry byte-for-byte, never remap it
 		expect([...geomSigs(merged)].sort()).toEqual(
 			[...geomSigs(aSolo), ...geomSigs(bSolo)].sort(),
 		);
 	});
 
-	it("⛔ repeated reads are MEMOIZED — no re-merge, byte-identical copies (zoom-gesture perf, 2026-09-02)", async () => {
+	it("⛔ repeated reads are MEMOIZED — no re-merge, byte-identical copies", async () => {
 		const shared = cellsFor(PIN_A[0], PIN_A[1]).filter((c) =>
 			owns(c, cellsFor(PIN_B[0], PIN_B[1])),
 		);
@@ -296,14 +266,12 @@ describe("TWO NEARBY PINS — real worker blobs, real storage, real parser", () 
 		try {
 			const first = await idbGetTileForAddress(cell.z, cell.ix, cell.iy);
 			expect(first).not.toBeNull();
-			// 150 reads ≈ a couple of zoom gestures' worth — every one must be a
-			// cached copy, NOT a fresh re-merge of the owners' blobs
 			for (let i = 0; i < 150; i++) {
 				const again = await idbGetTileForAddress(cell.z, cell.ix, cell.iy);
 				expect(again!.byteLength).toBe(first!.byteLength);
 				expect(new Uint8Array(again!)).toEqual(new Uint8Array(first!));
 			}
-			// a broken memoization would re-merge (and re-log) on every read
+			// A broken memoization re-logs on every read.
 			const merges = warn.mock.calls.filter((c) =>
 				String(c[0]).includes("[roads] merged"),
 			);
@@ -319,7 +287,7 @@ describe("TWO NEARBY PINS — real worker blobs, real storage, real parser", () 
 		const aOnly = cellsFor(PIN_A[0], PIN_A[1]).filter(
 			(c) => !owns(c, cellsFor(PIN_B[0], PIN_B[1])),
 		);
-		if (!aOnly.length) return; // the premise guarantees a shared cell; solo cells are bonus
+		if (!aOnly.length) return;
 		const cell = aOnly[0];
 		const buf = await idbGetTileForAddress(cell.z, cell.ix, cell.iy);
 		expect(buf).not.toBeNull();

@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 
-/** Every source tile is a non-empty stub; the filter passes bytes through so tiles reach the manifest. */
 vi.mock("./mvtFilter", () => ({
 	filterMvtToLayers: (b: ArrayBuffer) => b,
 	allowlistOf: () => ({}),
@@ -10,9 +9,6 @@ vi.mock("./oneBlob", () => ({
 	boxFrame: () => ({ w: 0, s: 0, e: 1, n: 1 }),
 }));
 
-/** A PMTiles stand-in: every requested tile returns four bytes, and every
- * request is recorded — the z6-built tier must ask the archive for NOTHING
- * beyond the disc's own z13 reads. */
 const requested: string[] = [];
 const archive = {
 	getHeader: async () => ({}),
@@ -22,7 +18,6 @@ const archive = {
 	},
 } as never;
 
-/** Read the manifest back out of the packed bytes. */
 function keysOf(pack: ArrayBuffer): string[] {
 	const buf = new Uint8Array(pack);
 	const len = new DataView(buf.buffer, buf.byteOffset, 4).getUint32(0, true);
@@ -47,8 +42,6 @@ describe("buildPack keys every tile by the PIN", () => {
 	});
 
 	it("the shallow tier ships z6 keys under shallow/ — never in the pin/ namespace (pv46)", async () => {
-		// a z6 in the main namespace is the direction1/pv46 incident: the main
-		// lookup's containment would serve it mis-framed to z8 requests.
 		const { buildPack } = await import("./packBuilder");
 		const keys = keysOf(await buildPack(archive, LNG, LAT));
 		const shallow = keys.filter((k) => k.startsWith("shallow/"));
@@ -68,10 +61,6 @@ describe("buildPack keys every tile by the PIN", () => {
 	});
 
 	it("direction2.4: the z6 is BUILT from the disc reads — the archive never serves a z6 tile", async () => {
-		// The direction2.3 tier read the archive's own z6 verbatim (a second
-		// readDisc); the built tier reuses the z13 reads, so every archive
-		// request must be at BLOB_DETAIL_LEVEL. A z6 request here means the
-		// verbatim path crept back.
 		requested.length = 0;
 		const { buildPack } = await import("./packBuilder");
 		await buildPack(archive, LNG, LAT);

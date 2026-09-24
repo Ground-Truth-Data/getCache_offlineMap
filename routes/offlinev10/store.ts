@@ -1,8 +1,4 @@
-/**
- * The tile store: ONE IndexedDB object store keyed by `z/x/y`, one copy of
- * each tile no matter how many blobs cover it. A second store lists the blobs.
- * Nothing here knows about pins, merging or ownership — that is the point.
- */
+/** The tile store: one IndexedDB store keyed `z/x/y`, one copy per tile however many blobs cover it; a second store lists the blobs. */
 
 import { BudgetError, budgetBytes } from "./budget";
 import { toEvict } from "./evict";
@@ -16,7 +12,7 @@ import {
 } from "./tiles";
 
 export const DB_NAME = "gc-offlineV10";
-/** Bump when what a blob IS changes; an older blob is then wiped, never half-drawn. v2: parents above the cut. */
+/** Bump when what a blob IS changes; an older blob is then wiped, never half-drawn. */
 const DB_VERSION = 2;
 const TILES = "tiles";
 const REGIONS = "regions";
@@ -25,32 +21,25 @@ export interface Region {
 	id: string;
 	lng: number;
 	lat: number;
-	/** the anchor tiles the blob is cut on — its border and its contents */
 	range: Range;
 	/** ms epoch */
 	at: number;
-	/** every tile the blob spans */
 	tiles: number;
 	/** tiles fetched for this blob (the rest were already on disk) */
 	fetched: number;
-	/** what this blob's tiles weigh on disk — shared tiles included, so an
-	 *  overlapping blob that fetched nothing still reports its true size */
+	/** size on disk, shared tiles included */
 	bytes: number;
-	/** ⚠️ What THIS blob actually added to disk: the bytes of the tiles it
-	 *  fetched, shared ground excluded. `bytes` answers "how big is the ground
-	 *  this blob covers"; this answers "what did it cost me". Absent on blobs
-	 *  written before the field existed — render those as unknown, never as 0,
-	 *  which is a real and common value (a blob inside one already downloaded). */
+	/** bytes this blob added, shared ground excluded; absent = unknown, never 0 */
 	newBytes?: number;
 	/** ask → all on disk */
 	ms: number;
 	/** on disk → painted (idle) */
 	msPaint?: number;
-	/** the camera moved before the map went idle, so there is no honest paint time */
+	/** the camera moved before idle, so there is no honest paint time */
 	paintMoved?: true;
 	/** false on a follow-me blob: no pin, no photo. Absent means a photo. */
 	photo?: false;
-	/** the nearest town in the blob's own tiles; null when its tiles hold none; absent before it was looked up */
+	/** null when its tiles hold no town; absent before it was looked up */
 	place?: Place | null;
 }
 
@@ -110,10 +99,7 @@ export async function getTile(key: string): Promise<ArrayBuffer | undefined> {
 	);
 }
 
-// THE BUDGET WALL. Tile bytes on disk are kept as a running total so the
-// check costs nothing per write; the photos live in another store and report
-// their total here. A delete or wipe drops the total, and the next reader
-// scans it afresh.
+// Running total so the budget check costs nothing per write; photos live in another store and report here.
 let tileBytes: Promise<number> | null = null;
 let photoBytes = 0;
 
@@ -151,17 +137,7 @@ export async function usedBytes(): Promise<number> {
 	return (await scanTileBytes()) + photoBytes;
 }
 
-/** Writes nothing when the batch would cross the budget — the whole batch, so a blob is never half over the line. */
-/**
- * What this blob's tiles weigh on disk — its OWN size, not what it downloaded.
- * A blob laid over ground another blob already covers fetches nothing, so a
- * download-side counter reports 0 MB for a blob that plainly holds tiles.
- * Shared tiles count for every blob that covers them: each one would need
- * them if the others went away.
- *
- * Cursor, never getAll(), for the same reason as `stats()` — a full read holds
- * every tile in the heap at once.
- */
+/** Size on disk of these tiles; shared tiles count for every blob covering them. Cursor, never getAll(). */
 export async function bytesOfTiles(keys: readonly string[]): Promise<number> {
 	if (keys.length === 0) return 0;
 	const want = new Set(keys);
@@ -183,18 +159,11 @@ export async function bytesOfTiles(keys: readonly string[]): Promise<number> {
 }
 
 /**
- * Delete the oldest blobs until `adding` fits under both walls, and report
- * what went. The axe falls here, at the write boundary, so no download path
- * can fill the disk without it — the same reason the budget is checked here.
- *
- * Nothing to evict (a blob bigger than the whole budget) leaves the disk
- * alone and lets the caller's BudgetError stand: a refusal the user sees
- * beats a map silently cleared to fail anyway.
+ * Evict the oldest blobs until `adding` fits, at the write boundary so no download path can bypass it.
+ * A blob bigger than the whole budget evicts nothing and lets the caller's BudgetError stand.
  */
 export async function makeRoom(adding: number): Promise<Region[]> {
-	// A blob's row carries `bytes: 0` until its download finishes sizing it,
-	// so the rows must be sized BEFORE they are weighed — a policy fed zeroes
-	// evicts nothing and the write fails with the disk still full.
+	// Rows carry `bytes: 0` until sized; a policy fed zeroes evicts nothing.
 	await healRegionBytes(await listRegions());
 	const doomed = toEvict(await listRegions(), {
 		adding,
@@ -225,7 +194,6 @@ export async function putTiles(
 	tileBytes = Promise.resolve(used - photoBytes + adding);
 }
 
-/** Drop tiles by key — a failed download takes back what it wrote, so no tile is on disk without a blob. */
 export async function deleteTiles(keys: string[]): Promise<void> {
 	if (keys.length === 0) return;
 	const db = await open();
@@ -252,9 +220,7 @@ export async function listRegions(): Promise<Region[]> {
 	return rows.sort((a, b) => b.at - a.at);
 }
 
-// The protocol reads the region list on every parent-tile read; it is served
-// from here so a tile read never opens a transaction, and `version` lets the
-// clipped tiles it caches be dropped the moment a blob comes or goes.
+// Cached so a parent-tile read never opens a transaction; `version` invalidates the protocol's clipped tiles.
 let regionsVersion = 0;
 let regionsCache: Promise<Region[]> | null = null;
 
@@ -271,12 +237,7 @@ export function regionsSnapshot(): {
 	return { version: regionsVersion, regions: regionsCache };
 }
 
-/**
- * The count wall falls here rather than in `putTiles`, because a blob that
- * fetched nothing — laid over ground another blob already covers — writes no
- * tiles at all. Counting slots where slots are taken is the only place the
- * cap cannot be walked past.
- */
+/** The blob-count wall is here, not `putTiles`: a blob over already-covered ground writes no tiles. */
 export async function putRegion(r: Region): Promise<void> {
 	const have = (await listRegions()).filter((x) => x.id !== r.id);
 	const room = { adding: 0, budget: budgetBytes(), used: await usedBytes() };
@@ -288,11 +249,7 @@ export async function putRegion(r: Region): Promise<void> {
 	regionsChanged();
 }
 
-/**
- * Every blob against the keys on disk: the count of its tiles that are not
- * there. Zero is a whole blob. An empty tile is stored as a 0-byte row, so
- * "whole" is a set difference, never a guess about what the Worker had.
- */
+/** Per blob, the count of its tiles not on disk; zero is whole. An empty tile is a 0-byte row, so this is a set difference. */
 export async function checkRegions(): Promise<Record<string, number>> {
 	const [regions, have] = await Promise.all([listRegions(), allTileKeys()]);
 	const out: Record<string, number> = {};
@@ -301,12 +258,7 @@ export async function checkRegions(): Promise<Record<string, number>> {
 	return out;
 }
 
-/**
- * Blobs written before `bytes` meant size-on-disk carry the download-side
- * count, which is 0 for any blob whose ground another blob already covered.
- * The audit is where they get their true size: one cursor pass sizes every
- * blob at once, so healing 74 rows costs the same scan as sizing one.
- */
+/** Sizes every `bytes: 0` blob in one cursor pass. */
 async function healRegionBytes(regions: readonly Region[]): Promise<void> {
 	const stale = regions.filter((r) => r.bytes === 0 && r.tiles > 0);
 	if (stale.length === 0) return;
@@ -342,12 +294,11 @@ async function healRegionBytes(regions: readonly Region[]): Promise<void> {
 	}
 }
 
-/** Tile count and byte total of the whole store — a full scan, for the rail; not on any hot path. */
+/** Full scan, for the rail; not on any hot path. */
 export async function stats(): Promise<{ tiles: number; bytes: number }> {
 	const db = await open();
 	const tx = db.transaction(TILES, "readonly");
 	const st = tx.objectStore(TILES);
-	// Cursor, never getAll(): a full read holds every tile in the heap at once.
 	let bytes = 0;
 	const summed = new Promise<void>((resolve, reject) => {
 		const req = st.openCursor();
@@ -363,11 +314,7 @@ export async function stats(): Promise<{ tiles: number; bytes: number }> {
 	return { tiles, bytes };
 }
 
-/**
- * Delete a blob, and only the tiles no OTHER blob still covers. Coverage is
- * geometry (is this tile under a surviving blob's anchor tiles?), so there
- * is no refcount to drift.
- */
+/** Delete a blob and only the tiles no other blob still covers; coverage is geometry, so no refcount to drift. */
 export async function deleteRegion(id: string): Promise<number> {
 	const regions = await listRegions();
 	const gone = regions.find((r) => r.id === id);
@@ -397,14 +344,10 @@ export async function wipe(): Promise<void> {
 	regionsChanged();
 }
 
-// KEEPING THE DATA. Storage is best-effort until the page asks: Chrome drops
-// a whole origin under disk pressure, Safari after seven days unvisited. The
-// browser answers without a prompt (Chrome grants on engagement, Safari on
-// install), so the answer is a fact to show, not a dialog to expect.
+// Storage is best-effort until asked (Safari evicts after seven days unvisited); the browser answers without a prompt.
 export type Kept = "kept" | "evictable" | "unknown";
 let kept: Promise<Kept> | null = null;
 
-/** Ask once per boot; every later call returns the same answer. */
 export function keepStorage(): Promise<Kept> {
 	if (kept) return kept;
 	kept = (async () => {

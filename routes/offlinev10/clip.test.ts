@@ -3,7 +3,7 @@ import Pbf from "pbf";
 import { describe, expect, it } from "vitest";
 import { clipTile, type Rect } from "./clip";
 
-// ── a tiny MVT encoder, enough to build one tile with one layer ─────────────
+// A tiny MVT encoder: one tile, one layer.
 function varint(out: number[], v: number): void {
 	let n = v;
 	while (n > 0x7f) {
@@ -85,7 +85,6 @@ function tile(features: F[], extent = 4096): Uint8Array {
 }
 
 function decode(data: Uint8Array) {
-	// vector-tile 3 wants its own reader type; pbf 4's class is the same shape
 	const t = new VectorTile(
 		new Pbf(data) as unknown as ConstructorParameters<typeof VectorTile>[0],
 	);
@@ -99,7 +98,7 @@ function decode(data: Uint8Array) {
 			id: f.id ?? -1,
 			type: f.type,
 			kind: String(f.properties.kind),
-			// loadGeometry repeats a ring's first vertex to close it; the wire format does not
+			// loadGeometry closes a ring; the wire format does not
 			geom: f.loadGeometry().map((ring) => {
 				const pts = ring.map((p) => [p.x, p.y] as Pt);
 				const a = pts[0];
@@ -113,7 +112,6 @@ function decode(data: Uint8Array) {
 	return out;
 }
 
-/** The square from 1024..3072 on both axes, as a fraction of the tile. */
 const SQUARE: Rect = { x0: 0.25, y0: 0.25, x1: 0.75, y1: 0.75 };
 const inSquare = (p: Pt) =>
 	p[0] >= 1024 && p[0] <= 3072 && p[1] >= 1024 && p[1] <= 3072;
@@ -236,9 +234,7 @@ describe("clipTile", () => {
 	});
 
 	it("⛔ OVERLAPPING borders emit a polygon ONCE — not once per border", () => {
-		// Two blobs that overlap share ground. A semi-transparent fill (a park,
-		// a lake) emitted once per border composites twice in the strip they
-		// share, and three blobs make it three times — the visible seam.
+		// A translucent fill emitted once per border composites twice in the shared strip: the visible seam.
 		const west: Rect = { x0: 0.25, y0: 0.25, x1: 0.6, y1: 0.75 };
 		const east: Rect = { x0: 0.4, y0: 0.25, x1: 0.75, y1: 0.75 };
 		const src = tile([
@@ -257,7 +253,6 @@ describe("clipTile", () => {
 			},
 		]);
 		const [f] = decode(clipTile(src, [west, east]));
-		// The union is one rectangle: x 0.25..0.75, y 0.25..0.75.
 		const area = (r: Pt[]) => {
 			let a = 0;
 			for (let i = 0, j = r.length - 1; i < r.length; j = i++)
