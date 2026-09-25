@@ -21,7 +21,6 @@ export interface SatelliteMount {
     ): Promise<number>;
     unmount(key: string): void;
     mounted(): ReadonlySet<string>;
-    /** Revoke every object URL and forget everything. */
     dispose(): void;
 }
 
@@ -30,12 +29,9 @@ export function satLayerId(key: string): string {
     return `v4-sat-${key.replace(/[^a-z0-9]/gi, "_")}`;
 }
 
-// The viewport cull: RAM scales with photos on screen, not pin count. Two
-// rings give hysteresis so a photo near the edge does not flap on every pan.
+// The viewport cull: RAM scales with photos on screen, not pin count. Two rings give hysteresis so a photo near the edge does not flap on every pan.
 
-/** Camera zoom below which no photo mounts. Lower holds most of the store
- *  on screen at once (z6.5 peaked at 543 MB); the cull, not the floor, is
- *  what bounds cost. */
+/** Camera zoom below which no photo mounts — lower holds most of the store on screen at once (z6.5 peaked at 543 MB); the cull, not the floor, is what bounds cost. */
 export const SAT_MIN_Z = 7.5;
 const SAT_FADE_SPAN = 0.5;
 const SAT_FADE_MS = 300;

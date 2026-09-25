@@ -1,7 +1,4 @@
-/**
- * Where a photo's pixels come from: every row whose box holds the pin, in
- * order, then the world row. The bake moves on when a row yields nothing.
- */
+/** Where a photo's pixels come from: every row whose box holds the pin, in order, then the world row. */
 
 import { satelliteTileUrl } from "../../worker/worker-local-dev/tilesHost";
 import type { Bounds } from "./satelliteImage";
@@ -19,9 +16,7 @@ export interface PhotoSource {
     url(z: number, x: number, y: number): string;
 }
 
-// TODO more open-licence aerial rows: Netherlands PDOK, France IGN BD ORTHO,
-// Spain PNOA, swisstopo SWISSIMAGE, Austria basemap.at, Finland NLS, Poland
-// geoportal, Czechia ČÚZK, New Zealand LINZ. Each is one row plus a box.
+// TODO more open-licence aerial rows: Netherlands PDOK, France IGN BD ORTHO, Spain PNOA, swisstopo SWISSIMAGE, Austria basemap.at, Finland NLS, Poland geoportal, Czechia ČÚZK, New Zealand LINZ
 export const PHOTO_SOURCES: readonly PhotoSource[] = [
     {
         // NAIP aerial, ~1 m/px, public domain; 404 outside the US.
@@ -74,11 +69,7 @@ for (const src of PHOTO_SOURCES) {
 	}
 }
 
-/**
- * Is a photo from the best row available where it sits? Adding a sharper row
- * ahead makes every photo behind it stale, which re-bakes the fleet without
- * a version bump. An unnamed photo predates the registry, so it is never best.
- */
+/** Adding a sharper row ahead makes every photo behind it stale, re-baking the fleet without a version bump. An unnamed photo predates the registry, so it is never best. */
 export function isBestPhotoSource(
     name: string | undefined,
     lng: number,

@@ -46,10 +46,7 @@ export async function getSatImageByKey(
 	return img && img.bakeVersion === BAKE_VERSION ? img : undefined;
 }
 
-/**
- * Every stored photo, full blobs. Never on a timer: it materialises every
- * photo in the heap at once (613 MB OOM-crashed the tab). Sizes: satImageMeta().
- *
+/** Every stored photo, full blobs — never on a timer: it materialises every photo in the heap at once (613 MB OOM-crashed the tab). Sizes: satImageMeta().
  * codestyle-allow-blob-getall: admin /blobs export, one click.
  */
 export async function getAllSatImages(): Promise<{ key: string; img: SatImage }[]> {
@@ -92,11 +89,7 @@ export function satImageKey(c: [number, number]): string {
 /** Well inside BAKE_RADIUS_KM: a centre near the disc's edge sits where the mask fades. */
 export const PHOTO_REUSE_KM = 1;
 
-/**
- * May a photo at `haveCenter`, drawn by `haveSource`, stand in for one at
- * `wantCenter`? Both halves live here so the bake and the dedup sweep answer
- * identically.
- */
+/** Both halves live here so the bake and the dedup sweep answer identically. */
 export function photoReusableFor(
 	haveSource: string | undefined,
 	haveCenter: [number, number],
@@ -113,10 +106,7 @@ function centerOfKey(key: string): [number, number] | null {
 	return Number.isFinite(lng) && Number.isFinite(lat) ? [lng, lat] : null;
 }
 
-/**
- * A photo already on disk whose ground covers this centre. The key dedups at
- * ~11 m but a photo covers 2 km; this asks about the ground. Keys only, never blobs.
- */
+/** The key dedups at ~11 m but a photo covers 2 km; this asks about the ground. Keys only, never blobs. */
 export async function photoCovering(
 	center: [number, number],
 ): Promise<SatImage | undefined> {
@@ -320,8 +310,7 @@ export async function bakeSatelliteImage(
 ): Promise<SatImage | null> {
 	const key = satImageKey(center);
 	const existing = await idb.get(key);
-	// A stale stamp or a since-beaten source is a miss, so a sharper source
-	// reaches ground already saved.
+	// A stale stamp or a since-beaten source is a miss, so a sharper source reaches ground already saved
 	if (
 		existing &&
 		existing.bakeVersion === BAKE_VERSION &&
@@ -385,8 +374,7 @@ async function bakeFrom(
 		if (t.n > bn) bn = t.n;
 		if (t.s < bs) bs = t.s;
 	}
-	// Crop to the pin's own box: the raw tile union snaps the pin off-centre.
-	// Bounds and pixels both derive from cw/cs/ce/cn; shrinking one squashes the image.
+	// Crop to the pin's own box: the raw tile union snaps the pin off-centre; bounds and pixels both derive from cw/cs/ce/cn
 	const span = kmToDegSpan(BAKE_RADIUS_KM, clat);
 	const cw = Math.max(bw, clng - span.dLng);
 	const ce = Math.min(be, clng + span.dLng);
