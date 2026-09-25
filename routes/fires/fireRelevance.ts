@@ -1,6 +1,6 @@
 /**
- * Which fires belong on screen, measured from the user's ANCHORS (live fix + last touched ground), never the camera.
- * Past HARD_CUTOFF_KM from every anchor nothing renders: not faded, not clustered, absent.
+ * Which fires belong on screen, measured from the user's ANCHORS (live fix +
+ * last touched ground), never the camera. Past HARD_CUTOFF_KM: absent.
  */
 
 import type { FireHotspot } from "./fireCache";
@@ -23,15 +23,13 @@ export function distKm(
 	return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
 }
 
-// No distance fade and no size-vs-distance gate: distance decides IN or OUT at the wall, nothing else.
-// Opacity carries only age and the industrial flag.
-
+// Distance decides IN or OUT at the wall, nothing else — no fade, no size gate.
 export interface RelevantHotspot extends FireHotspot {
 	/** km from the NEAREST anchor, not necessarily the user */
 	readonly km: number;
 }
 
-/** Where you ARE and the ONE place you touched last. More anchors turn the wall back into a continent of dots. */
+/** Where you ARE and the ONE place you touched last — more anchors turn the wall back into a continent of dots. */
 export const MAX_FIRE_ANCHORS = 2;
 
 /** Closer than this, two anchors' 500 km discs overlap so far the second adds no ground. */
@@ -89,8 +87,8 @@ export function relevantHotspots(
 }
 
 /**
- * The one hotspots → features function; both maps call it and neither stamps properties itself, or they drift.
- * `hidden` empties the collection rather than removing the layers, so un-hiding is a setData.
+ * The one hotspots → features function; both maps call it, neither stamps
+ * properties itself. `hidden` empties the collection so un-hiding is a setData.
  */
 export function fireFeatureCollection(opts: {
 	readonly hotspots: readonly FireHotspot[];

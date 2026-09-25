@@ -1,7 +1,5 @@
-/**
- * A thin red line around each group of fire detections: a reading aid over satellite pixels,
- * never a surveyed perimeter, so no tap target, card or area readout.
- */
+/** A thin red line around each group of fire detections: a reading aid over
+ * satellite pixels, never a surveyed perimeter — no tap target, card or area readout. */
 
 /** One VIIRS pixel; keep in sync with `CELL_DEG` in staticHeatSources. */
 const CELL_DEG = 0.00375;
@@ -12,7 +10,7 @@ const JOIN_CELLS = 2;
 /** A line around 1-2 dots is noise; the dots themselves are never suppressed. */
 const MIN_CELLS = 5;
 
-/** About one flame icon wide. No margin and border flames straddle the line; whole cells claim unburnt ground. */
+/** About one flame icon wide — no margin and border flames straddle the line. */
 const OUTLINE_MARGIN_DEG = CELL_DEG * 0.8;
 
 type Cell = number;
@@ -79,7 +77,8 @@ export function convexHull(
 	return [...lower, ...upper].map((p) => [p[0], p[1]]);
 }
 
-/** Push every vertex outward from the centroid; longitude scaled by cos(lat) or the line tightens east-west further north. */
+/** Push every vertex outward from the centroid; longitude scaled by cos(lat)
+ * or the line tightens east-west further north. */
 export function expandRing(
 	ring: readonly (readonly [number, number])[],
 	marginDeg: number,
@@ -109,7 +108,7 @@ export function expandRing(
 /** Flood fill over the grid, one outline per group; O(cells), no distance matrix. */
 export function fireOutlines(
 	hotspots: readonly { coordinates: readonly [number, number] }[],
-	/** A stable identity for the fast-path memo; `hotspots` itself is rebuilt every pan. Omit for slower content hashing. */
+	/** Stable identity for the fast-path memo (`hotspots` rebuilds every pan). */
 	stableKey?: object,
 ): GeoJSON.FeatureCollection {
 	// The memo must run BEFORE any work, or a hit still pays the cell bucketing.

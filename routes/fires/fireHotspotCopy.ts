@@ -1,7 +1,5 @@
-/**
- * The words a planter reads when they tap a fire marker. Facts, not disclaimers.
- * Never show confidence (l/n/h) or raw FRP in MW: the intensity band says the same in words.
- */
+/** The words a planter reads when they tap a fire marker. Facts, not disclaimers;
+ * never raw confidence or FRP — the intensity band says the same in words. */
 
 import {
 	type SeverityLevel,
@@ -110,7 +108,7 @@ export function footprintLine(px: number | undefined): string {
 /** VIIRS's nominal pixel side; the real px stretches to ~0.75 km at swath edge. */
 export const NOMINAL_PIXEL_KM = 0.375;
 
-/** Ground side of one grid cell. Pinned to the VIIRS pixel, not derived from CELL_DEG; a test holds the two within 15%. */
+/** Ground side of one grid cell, pinned to the VIIRS pixel — a test holds it within 15% of CELL_DEG. */
 export const CELL_KM = NOMINAL_PIXEL_KM;
 
 function sideKm(px: number | undefined): number {
@@ -119,11 +117,8 @@ function sideKm(px: number | undefined): number {
 		: NOMINAL_PIXEL_KM;
 }
 
-/**
- * Ground burning, km²: the UNIQUE cells, never a sum of detections (FIRMS reports the
- * same ground per satellite per overpass) and never the area between them.
- * One cell of area each, not the pixel's footprint: pixels overlap the grid.
- */
+/** Ground burning, km²: the UNIQUE cells — FIRMS reports the same ground per
+ * satellite per overpass, and this is never the area between detections. */
 export function clusterAreaKm2(
 	hotspots: readonly {
 		coordinates?: readonly [number, number];
@@ -144,7 +139,8 @@ export function clusterAreaKm2(
 	return ungridded + cells.size * CELL_KM ** 2;
 }
 
-/** Hectares, the unit the job speaks. Mirrors `formatArea` in the online map's featureMeasure.ts (importing it pulls in turf); a test pins the two. */
+/** Hectares. Mirrors `formatArea` in the online map's featureMeasure.ts (not
+ * imported directly — that pulls in turf); a test pins the two. */
 export function areaLabel(km2: number): string {
 	const ha = km2 * 100;
 	// A detection is never "0 m²".
@@ -253,7 +249,8 @@ export function buildHotspotCard(
 	};
 }
 
-/** Same shape as a single detection's card plus the spot count. Heat is the MAX, never a sum: twenty campfires are not one inferno. */
+/** Same shape as a single detection's card plus the spot count. Heat is the
+ * MAX, never a sum — twenty campfires are not one inferno. */
 export function buildClusterCard(
 	hotspots: readonly (Pick<FireHotspot, "coordinates" | "t" | "frp"> & {
 		px?: number;

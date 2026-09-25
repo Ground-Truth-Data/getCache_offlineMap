@@ -1,12 +1,9 @@
-/**
- * Wildfire hotspots on disk, so the layer survives losing signal.
- * The UI must show each record's fetchedAt age, and never hide the layer for being stale.
- */
+/** Wildfire hotspots on disk, so the layer survives losing signal. Never hide it for being stale — show the record's age instead. */
 
 import { kmBetween, kmToDegSpan } from "../../lib/shared/kmGeo";
 import { makeKeyedIdbStore } from "../../lib/onPhone/store/keyedIdbStore";
 
-/** Bump when the stored shape OR a fix changes what a correct response looks like; a TTL only catches stale data, never wrong data. */
+/** Bump on any shape/fix change — a TTL only catches stale data, never wrong data. */
 export const FIRE_CACHE_VERSION = 3;
 
 export { FIRE_RADIUS_KM } from "../../lib/shared/fireContract";
@@ -111,7 +108,7 @@ export async function fireEntriesNear(
 	maxKm = 0,
 ): Promise<FireCacheEntry[]> {
 	if (origins.length === 0) return allFireEntries();
-	// Memoized on the selected discs, never the origins (which change every pan); the SAME array object when unchanged, since downstream memos key on identity.
+	// Memoized on the selected discs, never the origins (change every pan).
 	const cov = await fireCoverage();
 	const selected = cov
 		.filter((c) => discCouldRender(c, origins, maxKm))
@@ -191,10 +188,8 @@ function discBox(entry: FireCacheEntry): DiscBox {
 	return { w: lng - dLng, s: lat - dLat, e: lng + dLng, n: lat + dLat };
 }
 
-/**
- * One deduplicated list across areas. A hotspot is dropped once a NEWER fetch covers its ground and
- * omits it. Reports the OLDEST fetch time: newest would let one fresh disc vouch for a stale one.
- */
+/** A hotspot drops once a NEWER fetch covers its ground and omits it. Reports
+ * the OLDEST fetch time — newest would let one fresh disc vouch for a stale one. */
 export function unionHotspots(entries: readonly FireCacheEntry[]): UnionResult {
 	if (entries.length === 0) {
 		return { hotspots: [], oldestFetchedAt: null, degraded: false };
