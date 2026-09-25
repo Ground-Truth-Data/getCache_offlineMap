@@ -42,7 +42,6 @@ describe("worker-cloud-dev tier is configurable", () => {
 // ⚠️ a transient network result must never become permanent UI state — a tier probed dead once must stay retryable, never left rendered `disabled` forever.
 describe("a tier that failed once can be retried", () => {
 	it("worker rows are never rendered `disabled`", () => {
-		// Scoped to the Workers loop — the layers loop below legitimately uses `disabled` for a compile-time bisect, not a network state.
 		const workersBlock = PANEL.slice(
 			PANEL.indexOf("{#each TARGETS as t"),
 			PANEL.indexOf("{#if layers.length"),

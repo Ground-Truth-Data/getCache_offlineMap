@@ -28,8 +28,6 @@ let {
 		on: boolean;
 		toggle: () => void;
 		hint?: string;
-		disabled?: boolean;
-		disabledHint?: string;
 	}[];
 } = $props();
 
@@ -197,19 +195,12 @@ onMount(() => {
 			<button
 				class="cfg-row"
 				class:sel={l.on}
-				class:dead={l.disabled}
-				disabled={l.disabled}
 				onclick={l.toggle}
-				title={l.disabled
-					? (l.disabledHint ?? `${l.label} is not switchable yet`)
-					: `Toggle ${l.label} — watch the heap reading in MAP DEBUGGER`}
+				title={`Toggle ${l.label} — watch the heap reading in MAP DEBUGGER`}
 			>
 				<span class="cfg-label">{l.label}</span>
 				{#if l.hint}
 					<span class="cfg-hint">{l.hint}</span>
-				{/if}
-				{#if l.disabled}
-					<span class="dead-tag">not yet</span>
 				{/if}
 				{#if FEED_OF[l.key]}
 					{@const lt = lightOf(FEED_OF[l.key], [l.key])}
