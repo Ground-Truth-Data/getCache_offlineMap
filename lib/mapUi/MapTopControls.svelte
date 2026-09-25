@@ -1,4 +1,3 @@
-<!-- MapTopControls — top-right stack shared by /app/map and /app/offline: map-only eye toggle above the online/offline crow switch. -->
 <script lang="ts">
 // ports.scenes is OPTIONAL — no scene registry means a plain, static eye and no timers, never a throw.
 import type { MapHostPorts } from "../shared/mapHostPorts";
@@ -15,19 +14,18 @@ let {
     onCrowToggle: () => void;
 } = $props();
 
-// eye_OPEN plays closed→open on toggle on; eye_CLOSE plays open→closed on toggle off.
-// Frame counts/rate come from THE REGISTRY (eyeBlink.svelte.ts) — must not duplicate these numbers here.
+// frame counts/rate come from THE REGISTRY (eyeBlink.svelte.ts) — must not duplicate these numbers here
 const scenes = ports.scenes;
 const EYE_OPEN_FRAMES = scenes ? scenes.assetFacts("eye_OPEN_20fps").frameCount : 1;
 const EYE_CLOSE_FRAMES = scenes ? scenes.assetFacts("eye_CLOSE_20fps").frameCount : 1;
-const EYE_FRAME_MS = scenes ? 1000 / scenes.assetFacts("eye_OPEN_20fps").fps : 50; // 20fps → 50ms
+const EYE_FRAME_MS = scenes ? 1000 / scenes.assetFacts("eye_OPEN_20fps").fps : 50;
 let eyePlaying = $state<"open" | "close" | null>(null);
 let eyeFrame = $state(1);
 let eyeTimer: ReturnType<typeof setInterval> | null = null;
 let navTimer: ReturnType<typeof setTimeout> | null = null;
 
 function playEye(dir: "open" | "close") {
-    if (!scenes) return; // plain fallback: no animation without a scene registry
+    if (!scenes) return;
     if (eyeTimer) clearInterval(eyeTimer);
     eyePlaying = dir;
     eyeFrame = 1;
@@ -56,7 +54,7 @@ function toggleEye() {
 }
 
 const eyeSrc = $derived.by(() => {
-    if (!scenes) return ""; // no registry → no frame art; the button still toggles
+    if (!scenes) return "";
     if (eyePlaying === "open") return scenes.framePath("eye_OPEN_20fps", eyeFrame);
     if (eyePlaying === "close") return scenes.framePath("eye_CLOSE_20fps", eyeFrame);
     return mapOnly
@@ -84,7 +82,6 @@ $effect(() => {
     };
 });
 
-// Cleanup body.map-only on unmount.
 $effect(() => {
     if (typeof document === "undefined") return;
     return () => {
@@ -105,7 +102,6 @@ $effect(() => {
         {#if eyeSrc}
             <img class="eye-frame" src={eyeSrc} alt="" />
         {:else}
-            <!-- Plain fallback when the host has no scene registry. -->
             <span class="eye-frame" aria-hidden="true">{mapOnly ? "◉" : "◎"}</span>
         {/if}
     </button>
@@ -158,7 +154,6 @@ $effect(() => {
     pointer-events: none;
 }
 
-/* Crow: same 74px box as the eye, right-aligned; object-fit centres it on the eye's vertical axis. */
 .crow-slot {
     position: absolute;
     top: 80px;

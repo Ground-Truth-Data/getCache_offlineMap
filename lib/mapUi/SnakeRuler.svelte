@@ -79,7 +79,7 @@ let {
 
 let active = $state(false);
 let verts: Lnglat[] = $state([]);
-let cursor: Lnglat | null = $state(null); // live tip while dragging an end
+let cursor: Lnglat | null = $state(null);
 let isPolygon = $state(false);
 let dragFromHead = false;
 let dragAnchor: Lnglat | null = null;
@@ -470,7 +470,7 @@ function legLabelAnchors(): Array<{ geo: Lnglat; off: [number, number] }> {
         const dx = b.x - a.x, dy = b.y - a.y;
         const len = Math.hypot(dx, dy) || 1;
         let px = -dy / len, py = dx / len;
-        if (py > 0) { px = -px; py = -py; } // upper side
+        if (py > 0) { px = -px; py = -py; }
         out.push({ geo, off: [px * LEG_LABEL_OFF, py * LEG_LABEL_OFF] });
     }
     return out;
@@ -1182,8 +1182,7 @@ $effect(() => {
     .measure-plot:active { background: color-mix(in srgb, #ffffff 14%, transparent); }
     .measure-x {
         align-self: stretch;
-        /* `color` stays: the border is currentColor. The image arrives as a CSS var
-           because `$gc/` inside a component <style> is NOT resolved by Vite. */
+        /* image arrives as a CSS var — `$gc/` inside a component <style> is NOT resolved by Vite */
         font-size: 0;
         padding: 0 0.6rem;
         min-width: 2.2rem;

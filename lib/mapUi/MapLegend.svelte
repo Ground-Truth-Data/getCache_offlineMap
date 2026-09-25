@@ -90,7 +90,6 @@ const fireDark = $derived(eyeToggle.isSettledOff(fireOn, FIRE_ROW.kind));
 	<ul class="legend-list">
 		{#each OVERLAY_ROWS as entry (entry.label)}
 			{@const on = overlayVisibility.isVisible(entry.kind)}
-			<!-- `dark` lags `on`: the lid closes lit, then the row dims. -->
 			{@const dark = eyeToggle.isSettledOff(on, entry.kind)}
 			<li class="legend-row">
 				{#if entry.kind === "pdf" || entry.kind === "shapes"}
@@ -335,7 +334,6 @@ const fireDark = $derived(eyeToggle.isSettledOff(fireOn, FIRE_ROW.kind));
 		display: flex;
 		align-items: center;
 	}
-	/* Sliders rest at 50%; the notch marks home. */
 	.legend-slider-wrap::before {
 		content: "";
 		position: absolute;

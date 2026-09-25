@@ -26,9 +26,7 @@ let {
 }: {
 	/** A host with no inspections leaves q704 out and this popover renders nothing. */
 	ports: MapHostPorts;
-	/** VIEW mode: an existing plot's pin. */
 	feature?: Feature | null;
-	/** CREATE mode: no pin exists until the count is swiped and written. */
 	pendingPlotNo?: number | null;
 	bbox: { minX: number; minY: number; maxX: number; maxY: number };
 	containerWidth: number;
@@ -121,7 +119,6 @@ let hydrated = $state(false);
 let deck = $state<MapQ704DeckExports | null>(null);
 let rewardTargetEl = $state<HTMLElement | null>(null);
 
-// Freezes shell scroll while a row is in the edit spotlight.
 let focusing = $state(false);
 // Keeps the just-filed GOLD pill visible for a beat before swapping to read-only.
 let justFiledHold = $state(false);
@@ -480,7 +477,6 @@ function requestClose() {
 		color: var(--rt-fg-context, #d9a679);
 		opacity: 0.7;
 	}
-	/* A real button WITH a label: a bare faint icon read as decoration and was missed. */
 	.pp-locode-copy {
 		display: inline-flex;
 		align-items: center;
@@ -527,7 +523,6 @@ function requestClose() {
 	}
 	.pp-cell {
 		display: inline-flex;
-		/* Wraps INSIDE the pill when too narrow instead of pushing past the border. */
 		flex-wrap: wrap;
 		flex: 1 1 auto;
 		min-width: 0;
