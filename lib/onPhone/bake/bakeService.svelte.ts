@@ -142,8 +142,7 @@ let touchByKey = new Map<string, number>();
 const satCooldown = new Map<string, { until: number; fails: number }>();
 // One per host, not per area: the fires Worker is up or it isn't.
 let fireBreaker: { until: number; fails: number } | null = null;
-// The tiles Worker serves packs AND fires, so a connection-level failure
-// (TypeError) from either pass pauses both. HTTP errors stay per-area.
+// The tiles Worker serves packs AND fires, so a connection-level failure (TypeError) from either pass pauses both; HTTP errors stay per-area
 let workerBreaker: { until: number; fails: number } | null = null;
 function isHostDown(err: unknown): boolean {
     return err instanceof TypeError;
@@ -210,8 +209,7 @@ function reportRun(more: boolean): void {
     }
 }
 
-// Lie-fi guards: boot delay gives the map's own fetches the pipe first; a
-// timed-out pass backs off doubling to the cap.
+// Lie-fi guards: boot delay gives the map's own fetches the pipe first; a timed-out pass backs off doubling to the cap
 const BOOT_BAKE_DELAY_MS = 20_000;
 /** One pass's download budget; unbounded it ran 81 s with the heap never idle. */
 const BAKE_PASS_BUDGET_MS = 5_000;
@@ -222,8 +220,7 @@ const TIMEOUT_BACKOFF_CAP_MS = 300_000;
 let bootBakeAt = 0;
 let timeoutBackoffUntil = 0;
 let nextTimeoutBackoffMs = TIMEOUT_BACKOFF_START_MS;
-// Consecutive failures that stop a pass; without it a Worker returning 500s
-// is asked for every area every tick.
+// Consecutive failures that stop a pass, or a Worker returning 500s is asked for every area every tick
 const FAIL_BREAK_AFTER = 3;
 let passSawTimeout = false;
 let guardTripAnnounced = false;
@@ -265,8 +262,7 @@ async function ensureAreaData(
                 err instanceof Error ? err.message : String(err),
                 key,
             );
-            // A photo timeout is the imagery provider's problem: it gets this
-            // area's cooldown and must not reach the pass-level back-off.
+            // A photo timeout is the imagery provider's problem: it gets this area's cooldown, never the pass-level back-off
             if (isTimeoutErr(err)) {
                 const fails = (cd?.fails ?? 0) + 1;
                 satCooldown.set(key, {
@@ -420,8 +416,7 @@ async function refreshFires(
         try {
             const prev = await fires.read(key);
             if (prev && fires.isFresh(prev) && !onDemand) continue;
-            // A neighbouring FRESH 500 km disc covers this centre; a stale one
-            // could cover it with nothing forever. Centres only, never records.
+            // A neighbouring FRESH 500 km disc covers this centre; a stale one could cover it with nothing forever
             const coveringCentres = (await fires.coverage())
                 .filter((c) => fires.isCoverageFresh(c))
                 .map((e) => e.center);
@@ -507,8 +502,7 @@ async function bakeAll(): Promise<void> {
     liveFix = null;
     try {
         setNote("Saving offline map\u2026");
-        // Every area every feature references, deduped, with its newest touch;
-        // corridor only if every referencing feature is a line.
+        // Every area every feature references, deduped, with its newest touch; corridor only if every referencing feature is a line
         const areas = new Map<
             string,
             { c: [number, number]; corridor: boolean; t: number }
@@ -530,8 +524,7 @@ async function bakeAll(): Promise<void> {
             const t = Date.parse(p.lastTouched) || 0;
             for (const c of p.anchors) note(c, p.corridor, t);
         }
-        // The live anchor is transient (never re-noted), so containment is
-        // measured against stored coverage, not just this pass's anchors.
+        // The live anchor is transient (never re-noted), so containment is measured against stored coverage, not just this pass's anchors
         try {
             const fix = (await ports?.gps?.()) ?? null;
             if (fix) {
@@ -562,8 +555,7 @@ async function bakeAll(): Promise<void> {
         const ordered = [...areas.entries()].sort((a, b) => b[1].t - a[1].t);
         touchByKey = new Map(ordered.map(([k, v]) => [k, v.t]));
 
-        // Disk is the truth, not the registry. Metadata only: reading whole
-        // blobs for their size allocated 613 MB and OOM-crashed the tab.
+        // Disk is the truth, not the registry — reading whole blobs for their size allocated 613 MB and OOM-crashed the tab
         const satKeys = new Set(await getSatKeys());
         // Fresh = baked by the current BAKE_VERSION; eviction still sees every photo.
         const freshSat = new Set<string>();
@@ -576,9 +568,7 @@ async function bakeAll(): Promise<void> {
         // Loaded once per pass; per-area IndexedDB opens were an I/O storm.
         const tileKeys = await getAllTileKeys();
 
-        // The conveyor: newest-touched first, accumulating kept bytes; within
-        // budget = ensure on disk, past it = skip. Measured in KEPT bytes, not
-        // total disk bytes, or a disk full of old photos blocks every new pin.
+        // Newest-touched first, accumulating KEPT bytes (not total disk bytes), or a disk full of old photos blocks every new pin
         let keptBytes = 0;
         let gatePaused = false;
         let downloaded = 0;
@@ -596,8 +586,7 @@ async function bakeAll(): Promise<void> {
             if (keptBytes + sizeGuess > OFFLINE_BUDGET_BYTES) continue;
             keptBytes += sizeGuess;
             const satOnDisk = corridor || freshSat.has(k);
-            // A server-empty area is complete, not missing: areaTilesPresentIn
-            // answers "no" forever for it. lineCount must be an explicit 0.
+            // A server-empty area is complete, not missing: areaTilesPresentIn answers "no" forever for it
             const cov = covByKey.get(k);
             const serverHasNothing =
                 cov?.blobVersion === BLOB_VERSION &&
@@ -648,14 +637,9 @@ async function bakeAll(): Promise<void> {
             }
         }
 
-        // Evict: (a) an area we baked (has a coverage record) whose pin is gone;
-        // a photo with no record belongs to the online map's shared cache.
-        // (b) LRU past the budget.
+        // Evict: (a) a baked area whose pin is gone — a photo with no record belongs to the online map's shared cache; (b) LRU past the budget
         const kept = new Set<string>();
-        // Never before the host has hydrated, or a briefly-empty place list
-        // makes every blob look unreferenced. ready(), not places().length:
-        // a host with every pin deleted must still evict. A paused walk leaves
-        // keptBytes partial, so it blocks eviction too.
+        // ready(), not places().length: a briefly-empty place list must not make every blob look unreferenced; a paused walk leaves keptBytes partial, blocking eviction too
         if (!gatePaused && !budgetPaused && (ports?.ready() ?? false)) {
             const touchOf = (k: string): number => {
                 const t = touchByKey.get(k);
@@ -688,8 +672,7 @@ async function bakeAll(): Promise<void> {
             // Mirror the ledger to disk; only writes when missing or stale.
             const liveSat = new Set(await getSatKeys());
             const liveTileKeys = await getAllTileKeys();
-            // Fresh read: covByKey is a pass-start snapshot and cannot see an
-            // area that downloaded during this pass.
+            // Fresh read: covByKey is a pass-start snapshot and cannot see an area that downloaded during this pass
             const covNow = new Map(
                 (await allCoverage()).map((r) => [r.areaKey, r] as const),
             );
@@ -705,9 +688,7 @@ async function bakeAll(): Promise<void> {
                     rec.hasLines === hasLines &&
                     rec.blobVersion === BLOB_VERSION;
                 if (current) continue;
-                // The mirror knows presence only, so it carries byte/count
-                // detail forward. lineCount never defaults to 0: the skip check
-                // reads 0 as "server confirmed empty".
+                // lineCount never defaults to 0: the skip check reads 0 as "server confirmed empty"
                 const lineBytes = hasLines ? (rec?.lineBytes ?? 0) : 0;
                 const lineCount = hasLines ? rec?.lineCount : undefined;
                 const photoBytesNow = photoBytes.get(k) ?? rec?.photoBytes ?? 0;
@@ -731,8 +712,7 @@ async function bakeAll(): Promise<void> {
             }
         }
 
-        // Fires last, outside the completion gate: the loop skips complete
-        // areas, and the live position wants fires even without a map blob.
+        // Fires last, outside the completion gate: the live position wants fires even without a map blob
         try {
             const fireCentres = [...areas.entries()]
                 .filter(([k]) => kept.has(k))
@@ -841,7 +821,6 @@ export function retryFailedBakes(): number {
     return n;
 }
 
-/** For the test seam. */
 export async function reconcileOnceForTest(
     hostPorts?: HostPorts,
 ): Promise<void> {

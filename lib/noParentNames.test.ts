@@ -1,9 +1,4 @@
-/**
- * A child may not name a parent as a LOCATION. The escape plugin misses this:
- * side by side, `../ReTreever/src/lib/foo` resolves, and stops resolving the
- * moment the folder is published alone. A test, not a plugin, because a child
- * has no build to hook. `$parent/siblings/...` names no parent and is allowed.
- */
+/** A child may not name a parent as a LOCATION: side by side it resolves, then stops resolving the moment the folder is published alone. `$parent/siblings/...` is allowed. */
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { extname, join, relative } from "node:path";
@@ -31,8 +26,7 @@ function sources(dir: string, out: string[] = []): string[] {
 // `Symbol.for("retreever.…")` is a namespaced registry key, not a location.
 const BRAND_STRING = /Symbol\.for\(/;
 
-// A parent as a path segment, import or URL host, mid-path OR terminal
-// (`href="{GH}/rapper"`), never this child's own folder name or prose.
+// A parent as a path segment, import or URL host, mid-path OR terminal — never this child's own folder name or prose
 const PARENT_AS_LOCATION =
 	/(?:\.\.?\/|["'`({]\/?|\}\/|https?:\/\/[^"'`\s]*)(?:ReTreever|rapper|vercel)(?:[/.]|["'`)\s<]|$)/gi;
 
@@ -101,8 +95,7 @@ describe("the child names no parent", () => {
 		}
 	});
 
-	// Guards the exclusions as much as the match: the same import planted in a
-	// source file, a test file and a comment, and exactly the first must come back.
+	// Guards the exclusions as much as the match: the same import planted in a source file, test file and comment — exactly the first must come back
 	it("the walker flags a real parent import, and only in a source file", () => {
 		const root = mkdtempSync(join(tmpdir(), "noParentNames-"));
 		try {

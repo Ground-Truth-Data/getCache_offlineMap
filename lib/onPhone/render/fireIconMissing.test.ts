@@ -1,15 +1,11 @@
 /**
- * The flame is in hand before any layer can ask for it.
+ * MapLibre fires `styleimagemissing` and warns in the SAME tick unless a
+ * listener already called `addImage` — an async `loadImage` always loses that
+ * race, so the flame must be decoded once before the layers exist, and every
+ * registration after must be synchronous.
  *
- * MapLibre fires `styleimagemissing` and then warns
- * `Image "rt-fire-flame" could not be loaded` in the SAME tick unless a
- * listener has already called `addImage`. An async `loadImage` per style can
- * only start a load and lose, so a tile that asks first — a slow first load, a
- * style swap — warns and draws no flame. The image must be decoded once, before
- * the layers exist, and every registration after that must be synchronous.
- *
- * Source-text scan, matching the sibling fireLayer.test.ts: this module reaches
- * bundler-only asset imports and cannot be imported under vitest.
+ * Source-text scan: this module reaches bundler-only asset imports and cannot
+ * be imported under vitest.
  */
 
 import { readFileSync } from "node:fs";
