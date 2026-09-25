@@ -1,5 +1,4 @@
-<!-- MapLegend — colour/symbol key shared by the online (/mobile/map) and offline (/mobile/offlinev4) maps. -->
-<!-- ⚠️ Must render via overlayPortal (position:fixed, z:51) — without it, .mobile-content's z:0 stacking context traps the drawer under the nav and the close becomes unreachable. -->
+<!-- ⚠️ Must render via overlayPortal — .mobile-content's z:0 stacking context otherwise traps the drawer under the nav. -->
 <script lang="ts">
 import { cubicOut } from "svelte/easing";
 import { fly } from "svelte/transition";
@@ -12,7 +11,6 @@ import {
 	overlayOpacity,
 	polygonOpacity,
 } from "../mapState/overlayOpacity.svelte";
-// overlayPortal and createEyeToggle are ports.ui.*.
 import type { MapHostPorts } from "../shared/mapHostPorts";
 import fireIconUrl from "../assets/fire_icon.webp";
 import pdfMapsIconUrl from "../assets/pdf_maps_icon.webp";
@@ -25,7 +23,6 @@ let {
 }: {
 	ports: MapHostPorts;
 	onClose: () => void;
-	// Basemap line/fill rows (roads, water, …) — route-specific, optional.
 	basemapRows?: readonly LegendRow[];
 } = $props();
 // `use:` wants a plain identifier, so the host's action is bound locally.
@@ -50,7 +47,7 @@ type SwatchKind =
 	| "fire";
 export type LegendRow = { label: string; color: string; swatch: SwatchKind };
 
-// OVERLAY_ROWS — tap-to-toggle rows; colours mirror the real map paints (POLYGON_FILL/OUTLINE in mapDraw.ts, gold glyphs in pinMarkers).
+// Colours mirror the map paints: POLYGON_FILL/OUTLINE in mapDraw.ts, gold glyphs in pinMarkers.
 type OverlayRow = { label: string; color: string; swatch: SwatchKind; kind: OverlayKind };
 const OVERLAY_ROWS: readonly OverlayRow[] = [
 	{ label: "Pin", color: "#f5d565", swatch: "pin", kind: "pins" },
@@ -67,12 +64,10 @@ const FIRE_ROW: OverlayRow = {
 	kind: "fires",
 };
 
-/** TTL in whole hours — derived, never retyped. */
 const FIRE_HIDE_HOURS = Math.round(FIRE_HIDE_TTL_MS / 3_600_000);
-/** The note swaps to the expiry promise only while fires are actually hidden. */
 const fireHiddenNote = $derived(!overlayVisibility.fires);
 const fireOn = $derived(overlayVisibility.isVisible(FIRE_ROW.kind));
-/** Lit-while-animating law: the lid finishes closing lit, THEN the row dims (no lag on open). */
+/** Lags fireOn: the lid finishes closing lit, then the row dims. */
 const fireDark = $derived(eyeToggle.isSettledOff(fireOn, FIRE_ROW.kind));
 
 </script>
@@ -86,7 +81,6 @@ const fireDark = $derived(eyeToggle.isSettledOff(fireOn, FIRE_ROW.kind));
 	in:fly|global={{ y: -420, duration: 500, easing: cubicOut, opacity: 1 }}
 	out:fly|global={{ y: -420, duration: 380, easing: cubicOut, opacity: 1 }}
 >
-	<!-- Header copies InputPopover's inline-confirm style but must not close on tap-outside like InputPopover does. -->
 	<div class="legend-head">
 		<h2 class="legend-title">legend</h2>
 		<button type="button" class="legend-ok" aria-label="Close legend" onclick={onClose}>OK</button>
@@ -96,7 +90,7 @@ const fireDark = $derived(eyeToggle.isSettledOff(fireOn, FIRE_ROW.kind));
 	<ul class="legend-list">
 		{#each OVERLAY_ROWS as entry (entry.label)}
 			{@const on = overlayVisibility.isVisible(entry.kind)}
-			<!-- `dark` lags `on` (lit-while-animating law, eyeBlink.svelte.ts) — closes lit, then dims; opening has no lag. -->
+			<!-- `dark` lags `on`: the lid closes lit, then the row dims. -->
 			{@const dark = eyeToggle.isSettledOff(on, entry.kind)}
 			<li class="legend-row">
 				{#if entry.kind === "pdf" || entry.kind === "shapes"}
@@ -111,7 +105,6 @@ const fireDark = $derived(eyeToggle.isSettledOff(fireOn, FIRE_ROW.kind));
 							<span class="legend-swatch legend-swatch--fill" style:--swatch-color={entry.color}></span>
 						{/if}
 						<span class="legend-label">{entry.label}</span>
-						<!-- Wrapper carries the centre TICK (::before) — sliders rest at 50%, so the tick marks home. -->
 						<span class="legend-slider-wrap">
 							<input
 								class="legend-slider"
@@ -161,7 +154,6 @@ const fireDark = $derived(eyeToggle.isSettledOff(fireOn, FIRE_ROW.kind));
 		{/each}
 	</ul>
 
-	<!-- Wildfire eye re-arms itself after FIRE_HIDE_TTL_MS (overlayVisibility.svelte.ts). -->
 	<p class="legend-group-label">Wildfire · not your marks</p>
 	<ul class="legend-list">
 		<li class="legend-row">
@@ -236,7 +228,7 @@ const fireDark = $derived(eyeToggle.isSettledOff(fireOn, FIRE_ROW.kind));
 		font-weight: 500;
 		text-transform: lowercase;
 	}
-	/* Glossy gold OK — the ONLY way out of the drawer (no tap-outside dismiss). */
+	/* The ONLY way out of the drawer — no tap-outside dismiss. */
 	.legend-ok {
 		position: relative;
 		flex-shrink: 0;
@@ -268,7 +260,6 @@ const fireDark = $derived(eyeToggle.isSettledOff(fireOn, FIRE_ROW.kind));
 			box-shadow 0.12s ease,
 			filter 0.12s ease;
 	}
-	/* glossy top sheen */
 	.legend-ok::before {
 		content: "";
 		position: absolute;
@@ -298,7 +289,7 @@ const fireDark = $derived(eyeToggle.isSettledOff(fireOn, FIRE_ROW.kind));
 		color: var(--color-accent-sage, #9bb07a);
 	}
 	.legend-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
-	/* Sage, never grey — no-gray-on-black rule (read outdoors); full-size, not fine print. */
+	/* Sage, never grey — read outdoors. */
 	.legend-note {
 		margin: 0;
 		padding: 0 0.2rem;
@@ -311,7 +302,6 @@ const fireDark = $derived(eyeToggle.isSettledOff(fireOn, FIRE_ROW.kind));
 	.legend-label { font-size: 0.85rem; line-height: 1.2; color: var(--rt-fg, #f3efe9); }
 	.legend-swatch { flex: none; width: 1.5rem; height: 1rem; display: block; }
 
-	/* On = full opacity + gold eye; off = dimmed + faded eye (overlay hidden on map). */
 	.legend-toggle {
 		flex: 1;
 		display: flex;
@@ -345,7 +335,7 @@ const fireDark = $derived(eyeToggle.isSettledOff(fireOn, FIRE_ROW.kind));
 		display: flex;
 		align-items: center;
 	}
-	/* Centre TICK — sliders rest at 50%, so a small white notch marks home. */
+	/* Sliders rest at 50%; the notch marks home. */
 	.legend-slider-wrap::before {
 		content: "";
 		position: absolute;
@@ -362,7 +352,6 @@ const fireDark = $derived(eyeToggle.isSettledOff(fireOn, FIRE_ROW.kind));
 		width: 100%;
 		accent-color: var(--accent-gold, #f5d04a);
 	}
-	/* Slider rows are divs — the eye gets its own real button (bare chrome, tap target). */
 	.legend-eye-btn {
 		flex: none;
 		margin: -0.2rem -0.25rem;
@@ -377,7 +366,6 @@ const fireDark = $derived(eyeToggle.isSettledOff(fireOn, FIRE_ROW.kind));
 		margin-left: 0;
 	}
 
-	/* Eye glyph (gold webp). The row's is-off opacity fades it for the hidden state. */
 	.legend-eye {
 		margin-left: auto;
 		width: 1.7rem;
@@ -386,11 +374,8 @@ const fireDark = $derived(eyeToggle.isSettledOff(fireOn, FIRE_ROW.kind));
 		flex: none;
 	}
 
-	/* Solid line (roads). */
 	.legend-swatch--line { height: 0; border-top: 3px solid var(--swatch-color); align-self: center; }
-	/* Dashed line (trails). */
 	.legend-swatch--dashed { height: 0; border-top: 3px dashed var(--swatch-color); align-self: center; }
-	/* Railway hatch. */
 	.legend-swatch--rail {
 		align-self: center;
 		height: 0.7rem;
@@ -398,18 +383,15 @@ const fireDark = $derived(eyeToggle.isSettledOff(fireOn, FIRE_ROW.kind));
 			repeating-linear-gradient(90deg, var(--swatch-color) 0 2px, transparent 2px 7px),
 			linear-gradient(var(--swatch-color), var(--swatch-color)) center / 100% 2px no-repeat;
 	}
-	/* Filled chip (water; polygon — terracotta fill + solid terracotta outline, matching POLYGON_FILL/OUTLINE). */
+	/* Matches POLYGON_FILL/OUTLINE in mapDraw.ts. */
 	.legend-swatch--fill {
 		height: 1rem;
 		border-radius: 0.25rem;
 		background: color-mix(in srgb, var(--swatch-color), transparent 60%);
 		border: 1.5px solid var(--swatch-color);
 	}
-	/* Wildfire — the real on-map flame asset, matching the map 1:1. */
 	.legend-swatch--fire,
-	/* Pin — the real default-pin marker asset, so the key matches the map 1:1. */
 	.legend-swatch--pin,
-	/* PDF map — the pdfMaps globe icon (same asset as the FEATURES tile hint). */
 	.legend-swatch--pdf {
 		align-self: center;
 		display: inline-flex;
@@ -424,7 +406,6 @@ const fireDark = $derived(eyeToggle.isSettledOff(fireOn, FIRE_ROW.kind));
 		object-fit: contain;
 		display: block;
 	}
-	/* Plot — a small black/gold numbered plaque, mirroring the on-map plot pin. */
 	.legend-swatch--plot {
 		align-self: center;
 		display: inline-flex;

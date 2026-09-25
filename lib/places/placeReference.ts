@@ -1,12 +1,7 @@
-/**
- * placeReference.ts — "18 km NE of Whitecourt".
- * Pure — dataset is injected; loading/caching lives in placeIndex.ts.
- */
-
-/** One place: [name, lng, lat, tier, region]. region = province/state, the high-level anchor. */
+/** [name, lng, lat, tier, region (province/state)]. */
 export type PlaceRow = readonly [string, number, number, number, string?];
 
-/** ⚠️ Asset EXCLUDES GeoNames PPLX/neighbourhoods — load-bearing: naming a neighbourhood sounds authoritative but conveys no real location. Tiered by ADMIN STATUS first, population second. */
+/** ⚠️ The asset excludes GeoNames PPLX/neighbourhoods: naming one sounds authoritative but conveys no real location. Tiered by admin status first, population second. */
 export const TIER_MAJOR = 0; // capital / admin seat, or ≥ 100,000
 export const TIER_NOTABLE = 1; // 2nd-order admin seat, or ≥ 15,000
 export const TIER_TOWN = 2; // ≥ 5,000
@@ -34,7 +29,7 @@ export function distanceKm(
 	b: readonly [number, number],
 ): number {
 	const dLat = (b[1] - a[1]) * RAD;
-	// Normalise lng delta into (-180, 180] — antimeridian pairs must measure the SHORT way.
+	// Antimeridian pairs must measure the SHORT way.
 	let dLng = (b[0] - a[0]) % 360;
 	if (dLng > 180) dLng -= 360;
 	if (dLng < -180) dLng += 360;
@@ -75,11 +70,9 @@ export interface PlaceHit {
 	readonly km: number;
 	readonly tier: number;
 	readonly bearing: string;
-	/** Province/state, for the high-level anchor. */
 	readonly region: string;
 }
 
-/** Nearest place in exactly `tier`, within `maxKm`. */
 export function nearestInTier(
 	at: readonly [number, number],
 	places: readonly PlaceRow[],
@@ -131,7 +124,6 @@ export function phraseFor(hit: PlaceHit): string {
 }
 
 export interface PlaceReference {
-	/** The whole line, ready to render. */
 	readonly text: string;
 	readonly primary: PlaceHit | null;
 	readonly anchor: PlaceHit | null;
@@ -162,14 +154,13 @@ export function placeReference(
 		};
 	}
 
-	// Anchor: nearest hit from a MORE prominent tier, never the same name twice.
+	// Never the same name twice.
 	const anchor =
 		hits.find((h) => h.tier < primary.tier && h.name !== primary.name) ?? null;
 
 	const parts = [phraseFor(primary)];
 	if (anchor !== null) parts.push(phraseFor(anchor));
 
-	// Skip province suffix when a MAJOR city is already named — redundant.
 	const named = anchor ?? primary;
 	if (named.tier !== TIER_MAJOR) {
 		const region = named.region || regionNear(at, places);
@@ -206,7 +197,6 @@ export function blockReference(
 	return `${km} km ${best.bearing} of your ${best.name} block`;
 }
 
-/** The full line: the user's own block if it's close, else the world cascade. */
 export function locationLine(
 	at: readonly [number, number],
 	places: readonly PlaceRow[],

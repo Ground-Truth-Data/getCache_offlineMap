@@ -1,5 +1,4 @@
-// Map-popover placement math — pure, so it can be tested without a map.
-// THE LAW: side is CHOSEN BY MEASUREMENT, never assumed — an always-below card can walk off the bottom of the viewport once the pin pans away from its post-tap landing spot.
+// Side is CHOSEN BY MEASUREMENT: an always-below card walks off the viewport once the pin pans.
 
 export type Bbox = { minX: number; minY: number; maxX: number; maxY: number };
 
@@ -7,16 +6,13 @@ export type PlaceInput = {
 	bbox: Bbox;
 	containerWidth: number;
 	containerHeight: number;
-	/** Point features get the pin gap + the dotted leader trail. */
 	isPoint: boolean;
-	/** Full-deck variant — runs near container width instead of the 260px cap. */
 	wide: boolean;
 	/** Chrome reserves: app top bar / draw strip, and tab bar / shovel. */
 	topReserve: number;
 	bottomReserve: number;
-	/** The card's measured height once the DOM has reported one; undefined before first measure, falls back to ESTIMATED_HEIGHT. */
 	measuredHeight?: number;
-	/** The crow / basemap tile's no-go rect, in container coordinates. */
+	/** The crow tile's no-go rect, in container coordinates. */
 	crow?: { left: number; top: number; bottom: number } | null;
 };
 
@@ -25,21 +21,15 @@ export type Placement = {
 	top: number;
 	width: number;
 	maxH: number;
-	/** Which side of the anchor the card landed on. Drives the leader trail. */
 	side: "above" | "below";
 };
 
-/** Gap between the anchor bbox and the card. */
 const OFFSET = 15;
-/** Extra breathing room for a pin, so the card clears the icon's point. */
+/** So the card clears the pin icon's point. */
 const PIN_GAP = 18;
-/** Edge padding against the container's left/right walls. */
 const PAD = 8;
-/** Keep clear of the crow tile by this much. */
 const CROW_CLEARANCE = 10;
-/** Height assumed before the card has been measured. */
 export const ESTIMATED_HEIGHT = 220;
-/** Never squeeze the card below this, however tight the viewport. */
 const MIN_HEIGHT = 160;
 const MIN_WIDTH = 160;
 
@@ -62,7 +52,6 @@ export function placePopover(input: PlaceInput): Placement {
 	const usableTop = topReserve;
 	const usableBottom = containerHeight - bottomReserve;
 
-	// A pin's card sits further off its anchor than a polygon's.
 	const gap = OFFSET + (isPoint ? PIN_GAP : 0);
 	const height =
 		measuredHeight && measuredHeight > 0 ? measuredHeight : ESTIMATED_HEIGHT;
@@ -70,7 +59,6 @@ export function placePopover(input: PlaceInput): Placement {
 	const roomBelow = usableBottom - (bbox.maxY + gap);
 	const roomAbove = bbox.minY - gap - usableTop;
 
-	// MEASURE, DON'T ASSUME — below is default; flip up only when below can't hold the card AND above has more room.
 	const fitsBelow = roomBelow >= height;
 	const side: "above" | "below" =
 		fitsBelow || roomBelow >= roomAbove ? "below" : "above";
@@ -78,10 +66,10 @@ export function placePopover(input: PlaceInput): Placement {
 	let top =
 		side === "below"
 			? bbox.maxY + gap
-			: // Above: the card's BOTTOM sits `gap` over the anchor's top edge.
+			: // The card's BOTTOM sits `gap` over the anchor.
 				bbox.minY - gap - height;
 
-	// Clamp into the usable band — top clamp wins (never hide the card's header under the chrome); an overly tall card scrolls via maxH instead.
+	// Top clamp wins — never hide the header under the chrome; a tall card scrolls via maxH.
 	if (side === "below") top = Math.min(top, usableBottom - height);
 	top = Math.max(usableTop, top);
 
@@ -91,7 +79,7 @@ export function placePopover(input: PlaceInput): Placement {
 	let left = centerX - width / 2;
 	left = Math.max(PAD, Math.min(left, containerWidth - width - PAD));
 
-	// WIDTH MUST NOT DEPEND ON HEIGHT — that closed a real ResizeObserver feedback loop (measured height → width shrinks → content re-wraps → height changes → measured again). Width depends only on the container and the crow tile, both content-independent.
+	// ⚠️ Width must not depend on height: measured height → width → re-wrap → height loops.
 	if (crow) {
 		const vertOverlap = usableTop < crow.bottom && usableBottom > crow.top;
 		if (vertOverlap) {
@@ -99,9 +87,9 @@ export function placePopover(input: PlaceInput): Placement {
 			if (left + width > maxRight) {
 				const shifted = maxRight - width;
 				if (shifted >= PAD) {
-					left = shifted; // slid left, full width kept
+					left = shifted;
 				} else {
-					left = PAD; // pinned left, shrink to clear the tile
+					left = PAD;
 					width = Math.max(MIN_WIDTH, maxRight - PAD);
 				}
 			}
@@ -134,7 +122,6 @@ export function leaderLine(
 		return { x0, y0, x1, y1 };
 	}
 
-	// Above: start just over the pin's tip and run UP to the card's bottom.
 	const height =
 		opts.measuredHeight && opts.measuredHeight > 0 ? opts.measuredHeight : null;
 	const cardBottom = height

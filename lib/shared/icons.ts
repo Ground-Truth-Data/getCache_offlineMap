@@ -1,4 +1,4 @@
-// icons.ts — the icon file for the whole mobile app. ONE list, ICONS: name + path (pin rows also carry their section). Add an icon = add a row, never a second file.
+// One list for every icon in the app: add a row here, never a second file.
 
 import pdfMapsIcon from "../assets/pdf_maps_icon.webp";
 import backupIcon from "../assets/backup_icon.webp";
@@ -7,7 +7,7 @@ import cacheIconUrl from "$gc/assets/cache_icon.webp";
 
 const DIR = "/mobileAssets";
 
-// The pin artwork travels WITH this child: imported, never a leading-slash URL, so the bundler emits it under whichever tier (or solo scaffold) serves the page.
+// Imported, never a leading-slash URL, so the bundler emits it under whichever tier serves the page.
 const PIN_LIBRARY = "../assets/pin_library_small";
 const PIN_URLS = import.meta.glob("../assets/pin_library_small/*.webp", {
     eager: true,
@@ -15,7 +15,7 @@ const PIN_URLS = import.meta.glob("../assets/pin_library_small/*.webp", {
     import: "default",
 }) as Record<string, string>;
 
-/** The served URL of one file in the pin library. Throws at module init on a name that is not on disk — a typo here must not become a 404 in front of a user. */
+/** Throws at module init on a name not on disk — a typo must not become a 404 in front of a user. */
 export function pinLibraryUrl(file: string): string {
     const url = PIN_URLS[`${PIN_LIBRARY}/${file}`];
     if (!url)
@@ -23,7 +23,7 @@ export function pinLibraryUrl(file: string): string {
     return url;
 }
 
-// A map pin's name — saved into features/shared files by this string, so the set is a stable contract.
+// Persisted by this string, so the set is a stable contract.
 export type PinKey =
     | "pin"
     | "cache"
@@ -45,7 +45,6 @@ export type PinKey =
     | "blue"
     | "purple";
 
-// Every icon name — pins plus the non-pin glyphs (inbox / shapes).
 export type IconName =
     | PinKey
     | "map"
@@ -67,19 +66,16 @@ export type IconName =
     | "handPointRight";
 
 export type IconRow = {
-    /** The name of the thing. This is what gets saved / referenced. */
     name: IconName;
-    /** Path to its picture. Right here, on the same row. */
     path: string;
-    /** Set ONLY if this icon is a user-droppable map pin, naming its library section. Absent = not a pin. */
+    /** Present only on a user-droppable map pin: its library section. */
     pin?: "glyph" | "rainbow";
 };
 
-/** A pin row — `name` is a PinKey, `pin` is guaranteed present. */
 export type PinRow = IconRow & { name: PinKey; pin: "glyph" | "rainbow" };
 
 export const ICONS: readonly IconRow[] = [
-    // Row order = display order (feeds the quick-pick row too); "pin" sits LAST as the default every feature starts with.
+    // Row order = display order; "pin" sits last as the default.
     { name: "truck", pin: "glyph", path: pinLibraryUrl("pin_truck_sm.webp") },
     { name: "cache", pin: "glyph", path: pinLibraryUrl("pin_cache_sm.webp") },
     { name: "atv", pin: "glyph", path: pinLibraryUrl("pin_atv_sm.webp") },
@@ -106,7 +102,7 @@ export const ICONS: readonly IconRow[] = [
         path: pinLibraryUrl("pin_muster_point_sm.webp"),
     },
     { name: "home", pin: "glyph", path: pinLibraryUrl("pin_home_sm.webp") },
-    // Baked by tools/makeEmojiPins.mjs — the one emoji that earned a fixed tile.
+    // Baked by tools/makeEmojiPins.mjs.
     {
         name: "poop",
         pin: "glyph",
@@ -137,8 +133,7 @@ export const ICONS: readonly IconRow[] = [
         path: pinLibraryUrl("6pin_purple_sm.webp"),
     },
     { name: "map", path: `${DIR}/map_icon_v2_sm.webp` },
-    // Deliberately unlike the organic map/poly/line outlines: a block is an
-    // administrative unit, not a drawn shape, so it must never read as one.
+    // Deliberately unlike the map/poly/line outlines: a block is administrative, not drawn.
     { name: "block", path: `${DIR}/block_icon_sm.webp` },
     { name: "project", path: `${DIR}/project_icon_sm.webp` },
     { name: "box", path: `${DIR}/box_icon_V9.webp` },
@@ -146,33 +141,26 @@ export const ICONS: readonly IconRow[] = [
     { name: "tally", path: `${DIR}/cent_icon_plain_v3_gold.webp` },
     { name: "poly", path: `${DIR}/blockHeart_sm2.webp` },
     { name: "line", path: `${DIR}/line_icon.webp` },
-    // GPS breadcrumb tracks — same art as the TRACKS drawer tile. A track is NOT a line; never gets line_icon.
+    // A track is NOT a line; never give it line_icon.
     { name: "track", path: tracksIcon },
     { name: "pdf", path: pdfMapsIcon },
-    // A snapshot of the whole device, not one of the things inside it —
-    // the arrow into the tray is what separates it from the map/block glyphs.
     { name: "backup", path: backupIcon },
     { name: "tiles", path: pinLibraryUrl("pin_tiles_sm.webp") },
-    // Animated webps are single self-animating files, NOT frame folders — built from a sibling frame folder by scripts/rebuild-anime-webp.sh <name>. Edit the frames, rerun the script, or the app keeps showing the old file forever.
-    // The gold quality glyph — inbox rows, plot popovers, the Quality tab.
+    // Animated webps are built from a sibling frame folder by scripts/rebuild-anime-webp.sh <name> — edit the frames and rerun, never the .webp.
     { name: "quality", path: `${DIR}/animations/quality_icon.webp` },
-    // White variant — for gold/dark backgrounds (tab bar active, snake ruler).
     { name: "qualityWhite", path: `${DIR}/animations/quality_icon_white.webp` },
-    // The sweeping-broom timelapse shown while slow work runs (imports, conversions, admin loads).
     { name: "cleanCache", path: `${DIR}/animations/cleanCache_anime.webp` },
-    // The shovel-gripping hand, tweened along a path by Fingers.svelte; fingertip anchors live in animation/components_anime/demos/demoConfigs.ts — only the URLs are here.
     { name: "handPointLeft", path: `${DIR}/hand_point_left.webp` },
     { name: "handPointRight", path: `${DIR}/hand_point_right.png` },
 ];
 
 const BY_NAME = new Map<string, IconRow>(ICONS.map((r) => [r.name, r]));
 
-/** The one and only way to get an icon path. Falls back to the default pin rather than crashing — the old BY_NAME.get(name)!.path threw on an unmapped name and white-screened whatever rendered it. */
+/** Falls back to the default pin on an unmapped name rather than throwing. */
 export function iconPath(name: IconName): string {
     return (BY_NAME.get(name) ?? BY_NAME.get(DEFAULT_PIN_KEY))?.path ?? "";
 }
 
-/** The path for a pin (same table, narrower type) — same default-on-miss hardening as iconPath. */
 export function pinAssetPath(key: PinKey): string {
     return (BY_NAME.get(key) ?? BY_NAME.get(DEFAULT_PIN_KEY))?.path ?? "";
 }
@@ -181,17 +169,14 @@ const PIN_ROWS: readonly PinRow[] = ICONS.filter(
     (r): r is PinRow => r.pin !== undefined,
 );
 
-/** Artwork pins — the library's top (untitled) section. */
 export const GLYPH_PINS: readonly PinRow[] = PIN_ROWS.filter(
     (r) => r.pin === "glyph",
 );
 
-/** Rainbow colour pins — the library's "RAINBOW" section. */
 export const RAINBOW_PINS: readonly PinRow[] = PIN_ROWS.filter(
     (r) => r.pin === "rainbow",
 );
 
-/** Every pin row, glyphs then rainbow. */
 export const ALL_PINS: readonly PinRow[] = PIN_ROWS;
 
 /** The pin a feature carries before the user deliberately picks one. */
@@ -204,29 +189,26 @@ export function parsePinKey(raw: unknown): PinKey | null {
     return typeof raw === "string" && PIN_SET.has(raw) ? (raw as PinKey) : null;
 }
 
-// pinTypeKey is a namespace (emoji:<char>, plot:<n>), not a closed enum. ⚠️ Never string-match a pin key inline — always ask this module, or the map/inbox/detail-sheet/KMZ exporter drift apart.
+// pinTypeKey is an open namespace (emoji:<char>, plot:<n>): never string-match one inline — ask this module, or its readers drift apart.
 
-/** The prefix marking a pin whose artwork is a system-font emoji. */
 export const EMOJI_PIN_PREFIX = "emoji:";
 
-/** The blank gold pin an emoji is composited onto. Not in ICONS — never selectable on its own, only as an emoji's backing plate. */
+/** Not in ICONS — never selectable on its own, only as an emoji's backing plate. */
 export const EMOJI_PIN_PLATE = pinLibraryUrl("pin_blank_emoji_sm.webp");
 
-// The plate's proportions live in their own import-free module so the baking
-// script can read them from bare Node; re-exported here so callers still have
-// one place to ask about pins.
+// Import-free module so the baking script can read it from bare Node.
 export * from "./emojiPinGeometry";
 
-/** The emoji character in an emoji:<char> key, or null otherwise — the mirror of parsePinKey; together they're exhaustive over user-pickable pins. */
+/** The mirror of parsePinKey; together they're exhaustive over user-pickable pins. */
 export function parseEmojiPin(raw: unknown): string | null {
     if (typeof raw !== "string" || !raw.startsWith(EMOJI_PIN_PREFIX))
         return null;
     const char = raw.slice(EMOJI_PIN_PREFIX.length);
-    // Guard the empty tail ("emoji:") — must fall back to the default pin rather than render an invisible marker.
+    // "emoji:" alone falls back to the default pin, not an invisible marker.
     return char.length > 0 ? char : null;
 }
 
-/** Build the pinTypeKey for an emoji — the only place this string is assembled; callers never concatenate the prefix themselves. */
+/** The only place this key is assembled; callers never concatenate the prefix. */
 export function emojiPinKey(char: string): string {
     return `${EMOJI_PIN_PREFIX}${char}`;
 }

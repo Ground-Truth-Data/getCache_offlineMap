@@ -1,26 +1,17 @@
 /**
- * THE PORTS A HOST WITH NO APP BEHIND IT SUPPLIES.
+ * Ports for a host with no app behind it. The map calls these every pass and
+ * does not check for holes; these are the honest empty answers, not placeholders.
  *
- * A tier that mounts this child without the surrounding Get Cache app — rapper,
- * or a bare `npm create` install — still has to hand the map a full port
- * bundle: the map calls these on every pass and does not check for holes. These
- * are the honest empty answers, NOT placeholders to be filled in later. A tier
- * WITH an app (ReTreever) passes its own; nothing here is a fallback for that.
- *
- * ⚠️ `ready()` returns TRUE. A host still hydrating looks "empty" but is not
- * "no places", and the engine evicts on that difference — a solo host has
- * nothing to hydrate, so it is ready from the first frame.
+ * ⚠️ `ready()` is TRUE: the engine evicts on "hydrating" vs "no places", and a
+ * solo host has nothing to hydrate.
  */
 import type { Component } from "svelte";
 import type { HostPlace, HostPorts } from "./hostPorts";
 import type { MapGpsPorts, MapHostPorts, MapHostStore, MapUiPorts } from "./mapHostPorts";
 
-/** Renders nothing. The map draws its own chrome; host furniture is the host's.
- *  `any`, because one stub stands in for every port component whatever props
- *  that port declares — a fixed props type fails the first port typed tighter. */
+/** `any`: one stub stands in for every port component, whatever its props. */
 const Empty = (() => {}) as unknown as Component<any>;
 
-/** An eye that never animates: one frame, no timers to leak. */
 const stillEye = () => ({
 	srcFor: () => "",
 	blinkThen: async (action: () => void) => action(),
@@ -77,11 +68,6 @@ export function soloMapPorts(): MapHostPorts {
 	return { store, ui, gps };
 }
 
-/**
- * No places, and none can be added: a solo host owns no store to write one to.
- * The map still downloads whatever the user pins by hand — that path goes
- * through the blob service, not through here.
- */
 export function soloHostPorts(): HostPorts {
 	return {
 		places: (): HostPlace[] => [],
@@ -90,15 +76,7 @@ export function soloHostPorts(): HostPorts {
 	};
 }
 
-/**
- * The anchor set for a host with no map store: the camera, alone.
- *
- * This is the SAME answer the full implementation gives when a user has no fix
- * and no touched ground — the deliberate last resort, because an empty fire
- * layer reads as "no fires near you", which is the most dangerous thing that
- * layer can say. A solo host is permanently in that state, so it is not a
- * degraded stand-in; it is the whole correct answer for a host with no anchors.
- */
+/** The camera alone — never empty: an empty fire layer reads as "no fires near you". */
 export function soloFireOrigins(
 	mapCentre: readonly [number, number],
 ): Array<readonly [number, number]> {

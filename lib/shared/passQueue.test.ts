@@ -1,20 +1,5 @@
-/**
- * THE BUG THIS FILE EXISTS FOR (Chris, 7 Sep 2026 — two pins in Rosedale, 85 ms
- * apart): the roller skate got its satellite photo, the tractor did not.
- *
- * Every pass (photos, fires, hospitals) carried the same latch:
- *
- *     if (running) return running;   // ⛔ the second ask is DISCARDED
- *
- * The comment above it claimed "a second ask joins the running one". It does
- * not join it — the running pass was handed the FIRST pin's coordinates and
- * has no idea the second exists, so the second pin's work never happens. It
- * looked survivable only because a retry timer swept it up a minute later.
- *
- * Single-flight is still right — three overlapping passes hammering the same
- * endpoint is what the download guard exists to stop. What was missing is the
- * QUEUE: coalesce the asks, then run them.
- */
+// `if (running) return running` DISCARDS a mid-flight ask: the running pass
+// never sees its keys. Single-flight is right; it needs a queue behind it.
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -41,12 +26,10 @@ describe("passQueue — a second ask is never dropped", () => {
 		const ask = passQueue(run);
 
 		const skate = ask(["skate"]);
-		// 85 ms later in the real thing; here: while the first pass is held open.
 		const tractor = ask(["tractor"]);
 		release();
 		await Promise.all([skate, tractor]);
 
-		// The old latch produced [["skate"]] — one pass, tractor never seen.
 		expect(seen.flat()).toContain("tractor");
 	});
 
@@ -72,12 +55,11 @@ describe("passQueue — a second ask is never dropped", () => {
 		const first = ask(["a"]);
 		const b = ask(["b"]);
 		const c = ask(["c"]);
-		// "b" again while it is already waiting — one turn, not two.
+		// Already waiting — one turn, not two.
 		const bAgain = ask(["b"]);
 		release();
 		await Promise.all([first, b, c, bAgain]);
 
-		// pass 1 = the ask that started it; pass 2 = everything that queued behind.
 		expect(seen).toHaveLength(2);
 		expect([...seen[1]].sort()).toEqual(["b", "c"]);
 	});
@@ -91,7 +73,6 @@ describe("passQueue — a second ask is never dropped", () => {
 		});
 
 		await expect(ask(["a"])).rejects.toThrow("feed down");
-		// The latch is released by the failure, so this is a fresh pass, not a wedge.
 		await expect(ask(["b"])).resolves.toBe(1);
 		expect(calls).toBe(2);
 	});
@@ -103,12 +84,8 @@ describe("passQueue — a second ask is never dropped", () => {
 		expect(run).not.toHaveBeenCalled();
 	});
 
-	// A drained follow-up pass is started by the queue, not by a caller, so
-	// nobody is positioned to catch it. WebKit surfaced this as an uncaught
-	// "NetworkError: A network error occurred" on /app/stats — the tiles
-	// Worker is unreachable, the drained pass rejects, and the rejection has
-	// no owner. `waitingDone` only covers a caller who was ALREADY waiting;
-	// the drain that runs after they have all resolved has nothing attached.
+	// The queue, not a caller, starts a drained pass, so nobody is positioned
+	// to catch its rejection.
 	it("a drained follow-up pass that fails does not become an unhandled rejection", async () => {
 		const unhandled: unknown[] = [];
 		const onUnhandled = (e: PromiseRejectionEvent) => {
@@ -121,8 +98,7 @@ describe("passQueue — a second ask is never dropped", () => {
 		const { release, run } = heldPass();
 		const ask = passQueue(async (keys) => {
 			calls++;
-			// Pass 1 is held open so the second ask queues behind it; the
-			// DRAINED pass 2 is the one that fails.
+			// Hold pass 1 open so the DRAINED pass 2 is the one that fails.
 			if (calls === 1) return run(keys);
 			throw new Error("feed down");
 		});

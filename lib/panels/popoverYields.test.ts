@@ -1,14 +1,7 @@
 /**
- * A POPOVER MUST YIELD TO THE WORK UNDERNEATH IT.
- *
- * An in-progress shape — the Snake Ruler's polygon before it is saved — is
- * painted INTO the map canvas. A popover is a DOM card above that canvas, so
- * no z-index ordering can ever put the card behind the shape: the card is
- * opaque over the work, always, by construction. The only cure is for the card
- * to stop being opaque while a draw is live.
- *
- * `yieldStyle` is the whole decision, kept pure so it is testable without a
- * browser. The shell applies it; these tests pin what it must produce.
+ * An in-progress shape is painted INTO the map canvas and a popover is DOM
+ * above it, so no z-index can put the card behind the shape: the card must go
+ * translucent and tap-through while a draw is live.
  */
 import { describe, expect, it } from "vitest";
 import { YIELD_OPACITY, yieldStyle } from "./popoverYield";
@@ -37,21 +30,14 @@ describe("while nothing is being drawn", () => {
 	});
 
 	it("takes taps normally", () => {
-		// Empty, not "auto": the shell's own pass-through logic sets this
-		// property directly, and hardcoding "auto" here would fight it.
+		// Empty, not "auto": the shell's pass-through logic writes this too.
 		expect(yieldStyle(false).pointerEvents).toBe("");
 	});
 });
 
 describe("the tap-outside pass-through cannot cancel the yield", () => {
-	/**
-	 * The shell has a SECOND writer of pointer-events: tap-outside-to-dismiss
-	 * sets the surface transparent for a gesture starting outside it, then
-	 * restores "" on pointerup. Restoring while a draw is live would hand the
-	 * card back the taps the draw needs — the first tap anywhere on the map
-	 * would silently re-arm it. Both writers must agree, so the restore is
-	 * `on || drawLive`, not `on`.
-	 */
+	// Tap-outside-to-dismiss is a second pointer-events writer; restoring ""
+	// mid-draw would hand the card back the draw's taps.
 	const restored = (passthroughOn: boolean, drawLive: boolean) =>
 		passthroughOn || drawLive ? "none" : "";
 
