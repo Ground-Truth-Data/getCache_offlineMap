@@ -15,8 +15,7 @@ export const WIPE_DBS = [
 /** Never add these to WIPE_DBS: the user's own data lives here. */
 export const NEVER_WIPE = ["rt-treeStuff"] as const;
 
-/** Still written to. A wipe the user asked for may take them; the unasked
- *  boot-time retirement sweep may not, since nothing refills what it takes. */
+/** Still written to. A wipe the user asked for may take them; the unasked boot-time retirement sweep may not, since nothing refills what it takes. */
 export const V10_LIVE_DBS = [
 	"gc-offlineSatellite",
 	"rt-mapRegistry",

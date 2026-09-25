@@ -43,7 +43,6 @@ export function makeKeyedIdbStore<T>(opts: {
 		if (dbPromise) return dbPromise;
 		dbPromise = (async () => {
 			let db = await openOnce();
-			// SHELL HEAL — see the file header.
 			if (!db.objectStoreNames.contains(storeName)) {
 				db.close();
 				await new Promise<void>((res) => {
@@ -66,13 +65,9 @@ export function makeKeyedIdbStore<T>(opts: {
 		void pending?.then((db) => db.close()).catch(() => {});
 	});
 
-	/** Run `body` in a transaction and settle on the TRANSACTION's outcome.
-	 *
-	 *  A request's `onerror` is not the whole story: a transaction that aborts —
-	 *  another connection holds the database, a version change is pending, quota
-	 *  is gone — fires `onabort` and leaves its requests silent, so a promise
-	 *  resolved from request callbacks alone never settles. A tile read that
-	 *  never settles is a map that never draws, with nothing thrown to see. */
+	/** Settle on the TRANSACTION's outcome, not the request's: a transaction can
+	 *  abort (another connection, a version change, quota) and leave its
+	 *  requests silent, so resolving from request callbacks alone never settles. */
 	function inTx<R>(
 		mode: IDBTransactionMode,
 		body: (os: IDBObjectStore, done: (value: R) => void) => void,

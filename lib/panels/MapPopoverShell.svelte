@@ -69,8 +69,7 @@ const style = $derived(
 
 const leader = $derived(isPoint ? leaderLine(bbox, geom) : null);
 
-// A gesture is owned by where it begins: one starting outside the popover makes
-// the surface pointer-transparent for that gesture, so the tap lands on the map.
+// A gesture is owned by where it begins: one starting outside the popover makes the surface pointer-transparent for that gesture, so the tap lands on the map
 $effect(() => {
 	if (!el) return;
 	const node = el;
