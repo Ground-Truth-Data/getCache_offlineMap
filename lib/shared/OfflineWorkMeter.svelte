@@ -238,7 +238,8 @@ const peakSparkX = $derived.by(() => {
 	return (idx / (heapTrace.length - 1)) * 300;
 });
 
-// Portal to <body>: `.mobile-preview-frame`'s `contain: layout` traps position:fixed inside the phone frame. Not when docked, or the node leaves its rail.
+// Portal to <body>: `.mobile-preview-frame`'s `contain: layout` traps
+// position:fixed inside the phone frame. Not when docked, or it leaves its rail.
 $effect(() => {
 	if (docked || !dev || !host || typeof document === "undefined") return;
 	document.body.appendChild(host);
