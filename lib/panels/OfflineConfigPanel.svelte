@@ -1,6 +1,6 @@
 <script lang="ts">
 import "$rig/dev/devCard.css";
-/** CONFIG — the right-hand rail's Workers/layers switches (only things that change what the map talks to or draws; the pin picker is not config, see PinLibrary.svelte). ⚠️ DEV-ONLY BY CONSTRUCTION — the worker override lives behind `import.meta.env.DEV` in tilesHost.ts (compile-time), so a shipped build cannot switch it; that's what makes this panel safe to publish at a public URL. */
+/** DEV-ONLY: the worker override sits behind `import.meta.env.DEV` in tilesHost.ts, so a shipped build cannot switch it. */
 import { onMount } from "svelte";
 import {
 	getWorkerTarget,
@@ -22,24 +22,19 @@ import { LAYER_TOGGLES } from "../onPhone/render/wallLegend";
 let {
 	layers = [],
 }: {
-	/** Layer switches, independent of each other, to turn things off one at a time and watch the heap. `disabled` greys a row out for one that exists but isn't safe to flip yet. */
 	layers?: {
 		key: string;
 		label: string;
 		on: boolean;
 		toggle: () => void;
-		/** HOW the layer draws ("always on" / "pyramid" / "cluster"), shown greyed beside the label — the mechanism you compare when a feature is missing. See LayerToggle.hint. */
 		hint?: string;
 		disabled?: boolean;
 		disabledHint?: string;
 	}[];
 } = $props();
 
-// THREE WORKERS, ONE BUCKET: worker-cloud-prod / worker-cloud-dev (deployed to Cloudflare) and worker-local-dev (the developer's own machine) — see WorkerTarget in tilesHost.ts.
-// ⚠️ Don't remove worker-local-dev — it's the only worker an outside contributor can reach without the Bitwarden-only Cloudflare key (removed 27 Aug, restored same day).
-// This list is the ONLY place a row is declared — probing and greying-out read from it; adding a tier is one entry.
-// Changing the target re-points the NEXT request; in-flight ones finish where they started.
-// ⚠️ init from getWorkerTarget(), never a literal — a hardcoded "worker-cloud-prod" painted prod-selected until onMount ran.
+// ⚠️ Keep worker-local-dev — the only worker reachable without the Cloudflare key.
+// ⚠️ init from getWorkerTarget(), never a literal, or prod paints selected until onMount.
 let target = $state<WorkerTarget>(getWorkerTarget());
 
 const TARGETS: {
@@ -47,10 +42,6 @@ const TARGETS: {
 	label: string;
 	hint: string;
 }[] = [
-	// Labels renamed 31 Aug 2026 on Chris's instruction: these rows pick a WORKER
-	// (the code, where it runs) — there is ONE R2 bucket behind all three, so a
-	// label starting with "r2_" read as "which data", the exact confusion that
-	// cost the "roads don't work on dev" day. worker-<where>-<flavor>, always.
 	{
 		id: "worker-cloud-prod",
 		label: "worker-cloud-prod",
@@ -64,18 +55,18 @@ const TARGETS: {
 	{
 		id: "worker-local-dev",
 		label: "worker-local-dev",
-		// ⚠️ Interpolated, never retyped — a hardcoded hostname here drifts from the constant (this row said "127.0.0.1:8787" stale for a day).
+			// Interpolated so it cannot drift from the constant.
 		hint: `${LOCAL_DEV_HOST} — \`npm run dev:local\` in workers/worker-local-dev serves a free sample slice (no Cloudflare account); \`npm run dev:cloud\` runs the SAME local code against the one real R2 bucket (needs wrangler login). Greyed out until that terminal is running, which is expected, not broken.`,
 	},
 ];
 
-// Reachability lives in the work meter (probeTarget() in workMeter.svelte.ts), not here — this panel only reads it. Before the first probe a tier is undefined (neutral, still clickable): a slow probe must never look like a dead Worker.
+// Before the first probe a tier is undefined (neutral, still clickable): a slow probe must never look like a dead Worker.
 function reach(t: WorkerTarget): "ok" | "err" | "wait" {
 	const p = probeOf(t);
 	return p === undefined ? "wait" : p ? "ok" : "err";
 }
 
-// THE CIRCLE — grey=never asked · yellow=asked OR on disk but NOT on screen · green=painted in the viewport after the bytes landed · red=broke. Green comes only from paintWatch.ts counting rendered features on map idle; a download landing can never turn a row green by itself. Worker rows show it only while selected and go green when ANY pack layer paints; layer rows show the download they draw from (LayerToggle.feed).
+// Green comes only from paintWatch.ts counting rendered features — a download landing never turns a row green by itself.
 const circuits = $derived(allCircuits());
 const paints = $derived(allPaints());
 const PACK_LAYERS = LAYER_TOGGLES.filter((t) => t.feed === "pack").map((t) => t.key);
@@ -97,7 +88,6 @@ const CIRC_WORDS: Record<CircuitState, string> = {
 const clock = (ms: number | null | undefined) =>
 	ms == null ? "" : new Date(ms).toLocaleTimeString(undefined, { hour12: false });
 const secs = (ms: number | null) => (ms == null ? "?" : `${(ms / 1000).toFixed(1)}s`);
-/** Hover text: the state, the note, and the three clocks so ask→disk→screen is readable without the JSON. */
 function circTitle(what: string, l: Light): string {
 	const c = l.circuit;
 	const bits = [`${what}: ${CIRC_WORDS[l.state]}${c?.note ? " — " + c.note : ""}`];
@@ -108,14 +98,10 @@ function circTitle(what: string, l: Light): string {
 	return bits.join(" · ");
 }
 
-/** The dl STOPWATCH (Chris, 31 Aug 2026: "you just count until you're done, and then it's
- * over" — done = the user can SEE it). Counts live from the ask while anything is still on
- * its way to the screen — bytes on disk is NOT done — then freezes at ask→seen. Never show
- * a settled number before green: that read "dl 1.8s" over a map with no blob on it. */
+/** Counts from the ask until the thing is ON SCREEN (bytes on disk is not done), then freezes at ask→seen. */
 const dlWords = (l: Light): string => {
 	if (l.state === "drawn") return l.seenMs == null ? "" : `dl ${secs(l.seenMs)}`;
-	// Arrived, and an idle since counted ZERO in view — the count would never end
-	// (the area holds none of this feature), so freeze at the download time and say why.
+	// Arrived but zero in view — the count would never end, so freeze at the download time.
 	if (l.state === "ok" && l.settledEmpty && l.transitMs != null)
 		return `dl ${secs(l.transitMs)} · 0 in view`;
 	if (l.state === "transit" || l.state === "ok")
@@ -123,18 +109,12 @@ const dlWords = (l: Light): string => {
 	return "";
 };
 
-/** A tier currently being re-probed, so its row can say so. */
 let retrying = $state<WorkerTarget | null>(null);
 
-/** Drives the counting dl labels — 500ms so the tenths digit visibly moves. */
 let now = $state(Date.now());
 
 async function pickTarget(t: WorkerTarget) {
-	// Selecting a DEAD tier is allowed — pointing at the broken local worker and
-	// fixing it while pointed at it IS the workflow. The click still re-probes so
-	// the row's light stays honest, and rows are never `disabled`, so an alive
-	// tier is always one click away (the 27 Aug "stuck off production" trap came
-	// from disabling rows, not from selecting dead ones).
+	// Selecting a dead tier is allowed — fixing the local worker while pointed at it is the workflow.
 	setWorkerTarget(t);
 	target = t;
 	if (reach(t) === "err") {
@@ -153,10 +133,7 @@ async function probeAll() {
 	for (const t of TARGETS) {
 		await probeTarget(t.id);
 	}
-	// ⛔ never auto-switch tiers — local-first holds even when local is dead ("point at
-	// the broken one and fix it while pointed at it"); an auto-pick of production
-	// silently bills the maintainer's R2 on every fresh install. Rows stay clickable,
-	// dead or not, so nobody can be stuck here.
+	// ⛔ Never auto-switch tiers — an auto-pick of production silently bills R2 on every fresh install.
 	if (reach(target) === "err") {
 		console.warn(
 			`[tiles] ${target} is not answering — nothing will download until it does. ` +
@@ -169,7 +146,6 @@ async function probeAll() {
 
 onMount(() => {
 	target = getWorkerTarget();
-	// Unlike the ⚙, this panel is always visible, so probe on mount rather than on open.
 	void probeAll();
 	const tick = setInterval(() => (now = Date.now()), 500);
 	return () => clearInterval(tick);
@@ -252,9 +228,7 @@ onMount(() => {
 </div>
 
 <style>
-/* Shell + title come from devCard.css (.dev-card) — same look as MAP DEBUGGER and OFFLINE BLOBS. */
 .cfg-title {
-	/* Section head under the card title — same family, one step smaller/dimmer, caps so it reads as a label not a row. */
 	font-family: "Inter", -apple-system, sans-serif;
 	font-weight: 800;
 	font-size: 11px;
@@ -278,7 +252,7 @@ onMount(() => {
 	text-align: left;
 }
 .cfg-label {
-	/* Does NOT grow — a growing label would push the hint to the far right as a second column; .cfg-hint/.dead-tag take the slack so every .sw switch lands on the same right edge. */
+	/* Does NOT grow — the hint/tag take the slack so every switch lands on the same right edge. */
 	flex: 0 0 auto;
 	min-width: 0;
 	overflow: hidden;
@@ -286,19 +260,18 @@ onMount(() => {
 	white-space: nowrap;
 }
 .cfg-row.sel {
-	/* GOLD, not off-white — #e8e8e8 read as one shade off unselected rows, making the whole group look greyed-out/disabled while it was working. */
+	/* Gold, not off-white — off-white read as disabled. */
 	color: #ffd24a;
 	font-weight: 600;
 }
 .cfg-row.dead {
-	/* Dimmed but CLICKABLE — the click is the retry; `cursor: not-allowed` here used to tell the user it was a dead end. */
+	/* Dimmed but clickable — the click is the retry. */
 	opacity: 0.55;
 	cursor: pointer;
 }
 .cfg-row.retrying {
 	opacity: 0.8;
 }
-/* THE MECHANISM HINT — grey, beside the label, reads as an annotation not a second label; inherits the row's dimming when dead. */
 .cfg-hint {
 	flex: 1 1 auto;
 	min-width: 0;
@@ -310,7 +283,7 @@ onMount(() => {
 	text-overflow: ellipsis;
 }
 .cfg-row.sel .cfg-hint {
-	/* Selected rows go gold; the hint must NOT follow — it is not state. */
+	/* The hint is not state, so it stays grey. */
 	color: var(--muted);
 }
 
@@ -325,7 +298,7 @@ onMount(() => {
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
-/* THE DL LABEL — sits left of the circle. margin-left:auto so it right-aligns on worker rows (no hint to take the slack); on layer rows the growing hint already ate it. Never coloured — the circle owns state. */
+/* margin-left:auto right-aligns it on worker rows, which have no hint to take the slack. */
 .dl {
 	flex: 0 0 auto;
 	margin-left: auto;
@@ -333,13 +306,12 @@ onMount(() => {
 	font-size: 0.85em;
 	white-space: nowrap;
 }
-/* THE CIRCLE — sits left of the switch; grey until asked, then the last call's state. Muted grey (not black) so "never asked" doesn't read as failure. `ok` (on disk) is deliberately the SAME yellow as transit — to the user it is still "not there yet". */
+/* `ok` (on disk) is deliberately the same yellow as transit — to the user it is still not there. */
 .circ {
 	flex: 0 0 auto;
 	width: 10px;
 	height: 10px;
 	border-radius: 50%;
-	/* Right-aligned beside the switch on every row — layer rows push it there via their hint; worker rows (no hint) let the circle take the slack itself. */
 	margin-left: auto;
 	margin-right: 8px;
 	background: #4a4a4a;

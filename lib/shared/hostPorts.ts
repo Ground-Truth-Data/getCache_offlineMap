@@ -1,33 +1,27 @@
-/** HOST PORTS — the narrow interface between the offline map engine and whatever app hosts it. */
+/** The narrow interface between the offline map engine and whatever app hosts it. */
 
-/** A place the map should keep offline: its anchor points plus the two facts the bake order depends on. */
 export interface HostPlace {
-	/** Anchor coordinates, [lng, lat]. A point has one; a line has many. */
+	/** [lng, lat]. A point has one; a line has many. */
 	anchors: [number, number][];
-	/** ISO timestamp of the last edit. Newest bakes first and is evicted last. */
+	/** ISO. Newest bakes first and is evicted last. */
 	lastTouched: string;
-	/** True for lines/corridors — baked along their length rather than as a single disc. */
+	/** Lines/corridors bake along their length rather than as a single disc. */
 	corridor: boolean;
 
-	// Display metadata only — the bake service ignores these; a blob is identified by areaKey, never by name.
+	// Display only — a blob is identified by areaKey, never by name.
 
-	/** Stable id of the feature this place came from. */
 	featureKey?: string;
-	/** Human name, for the inspector's cards. */
 	featureName?: string;
-	/** Feature type ("Point", "LineString", a PDF overlay…). */
 	featureType?: string;
-	/** Id of the map/collection that owns it. */
 	groupKey?: string;
-	/** Human name of that map — the inspector nests cards under it. */
 	groupName?: string;
 }
 
-/** One hotspot, trimmed to what the map renders. ⚠️ Must stay structurally assignable to the host's hotspot type both ways — keep required fields required, optional optional. */
+/** ⚠️ Must stay structurally assignable to the host's hotspot type both ways. */
 export interface PortHotspot {
-	/** [lng, lat] — GeoJSON order. */
+	/** [lng, lat]. */
 	readonly coordinates: [number, number];
-	/** Acquisition time, UTC epoch ms. Drives the age-colour ramp. */
+	/** UTC epoch ms. Drives the age-colour ramp. */
 	readonly t: number;
 	/** Detection confidence. */
 	readonly c: "low" | "nominal" | "high";
