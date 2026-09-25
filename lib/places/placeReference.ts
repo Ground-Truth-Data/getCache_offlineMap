@@ -1,7 +1,8 @@
 /** [name, lng, lat, tier, region (province/state)]. */
 export type PlaceRow = readonly [string, number, number, number, string?];
 
-/** ⚠️ The asset excludes GeoNames PPLX/neighbourhoods: naming one sounds authoritative but conveys no real location. Tiered by admin status first, population second. */
+/** ⚠️ The asset excludes GeoNames PPLX/neighbourhoods — naming one sounds
+ * authoritative but conveys no real location. Tiered by admin status first, population second. */
 export const TIER_MAJOR = 0; // capital / admin seat, or ≥ 100,000
 export const TIER_NOTABLE = 1; // 2nd-order admin seat, or ≥ 15,000
 export const TIER_TOWN = 2; // ≥ 5,000
@@ -129,7 +130,8 @@ export interface PlaceReference {
 	readonly anchor: PlaceHit | null;
 }
 
-/** Cascade village→town→notable→major; first hit = primary, nearest MORE prominent tier = anchor. When the anchor isn't MAJOR, the province is appended so there's always one recognisable name. */
+/** Cascade village→town→notable→major; first hit = primary, nearest MORE
+ * prominent tier = anchor. Non-MAJOR anchors get the province appended. */
 export function placeReference(
 	at: readonly [number, number],
 	places: readonly PlaceRow[],

@@ -93,13 +93,13 @@ describe("needsMapBlob — the anti-thrash rule", () => {
 });
 
 describe("THE DARKNESS BUG — containment must mean PHOTO, not roads", () => {
-	// THE DARKNESS BUG: containment measured against the 40km road ring, not the 2km photo — users 2–30km out were "covered" and blind.
+	// THE DARKNESS BUG: containment measured against the 40km ring, not the 2km photo.
 	it("bakes when you are outside the PHOTO, even if roads reach you", () => {
 		expect(needsMapBlob(north(BLOCK, 10), [BLOCK])).toBe(true);
 	});
 
 	it("bakes for a user near the permanent Ottawa demo blob", () => {
-		// demo blob (MAP_HOME_CENTER) is always noted; every Ottawa-region user was silently swallowed by it and never got their own.
+		// demo blob (MAP_HOME_CENTER) is always noted; Ottawa-region users were swallowed by it.
 		const demo: LngLat = [-76.16797958683314, 45.061348227515055];
 		const userNearby = north(demo, 12);
 		expect(needsMapBlob(userNearby, [demo])).toBe(true);
