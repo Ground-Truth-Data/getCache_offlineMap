@@ -1,2 +1,2 @@
-// ⚠️ Re-exported, not copied — a second copy would drift from lib/contract/grid.ts and break Worker/phone agreement.
+// Re-exported, not copied: a copy drifts from the phone.
 export * from "../../../lib/contract/grid";

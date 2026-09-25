@@ -8,17 +8,12 @@ import {
 	type HospitalEntry,
 } from "./hospitals";
 
-// The radius filter moved SERVER-side from the phone (the online map used to
-// bake Canada and filter 3,005 points on-device) — these guard the promise the
-// route makes to the client: within-radius kept, beyond-radius dropped, the
-// emergency tag intact, and the whole world never in one answer.
-
 describe("cellKeysForDisc", () => {
 	it("covers the centre cell and its disc neighbours", () => {
 		const keys = cellKeysForDisc(-75.7, 45.4, 5, HOSPITAL_RADIUS_KM);
-		expect(keys).toContain("27_20"); // floor((45.4+90)/5)=27, floor((-75.7+180)/5)=20
+		expect(keys).toContain("27_20");
 		expect(keys.length).toBeGreaterThan(1);
-		expect(keys.length).toBeLessThan(20); // a disc, never a continent
+		expect(keys.length).toBeLessThan(20);
 	});
 
 	it("wraps the antimeridian instead of walking off the grid", () => {
@@ -28,7 +23,7 @@ describe("cellKeysForDisc", () => {
 			expect(cx).toBeGreaterThanOrEqual(0);
 			expect(cx).toBeLessThan(72);
 		}
-		expect(keys).toContain("18_0"); // the far side of the seam
+		expect(keys).toContain("18_0");
 	});
 
 	it("survives a polar centre without exploding the lng span", () => {
@@ -38,9 +33,9 @@ describe("cellKeysForDisc", () => {
 });
 
 describe("hospitalsCollection", () => {
-	const anchor: [number, number] = [-122.75, 53.92]; // Prince George, BC
+	const anchor: [number, number] = [-122.75, 53.92];
 	const near: HospitalEntry = [-122.7, 53.9, "UHNBC", "yes"];
-	const far: HospitalEntry = [-79.4, 43.7, "Toronto General"]; // ~3,400 km
+	const far: HospitalEntry = [-79.4, 43.7, "Toronto General"];
 
 	it("keeps within-radius, drops beyond-radius", () => {
 		const fc = hospitalsCollection([[near, far]], anchor[0], anchor[1]);
@@ -72,7 +67,6 @@ describe("hospitalsCollection", () => {
 
 describe("bundled pack", () => {
 	it("round-trips: bake format → parse → cell read", () => {
-		// Mirrors bakeHospitals.mjs's serializer byte-for-byte, in miniature.
 		const enc = new TextEncoder();
 		const cellA: HospitalEntry[] = [[-122.7, 53.9, "UHNBC", "yes", "250-565-2000"]];
 		const cellB: HospitalEntry[] = [[-79.4, 43.7, "Toronto General"]];

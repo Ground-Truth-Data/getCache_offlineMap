@@ -1,2 +1,2 @@
-// ⚠️ re-exported, not copied — Worker and phone must agree on pack layers; a copy drifts.
+// Re-exported, not copied: a copy drifts from the phone.
 export * from "../../../lib/contract/packLayers";

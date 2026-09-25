@@ -4,8 +4,7 @@ import { featureTester, inRing } from "../../hospitalBlocks/countries.mjs";
 import { parseActivity14, parseFiness } from "../../hospitalBlocks/fr.mjs";
 import { parseBatchGeocode, parseCms } from "../../hospitalBlocks/us.mjs";
 
-// Fixture strings only — the adapters' fetch() paths hit the network/cache and
-// are exercised by the bake itself, not here.
+// Fixture strings only; the adapters' fetch() paths are exercised by the bake itself.
 
 describe("lib.parseCsv", () => {
 	it("handles quoted delimiters, escaped quotes, embedded newlines, CRLF, BOM", () => {

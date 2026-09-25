@@ -1,21 +1,11 @@
-/**
- * direction2.4 — the shallow z6 tile is BUILT, not copied. This is the REAL
- * pipeline (no mocks): a hand-encoded z13 source tile → buildPack → the pack's
- * shallow/ tile decoded back. What must hold:
- *
- *   · shallow roads = SHALLOW_LAYER_RULES — the ARCHIVE vocabulary ships
- *     (highway/major_road), minor_road/path/service drop. ⛔ 2 Sep 2026: this
- *     test once fed the filter its own fictional kinds ("major"/"minor") — CI
- *     green, the real tile shipped highways alone. Synthetic tiles must speak
- *     the archive's vocabulary: *_road.
- *   · the z8 pin/ tile (same reads, PACK_LAYERS) still ships ALL road kinds
- *   · non-road rules ride along unchanged — a places town survives the z6 cut
- */
+// A hand-encoded z13 source tile → buildPack → the pack's shallow/ tile decoded
+// back. Synthetic tiles must speak the archive's vocabulary (highway,
+// major_road, minor_road…): fictional kinds once kept CI green while the real
+// tile shipped highways alone.
 
 import { describe, expect, it } from "vitest";
 import { readVarint, writeVarint } from "./mvtFilter";
 
-// ── minimal MVT encoder (numbers, wire-level, no deps) ─────────────────────
 function strBytes(s: string): number[] {
     return Array.from(new TextEncoder().encode(s));
 }
@@ -24,7 +14,6 @@ function lenDelim(field: number, payload: number[]): number[] {
     writeVarint(out, payload.length);
     return out.concat(payload);
 }
-/** A Value message whose only sub-field is a string (sub-field 1, wire 2). */
 function valueStr(s: string): number[] {
     return lenDelim(1, strBytes(s));
 }
@@ -34,9 +23,7 @@ function vi(n: number): number[] {
     writeVarint(out, n);
     return out;
 }
-/** A short 2-point line — plenty; buildBlobTile only moves vertices.
- *  Command bytes carry their own point count (9 = MoveTo×1, 10 = LineTo×1);
- *  each parameter is its own varint. */
+/** 9 = MoveTo×1, 10 = LineTo×1. */
 function lineGeom(): number[] {
     return [9].concat(
         vi(zz(1000)),
@@ -76,8 +63,7 @@ function tileOf(layers: number[][]): ArrayBuffer {
     return new Uint8Array(out).buffer;
 }
 
-// roads: one feature per kind; places: a town under kind_detail (the
-// Protomaps v4 shape the contract warns about — see PACK_LAYERS.places).
+// places: a town under kind_detail, the Protomaps v4 shape.
 const SOURCE = tileOf([
     layer(
         "roads",
@@ -104,7 +90,6 @@ const archive = {
     getZxy: async () => ({ data: new Uint8Array(SOURCE) }),
 } as never;
 
-// ── read the pack back ─────────────────────────────────────────────────────
 interface Manifest {
     tiles: Array<{ k: string; n: number }>;
 }
@@ -124,7 +109,6 @@ function tileBytesOf(pack: ArrayBuffer, key: string): Uint8Array {
     throw new Error(`no tile ${key}`);
 }
 
-/** Skip one protobuf field of wire type `w` starting at `p` in `buf`. */
 function skipField(buf: Uint8Array, w: number, p: number): number {
     if (w === 0) {
         const [, q] = readVarint(buf, p);
@@ -141,9 +125,7 @@ function skipField(buf: Uint8Array, w: number, p: number): number {
 const LNG = -123.0694;
 const LAT = 49.2606;
 
-/** Wire-level: every feature's `kind` value in layer `want`, resolved through
- *  the LAYER's own keys/values tables (the merged blob rebuilds them — see
- *  oneBlob's "rendered as a foot trail" note for why this matters). */
+/** Every feature's `kind` in layer `want`, resolved through the layer's own tables. */
 function layerKinds(tile: Uint8Array, want: string): string[] {
     const found: string[] = [];
     let p = 0;
@@ -152,7 +134,7 @@ function layerKinds(tile: Uint8Array, want: string): string[] {
         [tag, p] = readVarint(tile, p);
         const w = tag & 7;
         if (tag >>> 3 !== 3 || w !== 2) {
-            p = skipField(tile, w, p); // tiles hold only layers, but be safe
+            p = skipField(tile, w, p);
             continue;
         }
         let len: number;
@@ -170,7 +152,7 @@ function layerKinds(tile: Uint8Array, want: string): string[] {
             const lf = ltag >>> 3;
             const lw = ltag & 7;
             if (lf !== 1 && lf !== 2 && lf !== 3 && lf !== 4) {
-                q = skipField(layer, lw, q); // extent etc.
+                q = skipField(layer, lw, q);
                 continue;
             }
             let n: number;
@@ -180,7 +162,6 @@ function layerKinds(tile: Uint8Array, want: string): string[] {
             if (lf === 1) name = new TextDecoder().decode(field);
             else if (lf === 3) keys.push(new TextDecoder().decode(field));
             else if (lf === 4) {
-                // Value message: string_value is sub-field 1
                 let r = 0;
                 let s = "";
                 while (r < field.length) {
@@ -200,7 +181,6 @@ function layerKinds(tile: Uint8Array, want: string): string[] {
         }
         if (name !== want) continue;
 
-        // features → kind via their tags
         q = 0;
         while (q < layer.length) {
             let ltag: number;
@@ -244,8 +224,6 @@ function layerKinds(tile: Uint8Array, want: string): string[] {
 
 describe("direction2.4 — the shallow z6 tile is BUILT from the disc reads", () => {
     it("shallow roads thin to highways + major roads — ARCHIVE vocabulary: highway/major_road ship, minor_road/path/service drop", async () => {
-        // 5 Sep 2026: small roads live only inside a disc; the ~600 km z6 wall
-        // carrying minor_road cost the tile worker 1.4 GB.
         const { buildPack } = await import("./packBuilder");
         const pack = await buildPack(archive, LNG, LAT);
         const m = manifestOf(pack);
@@ -279,9 +257,7 @@ describe("direction2.4 — the shallow z6 tile is BUILT from the disc reads", ()
         const pack = await buildPack(archive, LNG, LAT);
         const m = manifestOf(pack);
         const shallowKey = m.tiles.find((t) => t.k.startsWith("shallow/"))!.k;
-        // places ships a husk if kind_detail was mismatched — see PACK_LAYERS.
-        // The fake archive returns the SAME tile for every z13 read, so the z6
-        // frame (which covers them all) collects many copies — one per read.
+        // The fake archive returns the same tile for every read, so the z6 frame collects one copy per read.
         const kinds = layerKinds(tileBytesOf(pack, shallowKey), "places");
         expect(kinds.length).toBeGreaterThan(0);
         expect(kinds.every((k) => k === "locality")).toBe(true);

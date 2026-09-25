@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GRID_RADIUS_KM, radiusBox } from "./grid";
 
-/** Km between two lng/lat points. */
 function km(lng1: number, lat1: number, lng2: number, lat2: number): number {
 	const dLat = (lat2 - lat1) * 110.574;
 	const dLng =
@@ -9,7 +8,6 @@ function km(lng1: number, lat1: number, lng2: number, lat2: number): number {
 	return Math.hypot(dLat, dLng);
 }
 
-/** The user's own pins, including the two that collided in one tile. */
 const PINS: Array<[number, number]> = [
 	[-121.5722, 48.2164],
 	[-121.5246, 48.4817],
@@ -20,7 +18,6 @@ const PINS: Array<[number, number]> = [
 
 describe("the roads picture is pin-centred", () => {
 	it("⛔ THE BOX IS CENTRED ON THE PIN — every pin, exactly", () => {
-		// The property a vector tile could never have.
 		for (const [lng, lat] of PINS) {
 			const b = radiusBox(lng, lat);
 			const cx = (b.w + b.e) / 2;
@@ -30,7 +27,6 @@ describe("the roads picture is pin-centred", () => {
 	});
 
 	it("⛔ TWO NEARBY PINS GET DIFFERENT BOXES — no shared address", () => {
-		// These two pins shared tile 8/41/88 and overwrote each other; each now gets its own GPS-bounded box, so they can't collide.
 		const a = radiusBox(-121.5722, 48.2164);
 		const b = radiusBox(-121.5246, 48.4817);
 		expect(a.w).not.toBe(b.w);
@@ -54,15 +50,14 @@ describe("the roads picture is pin-centred", () => {
 			fileURLToPath(new URL("./packBuilder.ts", import.meta.url)),
 			"utf8",
 		);
-		// Vectors, not a raster — the PNG transport was reverted (centred correctly but couldn't restyle or scale).
 		expect(src).toContain("buildBlobTile(");
 		expect(src).not.toContain("renderRoadPng(");
 
-		// The pin's real GPS point must drive both what is read and which cells are built — reverting to a snapped point is the 45 km bug.
+		// The pin's real GPS point drives what is read and which cells are built.
 		expect(src).toContain("radiusBox(lng, lat)");
 		expect(src).toContain("cellsFor(lng, lat)");
 
-		// ⚠️ Each cell must be framed to its OWN box — framing to the pin's box re-anchors the geometry and draws it wrong; that shipped twice.
+		// Each cell framed to its OWN box.
 		expect(src).toContain("boxFrame(cellBox(c))");
 	});
 });

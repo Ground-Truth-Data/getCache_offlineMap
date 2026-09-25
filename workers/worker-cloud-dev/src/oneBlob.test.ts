@@ -11,24 +11,21 @@ import { readVarint, skipField, unzigzag } from "./mvtBytes";
 
 const SRC_EXTENT = 4096;
 
-/** Builds a one-layer source tile holding `lines` in its own 0..4096 grid; kinds' keys/values order deliberately differs per tile since a feature's tags index its own tile's tables. */
+/** A one-layer source tile in its own 0..4096 grid; each tile gets its own keys/values order. */
 function makeTile(
 	name: string,
 	lines: Array<Array<[number, number]>>,
 	kinds: string[] = [],
-	/** MVT GeomType for every feature: 1 POINT, 2 LINESTRING (default), 3 POLYGON. */
 	geomType: 1 | 2 | 3 = 2,
 ): Uint8Array {
 	const body: number[] = [];
 	const nameBytes = new TextEncoder().encode(name);
 	body.push((1 << 3) | 2, nameBytes.length, ...nameBytes);
-	body.push((15 << 3) | 0, 2); // version
+	body.push((15 << 3) | 0, 2);
 
-	// keys (field 3): just "kind"
 	if (kinds.length) {
 		const kb = new TextEncoder().encode("kind");
 		body.push((3 << 3) | 2, kb.length, ...kb);
-		// values (field 4): each distinct kind as a string Value
 		for (const k of dedupe(kinds)) {
 			const vb = new TextEncoder().encode(k);
 			const val: number[] = [(1 << 3) | 2, vb.length, ...vb];
@@ -53,12 +50,11 @@ function makeTile(
 				);
 			}
 		}
-		if (geomType === 3) geom.push((1 << 3) | 7); // ClosePath
+		if (geomType === 3) geom.push((1 << 3) | 7);
 		const gb: number[] = [];
 		for (const v of geom) pushVarint(gb, v);
 		const feat: number[] = [];
 		if (kinds.length) {
-			// tags (field 2): [keyIndex, valueIndex]
 			const vi = kindList.indexOf(kinds[li]);
 			const tags: number[] = [];
 			pushVarint(tags, 0);
@@ -94,7 +90,6 @@ function pushVarint(out: number[], v: number): void {
 	out.push(x);
 }
 
-/** Read back: layer name → feature count, and the declared extent. */
 function readTile(data: Uint8Array): Map<string, { n: number; extent: number }> {
 	const out = new Map<string, { n: number; extent: number }>();
 	let p = 0;
@@ -139,7 +134,6 @@ function readTile(data: Uint8Array): Map<string, { n: number; extent: number }> 
 	return out;
 }
 
-/** Read every feature's `kind` back out of a built blob. */
 function readKinds(data: Uint8Array, layerName: string): string[] {
 	const out: string[] = [];
 	let p = 0;
@@ -178,7 +172,6 @@ function readKinds(data: Uint8Array, layerName: string): string[] {
 			} else if (f === 4 && w === 2) {
 				let l: number;
 				[l, q] = readVarint(layer, q);
-				// Value → string_value (sub-field 1)
 				const v = layer.subarray(q, q + l);
 				q += l;
 				let vp = 0;
@@ -238,9 +231,7 @@ function readKinds(data: Uint8Array, layerName: string): string[] {
 
 const LNG = -76.168;
 const LAT = 45.061;
-/** The grid cell those coordinates fall in — which IS a z10 slippy tile. */
 const CELL = cellOf(LNG, LAT);
-/** That cell as a tile id, for `tileFrame`. */
 const CELL_TILE = { z: BLOB_TILE_Z, x: CELL.ix, y: CELL.iy };
 
 describe("ONE BLOB — a single tile holding the whole disc", () => {
@@ -257,7 +248,6 @@ describe("ONE BLOB — a single tile holding the whole disc", () => {
 		expect(frame.x1).toBeGreaterThan(frame.x0);
 		expect(frame.y1).toBeGreaterThan(frame.y0);
 		expect(frame).not.toHaveProperty("r");
-		// And the pin really is inside its own cell.
 		expect(LNG).toBeGreaterThanOrEqual(box.w);
 		expect(LNG).toBeLessThanOrEqual(box.e);
 		expect(LAT).toBeGreaterThanOrEqual(box.s);
@@ -288,7 +278,7 @@ describe("ONE BLOB — a single tile holding the whole disc", () => {
 		}));
 
 		const res = buildBlobTile(kids, frame);
-		expect(res.features).toBe(12); // 4 tiles x 3 roads — nothing lost
+		expect(res.features).toBe(12);
 		const back = readTile(res.bytes);
 		expect(back.get("roads")?.n).toBe(12);
 		expect(tile.z).toBe(BLOB_TILE_Z);
@@ -320,7 +310,7 @@ describe("ONE BLOB — a single tile holding the whole disc", () => {
 	it("TRIMS AT THE CELL EDGE — a road in the next cell is not included", () => {
 		const frame = tileFrame(CELL_TILE);
 		const n13 = 2 ** 13;
-		const farLng = LNG + 1.3; // ~100 km at this latitude
+		const farLng = LNG + 1.3;
 		const fx = Math.floor(((farLng + 180) / 360) * n13);
 		const s = Math.sin((LAT * Math.PI) / 180);
 		const fy = Math.floor((0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * n13);
@@ -340,7 +330,7 @@ describe("ONE BLOB — a single tile holding the whole disc", () => {
 		);
 		expect(res.features).toBe(0);
 		expect(res.dropped).toBe(1);
-		expect(res.bytes.byteLength).toBe(0); // no husk layer
+		expect(res.bytes.byteLength).toBe(0);
 	});
 
 	it("⛔ NO SEAM — neighbours cut the same road on the SAME line", () => {
@@ -348,9 +338,8 @@ describe("ONE BLOB — a single tile holding the whole disc", () => {
 		const east = { ix: CELL.ix + 1, iy: CELL.iy , z: BLOB_TILE_Z };
 		const wBox = cellBox(west);
 		const eBox = cellBox(east);
-		expect(wBox.e).toBe(eBox.w); // the shared edge, exactly
+		expect(wBox.e).toBe(eBox.w);
 
-		// One z13 tile straddling that shared edge, holding a road that crosses it.
 		const n13 = 2 ** 13;
 		const edgeLng = wBox.e;
 		const tx = Math.floor(((edgeLng + 180) / 360) * n13);
@@ -375,7 +364,6 @@ describe("ONE BLOB — a single tile holding the whole disc", () => {
 	});
 
 	it("⛔ A HIGHWAY STAYS A HIGHWAY — tag indices are remapped", () => {
-		// THE BUG THIS GUARDS: merging kept only the first tile's tables, so other tiles' features silently resolved to the wrong kind (highway → foot trail) while geometry tests still passed.
 		const frame = tileFrame(CELL_TILE);
 		const n13 = 2 ** 13;
 		const cxT = Math.floor(((LNG + 180) / 360) * n13);
@@ -388,12 +376,11 @@ describe("ONE BLOB — a single tile holding the whole disc", () => {
 
 		const res = buildBlobTile(
 			[
-				// tile A: values = ["highway"] → highway is index 0
 				{
 					tile: { z: 13, x: cxT, y: cyT },
 					data: makeTile("roads", [line, line], ["highway", "highway"]),
 				},
-				// tile B: values = ["track", "path", "highway"] → highway is index 2; merged, it must remap to tile A's index 0 or resolve to the wrong kind.
+				// highway is index 2 here and index 0 in tile A.
 				{
 					tile: { z: 13, x: cxT + 1, y: cyT },
 					data: makeTile("roads", [line, line, line], ["track", "path", "highway"]),
@@ -402,22 +389,18 @@ describe("ONE BLOB — a single tile holding the whole disc", () => {
 			frame,
 		);
 
-		// ⚠️ ORDER MATTERS, not just totals — without the remap, tile B's TRACK becomes HIGHWAY and its HIGHWAY becomes PATH, yet counts still sum to 3/1/1.
+		// Order, not totals: without the remap track→highway and highway→path still sum the same.
 		const kinds = readKinds(res.bytes, "roads");
 		expect(kinds).toEqual([
 			"highway",
-			"highway", // tile A
+			"highway",
 			"track",
 			"path",
-			"highway", // tile B, in its own order
+			"highway",
 		]);
 	});
 
 	it("⛔ KEEPS POINTS — a hospital is one vertex, not a line", () => {
-		// The remapper was written for roads and kept a run only if it had two
-		// or more vertices. A POI / place label is a single MoveTo, so every one
-		// was dropped and the layer discarded as a husk. MEASURED 28 Aug 2026:
-		// `pois` in the keep-set, no `pois` in any blob.
 		const frame = tileFrame(CELL_TILE);
 		const n13 = 2 ** 13;
 		const cxT = Math.floor(((LNG + 180) / 360) * n13);
@@ -463,7 +446,6 @@ describe("ONE BLOB — a single tile holding the whole disc", () => {
 		const res = buildBlobTile(kids, frame);
 		expect(res.features).toBe(1);
 		expect(readTile(res.bytes).get("water")?.n).toBe(1);
-		// the geometry ends with a ClosePath command (7)
 		const layer = res.bytes;
 		let last = -1;
 		let p = 0;
@@ -475,8 +457,7 @@ describe("ONE BLOB — a single tile holding the whole disc", () => {
 				[len, p] = readVarint(layer, p);
 				const sub = layer.subarray(p, p + len);
 				p += len;
-				// dig: tile→layer→feature→geometry; the last varint of the deepest
-				// length-delimited chain that is a geometry is the ClosePath
+				// The last varint of the deepest length-delimited chain is the ClosePath.
 				const txt = Array.from(sub);
 				last = txt[txt.length - 1];
 			}

@@ -13,15 +13,7 @@ import {
     shallowTileKey,
 } from "./grid";
 
-// The measured bugs behind this file's invariants (the 50 km key bug, the
-// deleted roads budget and ring pyramid, the clip and PNG detours) are written
-// up in docs/OFFLINE_HISTORY.md. Inline comments carry only what a reader
-// needs at the line.
-
-// ── the layer keep-set ───────────────────────────────────────────────────────
-// ONE list, owned by `lib/contract/packLayers.ts` — the Worker filters by it
-// and the phone's debug report reads the same table. Corridor packs (a LINE
-// feature's thin route ribbon) ship roads only.
+// Corridor packs (a LINE feature's route ribbon) ship roads only.
 const ROADS_ONLY = new Set(["roads"]);
 const PACK_KEEP: ReadonlySet<string> = new Set(PACK_LAYER_NAMES);
 
@@ -29,17 +21,11 @@ export function keepSet(corridor: boolean): ReadonlySet<string> {
     return corridor ? ROADS_ONLY : PACK_KEEP;
 }
 
-// The shallow tier's kind allowlist — the contract's SHALLOW_LAYER_RULES with
-// roads thinned to highways + major roads. Derived via allowlistOf, never
-// hand-written, so it cannot drift from the contract.
 const SHALLOW_ALLOW = allowlistOf(SHALLOW_LAYER_RULES);
 
-// How many tiles to read from R2 at once. 8-wide measured a 56 s cold build
-// (the client timed out and the blob arrived a minute later "out of nowhere");
-// 100 in flight blew the 128 MB Worker limit (error 1102). 32 holds both walls.
+// R2 reads in flight: 8 gave a 56 s cold build, 100 blew the 128 MB Worker limit.
 const PACK_POOL = 32;
 
-// ── slippy-tile math ─────────────────────────────────────────────────────────
 function lngToTileX(lng: number, z: number): number {
     return Math.floor(((lng + 180) / 360) * 2 ** z);
 }
@@ -56,9 +42,7 @@ export interface DiscTile {
     y: number;
 }
 
-/** Every source tile overlapping `box` at zoom `z`. Tiles are read whole —
- *  what falls outside a cell belongs to the neighbouring cell's blob and is
- *  dropped at remap time by the frame, not by a clip. */
+/** Every source tile overlapping `box` at zoom `z`. */
 export function tilesForBox(
     box: { w: number; s: number; e: number; n: number },
     z: number,
@@ -75,13 +59,11 @@ export function tilesForBox(
     return out;
 }
 
-/** A filtered tile + its key, in disc order. */
 interface PackedTile {
     k: string;
     data: ArrayBuffer;
 }
 
-/** Read + filter one set of tiles from the archive (decompressed MVT), pooled. */
 async function readDisc(
     archive: PMTiles,
     disc: DiscTile[],
@@ -98,18 +80,14 @@ async function readDisc(
             try {
                 const t = await archive.getZxy(z, x, y);
                 if (t?.data?.byteLength) {
-                    // A tile the archive HAS can still filter down to NOTHING. A 0-byte
-                    // tile must never ship — the phone persists it and Mapbox throws
-                    // "Unimplemented type: 4" parsing it on every render pass — so treat
-                    // it as void/ocean and let it count as `empty`.
+                    // A 0-byte tile must never ship: the phone persists it and Mapbox
+                    // throws "Unimplemented type: 4" on every render pass.
                     const data = filterMvtToLayers(t.data, keep);
                     if (data.byteLength > 0)
                         results[i] = { k: `${z}/${x}/${y}`, data };
                 }
             } catch {
-                // A read FAILED (cold directory race, transient R2 error) — distinct
-                // from a void tile, which returns no data without throwing. Counted so
-                // the caller can retry against a warm directory.
+                // Distinct from a void tile: counted so the caller retries on a warm directory.
                 failed++;
             }
         }
@@ -124,23 +102,17 @@ async function readDisc(
     return { tiles, empty, failed };
 }
 
-/** Serialise packed tiles into the wire format the phone unpacks:
+/** Wire format the phone unpacks:
  *    [uint32 LE manifestByteLen][manifest JSON utf8][tile bytes, concatenated]
- *  manifest = { total, empty, tiles: [{ k:"…", n: byteLen }, ...], box }
- *
- *  `box` is the box the blob's geometry was drawn into — [w,s,e,n] degrees.
- *  It MUST travel with the pack: MVT coordinates are relative to a box, and the
- *  renderer has to use the SAME one or the data lands somewhere else (measured
- *  89 km off at Timbuktu when the client assumed the tile's box instead). */
+ *  `box` must travel with the pack: MVT coordinates are relative to it, and a
+ *  renderer assuming the tile's own box lands the data 89 km off. */
 function serializePack(
     packed: PackedTile[],
     totalDisc: number,
     empty: number,
     box?: { w: number; s: number; e: number; n: number },
 ): ArrayBuffer {
-    // INVARIANT: a manifest entry with n:0 is the "Unimplemented type: 4"
-    // landmine (see readDisc). ONE filtered list drives BOTH the manifest and
-    // the body, so they can never desync.
+    // One filtered list drives both manifest and body so an n:0 entry cannot appear.
     const kept = packed.filter((t) => t.data.byteLength > 0);
     const tiles: Array<{ k: string; n: number }> = [];
     let bodyBytes = 0;
@@ -163,9 +135,7 @@ function serializePack(
 }
 
 /** Build one pin's pack: read the source tiles overlapping its radius, cut one
- *  blob per grid cell, serialise. `archive` is a PMTiles reader wired to R2 by
- *  the caller (index.ts). `diag`, if given, is filled for the X-Diag header;
- *  R2 read counts are added by the caller. */
+ *  blob per grid cell, serialise. `diag` is filled for the X-Diag header. */
 export async function buildPack(
     archive: PMTiles,
     lng: number,
@@ -173,22 +143,14 @@ export async function buildPack(
     corridor = false,
     diag?: Record<string, number>,
 ): Promise<ArrayBuffer> {
-    // The pin's own GPS box is the ONLY geometry here: it says what to read, and
-    // the same box rides in the manifest to say where the picture goes.
     const box = radiusBox(lng, lat);
     const union = tilesForBox(box, BLOB_DETAIL_LEVEL);
 
     let read = await readDisc(archive, union, corridor);
-    // Cold-cache guard: the FIRST build of an area can hit a PMTiles directory
-    // race where many parallel reads throw. The directory is warm now, so one
-    // retry builds on the true tile set.
+    // The first build of an area can hit a PMTiles directory race; one retry on the warm directory.
     if (read.failed > 0) read = await readDisc(archive, union, corridor);
 
-    // Whole tiles, deliberately: the downloaded region is a SUPERSET of the
-    // displayed one (exactly how Mapbox offline regions work). Centring is the
-    // camera's job; clipping geometry to the radius cuts boundary roads into
-    // arcs and was deleted. Each cell is framed to ITS OWN box — framing a cell
-    // to the pin's box re-anchors the geometry and draws it in the wrong place.
+    // Each cell is framed to its OWN box; framing to the pin's box draws it in the wrong place.
     const cells = cellsFor(lng, lat);
     const out: PackedTile[] = [];
     let features = 0;
@@ -203,33 +165,21 @@ export async function buildPack(
         );
         features += blob.features;
         if (blob.bytes.byteLength > 0) {
-            // ⛔ KEYED BY THE PIN, NEVER THE CELL. A cell key (`8/49/93`) is shared
-            // by neighbouring pins, so one pin's roads answered another pin's lookup
-            // 50 km away. The pin's address — like the satellite image's key — is
-            // never shared. The cell survives only as the tile's drawing frame.
+            // Keyed by the pin, never the cell: a cell key is shared by neighbouring
+            // pins, so one pin's roads would answer another's lookup 50 km away.
             out.push({
                 k: pinTileKey(lng, lat, c),
                 data: blob.bytes.buffer as ArrayBuffer,
             });
         } else {
-            emptyCells++; // a zero-byte blob must not ship — see readDisc
+            emptyCells++;
         }
     }
 
-    // ── THE SHALLOW TIER ─────────────────────────────────────────────────────
-    // One z6 tile per pin so its roads survive camera z6–z7, where the z8 blobs
-    // are silent (MapLibre overzooms up, never down).
-    // direction2.4 — BUILT, NOT COPIED. The direction2.3 tier read the archive's
-    // own z6 verbatim, but the archive's z6 is generalized to major roads only —
-    // sparser than the base map beneath it, so the tier showed nothing new. The
-    // z6 tile is now cut from the SAME z13 reads the z8 blobs above were cut
-    // from (the second readDisc is DELETED — zero extra R2 reads), framed to the
-    // z6 cell by buildBlobTile, with roads thinned per SHALLOW_LAYER_RULES
-    // (highways + major roads; small roads ship only inside the z8 disc).
-    // ⛔ SEPARATE NAMESPACE (`shallow/…`, pin-prefixed — see shallowTileKey): a
-    // z6 in the main `pin/…` namespace is the pv46 incident — the main lookup's
-    // containment would serve it mis-framed to z8 requests. The phone routes
-    // `shallow/` keys to their own IDB store; the main path never sees z6.
+    // Shallow tier: one z6 tile per pin, cut from the same z13 reads with roads
+    // thinned, so roads survive camera z6–z7 where z8 blobs are silent (MapLibre
+    // overzooms up, never down). Its own `shallow/` namespace: a z6 under `pin/`
+    // would be served mis-framed to z8 requests by the main lookup's containment.
     const shallowCells = shallowCellsFor(lng, lat);
     let shallowEmpty = 0;
     let shallowFeatures = 0;
@@ -257,7 +207,7 @@ export async function buildPack(
                 data: blob.bytes.buffer as ArrayBuffer,
             });
         } else {
-            shallowEmpty++; // a zero-byte blob must not ship — see readDisc
+            shallowEmpty++;
         }
     }
 

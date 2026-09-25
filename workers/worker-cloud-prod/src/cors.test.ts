@@ -1,4 +1,4 @@
-// ⚠️ a header not listed in Access-Control-Expose-Headers is invisible cross-origin — res.headers.get() silently returns null, no error.
+// An unexposed header reads as null cross-origin, silently.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";

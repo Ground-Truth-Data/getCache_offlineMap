@@ -1,26 +1,17 @@
-// /hospitals — pure logic only; index.ts wires the route.
-//
-// Source: hospitalsWorld.v*.bin BUNDLED WITH THE WORKER (a wrangler Data
-// module — see `rules` in wrangler.toml), baked by workers/bakeHospitals.mjs
-// from OSM amenity=hospital — the same OpenStreetMap data the planet archive
-// is built from. The R2 bucket holds roads ONLY; hospitals deliberately don't
-// live there. Nor are they read out of planet.pmtiles at request time:
-// hospitals only fully materialize in its z15 tiles (a 200 km disc there is
-// ~200k reads), and the pois layer drops the emergency tag.
+// Hospitals are read from the bundled hospitalsWorld.v*.bin (baked by
+// bakeHospitals.mjs), not planet.pmtiles: they only materialise in its z15
+// tiles (~200k reads per disc) and the pois layer drops the emergency tag.
 
 export const HOSPITAL_RADIUS_KM = 200;
-/** The widest disc a phone may ask for — the map's own wall, so a bigger ask is a bug, not a bigger answer. */
+/** The map's own wall; a bigger ask is a bug, not a bigger answer. */
 export const HOSPITAL_MAX_KM = 500;
 
-/** Pack format — same header dialect as /pack (packBuilder.ts serializePack):
- *  [uint32 LE indexLen][index JSON][cell JSON blobs, concatenated].
- *  Cell offsets are relative to the first byte AFTER the index. A cell blob is
- *  a JSON array of [lng, lat, name, emergency?, phone?] — emergency a string
- *  ("yes"/"ambulance_station"/…) or null when unknown, phone a string; trailing
- *  null/absent fields are trimmed, so old-shape [lng, lat, name] stays valid. */
+/** Pack format: [uint32 LE indexLen][index JSON][cell JSON blobs]. Cell offsets
+ *  are relative to the first byte after the index; a cell is an array of
+ *  [lng, lat, name, emergency?, phone?] with trailing nulls trimmed. */
 export interface HospitalsIndex {
   v: number;
-  /** Grid cell size in degrees (5 → 72×36 world grid, keys "cy_cx"). */
+  /** Degrees per grid cell; keys "cy_cx". */
   cellDeg: number;
   count: number;
   generated: string;
@@ -32,10 +23,7 @@ export type HospitalEntry =
   | [number, number, string, string | null]
   | [number, number, string, string | null, string];
 
-/** Parse the bundled pack once (call at first request, cache the result —
- *  module scope survives across requests within an isolate). Throws on a
- *  malformed pack rather than answering empty: "no hospitals near you" must
- *  never be a packaging bug's lie. */
+/** Throws on a malformed pack rather than answering empty. */
 export function parseHospitalsPack(pack: ArrayBuffer): {
   index: HospitalsIndex;
   dataOrigin: number;
@@ -50,7 +38,6 @@ export function parseHospitalsPack(pack: ArrayBuffer): {
   return { index, dataOrigin: 4 + indexLen };
 }
 
-/** One cell's entries out of the bundled pack. */
 export function readCellEntries(
   pack: ArrayBuffer,
   dataOrigin: number,
@@ -61,8 +48,7 @@ export function readCellEntries(
   ) as HospitalEntry[];
 }
 
-/** Grid keys ("cy_cx") whose cells can intersect the disc. Wraps the
- *  antimeridian; near the poles the lng span caps at the full circle. */
+/** Grid keys whose cells can intersect the disc; wraps the antimeridian. */
 export function cellKeysForDisc(
   lng: number,
   lat: number,
@@ -72,8 +58,7 @@ export function cellKeysForDisc(
   const latDeg = radiusKm / 111.32;
   const s = Math.max(-90, lat - latDeg);
   const n = Math.min(90, lat + latDeg);
-  // The disc's widest parallel decides the lng span — using the centre's
-  // latitude under-covers on the poleward side.
+  // The disc's widest parallel decides the lng span; the centre's latitude under-covers poleward.
   const cosMin = Math.min(
     Math.cos((s * Math.PI) / 180),
     Math.cos((n * Math.PI) / 180),
@@ -117,11 +102,8 @@ interface HospitalFeature {
   properties: { name: string; emergency?: string; phone?: string };
 }
 
-/** The response body: every hospital in `cellArrays` within the radius, as a
- *  FeatureCollection. `emergency` rides through raw (yes/…) ONLY when the
- *  source states it — null/absent means "unknown" and is omitted, so the UI
- *  may badge on it but the layer must never filter to ER-only. `phone` rides
- *  through when present. */
+/** Every hospital within the radius. `emergency` is omitted when unknown, so the
+ *  UI may badge on it but must never filter to ER-only. */
 export function hospitalsCollection(
   cellArrays: HospitalEntry[][],
   lng: number,

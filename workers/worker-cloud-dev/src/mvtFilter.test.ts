@@ -10,8 +10,6 @@ import {
 } from "./mvtFilter";
 import { PACK_LAYERS, PACK_LAYER_NAMES } from "./packLayers";
 
-// Wire types: 0=varint, 2=length-delimited.
-
 function tag(field: number, wire: number): number {
   return (field << 3) | wire;
 }
@@ -26,25 +24,19 @@ function strField(field: number, s: string): number[] {
   return lenDelim(field, [...new TextEncoder().encode(s)]);
 }
 
-/** A Value sub-message holding one string (string_value = sub-field 1). */
 function stringValue(s: string): number[] {
   return strField(1, s);
 }
 
-/** A Feature: id (field 1) + packed tags (field 2) + type (field 3) + geometry (field 4 stub). */
 function feature(id: number, tags: number[], geomStub: number[] = [9, 0, 0]): number[] {
   const out: number[] = [];
-  // id (field 1, varint)
   writeVarint(out, tag(1, 0));
   writeVarint(out, id);
-  // tags (field 2, packed varints)
   const packed: number[] = [];
   for (const t of tags) writeVarint(packed, t);
   out.push(...lenDelim(2, packed));
-  // type (field 3, varint) = 1 (point)
   writeVarint(out, tag(3, 0));
   writeVarint(out, 1);
-  // geometry (field 4, packed varints) — stub
   const geom: number[] = [];
   for (const g of geomStub) writeVarint(geom, g);
   out.push(...lenDelim(4, geom));
@@ -53,11 +45,10 @@ function feature(id: number, tags: number[], geomStub: number[] = [9, 0, 0]): nu
 
 interface TestFeature {
   id: number;
-  kind?: string; // sets a "kind" tag if present
+  kind?: string;
   extraKeys?: Record<string, string>;
 }
 
-/** Build one Layer sub-message. keys[] = ["kind", ...extra]; values[] = distinct kind strings. */
 function layer(name: string, features: TestFeature[]): number[] {
   const keys: string[] = [];
   const values: string[] = [];
@@ -90,27 +81,23 @@ function layer(name: string, features: TestFeature[]): number[] {
   });
 
   const out: number[] = [];
-  out.push(...strField(1, name)); // name = field 1
-  // version = field 15, varint (Mapbox expects 1 or 2; not read by filter)
+  out.push(...strField(1, name));
   writeVarint(out, tag(15, 0));
   writeVarint(out, 2);
-  for (const fb of featBytes) out.push(...lenDelim(2, fb)); // features = field 2
-  for (const k of keys) out.push(...strField(3, k)); // keys = field 3
-  for (const v of values) out.push(...lenDelim(4, stringValue(v))); // values = field 4
-  // extent = field 5, varint
+  for (const fb of featBytes) out.push(...lenDelim(2, fb));
+  for (const k of keys) out.push(...strField(3, k));
+  for (const v of values) out.push(...lenDelim(4, stringValue(v)));
   writeVarint(out, tag(5, 0));
   writeVarint(out, 4096);
   return out;
 }
 
-/** Build a whole Tile from named layers. */
 function tile(layers: Array<{ name: string; features: TestFeature[] }>): ArrayBuffer {
   const out: number[] = [];
-  for (const l of layers) out.push(...lenDelim(3, layer(l.name, l.features))); // layers = field 3
+  for (const l of layers) out.push(...lenDelim(3, layer(l.name, l.features)));
   return new Uint8Array(out).buffer;
 }
 
-/** Count features (field 2) in a Layer sub-message. */
 function countFeatures(layerBytes: Uint8Array): number {
   let p = 0;
   let n = 0;
@@ -135,8 +122,6 @@ function countFeatures(layerBytes: Uint8Array): number {
   return n;
 }
 
-/** Return the kind strings of every surviving feature in a layer (in order). */
-/** The `id` (field 1) of every Feature in a Layer, in order. */
 function featureIds(layerBytes: Uint8Array): number[] {
   const ids: number[] = [];
   let p = 0;
@@ -168,7 +153,6 @@ function featureIds(layerBytes: Uint8Array): number[] {
 }
 
 function featureKinds(layerBytes: Uint8Array): string[] {
-  // find "kind" key index + value strings, then read each feature's kind
   const keys: string[] = [];
   const values: string[] = [];
   let p = 0;
@@ -184,7 +168,6 @@ function featureKinds(layerBytes: Uint8Array): string[] {
       p += len;
       if (field === 3) keys.push(new TextDecoder().decode(sub));
       else if (field === 4) {
-        // Value: string sub-field 1
         let vp = 0;
         let s = "";
         while (vp < sub.length) {
@@ -210,7 +193,6 @@ function featureKinds(layerBytes: Uint8Array): string[] {
   }
   const kindKey = keys.indexOf("kind");
 
-  // second pass over features
   const out: string[] = [];
   p = 0;
   while (p < layerBytes.length) {
@@ -223,7 +205,6 @@ function featureKinds(layerBytes: Uint8Array): string[] {
       [len, p] = readVarint(layerBytes, p);
       const f = layerBytes.subarray(p, p + len);
       p += len;
-      // walk feature tags
       let fp = 0;
       let kind = "";
       while (fp < f.length) {
@@ -259,7 +240,6 @@ function featureKinds(layerBytes: Uint8Array): string[] {
   return out;
 }
 
-/** Pull the first layer with the given name out of a Tile as raw bytes. */
 function getLayer(data: ArrayBuffer, name: string): Uint8Array | null {
   const buf = new Uint8Array(data);
   let p = 0;
@@ -303,9 +283,6 @@ describe("KIND_ALLOWLIST is the contract, not a Worker constant", () => {
   });
 
   it("places match on kind_detail — every v4 places feature is kind:locality", () => {
-    // MEASURED 28 Aug 2026 across the 324 z13 tiles of one disc: 214 `places`
-    // features, ALL `kind:"locality"`, city/town/village/hamlet in `kind_detail`.
-    // Matching `kind` against "city" kept NONE of them and shipped a husk.
     const l = new Uint8Array(
       layer("places", [
         { id: 1, kind: "locality", extraKeys: { kind_detail: "city" } },
@@ -317,7 +294,6 @@ describe("KIND_ALLOWLIST is the contract, not a Worker constant", () => {
     const rule = KIND_ALLOWLIST.places as { key: string; kinds: ReadonlySet<string> };
     const bytes = filterLayerFeaturesByKind(l, rule.kinds, rule.key);
     expect(featureIds(bytes)).toEqual([1, 2]);
-    // and the OLD way — matching `kind` — keeps nothing, which is the bug
     const wrong = filterLayerFeaturesByKind(l, rule.kinds, "kind");
     expect(featureIds(wrong)).toEqual([]);
   });
@@ -345,10 +321,10 @@ describe("KIND_ALLOWLIST is the contract, not a Worker constant", () => {
     ]);
     const r = filterMvtToLayers(data, new Set(PACK_LAYER_NAMES));
     expect(getLayer(r, "earth")).toBeNull();
-    expect(featureIds(getLayer(r, "roads")!)).toEqual([1]); // nothing dropped by kind
-    expect(featureIds(getLayer(r, "water")!)).toEqual([2, 4]); // stream dropped
-    expect(featureIds(getLayer(r, "places")!)).toEqual([5]); // bare locality dropped
-    expect(featureIds(getLayer(r, "pois")!)).toEqual([7]); // cafe dropped
+    expect(featureIds(getLayer(r, "roads")!)).toEqual([1]);
+    expect(featureIds(getLayer(r, "water")!)).toEqual([2, 4]);
+    expect(featureIds(getLayer(r, "places")!)).toEqual([5]);
+    expect(featureIds(getLayer(r, "pois")!)).toEqual([7]);
   });
 });
 
@@ -387,7 +363,7 @@ describe("filterLayerFeaturesByKind", () => {
       ]),
     );
     const bytes = filterLayerFeaturesByKind(l, ALLOW.pois);
-    expect(bytes).toEqual(l); // byte-identical, nothing nuked
+    expect(bytes).toEqual(l);
     expect(countFeatures(bytes)).toBe(2);
   });
 
@@ -399,9 +375,7 @@ describe("filterLayerFeaturesByKind", () => {
       ]),
     );
     const bytes = filterLayerFeaturesByKind(l, ALLOW.pois);
-    // the hospital feature must survive intact (1 feature, kind hospital)
     expect(featureKinds(bytes)).toEqual(["hospital"]);
-    // and re-running keep is idempotent
     const again = filterLayerFeaturesByKind(bytes, ALLOW.pois);
     expect(again).toEqual(bytes);
   });
@@ -421,39 +395,36 @@ describe("filterMvtToLayers", () => {
       },
       { name: "earth", features: [{ id: 5, kind: "land" }] },
     ]);
-    const keep = new Set(["roads", "water", "pois"]); // earth absent
+    const keep = new Set(["roads", "water", "pois"]);
     const r = filterMvtToLayers(data, keep, ALLOW);
 
-    expect(getLayer(r, "earth")).toBeNull(); // earth gone
-    expect(getLayer(r, "water")).not.toBeNull(); // water kept
-    expect(featureKinds(getLayer(r, "water")!)).toEqual(["lake"]); // water untouched
-    expect(featureKinds(getLayer(r, "pois")!)).toEqual(["hospital"]); // cafe dropped
+    expect(getLayer(r, "earth")).toBeNull();
+    expect(getLayer(r, "water")).not.toBeNull();
+    expect(featureKinds(getLayer(r, "water")!)).toEqual(["lake"]);
+    expect(featureKinds(getLayer(r, "pois")!)).toEqual(["hospital"]);
   });
 });
 
-// A tile can filter down to 0 bytes (every layer stripped) — shipping that as a PackedTile made Mapbox throw "Unimplemented type: 4"; these tests pin the guard.
+// A 0-byte PackedTile makes Mapbox throw "Unimplemented type: 4".
 describe("filtered-to-nothing tiles (the 'Unimplemented type: 4' origin)", () => {
   it("a tile whose every layer is stripped filters to ZERO bytes", () => {
-    // `earth` is not in the keep-set → nothing survives.
     const data = tile([
       { name: "earth", features: [{ id: 1, kind: "earth" }] },
       { name: "landcover", features: [{ id: 2, kind: "forest" }] },
     ]);
-    expect(data.byteLength).toBeGreaterThan(0); // the input IS a real tile
+    expect(data.byteLength).toBeGreaterThan(0);
     const r = filterMvtToLayers(data, new Set(["roads", "water"]));
-    expect(r.byteLength).toBe(0); // …and the output is a landmine
+    expect(r.byteLength).toBe(0);
   });
 
   it("THE GUARD: only non-empty tiles may enter a pack", () => {
-    // The rule readDisc + serializePack now enforce, stated as pure data.
     const filtered = [
       { k: "15/1/1", data: new ArrayBuffer(120) },
-      { k: "15/1/2", data: new ArrayBuffer(0) }, // filtered to nothing
+      { k: "15/1/2", data: new ArrayBuffer(0) },
       { k: "15/1/3", data: new ArrayBuffer(80) },
     ];
     const kept = filtered.filter((t) => t.data.byteLength > 0);
     expect(kept.map((t) => t.k)).toEqual(["15/1/1", "15/1/3"]);
-    // …and the manifest/body stay in lockstep because ONE list drives both.
     const bodyBytes = kept.reduce((n, t) => n + t.data.byteLength, 0);
     expect(bodyBytes).toBe(200);
   });
