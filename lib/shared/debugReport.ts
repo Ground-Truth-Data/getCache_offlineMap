@@ -1,9 +1,8 @@
 /**
  * One JSON snapshot of the offline map. Geometry (corners, reach, offset) is
  * mandatory: every offline bug so far was correct bytes in the wrong box.
- * Each area is built from ITS OWN CoverageRecord — never a viewport query,
- * which would report a neighbour's roads as this pin's. No app imports: pins
- * arrive as a parameter (debugReport.portability.test.ts).
+ * Each area is built from ITS OWN CoverageRecord, never a viewport query. No
+ * app imports: pins arrive as a parameter (debugReport.portability.test.ts).
  */
 import {
 	BLOB_TILE_Z,
@@ -273,8 +272,7 @@ export async function collectDebugReport(
 	};
 }
 
-/** ONE blob + the live session — what the export button calls; the full
- *  `areas` inventory runs to thousands of lines. */
+/** ONE blob + the live session — what the export button calls; the full `areas` inventory runs to thousands of lines. */
 export interface FocusedBlobReport {
 	schema: typeof DEBUG_REPORT_SCHEMA;
 	/** DERIVED from the sections below, never measured separately, so headline and detail agree. */
@@ -317,8 +315,7 @@ export interface FocusedBlobReport {
 	};
 }
 
-// Pack rows are derived from contract/packLayers.ts, the table the Worker
-// filters by, so they cannot disagree with what ships.
+// Pack rows are derived from contract/packLayers.ts, the table the Worker filters by, so they cannot disagree with what ships
 const PACK_WHERE = `inside the z${BLOB_TILE_Z} blob tile(s), keyed pin/<lng>,<lat>/${BLOB_TILE_Z}/x/y in gc-offlineTiles`;
 const EXPECTS_FIXED: Record<string, string> = {
 	sat: "one satellite photo per pin, ~2 km around it, in IndexedDB gc-offlineSatellite (photoBytes)",
@@ -427,7 +424,6 @@ export async function collectFocusedBlobReport(
 	live: LivePanelState = {},
 ): Promise<FocusedBlobReport> {
 	const records = await allCoverage();
-	// Same order as OfflineBlobPanel's `focused`: bytes landed, newest bakedAt.
 	const sorted = records
 		.filter((r) => r.hasPhoto || r.hasLines)
 		.sort(

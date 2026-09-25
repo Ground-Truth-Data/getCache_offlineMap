@@ -1,8 +1,4 @@
-/**
- * assetRegion.ts — THE REGION WINDOW for world-scale bundled assets.
- *
- * ⚠️ This is a WINDOW, not a download boundary — assets still ship whole and work with no signal; we just refuse to keep the parts of the planet the user is nowhere near. Move far enough and it rebuilds from the same bundled file (see `regionChanged`).
- */
+/** ⚠️ THE REGION WINDOW for world-scale bundled assets — not a download boundary: assets still ship whole and work with no signal, we just refuse to keep the parts of the planet the user is nowhere near. */
 
 // degree/km conversions come from offlineShared/geo, the ONE place that math lives — nothing here re-derives a pole guard or cos(lat) divisor.
 import { degBoxAround, kmBetween } from "./kmGeo";
@@ -30,7 +26,6 @@ export function regionAround(
 	return { w, s, e, n };
 }
 
-/** Is this point inside the window? */
 export function inRegion(box: RegionBox, lng: number, lat: number): boolean {
 	return lng >= box.w && lng <= box.e && lat >= box.s && lat <= box.n;
 }

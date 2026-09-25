@@ -1,10 +1,9 @@
 /**
  * Bytes this device pulled off the network, by kind, per day; survives reloads.
- * Bytes are PerformanceResourceTiming.transferSize: the COMPRESSED wire size,
- * never a body length (fires is gzipped ~13:1), and it covers images and
- * scripts no fetch-site counter could see. transferSize is 0 for a cache hit
- * or a cross-origin response without Timing-Allow-Origin, so a total is a FLOOR.
- * Blind spot: satBakeWorker.ts fetches on its own thread with its own timeline.
+ * Bytes are PerformanceResourceTiming.transferSize (compressed wire size, not
+ * body length); it's 0 for a cache hit or a cross-origin response without
+ * Timing-Allow-Origin, so a total is a FLOOR. Blind spot: satBakeWorker.ts
+ * fetches on its own thread with its own timeline.
  */
 
 import { SvelteMap } from "svelte/reactivity";

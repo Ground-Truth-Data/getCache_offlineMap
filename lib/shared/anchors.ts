@@ -1,8 +1,4 @@
-/**
- * Where a feature gets offline blobs. Point → one; line → a ribbon every
- * LINE_STEP_KM; polygon → ONE at the centroid (deters huge polys); overlay →
- * its four corners. Overlap dedups downstream, nothing bakes twice.
- */
+/** Where a feature gets offline blobs: point → one; line → a ribbon every LINE_STEP_KM; polygon → ONE at the centroid (deters huge polys); overlay → its four corners. */
 import { kmBetween } from "./kmGeo";
 import { GRID_RADIUS_KM } from "../contract/grid";
 
