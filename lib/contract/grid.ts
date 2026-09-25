@@ -4,17 +4,12 @@ import { km } from "./geo";
 
 export const GRID_RADIUS_KM = 30;
 
-/** The zoom the blob is ADDRESSED at, not its size: contents are always radiusBox.
- *  MapLibre never scales a tile down, so this is the main tier's visibility floor;
- *  never lower it, SHALLOW_Z is the fix. */
+/** Zoom the blob is ADDRESSED at, not its size (contents are always radiusBox); MapLibre never scales a tile down, so never lower it — SHALLOW_Z is the fix. */
 export const BLOB_TILE_Z = 8;
 
-/** One generalized z6 tile per pin for camera z6–z7. Its own IDB store and
- *  source, never a BLOB_ZOOMS entry: the main lookup climbs a stored tile up to
- *  the requested zoom and would answer z8 mis-framed. */
+/** One generalized z6 tile per pin for camera z6–z7, own IDB store — never a BLOB_ZOOMS entry, or the main lookup would answer z8 mis-framed. */
 export const SHALLOW_Z = 6;
 
-/** A slippy tile at {@link BLOB_TILE_Z}. */
 export interface Cell {
 	ix: number;
 	iy: number;
@@ -62,7 +57,6 @@ export function cellKey(c: Cell): string {
 	return `${c.z}_${c.ix}_${c.iy}`;
 }
 
-/** null for anything malformed. */
 export function parseCellKey(key: string): Cell | null {
 	const m = /^(\d+)_(-?\d+)_(-?\d+)$/.exec(key);
 	if (!m) return null;
@@ -92,7 +86,6 @@ export function isShallowTileKey(key: string): boolean {
 	return key.startsWith("shallow/");
 }
 
-/** The box to read for a pin: the radius around it, not a tile. */
 export function radiusBox(lng: number, lat: number): CellBox {
 	const dLat = GRID_RADIUS_KM / 110.574;
 	const dLng =
@@ -132,7 +125,6 @@ export function cellsFor(lng: number, lat: number): Cell[] {
 	return out;
 }
 
-/** Every z=SHALLOW_Z tile the radius touches, the pin's own first. */
 export function shallowCellsFor(lng: number, lat: number): Cell[] {
 	const box = radiusBox(lng, lat);
 	const n = 2 ** SHALLOW_Z;
@@ -163,7 +155,6 @@ export function shallowCellsFor(lng: number, lat: number): Cell[] {
 	return out;
 }
 
-/** Does ONE tile at `z` hold the whole radius at this latitude? */
 export function tileHoldsRadius(z: number, lat: number): boolean {
 	const n = 2 ** z;
 	const wDeg = 360 / n;

@@ -26,7 +26,6 @@ function framedKey(): string {
 /** Online and offline MUST share one home so the crow toggle lands in the same place. */
 export { MAP_HOME_CENTER } from "../shared/homeCentre";
 
-/** The seeded practice map; roaming then persists per sandbox. */
 export const SANDBOX_HOME_CENTER: [number, number] = [-76.32622, 45.25341];
 export const SANDBOX_HOME_ZOOM = 12.8;
 
@@ -46,7 +45,6 @@ export function isNullIsland(lng: number, lat: number): boolean {
 	return Math.abs(lng) < 0.5 && Math.abs(lat) < 0.5;
 }
 
-/** In the practice sandbox, falls back to the sandbox home instead of null. */
 export function loadCamera(): SavedCamera | null {
 	// The practice sandbox only: a named world is a blank phone, not the seeded map.
 	const fallback: SavedCamera | null = sandboxWorld() === "1"
@@ -74,13 +72,11 @@ export function loadCamera(): SavedCamera | null {
 			return {
 				center: [v.center[0], v.center[1]],
 				zoom: v.zoom,
-				// NORTH IS UP — see saveCamera.
 				bearing: 0,
 				pitch: 0,
 			};
 		}
 	} catch {
-		/* corrupt value — fall through to default */
 	}
 	return null;
 }

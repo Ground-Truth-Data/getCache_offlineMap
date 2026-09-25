@@ -1,9 +1,4 @@
-/**
- * What the pack ships: the one list of source-layers and kinds a blob tile
- * carries. The Worker filters BY this table and the phone's report reads FROM
- * it, so the two cannot disagree. Each rule names its attribute key because
- * Protomaps v4 files city/town/village/hamlet under `kind_detail`, not `kind`.
- */
+/** The Worker filters BY this table and the phone's report reads FROM it, so the two cannot disagree. */
 
 export interface PackLayerRule {
     /** Attribute the allowlist matches. Omitted = `kind`. */
@@ -34,13 +29,8 @@ export const PACK_LAYERS: Readonly<Record<string, PackLayerRule>> = {
 
 export const PACK_LAYER_NAMES: readonly string[] = Object.keys(PACK_LAYERS);
 
-/**
- * The shallow (z6) tier's keep-set: small roads live only inside a pin's disc,
- * because a z6 tile spans ~600 km and minor_road in it is a province of
- * driveways. The disc tile cannot be thinned this way: it is ONE z8 tile
- * overzoomed to every deeper level, so dropping minor_road there removes the
- * small roads at z11+ too; the phone's minzoom gate is the only lever for it.
- */
+/** Shallow (z6) keep-set: small roads live only inside a pin's disc — a z6 tile
+ *  spans ~600 km and minor_road in it is a province of driveways. */
 export const SHALLOW_LAYER_RULES: Readonly<Record<string, PackLayerRule>> = {
     ...PACK_LAYERS,
     roads: {
@@ -50,7 +40,6 @@ export const SHALLOW_LAYER_RULES: Readonly<Record<string, PackLayerRule>> = {
     },
 };
 
-/** One thing a style layer reads out of the pack. */
 export interface PackRead {
     readonly layer: string;
     /** Omitted = `kind`. */
@@ -69,7 +58,6 @@ export function packShips(read: PackRead): boolean {
     return read.kinds.every((k) => rule.kinds!.includes(k));
 }
 
-/** `roads (all)`, `pois kind∈{hospital,camp_site}` — for reports. */
 export function describePackLayer(layer: string): string {
     const rule = PACK_LAYERS[layer];
     if (!rule) return `${layer} (NOT shipped)`;
