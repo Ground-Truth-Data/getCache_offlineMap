@@ -1,9 +1,4 @@
-/**
- * Layer-level merge of MVT blobs that share one z/x/y frame. Not byte-concat:
- * the MVT parser indexes layers by name and keeps only the last duplicate.
- * Features copy verbatim (same frame) but tags are index pairs into the
- * tile's own tables, so they are re-indexed into the merged tables.
- */
+/** Layer-level merge of MVT blobs sharing one z/x/y frame — not byte-concat: the MVT parser indexes layers by name and keeps only the last duplicate. Tags are index pairs into the tile's own tables, so they are re-indexed into the merged tables. */
 
 function readVarint(buf: Uint8Array, pos: number): [number, number] {
 	let result = 0;

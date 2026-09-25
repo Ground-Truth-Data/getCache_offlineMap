@@ -1,4 +1,4 @@
-// ⛔ The bug is a storage format that cannot centre on anything, not a miscalculation — don't try to fix it with tile-path arithmetic; that's how three days went.
+// ⛔ The bug is a storage format that cannot centre on anything, not a miscalculation — don't try to fix it with tile-path arithmetic.
 // ⚠️ Do not add I/O here — this module takes numbers and returns numbers only; I/O makes geometry driftable again.
 import { km } from "../../contract/geo";
 
@@ -54,7 +54,6 @@ export function reachKm(b: Box, lng: number, lat: number): number {
 	);
 }
 
-/** Width and height in km, for reading a box at a glance. */
 export function sizeKm(b: Box): { widthKm: number; heightKm: number } {
 	const midLat = (b.s + b.n) / 2;
 	return {
@@ -63,7 +62,6 @@ export function sizeKm(b: Box): { widthKm: number; heightKm: number } {
 	};
 }
 
-/** Is this point inside the box? */
 export function contains(b: Box, lng: number, lat: number): boolean {
 	return lng >= b.w && lng <= b.e && lat >= b.s && lat <= b.n;
 }

@@ -78,8 +78,7 @@ export interface FireLayerOptions {
     readonly origins?: () => readonly (readonly [number, number])[];
 }
 
-// Decoded before any layer can ask for it: MapLibre warns in the same tick
-// as `styleimagemissing`. Lazy because `Image` is absent in SSR.
+// Decoded before any layer can ask for it: MapLibre warns in the same tick as `styleimagemissing`; lazy because `Image` is absent in SSR
 let flame: HTMLImageElement | null = null;
 let flameLoad: Promise<void> | null = null;
 function flameDecoded(): Promise<void> {
@@ -286,8 +285,7 @@ function intensityIconSrc(level: number): string {
     return INTENSITY_ICONS[lvl - 1];
 }
 
-// Red/green is a colourblind confusion pair, so the shape carries direction
-// too and the Status row spells it out. Never drop the Status row.
+// Red/green is a colourblind confusion pair, so the shape carries direction too — never drop the Status row
 const TREND_RED = "#e63329";
 const TREND_GREEN = "#3fb95a";
 
@@ -365,8 +363,7 @@ const firePopupOptions: maplibregl.PopupOptions = {
     },
 };
 
-// iOS WebView eats the first touch on a freshly-focused control as a focus
-// gesture, so `click` never fires; `pointerup` does.
+// iOS WebView eats the first touch on a freshly-focused control as a focus gesture, so `click` never fires; `pointerup` does
 function wireCloseButton(popup: maplibregl.Popup): void {
     const btn = popup
         .getElement()

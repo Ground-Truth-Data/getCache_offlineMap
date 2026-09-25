@@ -1,7 +1,4 @@
-/**
- * Serve downloaded tiles to MapLibre with no decode. A zoom band that is
- * stored but unserved renders a silent blank map, not an error.
- */
+/** Serve downloaded tiles to MapLibre with no decode. A zoom band that is stored but unserved renders a silent blank map, not an error. */
 
 import maplibregl from "maplibre-gl";
 
@@ -47,8 +44,7 @@ export function installRawWallProtocol(): void {
 		if (!m) throw notFound(params.url);
 
 		const [, tier, z, x, y] = m;
-		// Every owning pin, layer-merged into one tile: roads are keyed by pin,
-		// and byte-concat keeps only the last same-named layer.
+		// Every owning pin, layer-merged into one tile: roads are keyed by pin, and byte-concat keeps only the last same-named layer
 		const buf =
 			tier === "shallow"
 				? await idbGetShallowTileForAddress(Number(z), Number(x), Number(y))
@@ -61,8 +57,7 @@ export function installRawWallProtocol(): void {
 	});
 }
 
-// Tile-read tally that speaks only when the reading flips and the flip holds
-// for SETTLE_MS, or panning across a jagged disc edge alternates warnings.
+// Speaks only when the reading flips and holds for SETTLE_MS, or panning across a jagged disc edge alternates warnings
 let hits = 0;
 let misses = 0;
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -70,7 +65,6 @@ let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let lastBlind: boolean | null = false;
 let onBlind: (() => void) | undefined;
 
-/** Register the recovery to run when a blind reading is confirmed. */
 export function setRawWallBlindHandler(fn: () => void): void {
 	onBlind = fn;
 }
@@ -123,8 +117,7 @@ export function rawSourceSpec(): maplibregl.VectorSourceSpecification {
 	return {
 		type: "vector",
 		tiles: [RAW_TILE_URL],
-		// Source min/maxzoom describe the pyramid, not the camera; minzoom 0
-		// means z0 addresses get requested and 404.
+		// Source min/maxzoom describe the pyramid, not the camera; minzoom 0 means z0 addresses get requested and 404
 		minzoom: RAW_MIN_Z,
 		maxzoom: RAW_MAX_Z,
 	};
@@ -140,11 +133,7 @@ export function shallowSourceSpec(): maplibregl.VectorSourceSpecification {
 	};
 }
 
-/**
- * MapLibre caches a 404 from before the download landed. `setTiles` with the
- * same URL only invalidates the tile cache; re-adding the source would drop
- * the per-pin satellite layers. Both tiers go stale together.
- */
+/** MapLibre caches a 404 from before the download landed; `setTiles` with the same URL invalidates it without re-adding the source, which would drop the per-pin satellite layers. */
 export function refreshRawTiles(map: maplibregl.Map): void {
 	for (const [id, url] of [
 		[RAW_SOURCE, RAW_TILE_URL],

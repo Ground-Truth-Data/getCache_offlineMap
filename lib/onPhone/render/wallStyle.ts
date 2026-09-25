@@ -1,10 +1,4 @@
-/**
- * The wall map's layer stack, bottom-first, in paint order. Per-pin satellite
- * photos are mounted by the page before SAT_INSERT_BEFORE.
- *
- * One disc source spans every stored zoom, so no zoom number belongs in a
- * road layer: hand-written bands leave tiles unpainted between windows.
- */
+/** One disc source spans every stored zoom, so no zoom number belongs in a road layer: hand-written bands leave tiles unpainted between windows. */
 
 import type * as mapboxgl from "maplibre-gl";
 
@@ -48,8 +42,7 @@ const ROAD_COLOR: mapboxgl.ExpressionSpecification = [
     ROAD_LINE,
 ];
 
-/** Camera zoom from which minor roads draw. Below it RAM scales with the
- *  ground on screen: a carpet of discs at z9 cost 2.3 GB in the tile worker. */
+/** Camera zoom from which minor roads draw — below it a carpet of discs at z9 cost 2.3 GB in the tile worker. */
 const MINOR_ROAD_Z = 11;
 /** Camera zoom from which water draws; half-level fade so lakes ease in. */
 const WATER_Z = 10;
@@ -100,18 +93,10 @@ const ROADS_ONLY: mapboxgl.FilterSpecification = [
     true,
 ];
 
-/**
- * The whole wall-map stack, bottom-first, in paint order.
- *
- * No `earth` fill: Protomaps' earth clips to z12 tile rectangles, so on the
- * download frontier it reads as dark blocks. The bundled coastline is the
- * figure-ground; roads may cross water.
- */
+/** No `earth` fill: Protomaps' earth clips to z12 tile rectangles, so on the download frontier it reads as dark blocks. */
 export function wallLayers(): mapboxgl.LayerSpecification[] {
     return [
-        // Ghost grid: one white square per pin's tileset, visible only below the
-        // disc floor. MapLibre clamps outside its stops, so two stops give all
-        // three regimes.
+        // Ghost grid: one white square per pin's tileset, visible only below the disc floor; MapLibre clamps outside its stops, so two stops give all three regimes
         {
             id: "v4-blob-grid-fill",
             type: "fill",
@@ -129,8 +114,7 @@ export function wallLayers(): mapboxgl.LayerSpecification[] {
                 ],
             },
         } as mapboxgl.LayerSpecification,
-        // Two water layers: the source-layer mixes polygons (lake) and lines
-        // (river), and a line layer would outline every pond.
+        // Two water layers: the source-layer mixes polygons (lake) and lines (river), and a line layer would outline every pond
         {
             id: "v4-water-fill",
             type: "fill",
@@ -168,8 +152,7 @@ export function wallLayers(): mapboxgl.LayerSpecification[] {
             },
         } as mapboxgl.LayerSpecification,
 
-        // Shallow z6 tier keeps roads on screen below the disc floor, where the
-        // disc is silent by contract; maxzoom = BLOB_MIN_Z hands over exactly there.
+        // Shallow z6 tier keeps roads on screen below the disc floor; maxzoom = BLOB_MIN_Z hands over exactly there
         {
             id: "v4-roads-shallow",
             type: "line",
@@ -221,8 +204,7 @@ export function wallLayers(): mapboxgl.LayerSpecification[] {
                 "line-opacity": MINOR_ROAD_OPACITY,
             },
         } as mapboxgl.LayerSpecification,
-        // Rail: a thin spine plus a wide second line whose dash is shorter than
-        // its width, so each dash reads as a crosstie.
+        // Rail: a thin spine plus a wide second line whose dash is shorter than its width, so each dash reads as a crosstie
         {
             id: "v4-rail",
             type: "line",
