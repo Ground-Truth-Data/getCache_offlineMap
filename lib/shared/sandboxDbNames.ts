@@ -21,15 +21,13 @@ export function worldSuffix(world: string): string {
 	return world === "1" ? SANDBOX_SUFFIX : `${SANDBOX_SUFFIX}-${world}`;
 }
 
-/** Suffix for a localStorage key that must not cross worlds; "" in the real app.
- *  Read from the URL, not the storage flag, so a module-scope seed sees it. */
+/** Suffix for a localStorage key that must not cross worlds; "" in the real app. Read from the URL, not the storage flag, so a module-scope seed sees it. */
 export function worldStorageSuffix(): string {
 	const w = sandboxWorld();
 	return w ? worldSuffix(w) : "";
 }
 
-// The world is a property of the page load, so it is named at module scope,
-// never from a store's boot that a page might skip.
+// The world is a property of the page load, so it is named at module scope, never from a store's boot that a page might skip
 const bornSuffix = worldStorageSuffix();
 publishWorldSuffix(bornSuffix);
 

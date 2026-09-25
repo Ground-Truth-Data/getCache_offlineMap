@@ -2,7 +2,6 @@ export type Rect = { x: number; y: number; w: number; h: number };
 
 // Coordinates here are canvas-relative already — chrome elements share the fixed .mobile-map-fill box, so no conversion is needed.
 
-// Reads --top-bar-h; falls back to 64px (4rem) when there's no DOM.
 export function readTopBarH(): number {
     if (typeof document === "undefined") return 64;
     const raw = getComputedStyle(document.documentElement).getPropertyValue("--top-bar-h");
@@ -49,7 +48,6 @@ function measuredLeftChrome(canvasEl: Element | null): Rect[] {
     return out;
 }
 
-// Every keep-out region currently painted over the map canvas.
 export function mapKeepOutRects(
     canvasW: number,
     topBarH = readTopBarH(),
@@ -76,9 +74,7 @@ export function shiftClear(
 
     const left = hit.x - box.w; // box's right edge just left of the obstacle
     const right = hit.x + hit.w; // box's left edge just right of the obstacle
-    // NEAREST lane first. Trying left before right regardless of distance sends
-    // the box across the whole obstacle when a shorter hop was available — read
-    // on screen as the popover teleporting away from the thing it belongs to.
+    // NEAREST lane first, or a shorter hop gets skipped and the popover reads as teleporting across the obstacle
     const candidates =
         Math.abs(left - box.x) <= Math.abs(right - box.x)
             ? [left, right]

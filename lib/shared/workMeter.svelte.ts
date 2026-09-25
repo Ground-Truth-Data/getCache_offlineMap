@@ -27,14 +27,11 @@ export interface PayloadStat {
 	lastFeatures: number;
 }
 
-// SvelteMap, not `$state(new Map())`: Svelte 5 does not proxy Map, so the
-// key set would never re-run `workStats()`. Each slot is its own $state proxy
-// so counters stay fine-grained reactive.
+// SvelteMap, not `$state(new Map())`: Svelte 5 does not proxy Map, so the key set would never re-run `workStats()`
 const stats = new SvelteMap<string, WorkStat>();
 const payloads = new SvelteMap<string, PayloadStat>();
 
-/** idle grey · transit yellow · ok = bytes on disk, STILL yellow · drawn = seen in the viewport, green · err red.
- *  Only paintWatch.ts can turn a row green; a circuit writer never says "drawn", and a probe never lights anything. */
+/** idle grey · transit yellow · ok = bytes on disk, STILL yellow · drawn = seen in the viewport, green · err red. Only paintWatch.ts can turn a row green. */
 export type CircuitState = "idle" | "transit" | "ok" | "drawn" | "err";
 export interface CircuitStat {
 	key: string;
