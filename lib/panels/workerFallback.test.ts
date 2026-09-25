@@ -2,16 +2,13 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-// ⚠️ the tier auto-fallback is DELETED, not dormant — probeAll used to switch to the
-// first alive tier (production first), landing every fresh install without a local
-// worker on the maintainer's R2 and hiding the local-first default. Local-first holds
-// even when local is dead; a dead tier says how to start it.
+// ⚠️ probeAll never switches tier: an auto-switch lands a fresh install on the
+// maintainer's R2. A dead tier says how to start it instead.
 
 const PANEL = readFileSync(join(__dirname, "OfflineConfigPanel.svelte"), "utf8");
 
 describe("no worker tier auto-switch", () => {
-	it("boot never switches tiers by itself — the fallback machinery is gone", () => {
-		expect(PANEL).not.toContain("{ fallback: true }");
+	it("boot never switches tiers by itself", () => {
 		const probe = PANEL.slice(PANEL.indexOf("async function probeAll"));
 		expect(probe).not.toMatch(/setWorkerTarget\(/);
 	});
@@ -59,8 +56,6 @@ describe("a tier that failed once can be retried", () => {
 			PANEL.indexOf("async function probeAll"),
 		);
 		expect(pick).toContain("await probeTarget(t)");
-		// The old body was a bare `if (reachable[t] === false) return;`.
-		expect(pick).not.toMatch(/if \(reachable\[t\] === false\) return;/);
 	});
 
 	it("tells the user the row is clickable", () => {

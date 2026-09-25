@@ -27,7 +27,7 @@ export interface PortHotspot {
 	readonly c: "low" | "nominal" | "high";
 	/** Fire radiative power, MW. */
 	readonly frp: number;
-	/** Pixel footprint in km. Optional — an older cached record predates it. */
+	/** Pixel footprint in km; absent when the feed omits it. */
 	readonly px?: number;
 	/** Day / Night overpass. */
 	readonly dn?: "D" | "N";

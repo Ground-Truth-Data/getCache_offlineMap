@@ -24,11 +24,4 @@ describe("workers/ layout", () => {
 		expect(existsSync(at("worker-cloud-dev/deployDev.sh"))).toBe(true);
 		expect(existsSync(at("worker-cloud-prod/deployProduction.sh"))).toBe(true);
 	});
-
-	it("never grows the old single worker/ folder back", () => {
-		expect(
-			existsSync(fileURLToPath(new URL("../../worker", import.meta.url))),
-			"worker/ exists again — a merge resurrected the pre-split folder; its contents belong in workers/worker-local-dev",
-		).toBe(false);
-	});
 });

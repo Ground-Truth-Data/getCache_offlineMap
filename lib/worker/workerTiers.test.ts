@@ -30,7 +30,7 @@ describe("worker tiers", () => {
 		expect(m.DEFAULT_TARGET).toBe("worker-cloud-dev");
 	});
 
-	it("only a human click moves the target — the machine-fallback mode is gone", async () => {
+	it("only a human click moves the target", async () => {
 		const store = new Map<string, string>();
 		vi.stubGlobal("sessionStorage", {
 			getItem: (k: string) => store.get(k) ?? null,
