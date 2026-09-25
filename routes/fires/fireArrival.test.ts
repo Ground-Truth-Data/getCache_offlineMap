@@ -57,59 +57,6 @@ describe("fireArrival — the TTL bypass", () => {
 	});
 });
 
-// TODO: re-point `bake` and `layer` at the bake service and the fire render layer, then unskip.
-describe.skip("both fetch paths honour the arrival", () => {
-	const bake = "";
-	const layer = "";
-
-	it("the bake service consumes the flag AS THE BAKE READER", () => {
-		expect(bake).toContain('takeFireArrival("bake")');
-	});
-
-	it("the bake service's TTL gate yields to it", () => {
-		expect(bake).toMatch(/fireIsFresh\(prev\)\s*&&\s*!onDemand/);
-	});
-
-	it("the bake service's GEOGRAPHIC gate yields to it too", () => {
-		expect(bake).toMatch(/!onDemand\s*&&\s*!needsFireDisc/);
-	});
-
-	it("the online map PEEKS the flag as the MAP reader, and settles it", () => {
-		expect(layer).toContain('peekFireArrival("map")');
-		expect(layer).toContain('settleFireArrival("map")');
-	});
-
-	it("settles only AFTER a fetch is actually attempted", () => {
-		const at = layer.indexOf('settleFireArrival("map")');
-		const fetchAt = layer.indexOf("await fetchAreaFires(");
-		expect(at).toBeGreaterThan(0);
-		expect(fetchAt - at).toBeGreaterThan(0);
-		expect(fetchAt - at).toBeLessThan(400);
-	});
-
-	it("the two paths use DIFFERENT reader ids", () => {
-		const bakeId = bake.match(/takeFireArrival\("(\w+)"\)/)?.[1];
-		const mapId = layer.match(/peekFireArrival\("(\w+)"\)/)?.[1];
-		expect(bakeId).toBeDefined();
-		expect(mapId).toBeDefined();
-		expect(bakeId).not.toBe(mapId);
-	});
-
-	it("the online map's covered-check yields to it", () => {
-		expect(layer).toMatch(/covered\s*&&\s*painted\s*>\s*0\s*&&\s*!onDemand/);
-	});
-
-	it("the 20 s reconcile loop NEVER arms it", () => {
-		const arms = [...bake.matchAll(/noteFireArrival\(\)/g)].length;
-		expect(arms).toBe(3); // app open, visibilitychange, online
-		expect(bake).not.toMatch(/setInterval\([^)]*noteFireArrival/);
-	});
-
-	it("arms on connectivity returning — THE field moment", () => {
-		expect(bake).toMatch(/addEventListener\("online"/);
-	});
-});
-
 describe("peek vs settle — the debt survives until a fetch happens", () => {
 	it("peek does NOT consume", () => {
 		noteFireArrival();

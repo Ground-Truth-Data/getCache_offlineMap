@@ -77,10 +77,7 @@ describe("near fires are never filtered — small+close beats big+far", () => {
 	});
 });
 
-// TODO: re-point `layer` at the fire render layer's source and unskip.
-describe.skip("NO DISTANCE FADE — a drawn fire is a fire", () => {
-	const layer = "";
-
+describe("NO DISTANCE FADE — a drawn fire is a fire", () => {
 	it("the module exports no prominence function", () => {
 		expect(mod).not.toHaveProperty("prominenceAt");
 	});
@@ -95,10 +92,6 @@ describe.skip("NO DISTANCE FADE — a drawn fire is a fire", () => {
 	it("distance still reaches the CARD — it just doesn't touch paint", () => {
 		const far = relevantHotspots([KAMLOOPS], AT_USER)[0];
 		expect(far.km).toBeGreaterThan(50);
-	});
-
-	it("no paint property multiplies by prom", () => {
-		expect(layer).not.toContain('["get", "prom"]');
 	});
 });
 

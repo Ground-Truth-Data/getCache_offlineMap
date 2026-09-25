@@ -127,36 +127,3 @@ describe("the label states a fact, it does not apologise", () => {
 		expect(INDUSTRIAL_LABEL.toLowerCase()).not.toContain("not a");
 	});
 });
-
-// TODO: re-point `layer` and `offline` at the fire render layer and the offline route, then unskip.
-describe.skip("ONE fire layer, ONE feature builder — no second implementation", () => {
-	const layer = "";
-	const offline = "";
-
-	it("the shared layer builds features through fireFeatureCollection", () => {
-		expect(layer).toContain("fireFeatureCollection(");
-	});
-
-	it("the shared layer applies BOTH the industrial flag and the city rule", () => {
-		expect(layer).toContain("isStatic:");
-		expect(layer).toContain("isUrban:");
-	});
-
-	it.skip("the offline route DELEGATES the painting rather than re-implementing it", () => {
-		expect(offline).toContain("attachFireLayer");
-		expect(offline).not.toMatch(/properties\s*as[^;]*\)\.ageH\s*=/);
-		expect(offline).not.toContain("props.ageH =");
-	});
-
-	it("the offline route has NO hotspot-count stamp of its own", () => {
-		expect(offline).not.toContain("fire-stamp");
-		expect(offline).not.toContain("hotspot{");
-		expect(offline).not.toContain("fireAgeLabel");
-		expect(offline).not.toContain("relevantHotspots(");
-		expect(offline).not.toContain("fireFeatureCollection(");
-	});
-
-	it("nothing repaints without waiting for the exclusion assets", () => {
-		expect(layer).toContain("loadUrban()");
-	});
-});

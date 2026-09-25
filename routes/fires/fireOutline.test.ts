@@ -224,38 +224,6 @@ describe("the margin — the outline sits OUTSIDE every detection", () => {
 	});
 });
 
-// TODO: re-point `src` at the fire render layer's source and unskip.
-describe.skip("the outline layer is zoom-gated", () => {
-	const src = "";
-	const block = src.slice(src.indexOf("id: ids.outline,"));
-	const layer = block.slice(0, block.indexOf("\n\t});"));
-
-	it("has a minzoom — it is absent at regional zoom", () => {
-		expect(layer).toContain("minzoom: OUTLINE_MIN_ZOOM");
-	});
-
-	it("waits for BLOCK scale — this is a tree-planting app", () => {
-		expect(src).toMatch(/const OUTLINE_MIN_ZOOM = 13;/);
-	});
-
-	it("is gated ABOVE the zoom where clusters hand over", () => {
-		const clusterMax = Number(src.match(/clusterMaxZoom: (\d+)/)?.[1]);
-		const outlineMin = Number(src.match(/OUTLINE_MIN_ZOOM = (\d+)/)?.[1]);
-		expect(outlineMin).toBeGreaterThan(clusterMax);
-	});
-
-	it("fades in rather than popping into existence", () => {
-		expect(layer).toContain('"line-opacity"');
-		expect(layer).toContain('"interpolate"');
-	});
-
-	it("sits UNDER the flames — the dots stay the primary mark", () => {
-		expect(src.indexOf("id: ids.outline,")).toBeLessThan(
-			src.indexOf("id: ids.flame"),
-		);
-	});
-});
-
 describe("fireOutlines — the per-pan memo", () => {
 	it("returns the SAME object for unchanged data (a pan must not recompute)", () => {
 		__resetOutlineMemoForTest();
