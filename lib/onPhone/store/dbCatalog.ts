@@ -12,8 +12,6 @@ export const V4_TILES_DB = "gc-offlineTiles";
 export const LEGACY_VECTORS_DB_NAME = "rt-vectors";
 /** Keep in sync with satelliteImage.ts's DB name, or live photos classify as legacy. */
 export const SAT_DB = "gc-offlineSatellite";
-/** Recognised so a device still holding it is classified live (migration source). */
-export const SAT_DB_LEGACY_NAME = "rt-satellite";
 export const REGISTRY_DB = "rt-mapRegistry";
 export const FIRE_DB = "rt-fire-cache";
 
@@ -39,7 +37,6 @@ export function isLiveBase(b: string): boolean {
 	return (
 		b === V4_TILES_DB ||
 		b === SAT_DB ||
-		b === SAT_DB_LEGACY_NAME ||
 		b === REGISTRY_DB ||
 		b === FIRE_DB ||
 		b === LEGACY_VECTORS_DB_NAME
@@ -63,7 +60,7 @@ export function isLegacyDb(db: string): boolean {
 }
 
 /** Imagery a re-download restores, so sign-out keeps it. A store holding user data here leaks it to the next person at the browser. */
-const IMPERSONAL_BASES = [V4_TILES_DB, SAT_DB, SAT_DB_LEGACY_NAME];
+const IMPERSONAL_BASES = [V4_TILES_DB, SAT_DB];
 
 /** True when a database must not outlive the signed-in session, either world. */
 export function isPersonalDb(db: string): boolean {

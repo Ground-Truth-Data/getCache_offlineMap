@@ -7,14 +7,13 @@ import {
 	LEGACY_VECTORS_DB_NAME,
 	REGISTRY_DB,
 	SAT_DB,
-	SAT_DB_LEGACY_NAME,
 	V4_TILES_DB,
 } from "./dbCatalog";
 import { SANDBOX_SUFFIX } from "../../shared/sandboxDbNames";
 
 describe("isPersonalDb", () => {
 	it("keeps imagery a re-download would restore", () => {
-		for (const db of [V4_TILES_DB, SAT_DB, SAT_DB_LEGACY_NAME]) {
+		for (const db of [V4_TILES_DB, SAT_DB]) {
 			expect(isPersonalDb(db), db).toBe(false);
 		}
 	});

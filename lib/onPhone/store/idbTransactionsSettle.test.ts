@@ -47,6 +47,6 @@ describe("an awaited IndexedDB helper always settles", () => {
 		const checked = sources().filter((f) =>
 			readFileSync(join(here, f), "utf8").includes(".transaction("),
 		);
-		expect(checked).toContain("idbRename.ts");
+		expect(checked).toContain("keyedIdbStore.ts");
 	});
 });

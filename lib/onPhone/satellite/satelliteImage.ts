@@ -3,7 +3,6 @@ import {
 	noteSatelliteTiles,
 } from "../store/downloadGuard";
 import { kmBetween, kmToDegSpan } from "../../shared/kmGeo";
-import { migrateIdbDatabase } from "../store/idbRename";
 import { makeKeyedIdbStore } from "../store/keyedIdbStore";
 import {
 	isBestPhotoSource,
@@ -17,12 +16,6 @@ const SAT_FETCH_CONCURRENCY = 16;
 export const BAKE_RADIUS_KM = 2;
 const DB_NAME = "gc-offlineSatellite";
 const STORE = "images";
-if (typeof indexedDB !== "undefined") {
-	// Chained: two concurrent writers into one destination race.
-	void migrateIdbDatabase("retreever-v3-satimg", "rt-satellite", STORE).then(
-		() => migrateIdbDatabase("rt-satellite", DB_NAME, STORE),
-	);
-}
 
 export type Bounds = [number, number, number, number]; // [w,s,e,n]
 

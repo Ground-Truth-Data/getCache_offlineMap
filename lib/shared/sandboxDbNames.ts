@@ -108,20 +108,3 @@ export function resetOfflineDbHandles(): void {
 		}
 	}
 }
-
-/** Wipes the sandbox's offline cache without touching the real DBs. */
-export async function deleteSandboxOfflineDbs(): Promise<void> {
-	if (typeof indexedDB === "undefined") return;
-	const bases = ["rt-tiles-v3", "rt-satellite", "rt-vectors", "rt-mapRegistry"];
-	await Promise.all(
-		bases.map(
-			(b) =>
-				new Promise<void>((resolve) => {
-					const req = indexedDB.deleteDatabase(b + SANDBOX_SUFFIX);
-					req.onsuccess = () => resolve();
-					req.onerror = () => resolve();
-					req.onblocked = () => resolve();
-				}),
-		),
-	);
-}

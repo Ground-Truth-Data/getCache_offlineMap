@@ -1,7 +1,6 @@
 import { VectorTile } from "@mapbox/vector-tile";
 import Pbf from "pbf";
 import { guardPackDownload } from "../../../onPhone/store/downloadGuard";
-import { migrateIdbDatabase } from "../../../onPhone/store/idbRename";
 import {
     currentDbName,
     registerOfflineDbReset,
@@ -38,28 +37,21 @@ const STORE = "tiles";
 const STORE_SHALLOW = "shallowTiles";
 export const DB_VERSION = 2;
 
-// The sweep must run after the migration settles: the source is also a sweep match.
-const TILES_MIGRATION_SOURCE = "rt-tiles-v3";
-if (typeof indexedDB !== "undefined") {
-    void migrateIdbDatabase(TILES_MIGRATION_SOURCE, DB_NAME, STORE).then(() => {
-        if (typeof indexedDB.databases === "function") {
-            indexedDB
-                .databases()
-                .then((dbs) => {
-                    for (const d of dbs) {
-                        if (
-                            (d.name?.startsWith("retreever-v4-tiles") ||
-                                d.name?.startsWith("rt-tiles")) &&
-                            d.name !== DB_NAME
-                        ) {
-                            indexedDB.deleteDatabase(d.name);
-                        }
-                    }
-                })
-                // codestyle-allow-swallow: best-effort stale-DB sweep, retried next boot
-                .catch(() => {});
-        }
-    });
+if (typeof indexedDB !== "undefined" && typeof indexedDB.databases === "function") {
+    indexedDB
+        .databases()
+        .then((dbs) => {
+            for (const d of dbs) {
+                if (
+                    d.name?.startsWith("retreever-v4-tiles") ||
+                    d.name?.startsWith("rt-tiles")
+                ) {
+                    indexedDB.deleteDatabase(d.name);
+                }
+            }
+        })
+        // codestyle-allow-swallow: best-effort stale-DB sweep, retried next boot
+        .catch(() => {});
 }
 
 // Derived, never hand-written: edit BLOB_RADIUS_KM / BLOB_ZOOMS and bump PACK_FORMAT_VERSION.

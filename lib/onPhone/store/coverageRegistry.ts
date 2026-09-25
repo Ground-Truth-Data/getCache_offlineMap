@@ -1,11 +1,7 @@
-import { migrateIdbDatabase } from "./idbRename";
 import { makeKeyedIdbStore } from "./keyedIdbStore";
 
 const DB_NAME = "rt-mapRegistry";
 const STORE = "coverage";
-if (typeof indexedDB !== "undefined") {
-	void migrateIdbDatabase("retreever-v3-registry", DB_NAME, STORE);
-}
 
 /** LRU-evicted over this. */
 export const OFFLINE_BUDGET_BYTES = 1024 * 1024 * 1024;
