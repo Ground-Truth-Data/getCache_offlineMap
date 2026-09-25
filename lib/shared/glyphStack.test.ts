@@ -1,22 +1,8 @@
-/**
- * The offline map must be RECOGNISED as offline.
- *
- * glyphStacks.test.ts already guards the stacks themselves. It cannot catch
- * this one: every stack was correct, and the offline map still asked for
- * "DIN Pro Medium" and 404'd every glyph range, because `usesBundledGlyphs`
- * decided by asking whether the URL began with "/". The offline style writes
- * `origin + "/mobileAssets/..."`, so a same-origin absolute URL — still our
- * own bundled glyphs — was read as a hosted style.
- *
- * The stack is only ever as right as the map detection that picks it, so the
- * detector needs its own guard.
- */
+// The offline style writes `origin + "/mobileAssets/..."`: a same-origin
+// absolute URL is still our bundled glyphs, not a hosted style.
 
 import { describe, expect, it } from "vitest";
-// Across the declared dependency, deliberately: this guards the detector the
-// offline map relies on, and the ONE copy that ships is the online map's —
-// mapDraw and mobMapOverlay call it. Testing a local copy proved nothing about
-// the code that actually runs.
+// The ONE copy that ships is the online map's, so that is the one tested.
 import {
 	glyphStack,
 	usesBundledGlyphs,

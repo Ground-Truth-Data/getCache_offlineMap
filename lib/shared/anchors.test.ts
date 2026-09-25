@@ -1,13 +1,3 @@
-/**
- * anchors.ts is the CANONICAL per-geometry blob rule, read by both the
- * reconcile and the debug array, and it had no test. This pins the parts that
- * are decisions rather than mechanism.
- *
- * The line case is the one that drifted: the step was spaced to the 2 km
- * SATELLITE disc on the one geometry that never bakes a photo, so a real
- * 86 km seismic line took ~28 anchors where 5 cover the same ground.
- */
-
 import { describe, expect, it } from "vitest";
 import { anchorsOf, MAX_ANCHORS_PER_FEATURE, type Pt } from "./anchors";
 import { GRID_RADIUS_KM } from "../contract/grid";
@@ -22,7 +12,6 @@ const feat = (geometry: GeoJSON.Geometry | null) =>
 const line = (coordinates: Pt[]) =>
     feat({ type: "LineString", coordinates } as GeoJSON.Geometry);
 
-/** The real thing: 86.1 km down the Peace River corridor, 5 vertices. */
 const PEACE_RIVER: Pt[] = [
     [-117.24941538588911, 56.90863027895597],
     [-117.18725546792112, 56.730484636590546],
@@ -42,8 +31,7 @@ describe("a line is sampled along it, spaced to the ROAD disc", () => {
     it("keeps consecutive road discs overlapping — a ribbon, never a gap", () => {
         const got = anchorsOf(line(PEACE_RIVER));
         for (let i = 1; i < got.length; i++)
-            // 2x the radius is where discs merely TOUCH — a spacing bug passes
-            // that. The ribbon rule is 1.6x, so assert what the code claims.
+            // 2x the radius only TOUCHES; the ribbon rule is 1.6x.
             expect(kmBetween(got[i - 1], got[i])).toBeLessThanOrEqual(
                 GRID_RADIUS_KM * 1.6 + 0.001,
             );
@@ -65,8 +53,7 @@ describe("a line is sampled along it, spaced to the ROAD disc", () => {
     });
 
     it("samples each part of a MultiLineString at the same step", () => {
-        // Guards the flatMap wrapper: passed bare, flatMap hands the INDEX in as
-        // the step, and part 1 would be sampled every 1 km.
+        // Passed bare, flatMap hands the INDEX in as the step.
         const multi = feat({
             type: "MultiLineString",
             coordinates: [PEACE_RIVER, PEACE_RIVER],
@@ -130,8 +117,6 @@ describe("the ceiling — no import blows the budget", () => {
         const got = anchorsOf(line(pts));
         expect(got[0]).toEqual(pts[0]);
         expect(got[got.length - 1]).toEqual(pts[pts.length - 1]);
-        // evenly spread, not the first ten: every gap is within a hair of the
-        // mean, so no stretch of the line is left with nothing.
         const gaps = got.slice(1).map((p, i) => kmBetween(got[i], p));
         const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length;
         for (const g of gaps) expect(Math.abs(g - mean) / mean).toBeLessThan(0.1);

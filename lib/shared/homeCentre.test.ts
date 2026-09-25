@@ -1,15 +1,5 @@
-// The map home is ONE pair of numbers. `homeCentre.ts` says so in its first
-// line — "Never copy these numbers to a second file" — and until this test
-// nothing enforced it: `routes/offlinev10/+page.svelte` had its own fallback
-// centre 3,000 km away, so a cold open on the offline map landed in British
-// Columbia while a cold open on the online map landed in Ontario. The two maps
-// share one saved camera precisely so the crow toggle keeps its place; two
-// different homes made that promise false whenever there was nothing saved yet.
-//
-// A behavioural test cannot see this. Both files are internally consistent, and
-// the bug only shows on a device with no saved camera — so what has to be
-// checked is the SOURCE: does any file other than the one definition contain a
-// coordinate pair?
+// The map home is ONE pair of numbers, or the two maps cold-open in different
+// places. Only a device with no saved camera shows it, so the SOURCE is checked.
 
 import { readFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
@@ -61,9 +51,7 @@ describe("the map home is defined once", () => {
 	});
 
 	it("is what a cold open falls back to, in every map that has a fallback", async () => {
-		// A hardcoded lat/lng pair in a camera fallback is the bug this file
-		// exists for, wherever it appears. Caught by shape, not by value, so a
-		// DIFFERENT wrong pair is caught too.
+		// Caught by shape, not by value, so a DIFFERENT wrong pair is caught too.
 		const files = [
 			...(await sourceFiles("lib")),
 			...(await sourceFiles("routes")),
