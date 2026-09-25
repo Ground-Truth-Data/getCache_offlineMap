@@ -1,4 +1,4 @@
-// ⚠️ geometry in ./packBuilder.ts + lib/contract/grid.ts MUST stay in lockstep with the phone's probe (ReTreever's v4CloudflareTiles.ts `areaTilesPresent`) — both sides must agree on which tiles an area holds.
+// Keep ./packBuilder.ts + lib/contract/grid.ts in sync with the phone's probe (v4CloudflareTiles.ts `areaTilesPresent`).
 
 import { gunzipSync, gzipSync } from "fflate";
 import {
@@ -12,7 +12,7 @@ import {
   DEFAULT_RADIUS_KM,
   fetchFires,
   MAX_RADIUS_KM,
-} from "../../../lib/worker/firesWorker"; // beside fireFetch.ts, same repo
+} from "../../../lib/worker/firesWorker";
 import { buildPack } from "./packBuilder";
 import {
   cellKeysForDisc,
@@ -23,57 +23,37 @@ import {
   parseHospitalsPack,
   readCellEntries,
 } from "./hospitals";
-// The WHOLE world's hospitals ride inside the Worker bundle (3.4 MB gzipped,
-// well under the paid plan's 10 MB script limit) — the R2 bucket is roads only.
+// The whole world's hospitals ship in the bundle (3.4 MB gzipped); R2 holds roads only.
 import hospitalsPack from "./hospitalsWorld.v1.bin";
 
-/** Edge-cache buster for /hospitals — the bundled pack has no object key, so
- *  this const plays HOSPITALS_KEY's old role. Bump it with every re-bake
- *  (bakeHospitals.mjs prints the value to use). */
+/** Edge-cache key for /hospitals; bump on every re-bake (bakeHospitals.mjs prints it). */
 const HOSPITALS_BUILD = "v1-209173-20260907";
 
-/** Bump whenever the PACK CONTENTS change. Part of the edge cache key, so a
- *  new build can never be masked by a year-old immutable cache entry. */
+/** Edge-cache key; bump whenever the pack contents change or the immutable edge entry masks the deploy. */
 const PACK_BUILD = "v35-shallow-z6-built";
 
-/** Edge-cache buster for /satellite. Bump when the upstream tileset id changes,
- *  or a year of immutable entries would keep serving the old imagery. */
+/** Edge-cache key for /satellite; bump when the upstream tileset id changes. */
 const SATELLITE_BUILD = "satellite-v2";
 
-/** MapTiler serves to z22, but their own pyramid thins out long before that
- *  outside cities; past this the client should overzoom rather than spend
- *  sessions on tiles that carry no new detail. */
+/** MapTiler's pyramid thins out past this outside cities; the client overzooms instead. */
 const SATELLITE_MAX_Z = 20;
 
 const SATELLITE_PATH = /^\/satellite\/(\d{1,2})\/(\d{1,7})\/(\d{1,7})\.jpg$/;
 
-/** satellite-v2 is already a 512px tileset (tiles.json says scale 2), so the
- *  @2x suffix 404s here — the client must declare tileSize 512 instead. */
+/** satellite-v2 is already 512px, so @2x 404s — the client declares tileSize 512. */
 function satelliteUrl(key: string, z: number, x: number, y: number): string {
   return `https://api.maptiler.com/tiles/satellite-v2/${z}/${x}/${y}.jpg?key=${key}`;
 }
 
 interface Env {
-  /** R2 bucket binding (see wrangler.toml [[r2_buckets]]). */
   TILES: R2Bucket;
-  /** Object key of the .pmtiles archive the /{z}/{x}/{y}.pbf tile route reads. */
   PMTILES_KEY: string;
-  /** Object key of the .pmtiles archive the /pack downloader route reads. */
   PACK_PMTILES_KEY: string;
-  /** NASA FIRMS Area API key for /fires. A Worker SECRET (`wrangler secret put
-   *  FIRMS_MAP_KEY`), never a [vars] entry — it must never reach the app bundle. */
+  /** Worker SECRETs (`wrangler secret put`), never [vars] — they must not reach the app bundle. */
   FIRMS_MAP_KEY: string;
-  /** MapTiler Cloud key for /satellite. A Worker SECRET (`wrangler secret put
-   *  MAPTILER_KEY`) — the licence is per-account, so a key in the bundle is a
-   *  key anyone can spend. */
   MAPTILER_KEY: string;
 }
 
-/**
- * A pmtiles `Source` backed by a single R2 object. `getBytes(offset, length)` becomes one
- * R2 ranged read. The PMTiles client issues a handful of these per tile (header, directory,
- * tile data) — the directory/header reads are memoized by `ResolvedValueCache`.
- */
 interface ReadStats {
   reads: number;
   bytes: number;
@@ -103,31 +83,18 @@ class R2Source implements Source {
     }
     return {
       data,
-      // R2 object etag — lets the PMTiles client detect a swapped archive mid-flight.
       etag: object.etag,
     };
   }
 }
 
-/**
- * gzip decompress via fflate's SYNCHRONOUS gunzipSync. PMTiles calls this for both its
- * internal directories (must be decompressed to find a tile) and the tile bytes — so
- * getZxy() returns DECOMPRESSED protobuf, which we serve raw.
- *
- * Why fflate, not the native DecompressionStream: the /pack route gunzips ~1000 tiny
- * tiles per request, and spinning up a DecompressionStream + Response per tile has heavy
- * fixed per-call overhead that dominated the cold build (~7s). gunzipSync has no stream
- * setup — it's a plain function call — which collapses that to ~1s. (Measured.)
- */
+// fflate's sync calls, not DecompressionStream: /pack gunzips ~1000 tiles per
+// request and per-tile stream setup took the cold build from ~1 s to ~7 s.
 function gunzip(buf: ArrayBuffer): Promise<ArrayBuffer> {
   const out = gunzipSync(new Uint8Array(buf));
   return Promise.resolve(out.buffer as ArrayBuffer);
 }
 
-/** Gzip the /pack payload (fflate gzipSync, same no-stream-overhead reason as gunzip).
- *  The pack is decompressed MVT (very compressible, ~30% smaller gzipped); the client
- *  inflates this one explicit layer itself (NOT transport Content-Encoding — see the
- *  pack route). Big win on slow links (3G). */
 function gzipBuf(buf: ArrayBuffer): Promise<ArrayBuffer> {
   const out = gzipSync(new Uint8Array(buf));
   return Promise.resolve(out.buffer as ArrayBuffer);
@@ -140,63 +107,26 @@ const decompress = (buf: ArrayBuffer, compression: Compression): Promise<ArrayBu
   throw new Error(`unsupported PMTiles compression: ${compression}`);
 };
 
-// Header + directory cache. Workers cannot share promises across requests, so use
-// ResolvedValueCache (values, not promises) — the variant pmtiles documents for Workers.
-//
-// BOUNDED to 64 entries (was unbounded/default 100). On the 127 GB WORLD planet a
-// single leaf directory is huge, and locating a wide z13 ring's tiles touches many
-// of them; an unbounded cache piled enough decompressed planet directories to blow
-// the Worker's 128 MB limit (Cloudflare error 1102 "exceeded memory limit" — NOT a
-// CPU timeout). 64 holds a whole ring's distinct leaf dirs without thrashing while
-// staying well under the ceiling. (Regional archives never hit this — their whole
-// directory tree is tiny.)
+// ResolvedValueCache (values, not promises): Workers cannot share promises across
+// requests. 64 entries: the planet's leaf directories are huge and more than this
+// blows the 128 MB Worker limit (error 1102).
 const cache = new ResolvedValueCache(64, undefined, decompress);
-
 
 const TILE_PATH = /^\/(\d{1,2})\/(\d{1,7})\/(\d{1,7})\.pbf$/;
 
-// The bundled pack's parsed index, lazy per isolate — parsing 11 MB once per
-// isolate is cheap; per request it is not.
+// Parsed once per isolate; parsing 11 MB per request is not cheap.
 let hospitalsParsed: ReturnType<typeof parseHospitalsPack> | null = null;
 function hospitalsIndex(): ReturnType<typeof parseHospitalsPack> {
   hospitalsParsed ??= parseHospitalsPack(hospitalsPack);
   return hospitalsParsed;
 }
 
-/**
- * Edge-cache key version for /fires. See the long note at the cache-key build
- * site: bump this whenever a change alters what a CORRECT response looks like,
- * so a deploy invalidates the edge immediately instead of waiting out a TTL.
- *   v1 → the DAY_RANGE=1 era, which cached empty collections after UTC midnight.
- *   v2 → DAY_RANGE=2 (fires.ts). Real answers.
- *   v3 → adds the optional `px` (pixel footprint km) and `dn` (day/night)
- *        properties that feed the tap popup. Deploying alone was NOT enough:
- *        the edge kept serving perfectly-valid v2 answers that simply lacked
- *        the new keys, so the popup silently fell back to its defaults. Same
- *        lesson as v1→v2 — a TTL expires STALE data, never INCOMPLETE data.
- */
+/** Edge-cache key for /fires; bump whenever a change alters what a correct response
+ *  looks like — a TTL expires stale data, never incomplete data. */
 const FIRE_ANSWER_VERSION = 3;
 
-/**
- * ⛔ EXPOSE-HEADERS IS NOT OPTIONAL — A CROSS-ORIGIN RESPONSE HIDES CUSTOM
- * HEADERS FROM JS BY DEFAULT.
- *
- * `Access-Control-Allow-Origin: *` lets the request through; it does NOT let
- * the page READ any header beyond the CORS-safelisted handful. Every `X-*`
- * header below is invisible to `res.headers.get()` unless it is named here —
- * and `get()` returns `null`, not an error, so the failure is completely
- * silent.
- *
- * MEASURED: the app's console printed `{"build":"","cache":"","diag":""}` for an
- * entire debugging session. Those are the Worker's build id and its own timing —
- * so while chasing "why is this so slow", the server-side timing that would have
- * answered it was being discarded by the browser, and every conclusion in that
- * session was drawn without it.
- *
- * ⚠️ Add EVERY new `X-*` response header to this list at the same time you add
- * it. A diagnostic the client cannot read is worse than no diagnostic: it looks
- * like it is working.
- */
+// Every X-* response header must be listed here: cross-origin JS reads an
+// unexposed header as null, silently. Add new ones at the same time.
 const EXPOSED_HEADERS = [
   "X-Pack-Build",
   "X-Pack-Cache",
@@ -218,7 +148,6 @@ const CORS_HEADERS: Record<string, string> = {
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    // CORS preflight.
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
@@ -232,9 +161,7 @@ export default {
 
     const url = new URL(request.url);
 
-    // ── /bench?n=&conc= — TEMP diagnostic: raw parallel R2 range reads ──
-    // Isolates whether the R2 binding parallelizes reads (vs pmtiles serializing
-    // them). Fires `n` reads of 32 KB at staggered offsets, `conc` at a time.
+    // /bench: TEMP diagnostic — does the R2 binding parallelise reads?
     if (url.pathname === "/bench") {
       const n = Math.min(2000, Number(url.searchParams.get("n")) || 500);
       const conc = Math.min(256, Number(url.searchParams.get("conc")) || 100);
@@ -261,12 +188,7 @@ export default {
       );
     }
 
-    // ── /fires?lng=&lat=&km= — NASA FIRMS hotspots for one area ──
-    //
-    // Shaped like /pack (validate → edge-cache probe → build → waitUntil put),
-    // with ONE deliberate difference: freshness. Tiles are immutable and cache
-    // for a year; hotspots are worthless at ~6 h, so this caches 1 hour and
-    // stamps X-Fetched-At so the phone can render "as of Xh ago".
+    // /fires: NASA FIRMS hotspots, cached 1 h (worthless at ~6 h) with X-Fetched-At.
     if (url.pathname === "/fires") {
       const lng = Number(url.searchParams.get("lng"));
       const lat = Number(url.searchParams.get("lat"));
@@ -282,33 +204,17 @@ export default {
         });
       }
       if (!env.FIRMS_MAP_KEY) {
-        // Fail LOUD. A missing key must never degrade to an empty collection —
-        // "no fires near you" is the most dangerous lie this layer can tell.
+        // Never an empty 200: "no fires near you" is the most dangerous lie this layer can tell.
         return new Response(
           "FIRMS_MAP_KEY is not configured on this Worker (wrangler secret put FIRMS_MAP_KEY)",
           { status: 500, headers: CORS_HEADERS },
         );
       }
 
-      // Snap the centre to ~0.25° (~25 km) so nearby users share ONE cached
-      // slice instead of each minting a unique object. The disc is 500 km, so a
-      // 25 km centre shift is immaterial to what's on screen — but it turns a
-      // crew of planters on the same block into a single upstream fetch.
+      // Snap the centre to 0.25° so a crew on one block shares one cached slice; immaterial against a 500 km disc.
       const snap = (n: number): string => (Math.round(n * 4) / 4).toFixed(2);
       const cacheUrl = new URL(url.toString());
-      // FIRE_ANSWER_VERSION is in the KEY, not just the TTL.
-      //
-      // A TTL only expires data that has gone STALE; it does nothing about data
-      // that was WRONG when it was written. When DAY_RANGE=1 was returning empty
-      // collections (see fires.ts), deploying the fix changed NOTHING for hours:
-      // every already-queried cell kept serving its cached empty answer, and the
-      // zone's Browser Cache TTL rule (14400s) outranks the 3600 below, so the
-      // real window was four hours per cell — over a burning province.
-      //
-      // Bumping this token mints a brand-new key space, so a deploy invalidates
-      // instantly and deterministically instead of waiting out a TTL we don't
-      // fully control. BUMP IT whenever a change alters what a correct response
-      // looks like.
+      // The version is in the KEY so a deploy invalidates the edge instantly; a TTL alone leaves wrong answers cached for hours.
       cacheUrl.search = `?v=${FIRE_ANSWER_VERSION}&lng=${snap(lng)}&lat=${snap(lat)}&km=${km}`;
       const fireCacheKey = new Request(cacheUrl.toString(), { method: "GET" });
       const fireEdge = caches.default;
@@ -329,8 +235,7 @@ export default {
         fetchedAt = r.fetchedAt;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        // 502 (not an empty 200) so the phone KEEPS its last good cache and
-        // shows honest stale data rather than a falsely-empty map.
+        // 502, not an empty 200, so the phone keeps its last good cache.
         return new Response(`Fire fetch failed: ${message}`, {
           status: 502,
           headers: CORS_HEADERS,
@@ -340,13 +245,10 @@ export default {
       const fireHeaders = {
         ...CORS_HEADERS,
         "Content-Type": "application/json",
-        // 1 hour — FIRMS itself refreshes hourly, so anything longer serves
-        // data NASA has already superseded.
+        // FIRMS refreshes hourly.
         "Cache-Control": "public, max-age=3600",
         "X-Fetched-At": String(fetchedAt),
         "X-Sources-Ok": String(sourcesOk),
-        // Custom X-* headers are invisible to JS unless explicitly exposed
-        // (the CORS expose-headers trap — reads as null otherwise).
         "Access-Control-Expose-Headers": "X-Fetched-At, X-Sources-Ok",
       };
       ctx.waitUntil(
@@ -358,11 +260,10 @@ export default {
       });
     }
 
-    // ── /pack?lng=&lat= — the v4 downloader's one-shot endpoint ──
+    // /pack: the downloader's one-shot endpoint.
     if (url.pathname === "/pack") {
       const lng = Number(url.searchParams.get("lng"));
       const lat = Number(url.searchParams.get("lat"));
-      // LINE corridor: thin roads-only ribbon (its own cache entry — see cacheKey).
       const corridor = url.searchParams.get("ring") === "corridor";
       if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
         return new Response("Bad Request — expected ?lng=<num>&lat=<num>", {
@@ -371,23 +272,15 @@ export default {
         });
       }
 
-      // Edge cache: a given (lng,lat) → a deterministic disc of an immutable
-      // archive, so a built pack is reusable across users (the shared demo centre
-      // is built once globally, then served instantly). `*.workers.dev` doesn't
-      // auto-cache, so we drive the Cache API explicitly. Keyed on the bare URL
-      // (origin+path+query) so the cache hit doesn't depend on request headers.
-      // THE BUILD IS PART OF THE KEY. Entries are stored `immutable` for a
-      // year, so without this a code change that alters the pack is invisible:
-      // the edge replays the old bytes and the deploy looks like a no-op.
-      // MEASURED — the 30 km clip shipped and /pack returned a byte-identical
-      // 3,471,606-byte response built by the previous code.
+      // `*.workers.dev` does not auto-cache, so the Cache API is driven by hand.
+      // The build is in the key: entries are immutable for a year, so without it a
+      // deploy that changes the pack replays the old bytes and looks like a no-op.
       const keyUrl = new URL(url.toString());
       keyUrl.searchParams.set("build", PACK_BUILD);
       const cacheKey = new Request(keyUrl.toString(), { method: "GET" });
       const edge = caches.default;
       const cached = await edge.match(cacheKey);
       if (cached) {
-        // Say so out loud. A silent hit is why a deploy can appear to do nothing.
         const hitHeaders = new Headers(cached.headers);
         hitHeaders.set("X-Pack-Cache", "HIT");
         return new Response(request.method === "HEAD" ? null : cached.body, {
@@ -399,8 +292,6 @@ export default {
       const diag: Record<string, number> = {};
       let pack: ArrayBuffer;
       try {
-        // Wire the PMTiles reader to R2 here (index.ts owns R2); packBuilder is
-        // pure logic over the reader. Time the header fetch + the build for X-Diag.
         const stats: ReadStats = { reads: 0, bytes: 0 };
         const tH = Date.now();
         const archive = new PMTiles(
@@ -408,7 +299,7 @@ export default {
           cache,
           decompress,
         );
-        await archive.getHeader(); // surface a bad archive as a thrown error → 502
+        await archive.getHeader();
         const tLoop = Date.now();
         pack = await buildPack(archive, lng, lat, corridor, diag);
         diag.r2Reads = stats.reads;
@@ -416,12 +307,8 @@ export default {
         diag.headerMs = tLoop - tH;
         diag.loopMs = Date.now() - tLoop;
 
-        
-        // Gzip the body ourselves, but DON'T set Content-Encoding: gzip. If we
-        // advertise the encoding, Cloudflare's edge auto-compresses ON TOP (the
-        // body arrives double-gzipped and the browser only inflates one layer →
-        // garbage). Sending opaque gzipped octet-stream sidesteps all edge/Cache
-        // auto-encoding; the client inflates this one explicit layer itself.
+        // Gzipped by hand with NO Content-Encoding: advertising it makes Cloudflare's
+        // edge compress on top and the browser inflates only one layer.
         pack = await gzipBuf(pack);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -433,21 +320,12 @@ export default {
       const headers = {
         ...CORS_HEADERS,
         "Content-Type": "application/octet-stream",
-        // The body is gzip-compressed at the application layer (client gunzips it).
-        // NOT a transport Content-Encoding — see the comment above.
         "X-Pack-Encoding": "gzip",
-        // Which BUILD produced these bytes. Without this a cached pack is
-        // indistinguishable from a freshly-built one, and a deploy that changes
-        // the pack looks like it did nothing (measured: a 30 km clip shipped and
-        // the response was byte-identical, because the edge replayed a year-old
-        // immutable entry).
         "X-Pack-Build": PACK_BUILD,
         "X-Diag": `disc=${diag.discTiles} reads=${diag.r2Reads} rbytes=${diag.r2Bytes} headerMs=${diag.headerMs} loopMs=${diag.loopMs} outerKm=${diag.outerKm} cells=${diag.cells} features=${diag.blobFeatures} bytes=${diag.blobBytes} shallowTiles=${diag.shallowTiles} shallowBytes=${diag.shallowBytes}`,
         "X-Pack-Cache": "MISS",
         "Cache-Control": "public, max-age=31536000, immutable",
       };
-      // Store the gzipped body under the cache key. waitUntil so the put doesn't
-      // delay the response. Opaque bytes → a cache HIT replays them unchanged.
       ctx.waitUntil(edge.put(cacheKey, new Response(pack, { status: 200, headers })));
       return new Response(request.method === "HEAD" ? null : pack, {
         status: 200,
@@ -455,12 +333,7 @@ export default {
       });
     }
 
-    // ── /hospitals?lng=&lat=&km= — WORLD hospitals within km (default 200, max 500) of a point ──
-    //
-    // Serves the online map's safety layer from the pack BUNDLED with this
-    // Worker (see hospitals.ts for why neither R2 nor planet.pmtiles is the
-    // read source). The radius filter runs HERE so the phone downloads a
-    // region's worth of hospitals, never the world's.
+    // /hospitals: world hospitals within km (default 200, max 500), filtered here so the phone never downloads the world's.
     if (url.pathname === "/hospitals") {
       const lng = Number(url.searchParams.get("lng"));
       const lat = Number(url.searchParams.get("lat"));
@@ -478,12 +351,9 @@ export default {
           headers: CORS_HEADERS,
         });
       }
-      // Snap like /fires: nearby users share one cached answer; 0.25° is
-      // immaterial against a 200 km radius.
       const snap = (v: number): string => (Math.round(v * 4) / 4).toFixed(2);
       const cacheUrl = new URL(url.toString());
-      // HOSPITALS_BUILD is in the KEY — a re-bake mints a fresh key space
-      // instead of waiting out a TTL (the /fires lesson). km is its own token: a 400 km ask must never be served a 200 km answer.
+      // km is its own token: a 400 km ask must never be served a 200 km answer.
       cacheUrl.search = `?build=${HOSPITALS_BUILD}&lng=${snap(lng)}&lat=${snap(lat)}&km=${km}`;
       const hospCacheKey = new Request(cacheUrl.toString(), { method: "GET" });
       const hospEdge = caches.default;
@@ -500,14 +370,13 @@ export default {
         const cellArrays: HospitalEntry[][] = [];
         for (const k of cellKeysForDisc(lng, lat, index.cellDeg, km)) {
           const span = index.cells[k];
-          if (!span) continue; // open ocean / empty cell
+          if (!span) continue;
           cellArrays.push(readCellEntries(hospitalsPack, dataOrigin, span));
         }
         hospBody = JSON.stringify(hospitalsCollection(cellArrays, lng, lat, km));
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        // 502, never an empty 200 — "no hospitals near you" is the most
-        // dangerous lie this layer can tell (same law as /fires).
+        // 502, never an empty 200 — same law as /fires.
         return new Response(`Hospitals fetch failed: ${message}`, {
           status: 502,
           headers: CORS_HEADERS,
@@ -517,10 +386,8 @@ export default {
       const hospHeaders = {
         ...CORS_HEADERS,
         "Content-Type": "application/json",
-        // The radius actually served — the phone stores THIS, never the number it asked for, so an older Worker ignoring ?km can't leave a 200 km disc labelled 400.
+        // The radius actually served; the phone stores this, never the number it asked for.
         "X-Radius-Km": String(km),
-        // Immutable is safe: the answer only changes with a re-bake, and a
-        // re-bake bumps HOSPITALS_BUILD, which is in the cache key above.
         "Cache-Control": "public, max-age=31536000, immutable",
       };
       ctx.waitUntil(
@@ -535,7 +402,7 @@ export default {
       });
     }
 
-    // ── /satellite/{z}/{x}/{y}.jpg — MapTiler imagery, key held here ──
+    // /satellite/{z}/{x}/{y}.jpg: MapTiler imagery, key held here.
     const sat = SATELLITE_PATH.exec(url.pathname);
     if (sat !== null) {
       const z = Number(sat[1]);
@@ -555,8 +422,7 @@ export default {
         });
       }
       if (!env.MAPTILER_KEY) {
-        // Fail LOUD, like /fires. A blank basemap that looks merely "not loaded
-        // yet" would send a crew out on tiles that are never coming.
+        // Fail loud, like /fires: a blank basemap looks merely "not loaded yet".
         return new Response(
           "MAPTILER_KEY is not configured on this Worker (wrangler secret put MAPTILER_KEY)",
           { status: 500, headers: CORS_HEADERS },
@@ -622,7 +488,7 @@ export default {
       decompress,
     );
 
-    // Validate the archive is readable up front → a clear 502 instead of a confusing 204.
+    // A bad archive must be a 502, not a 204.
     try {
       await archive.getHeader();
     } catch (err) {
@@ -644,16 +510,14 @@ export default {
       });
     }
 
-    // Missing tile -> 204 so the map renderer overzooms cleanly instead of logging 404 noise.
+    // 204, not 404, so the renderer overzooms without console noise.
     if (tile === undefined) {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
 
-    // tile.data is already decompressed (raw MVT protobuf) — serve as-is, no Content-Encoding.
     const responseHeaders: Record<string, string> = {
       ...CORS_HEADERS,
       "Content-Type": "application/x-protobuf",
-      // Planet snapshot is immutable for a given upload — cache hard at every layer.
       "X-Pack-Cache": "MISS",
         "Cache-Control": "public, max-age=31536000, immutable",
     };
