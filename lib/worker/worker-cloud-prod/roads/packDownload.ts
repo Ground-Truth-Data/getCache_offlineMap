@@ -641,12 +641,9 @@ export function parseTileAddress(
     key: string,
 ): { z: number; x: number; y: number } | null {
     const parts = key.split("/");
-    const tail =
-        parts.length === 5 && (parts[0] === "pin" || parts[0] === "shallow")
-            ? parts.slice(2)
-            : parts;
-    if (tail.length !== 3) return null;
-    const [z, x, y] = tail.map(Number);
+    if (parts.length !== 5 || (parts[0] !== "pin" && parts[0] !== "shallow"))
+        return null;
+    const [z, x, y] = parts.slice(2).map(Number);
     if (!Number.isFinite(z) || !Number.isFinite(x) || !Number.isFinite(y))
         return null;
     return { z, x, y };

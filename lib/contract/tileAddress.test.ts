@@ -9,10 +9,6 @@ describe("parseTileAddress — never emit NaN", () => {
 		expect(parseTileAddress(key)).toEqual({ z: 8, x: 49, y: 92 });
 	});
 
-	it("still reads a LEGACY bare key (a mid-migration device is not half-blind)", () => {
-		expect(parseTileAddress("8/49/92")).toEqual({ z: 8, x: 49, y: 92 });
-	});
-
 	it("⛔ the OLD parse produced NaN on a pin key — this one does not", () => {
 		const key = pinTileKey(-108.3021, 44.4966, { ix: 49, iy: 92, z: 8 });
 		const [oldZ] = key.split("/").map(Number);

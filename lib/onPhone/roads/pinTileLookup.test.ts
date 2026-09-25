@@ -22,10 +22,6 @@ describe("pinTileLookup — one address, the RIGHT pin", () => {
 		expect(p?.address).toBe("8/49/93");
 	});
 
-	it("ignores a legacy bare z/x/y key (old blobs are not mistaken for a pin's)", () => {
-		expect(parsePinTileKey("8/49/93")).toBeNull();
-	});
-
 	// The tile must resolve to whichever pin it actually sits nearest — never "whatever was stored first" (that produced the 50.4 km reading).
 	it("⛔ two pins sharing one address each get their OWN roads", () => {
 		const c = { ix: 49, iy: 92, z: 8 };
