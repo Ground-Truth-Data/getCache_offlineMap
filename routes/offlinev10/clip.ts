@@ -1,4 +1,5 @@
-/** Clip a raw MVT tile to rectangles, so nothing outside the gold border reaches the map. Rewrites each feature's geometry in the protobuf; everything else is copied byte for byte. */
+/** Clip a raw MVT tile to rectangles, so nothing outside the gold border
+ * reaches the map. Rewrites geometry in the protobuf; the rest is copied byte for byte. */
 
 /** Fractions of the tile, 0..1, y down. */
 export interface Rect {
@@ -337,7 +338,8 @@ function clipLayer(layer: Uint8Array, rects: Rect[]): number[] | null {
 	return features ? out : null;
 }
 
-/** The same rectangles cut so none overlaps: clipping runs once per rect, so shared ground would be emitted twice and a semi-transparent fill composites against itself. */
+/** Rectangles cut so none overlaps — clipping runs once per rect, so shared
+ * ground would be emitted twice and a semi-transparent fill self-composites. */
 export function disjoint(rects: Rect[]): Rect[] {
 	if (rects.length < 2) return rects;
 	const xs = [...new Set(rects.flatMap((r) => [r.x0, r.x1]))].sort((a, b) => a - b);

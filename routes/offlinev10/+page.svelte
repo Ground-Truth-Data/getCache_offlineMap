@@ -1,5 +1,6 @@
 <script lang="ts">
-/** The offline map: a blob is whole z10 tiles and the pyramids under them, so the gold border IS the data's edge at every zoom. Chrome and saved camera are the online map's. */
+/** The offline map: a blob is whole z10 tiles and the pyramids under them, so
+ * the gold border IS the data's edge at every zoom. */
 import { dev } from "$app/environment";
 import { goto, replaceState } from "$app/navigation";
 import { page } from "$app/state";
@@ -71,7 +72,7 @@ let legendOpen = $state(false);
 let armKind = $state<"line" | "polygon" | "pin" | null>(null);
 let dropPinAt = $state<[number, number] | null>(null);
 let measureEvent = $state<{ lng: number; lat: number; n: number } | null>(null);
-/** The host's doors; every one optional, since a host with no Get Cache app behind it supplies none. */
+/** The host's doors — every one optional, since a host with no Get Cache app behind it supplies none. */
 let {
 	mapPorts = soloMapPorts(),
 	places = soloHostPorts(),
@@ -81,7 +82,7 @@ let {
 }: {
 	mapPorts?: MapHostPorts;
 	places?: HostPorts;
-	/** The tool drawer lives in a PRIVATE repo this one may not import, so the host hands it in. */
+	/** The tool drawer lives in a PRIVATE repo, so the host hands it in. */
 	MapDrawControls?: Component<Record<string, unknown>, MapDrawControlsExports>;
 	/** The points the fire and hospital walls are measured from. */
 	fireOrigins?: (
@@ -299,7 +300,8 @@ function blobsForPinsInView(): void {
 			if (lng >= b.getWest() && lng <= b.getEast() && lat >= b.getSouth() && lat <= b.getNorth()) void queueBlob(lng, lat);
 }
 
-/** Follow me: queue the blob around the person when less than FOLLOW_MARGIN_KM of map is left. Never while a download is in flight, or bad signal stacks near-duplicates. */
+/** Follow me: queue the blob around the person when less than FOLLOW_MARGIN_KM
+ * of map is left. Never while a download is in flight, or bad signal stacks near-duplicates. */
 function onUserFix(lng: number, lat: number): void {
 	if (!moved(lastEval, [lng, lat])) return;
 	lastEval = [lng, lat];
