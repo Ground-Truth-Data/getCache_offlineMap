@@ -86,11 +86,11 @@ export interface FireCoverage {
 export interface HostPorts {
 	/** Every place to keep offline, right now. Called on each reconcile pass. */
 	places(): HostPlace[];
-	/** Has the host finished loading? ⚠️ Eviction depends on this — a cold-reload host that's still hydrating looks "empty" but is NOT "no places"; treating those the same nuked stored blobs (the "1 GB → 70 MB" collapse). A host with nothing to hydrate should return true. */
+	/** Has the host finished loading? ⚠️ Eviction depends on this — a cold-reload host that's still hydrating looks "empty" but is NOT "no places"; treating those the same nukes stored blobs. A host with nothing to hydrate should return true. */
 	ready(): boolean;
 	/** Register for "the list changed" — a PUSH, not a reactive read; must fire on every add/move/delete/import/restore, and once on register. ⚠️ Required, not a preference — an $effect reading host state across a module boundary silently failed to fire on a fresh pin drop. */
 	onPlacesChanged(fn: () => void): () => void;
-	/** WRITE A PLACE — the dropped pin becomes a place so places()/onPlacesChanged/bake all see it. ⛔ Without this port, dropped pins lived only in memory and nothing was ever requested for them (measured bug, 28 Aug 2026). Optional so a read-only host still type-checks — but omitting it means dropping a pin downloads nothing. */
+	/** WRITE A PLACE — the dropped pin becomes a place so places()/onPlacesChanged/bake all see it. ⛔ Without this port, a dropped pin lives only in memory and nothing is ever requested for it. Optional so a read-only host still type-checks — but omitting it means dropping a pin downloads nothing. */
 	addPlace?(lngLat: [number, number], name: string): void;
 	/** Optional fire layer. Omit → the engine bakes no fires and never calls out for them. */
 	fires?: FirePort;

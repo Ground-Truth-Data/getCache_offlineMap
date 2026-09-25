@@ -1,9 +1,4 @@
-/**
- * The map UI's door to its host. Structural types only, so the host never
- * imports this file to conform. Narrow: a member is here because lib/mapUi or
- * lib/mapState uses it. Optional groups (`q704?`, `scenes?`) exist only in
- * some hosts; a component that needs one renders nothing when it is absent.
- */
+/** The map UI's door to its host. Structural types only, so the host never imports this file to conform. Optional groups (`q704?`, `scenes?`) exist only in some hosts; a component that needs one renders nothing when it is absent. */
 import type { Component } from "svelte";
 import type { Feature } from "geojson";
 

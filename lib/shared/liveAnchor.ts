@@ -51,13 +51,9 @@ export function needsFireDisc(
 	return kmToNearest(pos, fireCentres) > FIRE_TRIGGER_KM;
 }
 
-/**
- * The few centres whose discs cover them all.
- * ⚠️ Blob centres are ~11 m apart and a fire disc is 500 km, so blob-scale
- * centres handed to a disc-scale pass MUST come through this first.
- *
- * Greedy: small and complete, not minimal, and not sorted.
- */
+/** The few centres whose discs cover them all. ⚠️ Blob centres are ~11 m apart
+ *  and a fire disc is 500 km, so blob-scale centres MUST come through this
+ *  first. Greedy: small and complete, not minimal, and not sorted. */
 export function fireDiscCentres(
 	centres: readonly (readonly [number, number])[],
 ): Array<readonly [number, number]> {
@@ -66,12 +62,9 @@ export function fireDiscCentres(
 	return chosen;
 }
 
-/**
- * Drops centres too far from the user to earn a fire disc — without it every
- * saved map pulls its own disc every TTL.
- * Empty `here` means the position is unknown: everything passes, or a GPS
- * outage would silently stop fires.
- */
+/** Drops centres too far from the user to earn a fire disc — without it every
+ *  saved map pulls its own disc every TTL. Empty `here` means the position is
+ *  unknown, so everything passes rather than silently stopping fires. */
 export function fireCentresWorthFetching(
 	centres: readonly (readonly [number, number])[],
 	here: readonly (readonly [number, number])[],
