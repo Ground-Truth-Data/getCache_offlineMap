@@ -1,10 +1,7 @@
 /**
- * THE PACK CONTRACT, ASSERTED — and held in lockstep with the phone's toggles.
- *
- * The Worker's allowlist is derived from PACK_LAYERS (worker/src/mvtFilter.test.ts
- * proves that side). This side proves every pack-fed toggle in wallLegend.ts
- * reads something the contract ships, so the debug report's `expects` row can
- * never say "covered" for a layer the Worker strips — or the reverse.
+ * Every pack-fed toggle in wallLegend.ts must read something the contract
+ * ships, or the debug report's `expects` row says "covered" for a layer the
+ * Worker strips. mvtFilter.test.ts proves the Worker side.
  */
 import { describe, expect, it } from "vitest";
 import { LAYER_TOGGLES } from "../onPhone/render/wallLegend";
@@ -36,8 +33,7 @@ describe("PACK_LAYERS", () => {
     });
 
     it("matches places on kind_detail — every v4 places feature is kind:locality", () => {
-        // MEASURED 28 Aug 2026: 214/214 places features in one disc were
-        // `kind:"locality"`; city/town/village/hamlet live in `kind_detail`.
+        // city/town/village/hamlet live in `kind_detail`.
         expect(PACK_LAYERS.places.key).toBe("kind_detail");
         expect(
             packShips({
@@ -73,9 +69,7 @@ describe("PACK_LAYERS", () => {
 
 describe("SHALLOW_LAYER_RULES", () => {
     it("speaks the ARCHIVE vocabulary — *_road kinds, never the fictional short forms", () => {
-        // Measured 2 Sep 2026: ["highway","major","medium","minor"] matched nothing
-        // real ("medium" does not exist in Protomaps; the archive says major_road),
-        // so the z6 tile shipped highways alone.
+        // "medium" does not exist in Protomaps; the archive says major_road.
         expect([...SHALLOW_LAYER_RULES.roads.kinds!]).toEqual([
             "highway",
             "major_road",
@@ -86,9 +80,7 @@ describe("SHALLOW_LAYER_RULES", () => {
     });
 
     it("small roads never ride in the shallow wall — they live only inside a disc", () => {
-        // 5 Sep 2026: a ~600 km z6 tile carrying minor_road put a province of
-        // driveways through the tile worker (1.4 GB). Context between blobs is
-        // highways, major roads, water — nothing finer.
+        // A ~600 km z6 tile carrying minor_road is a province of driveways.
         for (const clutter of [
             "minor_road",
             "path",

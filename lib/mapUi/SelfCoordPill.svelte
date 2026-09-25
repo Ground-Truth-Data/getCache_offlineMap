@@ -1,25 +1,19 @@
-<!-- SelfCoordPill — gold "you are here" GPS readout above the blue dot, with a share button (text/gps copy/.getcache/.kmz). -->
 <script lang="ts">
 import type { Map as MapboxMap } from "mapbox-gl";
-// Icon and SharePicker render as ports.ui.*; ShareFormat is the contract's MapShareRow (SharePicker's row shape).
 import type { MapHostPorts, MapShareRow as ShareFormat } from "../shared/mapHostPorts";
 
 type Props = {
-    /** The host's door — Icon + SharePicker come through here. */
     ports: MapHostPorts;
-    /** The map handle — used to project lng/lat → screen pixels. */
     map: MapboxMap | null;
-    /** The coordinate to show, or null to hide the pill entirely. */
     coord: { lng: number; lat: number } | null;
-    /** Share/copy rows for the pill's share button, built by the host — keeps the pill presentational (no file building, no clipboard here). */
+    /** Built by the host, keeping the pill presentational. */
     formats: ShareFormat[];
-    /** Dismiss — no ✕ on the chip; the map itself is the dismiss surface (tap anywhere). */
+    /** No ✕ on the chip; a map tap dismisses. */
     onClose?: () => void;
 };
 
 let { ports, map, coord, formats, onClose }: Props = $props();
 
-// Screen position of the coordinate, recomputed as the camera moves.
 let pos = $state<{ x: number; y: number } | null>(null);
 
 function computePos(): void {
@@ -27,12 +21,11 @@ function computePos(): void {
         pos = null;
         return;
     }
-    // NaN defence: a degenerate camera transform can make project() return non-finite pixels, silently vanishing the pill at translate(NaN,NaN).
+    // A degenerate camera can project to NaN; hide rather than translate(NaN,NaN).
     const p = map.project([coord.lng, coord.lat]);
     pos = Number.isFinite(p.x) && Number.isFinite(p.y) ? { x: p.x, y: p.y } : null;
 }
 
-// Re-projects on every camera move so the pill rides the dot; a map tap dismisses it (no ✕ on the chip).
 $effect(() => {
     if (!map || !coord) {
         pos = null;
@@ -49,14 +42,14 @@ $effect(() => {
     };
 });
 
-// 3 dp ≈ 110 m — plenty to read aloud, keeps the pill narrow. SHARE rows carry full precision (host-built), same split as the snake ruler.
+// 3 dp ≈ 110 m keeps the pill narrow; share rows carry full precision.
 const readout = $derived(
     coord ? `${coord.lat.toFixed(3)}°, ${coord.lng.toFixed(3)}°` : "",
 );
 </script>
 
 {#if coord && pos}
-    <!-- Uses the shared .rt-line-label.rt-line-label-total globals (styles/mobile.css) — deliberately not restyled here, so it never drifts from the ruler's chip. -->
+    <!-- Shared .rt-line-label globals, deliberately not restyled, so it never drifts from the ruler's chip. -->
     <div
         class="rt-line-label rt-line-label-total rt-selfcoord"
         style="--x:{pos.x}px; --y:{pos.y}px"
@@ -81,7 +74,7 @@ const readout = $derived(
 {/if}
 
 <style>
-/* POSITIONING ONLY — do not re-declare the shared visual properties here; edit mobile.css's .rt-line-label.rt-line-label-total instead. Base class sets pointer-events:none; re-enabled here for the button. */
+/* POSITIONING ONLY — visuals live in mobile.css. The base sets pointer-events:none; re-enabled for the button. */
 .rt-selfcoord {
     position: absolute;
     left: 0;
@@ -95,7 +88,7 @@ const readout = $derived(
     z-index: 5;
 }
 
-/* Deliberately taller than the pill (28px vs the 14px chip) so the share button isn't missed as a speck — negative block margins let it overflow without stretching the pill. */
+/* Taller than the 14px chip so the share button isn't missed as a speck. */
 .rt-selfcoord__btn {
     display: grid;
     place-items: center;

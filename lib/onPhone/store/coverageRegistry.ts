@@ -7,7 +7,7 @@ if (typeof indexedDB !== "undefined") {
 	void migrateIdbDatabase("retreever-v3-registry", DB_NAME, STORE);
 }
 
-/** Hard storage cap for baked offline areas (satellite + lines); LRU-evicted over this. */
+/** LRU-evicted over this. */
 export const OFFLINE_BUDGET_BYTES = 1024 * 1024 * 1024;
 
 /** Per-area byte estimate for areas not yet downloaded (~3.2 MB photo + line pack). */
@@ -23,24 +23,22 @@ export interface CoverageRecord {
 	photoBytes?: number;
 	lineBytes?: number;
 	lineCount?: number;
-	/** blobVersion: geometry signature this area was built under; mismatch (or undefined) means a STALE blob needing re-download. */
+	/** Geometry signature at build; a mismatch or undefined means STALE — re-download. */
 	blobVersion?: string;
-	/** bakedAt: epoch ms of the last successful download; distinct from lastTouched. Absent on records before 28 Aug 2026. */
+	/** Last successful download; distinct from lastTouched. */
 	bakedAt?: number;
 	lastTouched: number;
 }
 
-// ⚠️ COVERAGE_MIRROR_ENABLED is false — naive mirroring re-serialized the whole store every 20s and wedged app boot; re-enable only with a throttled, off-boot write path.
+// ⚠️ Naive mirroring re-serialized the whole store every 20s and wedged app boot; re-enable only with a throttled, off-boot write path.
 const COVERAGE_MIRROR_ENABLED = false;
 
-/** Optional cloud mirror injected by the host; null unless registered, and gated by COVERAGE_MIRROR_ENABLED regardless. */
 export interface CoverageMirror {
 	write(rec: CoverageRecord): Promise<void>;
 	remove(areaKey: string): Promise<void>;
 }
 let coverageMirror: CoverageMirror | null = null;
 
-/** Register the host's cloud mirror. Never required. */
 export function setCoverageMirror(m: CoverageMirror | null): void {
 	coverageMirror = m;
 }
@@ -66,9 +64,8 @@ const idb = makeKeyedIdbStore<CoverageRecord>({
 	storeName: STORE,
 });
 
-/** One-time backfill of existing registry records into the TinyBase mirror; idempotent, best-effort. Call once on boot. */
 export async function backfillCoverageMirror(): Promise<void> {
-	if (!COVERAGE_MIRROR_ENABLED) return; // DISABLED — see mirrorToTinyBase note above
+	if (!COVERAGE_MIRROR_ENABLED) return;
 	try {
 		const recs = await allCoverage();
 		for (const r of recs) await mirrorToTinyBase(r);
@@ -77,7 +74,6 @@ export async function backfillCoverageMirror(): Promise<void> {
 	}
 }
 
-/** Every coverage record (for the reconcile + the size readout). */
 export async function allCoverage(): Promise<CoverageRecord[]> {
 	return idb.getAll();
 }
@@ -123,10 +119,9 @@ export async function noteCoverage(
 	void mirrorToTinyBase(rec);
 }
 
-/** Remove a record (after its tiles are deleted). */
 export async function dropCoverage(areaKey: string): Promise<void> {
 	await idb.delete(areaKey);
 	void unmirrorFromTinyBase(areaKey);
 }
 
-// NOTE: eviction lives in offlineBakeService.bakeAll(), not here — don't re-add a registry-only implementation, it can't see orphan blobs.
+// Eviction lives in offlineBakeService.bakeAll(): a registry-only one can't see orphan blobs.

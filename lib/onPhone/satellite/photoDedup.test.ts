@@ -1,18 +1,10 @@
-/**
- * The one-time sweep for photos baked before the reuse rule.
- *
- * The rule that must never break: a photo is deleted ONLY when a surviving
- * photo covers the same ground. A sweep that leaves an area blank is worse
- * than the wasted bytes it reclaimed.
- */
+// A photo is deleted ONLY when a surviving photo covers the same ground.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const photos = new Map<string, number>(); // key -> bytes
 const coverage: { key: string; hasPhoto: boolean; photoBytes: number }[] = [];
 
-// `photoReusableFor` is the REAL one, not a stub: it is the rule the bake uses
-// to skip a download, and a sweep tested against a different rule is how the
-// two drifted apart in the first place.
+// The REAL `photoReusableFor`: the sweep must judge by the rule the bake uses.
 vi.mock("./satelliteImage", async (importOriginal) => ({
 	...(await importOriginal<typeof import("./satelliteImage")>()),
 	satImageMeta: async () =>
@@ -61,9 +53,6 @@ describe("the duplicate-photo sweep", () => {
 	});
 
 	it("reaches zero and STAYS there — a second sweep finds nothing", async () => {
-		// The button's whole promise. When the sweep judged by distance alone it
-		// kept reporting photos the bake had minted deliberately, so the count
-		// came back however often it was pressed.
 		for (let i = 0; i < 10; i++) photos.set(key(east(STAND, i * 0.05)), 1000);
 		await runPhotoDedup();
 		expect((await planPhotoDedup()).drop).toHaveLength(0);
