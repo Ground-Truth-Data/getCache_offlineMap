@@ -1,8 +1,5 @@
 <script lang="ts">
-/**
- * The offline map: a blob is whole z10 tiles and the pyramids under them, so the gold
- * border IS the data's edge at every zoom. Chrome and saved camera are the online map's.
- */
+/** The offline map: a blob is whole z10 tiles and the pyramids under them, so the gold border IS the data's edge at every zoom. Chrome and saved camera are the online map's. */
 import { dev } from "$app/environment";
 import { goto, replaceState } from "$app/navigation";
 import { page } from "$app/state";

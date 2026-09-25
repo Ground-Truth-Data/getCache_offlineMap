@@ -1,4 +1,5 @@
-/** The tile store: one IndexedDB store keyed `z/x/y`, one copy per tile however many blobs cover it; a second store lists the blobs. */
+/** The tile store: one IndexedDB store keyed `z/x/y`, one copy per tile
+ * however many blobs cover it; a second store lists the blobs. */
 
 import { BudgetError, budgetBytes } from "./budget";
 import { toEvict } from "./evict";
@@ -43,7 +44,7 @@ export interface Region {
 	place?: Place | null;
 }
 
-/** A blob is its pin's spot: the same spot is the same blob, a neighbour a pace away is another. */
+/** A blob is its pin's spot — the same spot is the same blob, a pace away is another. */
 export function regionId(lng: number, lat: number): string {
 	return `${lat.toFixed(5)},${lng.toFixed(5)}`;
 }
@@ -158,10 +159,8 @@ export async function bytesOfTiles(keys: readonly string[]): Promise<number> {
 	});
 }
 
-/**
- * Evict the oldest blobs until `adding` fits, at the write boundary so no download path can bypass it.
- * A blob bigger than the whole budget evicts nothing and lets the caller's BudgetError stand.
- */
+/** Evict oldest-first until `adding` fits, at the write boundary so no
+ * download path can bypass it. Bigger than the whole budget evicts nothing. */
 export async function makeRoom(adding: number): Promise<Region[]> {
 	// Rows carry `bytes: 0` until sized; a policy fed zeroes evicts nothing.
 	await healRegionBytes(await listRegions());
@@ -237,7 +236,7 @@ export function regionsSnapshot(): {
 	return { version: regionsVersion, regions: regionsCache };
 }
 
-/** The blob-count wall is here, not `putTiles`: a blob over already-covered ground writes no tiles. */
+/** The blob-count wall is here, not `putTiles` — over already-covered ground writes no tiles. */
 export async function putRegion(r: Region): Promise<void> {
 	const have = (await listRegions()).filter((x) => x.id !== r.id);
 	const room = { adding: 0, budget: budgetBytes(), used: await usedBytes() };
@@ -249,7 +248,7 @@ export async function putRegion(r: Region): Promise<void> {
 	regionsChanged();
 }
 
-/** Per blob, the count of its tiles not on disk; zero is whole. An empty tile is a 0-byte row, so this is a set difference. */
+/** Per blob, its tiles not on disk (zero is whole) — an empty tile is a 0-byte row, so this is a set difference. */
 export async function checkRegions(): Promise<Record<string, number>> {
 	const [regions, have] = await Promise.all([listRegions(), allTileKeys()]);
 	const out: Record<string, number> = {};
@@ -314,7 +313,7 @@ export async function stats(): Promise<{ tiles: number; bytes: number }> {
 	return { tiles, bytes };
 }
 
-/** Delete a blob and only the tiles no other blob still covers; coverage is geometry, so no refcount to drift. */
+/** Delete a blob and only the tiles no other blob still covers — coverage is geometry, so no refcount to drift. */
 export async function deleteRegion(id: string): Promise<number> {
 	const regions = await listRegions();
 	const gone = regions.find((r) => r.id === id);

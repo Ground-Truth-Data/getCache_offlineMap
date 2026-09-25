@@ -1,8 +1,4 @@
-/**
- * Protomaps' stock dark basemap over the blobs, a few plain layers over the bundled
- * Natural Earth pyramid everywhere else, in the same tones so the handover is invisible.
- * The region is a gold line and nothing else.
- */
+/** Protomaps' stock dark basemap over the blobs, a few plain layers over the bundled Natural Earth pyramid everywhere else, in the same tones so the handover is invisible. The region is a gold line and nothing else. */
 
 import { DARK, layers } from "@protomaps/basemaps";
 import type {
@@ -117,12 +113,7 @@ function fadeIn(layer: LayerSpecification): LayerSpecification {
 	return layer;
 }
 
-/**
- * Style the ground by overriding flavor colours, never by patching layers per kind.
- * Stock DARK hides the ground (every tone within 10 luminance points of `earth`); these lift only the ground keys.
- * Keep each `_a`/`_b` pair EQUAL: the stock style cross-fades between them across a zoom.
- * GROUND_LIFT: 0 = stock DARK, 1 = the values below. To restyle the whole map, swap the flavor in buildStyle.
- */
+/** Style the ground by overriding flavor colours, never by patching layers per kind — stock DARK hides the ground. Keep each `_a`/`_b` pair EQUAL: the stock style cross-fades between them across a zoom. GROUND_LIFT: 0 = stock DARK, 1 = the values below. */
 export const GROUND_LIFT = 1;
 const GROUND: Record<string, string> = {
 	wood_a: "#26312a",

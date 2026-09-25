@@ -1,8 +1,4 @@
-/**
- * The blob engine, app-wide: a pin dropped anywhere earns its blob while there is still signal.
- * One queue, one download at a time. A blob is its pin's spot, not its ground: a pin inside an
- * older blob's tiles still earns its own row and photo, fetching nothing. A deleted pin takes its blob.
- */
+/** The blob engine, app-wide: a pin dropped anywhere earns its blob while there is still signal. One queue, one download at a time. A blob is its pin's spot, not its ground: a pin inside an older blob's tiles still earns its own row and photo, fetching nothing. A deleted pin takes its blob. */
 
 import {
 	deleteSatImage,
@@ -158,10 +154,7 @@ async function removeBlob(id: string, at: [number, number]): Promise<void> {
 
 let stop: (() => void) | null = null;
 
-/**
- * Every pin earns its blob. A corridor bakes at each anchor with NO photo: a photo per
- * anchor is what makes long geometry expensive. Affordability is the store's wall, not this one's.
- */
+/** Every pin earns its blob. A corridor bakes at each anchor with NO photo: a photo per anchor is what makes long geometry expensive. Affordability is the store's wall, not this one's. */
 export function startBlobService(ports: HostPorts): () => void {
 	if (stop)
 		return () => {
