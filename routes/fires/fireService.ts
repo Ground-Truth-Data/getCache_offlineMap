@@ -1,8 +1,4 @@
-/**
- * The fire pass, app-wide: every centre the app hands over gets a fire disc from the tiles Worker.
- * Runs when a centre lands, on coming back online and on coming to the front, never on a clock.
- * A dead feed pauses the pass for a minute, never the map.
- */
+/** The fire pass, app-wide: every centre the app hands over gets a fire disc. Runs on a centre landing, coming back online, coming to the front — never a clock. A dead feed pauses the pass, never the map. */
 
 import { FIRE_RADIUS_KM } from "../../lib/shared/fireContract";
 import {
@@ -107,7 +103,7 @@ interface FireFetchLog {
 function reportPass(fetched: readonly FireFetchLog[]): void {
     if (fetched.length === 0) return;
     const hotspots = fetched.reduce((n, f) => n + f.hotspots, 0);
-    // A streamed gzip response carries no Content-Length, so uncompressed is all this side can measure.
+    // Streamed gzip carries no Content-Length: uncompressed is all this side can measure.
     const kb = fetched.reduce((n, f) => n + f.jsonKB, 0);
     const degraded = fetched.filter((f) => f.satellites !== "3/3").length;
     console.groupCollapsed(
@@ -118,11 +114,10 @@ function reportPass(fetched: readonly FireFetchLog[]): void {
 }
 
 export interface FireServiceOptions {
-    /** every centre that wants a disc, read at every run */
     centres: () => Promise<readonly LngLat[]> | readonly LngLat[];
-    /** where the user has a stake; ground far from these earns no disc. Omitted → every centre is fetched */
+    /** Ground far from these earns no disc. Omitted → every centre is fetched. */
     here?: () => readonly LngLat[];
-    /** the app's signal that a centre landed; call `refresh` with it (or nothing for all), return the unsubscribe */
+    /** The app's signal a centre landed; call `refresh` with it, return the unsubscribe. */
     onCentresChanged?: (
         refresh: (centres?: readonly LngLat[]) => void,
     ) => () => void;
@@ -147,7 +142,7 @@ export function startFireService(opts: FireServiceOptions): () => void {
         });
     };
     const all = (): void => refresh();
-    // No timer: a backgrounded app is a phone's normal state, and an interval there downloads all day for nobody.
+    // No timer: a backgrounded app is normal, and an interval downloads all day for nobody.
     const visible = (): void => {
         if (document.visibilityState === "visible") all();
     };

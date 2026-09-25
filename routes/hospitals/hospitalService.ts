@@ -1,7 +1,4 @@
-/**
- * The hospital pass, app-wide: a disc per anchor from the tiles Worker into the cache both maps paint from.
- * Runs when a map asks, when the anchors change, on coming back online or to the front. Never on a clock.
- */
+/** The hospital pass, app-wide: a disc per anchor from the tiles Worker into the cache both maps paint from. Runs when a map asks, when the anchors change, coming back online or to the front. Never on a clock. */
 
 import { passQueue } from "../../lib/shared/passQueue";
 import { hospitalsUrl } from "../../lib/worker/worker-local-dev/tilesHost";

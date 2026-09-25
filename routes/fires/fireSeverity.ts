@@ -15,12 +15,12 @@ export interface SeverityRow {
 	readonly headline: string;
 }
 
-// Cut points measured on live FIRMS data (p50/p75/p90); re-measure against a fire-season sample before moving them.
+// Cut points measured on live FIRMS data (p50/p75/p90); re-measure before moving.
 export const FRP_MODERATE_MW = 3;
 export const FRP_HIGH_MW = 15;
 export const FRP_EXTREME_MW = 90;
 
-/** Must stay above one VIIRS pixel (0.1406 km²) and below two, so a single detection is always "spot". */
+/** Must stay above one VIIRS pixel (0.1406 km²) and below two. */
 export const SIZE_SPOT_MAX_KM2 = 0.25;
 export const SIZE_SMALL_MAX_KM2 = 3;
 export const SIZE_LARGE_MAX_KM2 = 15;
@@ -258,8 +258,8 @@ export const TREND_QUIETER_RATIO = 0.67;
 export const PASS_BUCKET_MS = 30 * 60 * 1000;
 
 /**
- * Earlier half of passes against the later half, never the last two: FRP swings 0.2–3.4× pass to pass.
- * `absent` is never inferred here: the satellite may not have covered this ground.
+ * Earlier half of passes against the later half, never the last two: FRP
+ * swings 0.2–3.4× pass to pass. `absent` is never inferred here.
  */
 export function trendFor(
 	detections: readonly { t: number; frp: number }[],

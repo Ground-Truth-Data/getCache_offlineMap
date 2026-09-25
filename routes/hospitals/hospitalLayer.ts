@@ -1,7 +1,4 @@
-/**
- * The hospital pins, one implementation for both maps. Paints from hospitalCache; never fetches.
- * No text layers: the two maps have different glyph servers, and a symbol layer whose glyphs 404 stalls its whole source.
- */
+/** The hospital pins, one implementation for both maps. Paints from hospitalCache; never fetches. No text layers: a symbol layer whose glyphs 404 stalls its whole source. */
 
 import type maplibregl from "maplibre-gl";
 import hospitalPinUrl from "./hospitalPin.webp";
