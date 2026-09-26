@@ -12,7 +12,6 @@ export const V4_TILES_DB = "gc-offlineTiles";
 export const LEGACY_VECTORS_DB_NAME = "rt-vectors";
 /** Keep in sync with satelliteImage.ts's DB name, or live photos classify as legacy. */
 export const SAT_DB = "gc-offlineSatellite";
-export const REGISTRY_DB = "rt-mapRegistry";
 export const FIRE_DB = "rt-fire-cache";
 
 /** Strip a world suffix (`-sandbox`, `-sandbox-<name>`) to the base name. */
@@ -37,7 +36,6 @@ export function isLiveBase(b: string): boolean {
 	return (
 		b === V4_TILES_DB ||
 		b === SAT_DB ||
-		b === REGISTRY_DB ||
 		b === FIRE_DB ||
 		b === LEGACY_VECTORS_DB_NAME
 	);

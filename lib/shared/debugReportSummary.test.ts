@@ -38,38 +38,6 @@ function cannedReport(overrides: Partial<Body> = {}): Body {
 			circuits: [],
 			probes: { "worker-cloud-prod": true, "worker-cloud-dev": true, "worker-local-dev": false },
 		},
-		disk: {
-			areas: 9,
-			bytes: 6290394,
-			recentImports: [
-				{
-					areaKey: "-76.0584,42.0722",
-					// 25 min before capturedAt
-					bakedAt: "2026-08-31T16:16:45.900Z",
-					bytes: 796516,
-					tiles: 4,
-					photo: true,
-				},
-			],
-		},
-		blob: {
-			areaKey: "-76.0584,42.0722",
-			pin: { lng: -76.05837, lat: 42.07223 },
-			cell: "8_73_94",
-			cellZoom: 8,
-			corners: [],
-			box: { w: 0, s: 0, e: 0, n: 0 },
-			reachKm: { n: 0, s: 0, e: 0, w: 0 },
-			offsetKm: 0,
-			bytes: 796516,
-			photoBytes: 61374,
-			lineBytes: 735142,
-			lineCount: 4,
-			hasPhoto: true,
-			hasLines: true,
-			blobVersion: "v",
-			lastTouched: "2026-08-31T16:16:45.900Z",
-		},
 		...overrides,
 	};
 	return base as unknown as Body;
@@ -82,7 +50,6 @@ function layer(key: string, label: string, feed: string, transitMs: number | nul
 		on: true,
 		feed,
 		status: "idle",
-		arrived: true,
 		askedAt: null,
 		arrivedAt: null,
 		transitMs,
@@ -107,15 +74,13 @@ describe("summarizeFocusedReport", () => {
 		);
 	});
 
-	it("says served-from-disk, with the age of the newest area, when nothing downloaded", () => {
+	it("says served-from-disk when nothing downloaded", () => {
 		const s = summarizeFocusedReport(cannedReport());
 		expect(s.timeToDownload).toContain("nothing downloaded since this page loaded");
-		expect(s.timeToDownload).toContain("25 min ago");
 	});
 
-	it("puts the on-disk total in human units", () => {
+	it("reports the workers and memory in plain words", () => {
 		const s = summarizeFocusedReport(cannedReport());
-		expect(s.onDisk).toContain("9 areas cached, 6.0 MB");
 		expect(s.workers).toBe("prod reachable · dev reachable · local not running");
 		expect(s.memory).toBe("46 MB now, peaked at 59 MB (main thread only)");
 	});

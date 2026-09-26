@@ -12,7 +12,6 @@ const SRC = readFileSync(
 const ALLOWED = [
 	"./",
 	"../contract",
-	"../onPhone/store/coverageRegistry",
 	"../worker/worker-local-dev/tilesHost",
 	// wallLegend: a literal switches table (key/label/ids/feed) — no UI/store/runtime, safe to allow.
 	"../onPhone/render/wallLegend",
@@ -64,10 +63,5 @@ describe("debugReport stays portable", () => {
 				`debugReport.ts must not import ${bad} — it has to run without a renderer`,
 			).toBe(false);
 		}
-	});
-
-	it("takes pins as a parameter rather than reading them", () => {
-		// Rule 5: pins must stay a parameter, never read from a store — that would collapse the interface.
-		expect(SRC).toMatch(/pins\?:\s*LngLatPin\[\]/);
 	});
 });
