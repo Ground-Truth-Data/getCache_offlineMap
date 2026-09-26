@@ -16,7 +16,7 @@ import {
 	describePackLayer,
 	packShips,
 } from "../contract/packLayers";
-import { circuitOf, light, paintOf, type CircuitState } from "./workMeter.svelte";
+import { circuitOf, light, type CircuitState } from "./workMeter.svelte";
 import { LAYER_TOGGLES } from "../onPhone/render/wallLegend";
 import { meterSnapshot } from "./workMeter.svelte";
 import { kmBetween } from "./kmGeo";
@@ -259,13 +259,9 @@ export interface FocusedBlobReport {
 		feed: "sat" | "pack" | "fires" | null;
 		status: CircuitState;
 		arrived: boolean;
-		onScreen: boolean;
 		askedAt: string | null;
 		arrivedAt: string | null;
-		drawnAt: string | null;
 		transitMs: number | null;
-		paintLagMs: number | null;
-		paintedCount: number | null;
 		reason: string;
 		/** What is MEANT to accompany a blob for this layer — MISSING vs never part of the deal. */
 		expects: string;
@@ -311,7 +307,6 @@ export interface ReportSummary {
 	timeToDownload: string;
 	onDisk: string;
 	latestArea: string;
-	onScreen: string;
 	workers: string;
 	memory: string;
 }
@@ -355,15 +350,6 @@ export function summarizeFocusedReport(
 			? `nothing downloaded since this page loaded — the map drew from what was already on disk (newest area landed ${agoText(newest.bakedAt, now)})`
 			: "nothing has ever been downloaded on this device";
 
-	const paint = new Map(r.meter.paints.map((p) => [p.key, p.count]));
-	const drawn = r.layers.filter((l) => (paint.get(l.key) ?? 0) > 0);
-	const empty = r.layers.filter((l) => l.on && (paint.get(l.key) ?? 0) === 0);
-	const onScreen =
-		(drawn.length
-			? `on screen: ${drawn.map((l) => `${l.label} (${(paint.get(l.key) ?? 0).toLocaleString()})`).join(", ")}`
-			: "nothing painted yet") +
-		(empty.length ? ` — nothing to draw for ${empty.map((l) => l.label).join(", ")}` : "");
-
 	const p: Record<string, boolean | undefined> = r.meter.probes ?? {};
 	const probe = (v: boolean | undefined, up: string, down: string) =>
 		v == null ? "not checked" : v ? up : down;
@@ -380,7 +366,6 @@ export function summarizeFocusedReport(
 		latestArea: r.blob
 			? `${fmtMb(r.blob.bytes)} around (${r.blob.pin.lng.toFixed(3)}, ${r.blob.pin.lat.toFixed(3)}) — ${r.blob.hasPhoto ? "photo" : "NO photo"} + ${r.blob.lineCount} road tiles, landed ${agoText(newest?.bakedAt, now)}`
 			: "no areas cached yet",
-		onScreen,
 		workers,
 		memory:
 			r.heap.nowMb != null
@@ -428,7 +413,7 @@ export async function collectFocusedBlobReport(
 			const on = live.layers?.find((l) => l.key === t.key)?.on ?? true;
 			const feed = t.feed ?? null;
 			const c = feed ? circuitOf(feed) : undefined;
-			const lt = light(feed ?? undefined, [t.key]);
+			const lt = light(feed ?? undefined);
 			const status: CircuitState = lt.state;
 			const top = sorted[0];
 			// Every source-layer + kind this toggle reads must survive the Worker's allowlist.
@@ -456,9 +441,7 @@ export async function collectFocusedBlobReport(
 			else if (status === "idle" && arrived) reason = "on disk from an earlier session — not requested since this page loaded";
 			else if (status === "idle") reason = `never requested — nothing has asked the ${feed} download yet`;
 			else if (!arrived) reason = `${feed} download landed (${c?.note || "ok"}) but the focused blob holds no ${t.label} data`;
-			else if (status === "ok")
-				reason = `on disk (${c?.note || "ok"}) for ${((Date.now() - (c?.arrivedAt ?? Date.now())) / 1000).toFixed(1)}s but NOT painted in the viewport yet — last idle counted ${paintOf(t.key)?.count ?? 0} ${t.label} features on screen`;
-			else reason = `on screen — ${lt.paint?.count ?? 0} drawn, ${((lt.paintLagMs ?? 0) / 1000).toFixed(1)}s after the bytes landed`;
+			else reason = `on disk (${c?.note || "ok"}) for ${((Date.now() - (c?.arrivedAt ?? Date.now())) / 1000).toFixed(1)}s`;
 			const expects = expectsFor(t);
 			const iso = (ms: number | null | undefined) => (ms == null ? null : new Date(ms).toISOString());
 			return {
@@ -468,13 +451,9 @@ export async function collectFocusedBlobReport(
 				feed,
 				status,
 				arrived,
-				onScreen: status === "drawn",
 				askedAt: iso(c?.askedAt),
 				arrivedAt: iso(c?.arrivedAt),
-				drawnAt: iso(lt.paint?.drawnAt),
 				transitMs: lt.transitMs,
-				paintLagMs: lt.paintLagMs,
-				paintedCount: lt.paint?.count ?? null,
 				reason,
 				expects,
 			};

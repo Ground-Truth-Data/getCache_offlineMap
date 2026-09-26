@@ -1,4 +1,4 @@
-// The stopwatch: starts at the ask, stops when the user can SEE it. Each test is a lie that shipped.
+// The stopwatch: starts at the ask, stops when the bytes land. Each test is a lie that shipped.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 beforeEach(() => {
@@ -64,21 +64,6 @@ describe("circuit stopwatch", () => {
 		expect(m.circuitOf("k")!.askedAt).toBe(Date.now());
 	});
 
-	it("settles to '0 in view' when an idle AFTER arrival counts zero — never before", async () => {
-		const m = await import("./workMeter.svelte");
-		m.notePaint("layer", "feed", 0); // a count from BEFORE the ask proves nothing
-		m.noteCircuit("feed", "transit");
-		vi.advanceTimersByTime(2000);
-		m.noteCircuit("feed", "ok");
-		expect(m.light("feed", ["layer"]).settledEmpty).toBe(false);
-		// the post-arrival idle counted zero: the area holds none — freeze, don't count forever
-		vi.advanceTimersByTime(100);
-		m.notePaint("layer", "feed", 0);
-		const l = m.light("feed", ["layer"]);
-		expect(l.state).toBe("ok");
-		expect(l.settledEmpty).toBe(true);
-	});
-
 	it("a transit nobody answers gives up at 30s — the counting stops in red", async () => {
 		const m = await import("./workMeter.svelte");
 		m.noteCircuit("k", "transit");
@@ -99,19 +84,5 @@ describe("circuit stopwatch", () => {
 		m.noteCircuit("k", "ok");
 		vi.advanceTimersByTime(60_000);
 		expect(m.circuitOf("k")!.state).toBe("ok");
-	});
-
-	it("light() reports seenMs = ask → first sighting on screen", async () => {
-		const m = await import("./workMeter.svelte");
-		m.noteCircuit("feed", "transit");
-		vi.advanceTimersByTime(8000);
-		m.noteCircuit("feed", "ok");
-		vi.advanceTimersByTime(900);
-		m.notePaint("layer", "feed", 3);
-		const l = m.light("feed", ["layer"]);
-		expect(l.state).toBe("drawn");
-		expect(l.seenMs).toBe(8900);
-		expect(l.transitMs).toBe(8000);
-		expect(l.paintLagMs).toBe(900);
 	});
 });

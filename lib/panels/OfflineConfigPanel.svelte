@@ -11,7 +11,6 @@ import {
 } from "../worker/worker-local-dev/tilesHost";
 import {
 	allCircuits,
-	allPaints,
 	light,
 	probeOf,
 	type CircuitState,
@@ -64,14 +63,10 @@ function reach(t: WorkerTarget): "ok" | "err" | "wait" {
 	return p === undefined ? "wait" : p ? "ok" : "err";
 }
 
-// Green comes only from paintWatch.ts counting rendered features — a download landing never turns a row green by itself.
 const circuits = $derived(allCircuits());
-const paints = $derived(allPaints());
-const PACK_LAYERS = LAYER_TOGGLES.filter((t) => t.feed === "pack").map((t) => t.key);
-function lightOf(circuitKey: string | undefined, layerKeys: readonly string[]): Light {
+function lightOf(circuitKey: string | undefined): Light {
 	void circuits;
-	void paints;
-	return light(circuitKey, layerKeys);
+	return light(circuitKey);
 }
 const FEED_OF: Record<string, string | undefined> = Object.fromEntries(
 	LAYER_TOGGLES.map((t) => [t.key, t.feed]),
@@ -79,8 +74,7 @@ const FEED_OF: Record<string, string | undefined> = Object.fromEntries(
 const CIRC_WORDS: Record<CircuitState, string> = {
 	idle: "nothing asked for yet",
 	transit: "request out, nothing back yet",
-	ok: "on disk — NOT on screen yet",
-	drawn: "on screen",
+	ok: "on disk",
 	err: "broke",
 };
 const clock = (ms: number | null | undefined) =>
@@ -91,17 +85,10 @@ function circTitle(what: string, l: Light): string {
 	const bits = [`${what}: ${CIRC_WORDS[l.state]}${c?.note ? " — " + c.note : ""}`];
 	if (c?.askedAt != null) bits.push(`asked ${clock(c.askedAt)}`);
 	if (c?.arrivedAt != null) bits.push(`on disk +${secs(l.transitMs)}`);
-	if (l.state === "drawn") bits.push(`on screen +${secs(l.paintLagMs)} after disk (${l.paint?.count} drawn)`);
-	else if (l.state === "ok") bits.push("waiting for the map to paint it");
 	return bits.join(" · ");
 }
 
-/** Counts from the ask until the thing is ON SCREEN (bytes on disk is not done), then freezes at ask→seen. */
 const dlWords = (l: Light): string => {
-	if (l.state === "drawn") return l.seenMs == null ? "" : `dl ${secs(l.seenMs)}`;
-	// Arrived but zero in view — the count would never end, so freeze at the download time.
-	if (l.state === "ok" && l.settledEmpty && l.transitMs != null)
-		return `dl ${secs(l.transitMs)} · 0 in view`;
 	if (l.state === "transit" || l.state === "ok")
 		return l.circuit?.askedAt == null ? "dl …" : `dl ${secs(now - l.circuit.askedAt)}…`;
 	return "";
@@ -172,7 +159,7 @@ onMount(() => {
 				<span class="dead-tag">retry</span>
 			{/if}
 			{#if target === t.id}
-				{@const l = lightOf(`worker:${t.id}`, PACK_LAYERS)}
+				{@const l = lightOf(`worker:${t.id}`)}
 				{#if dlWords(l)}
 					<span class="dl">{dlWords(l)}</span>
 				{/if}
@@ -203,7 +190,7 @@ onMount(() => {
 					<span class="cfg-hint">{l.hint}</span>
 				{/if}
 				{#if FEED_OF[l.key]}
-					{@const lt = lightOf(FEED_OF[l.key], [l.key])}
+					{@const lt = lightOf(FEED_OF[l.key])}
 					{#if dlWords(lt)}
 						<span class="dl">{dlWords(lt)}</span>
 					{/if}
@@ -214,7 +201,7 @@ onMount(() => {
 				<span class="sw" class:sw-on={l.on}></span>
 			</button>
 		{/each}
-		<div class="cfg-note dim">any combination · heap updates each second · green = painted in the viewport, yellow = still on its way to the screen</div>
+		<div class="cfg-note dim">any combination · heap updates each second</div>
 	{/if}
 </div>
 
@@ -315,9 +302,6 @@ onMount(() => {
 .circ.transit,
 .circ.ok {
 	background: #e0b428;
-}
-.circ.drawn {
-	background: #35c759;
 }
 .circ.err {
 	background: #e0483e;
