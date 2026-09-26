@@ -7,7 +7,6 @@ import {
     satImageKey,
     type Bounds,
 } from "./satelliteImage";
-import { SAT_INSERT_BEFORE } from "../render/wallStyle";
 import { kmToDegSpan } from "../../shared/kmGeo";
 
 export interface SatelliteMount {
@@ -85,8 +84,7 @@ export function photoCullPlan(
 
 export function createSatelliteMount(
     map: maplibregl.Map,
-    onMounted?: () => void,
-    insertBefore: string = SAT_INSERT_BEFORE,
+    insertBefore: string,
 ): SatelliteMount {
     const mountedSat = new Set<string>();
     let disposed = false;
@@ -158,7 +156,6 @@ export function createSatelliteMount(
             map.getLayer(insertBefore) ? insertBefore : undefined,
         );
         mountedSat.add(key);
-        onMounted?.();
     };
 
     const unmount = (key: string): void => {

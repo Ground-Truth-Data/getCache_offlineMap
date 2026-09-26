@@ -1,4 +1,4 @@
-/** The layer toggles and the read-only colour key. Keep in sync with wallStyle.ts / wallLabels.ts. */
+/** The layer toggles and the read-only colour key. */
 
 import {
     PATH_LINE,
@@ -16,7 +16,7 @@ export interface LayerToggle {
     readonly hint?: string;
     /** The circuit key in workMeter.svelte.ts. */
     readonly feed?: "sat" | "pack" | "fires";
-    /** What this layer reads from the pack; must match the filters in wallStyle.ts / wallLabels.ts. */
+    /** What this layer reads from the pack. */
     readonly reads?: readonly PackRead[];
 }
 
@@ -81,7 +81,6 @@ export const LAYER_TOGGLES: readonly LayerToggle[] = [
         feed: "pack",
         reads: [{ layer: "pois", kinds: ["hospital"] }],
     },
-    // Added by attachFireLayer() on map ready, so not in wallStyle.ts.
     {
         key: "fires",
         label: "Fires",
