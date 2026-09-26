@@ -61,7 +61,6 @@ export interface MapHostStore {
 		geojsonFeature: Feature,
 		featureType?: string,
 		lastEditedBy?: string,
-		username?: string | null,
 		abstraction?: string | null,
 		opts?: Record<string, unknown>,
 	): string;
