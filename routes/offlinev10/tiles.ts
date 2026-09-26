@@ -43,24 +43,18 @@ export function parseKey(k: string): Tile {
 	return { z, x, y };
 }
 
-export function lngToX(lng: number, z: number): number {
-	return Math.floor(((lng + 180) / 360) * 2 ** z);
-}
+export {
+	lngToTileX as lngToX,
+	tileToLng as xToLng,
+	tileToLat as yToLat,
+} from "../../lib/contract/geo";
+import { lngToTileX as lngToX, tileToLng as xToLng, tileToLat as yToLat } from "../../lib/contract/geo";
 
 export function latToY(lat: number, z: number): number {
 	const r = (Math.max(-MAX_LAT, Math.min(MAX_LAT, lat)) * Math.PI) / 180;
 	return Math.floor(
 		((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 2 ** z,
 	);
-}
-
-export function xToLng(x: number, z: number): number {
-	return (x / 2 ** z) * 360 - 180;
-}
-
-export function yToLat(y: number, z: number): number {
-	const n = Math.PI - (2 * Math.PI * y) / 2 ** z;
-	return (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
 }
 
 /** World fraction, 0..1, y down. */

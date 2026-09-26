@@ -3,6 +3,7 @@ import {
 	noteSatelliteTiles,
 } from "../store/downloadGuard";
 import { kmBetween, kmToDegSpan } from "../../shared/kmGeo";
+import { latToTileY, lngToTileX, tileToLat, tileToLng } from "../../contract/geo";
 import { makeKeyedIdbStore } from "../store/keyedIdbStore";
 import {
 	isBestPhotoSource,
@@ -130,20 +131,6 @@ export async function photoCovering(
 	return c && photoReusableFor(near.source, c, center) ? near : undefined;
 }
 
-function lngToTileX(lng: number, z: number): number {
-	return Math.floor(((lng + 180) / 360) * 2 ** z);
-}
-function latToTileY(lat: number, z: number): number {
-	const r = (lat * Math.PI) / 180;
-	return Math.floor(((1 - Math.asinh(Math.tan(r)) / Math.PI) / 2) * 2 ** z);
-}
-function tileToLng(x: number, z: number): number {
-	return (x / 2 ** z) * 360 - 180;
-}
-function tileToLat(y: number, z: number): number {
-	const n = Math.PI - (2 * Math.PI * y) / 2 ** z;
-	return (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
-}
 function loadImage(url: string): Promise<HTMLImageElement | null> {
 	return new Promise((resolve) => {
 		const img = new Image();
