@@ -2,7 +2,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const photos = new Map<string, number>(); // key -> bytes
-const coverage: { key: string; hasPhoto: boolean; photoBytes: number }[] = [];
 
 // The REAL `photoReusableFor`: the sweep must judge by the rule the bake uses.
 vi.mock("./satelliteImage", async (importOriginal) => ({
@@ -10,21 +9,6 @@ vi.mock("./satelliteImage", async (importOriginal) => ({
 	satImageMeta: async () =>
 		[...photos].map(([key, bytes]) => ({ key, bytes, source: SOURCE })),
 	deleteSatImage: async (k: string) => void photos.delete(k),
-}));
-vi.mock("../store/coverageRegistry", () => ({
-	noteCoverage: async (
-		key: string,
-		_lng: number,
-		_lat: number,
-		p: { hasPhoto?: boolean; photoBytes?: number },
-	) => {
-		coverage.push({
-			key,
-			hasPhoto: p.hasPhoto ?? true,
-			photoBytes: p.photoBytes ?? 0,
-		});
-	},
-	dropCoverage: async () => {},
 }));
 
 const { planPhotoDedup, runPhotoDedup } = await import("./photoDedup");
@@ -40,7 +24,6 @@ const east = (from: [number, number], km: number): [number, number] => [
 
 beforeEach(() => {
 	photos.clear();
-	coverage.length = 0;
 });
 
 describe("the duplicate-photo sweep", () => {
@@ -71,15 +54,6 @@ describe("the duplicate-photo sweep", () => {
 		photos.set(key(east(STAND, 0.1)), 9000);
 		const plan = await runPhotoDedup();
 		expect(plan.keep).toEqual([key(east(STAND, 0.1))]);
-	});
-
-	it("clears the photo half of the budget record, keeping the area's row", async () => {
-		photos.set(key(STAND), 1000);
-		photos.set(key(east(STAND, 0.1)), 1000);
-		await runPhotoDedup();
-		// patched, not dropped: the area keeps its road tiles
-		expect(coverage).toHaveLength(1);
-		expect(coverage[0]).toMatchObject({ hasPhoto: false, photoBytes: 0 });
 	});
 
 	it("plan() destroys nothing — a number can be shown before deleting", async () => {

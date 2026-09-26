@@ -3,7 +3,6 @@
  * same ground by `photoReusableFor`, the predicate the bake itself consults.
  */
 
-import { noteCoverage } from "../store/coverageRegistry";
 import {
 	deleteSatImage,
 	photoReusableFor,
@@ -44,18 +43,10 @@ export async function planPhotoDedup(): Promise<DedupPlan> {
 	};
 }
 
-/** Run the sweep. The record is patched, not dropped: the area keeps its road tiles. */
+/** Run the sweep. */
 export async function runPhotoDedup(): Promise<DedupPlan> {
 	const plan = await planPhotoDedup();
-	for (const d of plan.drop) {
-		await deleteSatImage(d.key);
-		const c = centerOfKey(d.key);
-		if (c)
-			await noteCoverage(d.key, c[0], c[1], {
-				hasPhoto: false,
-				photoBytes: 0,
-			});
-	}
+	for (const d of plan.drop) await deleteSatImage(d.key);
 	console.info(
 		`[offline] photo dedup — ${plan.drop.length} duplicate photos removed, ${(plan.bytes / 1048576).toFixed(1)} MB freed, ${plan.keep.length} kept`,
 	);
