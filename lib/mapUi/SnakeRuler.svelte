@@ -105,6 +105,7 @@ const MEASURE_NODES_SRC = "measure-nodes";
 const MEASURE_FILL_SRC = "measure-fill";
 const MEASURE_TICKS_SRC = "measure-ticks";
 const MEASURE_ENDDOTS_SRC = "measure-end-dots";
+const ALL_SRCS = [MEASURE_FILL_SRC, MEASURE_LINE_SRC, MEASURE_TICKS_SRC, MEASURE_NODES_SRC, MEASURE_ENDDOTS_SRC];
 const MEASURE_SNAP_PX = 18;
 const SELF_SNAP_PX = 22; // ≈44px touch target
 const FINISH_TAP_PX = 22;
@@ -114,21 +115,20 @@ const LEG_LABEL_OFF = 18;
 const LABEL_HALF_H = 10;
 const TOTAL_TAIL_BIAS = 0.35;
 
-function setData(id: string, fc: GeoJSON.FeatureCollection) {
+const fc = (features: GeoJSON.Feature[] = []): GeoJSON.FeatureCollection => ({ type: "FeatureCollection", features });
+const pointsFC = (cs: Lnglat[]) =>
+    fc(cs.map((c) => ({ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: c } })));
+
+function setData(id: string, data: GeoJSON.FeatureCollection) {
     const src = map?.getSource(id);
     if (src && "setData" in src) {
-        (src as unknown as { setData: (d: GeoJSON.FeatureCollection) => void }).setData(fc);
+        (src as unknown as { setData: (d: GeoJSON.FeatureCollection) => void }).setData(data);
     }
 }
 
 function ensureLayers() {
     if (!map || map.getSource(MEASURE_LINE_SRC)) return;
-    const empty: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
-    map.addSource(MEASURE_FILL_SRC, { type: "geojson", data: empty });
-    map.addSource(MEASURE_LINE_SRC, { type: "geojson", data: empty });
-    map.addSource(MEASURE_TICKS_SRC, { type: "geojson", data: empty });
-    map.addSource(MEASURE_NODES_SRC, { type: "geojson", data: empty });
-    map.addSource(MEASURE_ENDDOTS_SRC, { type: "geojson", data: empty });
+    for (const id of ALL_SRCS) map.addSource(id, { type: "geojson", data: fc() });
     map.addLayer({
         id: "measure-fill", type: "fill", source: MEASURE_FILL_SRC,
         paint: { "fill-color": "#ffd54a", "fill-opacity": 0.22 },
@@ -167,7 +167,7 @@ function ensureLayers() {
 // Ticks are built per leg, in screen px, so they never fight across a bend; rebuilt on every move.
 function buildTicksFC(ring: Lnglat[]): GeoJSON.FeatureCollection {
     const features: GeoJSON.Feature[] = [];
-    if (!map || ring.length < 2) return { type: "FeatureCollection", features };
+    if (!map || ring.length < 2) return fc(features);
     const SPACING_PX = 13;
     const MINOR_PX = 2.5;
     const QUARTER_PX = 4;
@@ -205,7 +205,7 @@ function buildTicksFC(ring: Lnglat[]): GeoJSON.FeatureCollection {
             else place(d, MINOR_PX, "minor");
         }
     }
-    return { type: "FeatureCollection", features };
+    return fc(features);
 }
 
 function liveVerts(): Lnglat[] {
@@ -221,46 +221,26 @@ function points(): Lnglat[] {
     if (!cursor) return [...verts];
     return dragFromHead ? [cursor, ...verts] : [...verts, cursor];
 }
+/** The drawn path: closed back to its first corner once it is a polygon. */
+function ring(pts = points()): Lnglat[] {
+    return isPolygon && pts.length >= 3 ? [...pts, pts[0]] : pts;
+}
 
 function render() {
     if (!map) return;
     ensureLayers();
     const pts = points();
-    const ring: Lnglat[] =
-        isPolygon && pts.length >= 3 ? [...pts, pts[0]] : pts;
-    setData(MEASURE_LINE_SRC, {
-        type: "FeatureCollection",
-        features: ring.length >= 2
-            ? [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: ring } }]
-            : [],
-    });
-    setData(MEASURE_TICKS_SRC, buildTicksFC(ring));
-    setData(MEASURE_NODES_SRC, {
-        type: "FeatureCollection",
-        features: (isPolygon ? pts : verts).map((c) => ({
-            type: "Feature", properties: {}, geometry: { type: "Point", coordinates: c },
-        })),
-    });
+    const r = ring(pts);
+    setData(MEASURE_LINE_SRC, fc(r.length >= 2
+        ? [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: r } }]
+        : []));
+    setData(MEASURE_TICKS_SRC, buildTicksFC(r));
+    setData(MEASURE_NODES_SRC, pointsFC(isPolygon ? pts : verts));
     // Fill auto-closes the ring while still open; no visible line across the open side.
-    setData(MEASURE_FILL_SRC, {
-        type: "FeatureCollection",
-        features: pts.length >= 3
-            ? [{ type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [[...pts, pts[0]]] } }]
-            : [],
-    });
-    const endPts: Lnglat[] = isPolygon
-        ? pts
-        : pts.length >= 2
-          ? [pts[0], pts[pts.length - 1]]
-          : pts.length === 1
-            ? [pts[0]]
-            : [];
-    setData(MEASURE_ENDDOTS_SRC, {
-        type: "FeatureCollection",
-        features: endPts.map((c) => ({
-            type: "Feature", properties: {}, geometry: { type: "Point", coordinates: c },
-        })),
-    });
+    setData(MEASURE_FILL_SRC, fc(pts.length >= 3
+        ? [{ type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [[...pts, pts[0]]] } }]
+        : []));
+    setData(MEASURE_ENDDOTS_SRC, pointsFC(isPolygon || pts.length < 2 ? pts : [pts[0], pts[pts.length - 1]]));
     renderLegs();
     updateEndCursors();
 }
@@ -273,16 +253,9 @@ function clearAll() {
     copyFailed = false;
     document.body.classList.remove("rt-snake-grabbing");
     if (copiedTimer) clearTimeout(copiedTimer);
-    setData(MEASURE_LINE_SRC, { type: "FeatureCollection", features: [] });
-    setData(MEASURE_TICKS_SRC, { type: "FeatureCollection", features: [] });
-    setData(MEASURE_NODES_SRC, { type: "FeatureCollection", features: [] });
-    setData(MEASURE_FILL_SRC, { type: "FeatureCollection", features: [] });
-    setData(MEASURE_ENDDOTS_SRC, { type: "FeatureCollection", features: [] });
+    for (const id of ALL_SRCS) setData(id, fc());
     clearLegs();
-    headCursor?.remove();
-    headCursor = null;
-    tailCursor?.remove();
-    tailCursor = null;
+    removeEndCursors();
 }
 
 // HEAD (vertex 0) = LEFT hand; TAIL = RIGHT hand. Widths chosen so both render ≈64px tall.
@@ -389,36 +362,31 @@ function wireHandDrag(el: HTMLElement, which: "head" | "tail") {
         window.addEventListener("pointercancel", onUp);
     });
 }
+function removeEndCursors() {
+    headCursor?.remove();
+    headCursor = null;
+    tailCursor?.remove();
+    tailCursor = null;
+}
+function placeEndCursor(
+    have: mapboxgl.Marker | null,
+    which: "head" | "tail",
+    at: Lnglat,
+): mapboxgl.Marker {
+    if (have) return have.setLngLat(at);
+    const cfg = which === "head" ? HEAD_CURSOR : TAIL_CURSOR;
+    const el = makeEndCursorEl(cfg.src, cfg.w);
+    wireHandDrag(el, which);
+    return new (markerCtor(map))({ element: el, anchor: "top", offset: cfg.offset })
+        .setLngLat(at).addTo(map!);
+}
 function updateEndCursors() {
     if (!map) return;
     const pts = points();
-    const show = active && !isPolygon && pts.length >= 1 && armed !== "pin";
-    if (!show) {
-        headCursor?.remove();
-        headCursor = null;
-        tailCursor?.remove();
-        tailCursor = null;
-        return;
-    }
-    const head = pts[0];
-    const tail = pts[pts.length - 1];
-    if (!headCursor) {
-        const el = makeEndCursorEl(HEAD_CURSOR.src, HEAD_CURSOR.w);
-        headCursor = new (markerCtor(map))({ element: el, anchor: "top", offset: HEAD_CURSOR.offset })
-            .setLngLat(head).addTo(map);
-        wireHandDrag(el, "head");
-    } else {
-        headCursor.setLngLat(head);
-    }
+    if (!active || isPolygon || pts.length === 0 || armed === "pin") return removeEndCursors();
+    headCursor = placeEndCursor(headCursor, "head", pts[0]);
     if (pts.length >= 2) {
-        if (!tailCursor) {
-            const el = makeEndCursorEl(TAIL_CURSOR.src, TAIL_CURSOR.w);
-            tailCursor = new (markerCtor(map))({ element: el, anchor: "top", offset: TAIL_CURSOR.offset })
-                .setLngLat(tail).addTo(map);
-            wireHandDrag(el, "tail");
-        } else {
-            tailCursor.setLngLat(tail);
-        }
+        tailCursor = placeEndCursor(tailCursor, "tail", pts[pts.length - 1]);
     } else {
         tailCursor?.remove();
         tailCursor = null;
@@ -428,11 +396,9 @@ function updateEndCursors() {
 let legMarkers: mapboxgl.Marker[] = [];
 let legLabelsShown = false;
 /** FALSE with no labels to place, matching what a cleared render leaves, or the move handler rebuilds every pan frame. */
-function legLabelsFit(): boolean {
-    if (!map) return false;
+function legLabelsFit(anchors = legLabelAnchors()): boolean {
     const m = map;
-    const anchors = legLabelAnchors();
-    if (!anchors.length) return false;
+    if (!m || !anchors.length) return false;
     return legLabelsReadable(
         anchors.map(({ geo, off }) => {
             const p = m.project({ lng: geo[0], lat: geo[1] });
@@ -456,17 +422,16 @@ function addLeg(lngLat: Lnglat, text: string, offset: [number, number]) {
 }
 function legLabelAnchors(): Array<{ geo: Lnglat; off: [number, number] }> {
     if (!map) return [];
-    const pts = points();
-    const ring = isPolygon && pts.length >= 3 ? [...pts, pts[0]] : pts;
-    if (ring.length < (isPolygon ? 4 : 3)) return [];
+    const r = ring();
+    if (r.length < (isPolygon ? 4 : 3)) return [];
     const out: Array<{ geo: Lnglat; off: [number, number] }> = [];
-    for (let i = 0; i < ring.length - 1; i++) {
+    for (let i = 0; i < r.length - 1; i++) {
         const geo: Lnglat = [
-            ring[i][0] + (ring[i + 1][0] - ring[i][0]) * LEG_LABEL_FRAC,
-            ring[i][1] + (ring[i + 1][1] - ring[i][1]) * LEG_LABEL_FRAC,
+            r[i][0] + (r[i + 1][0] - r[i][0]) * LEG_LABEL_FRAC,
+            r[i][1] + (r[i + 1][1] - r[i][1]) * LEG_LABEL_FRAC,
         ];
-        const a = map.project({ lng: ring[i][0], lat: ring[i][1] });
-        const b = map.project({ lng: ring[i + 1][0], lat: ring[i + 1][1] });
+        const a = map.project({ lng: r[i][0], lat: r[i][1] });
+        const b = map.project({ lng: r[i + 1][0], lat: r[i + 1][1] });
         const dx = b.x - a.x, dy = b.y - a.y;
         const len = Math.hypot(dx, dy) || 1;
         let px = -dy / len, py = dx / len;
@@ -477,21 +442,18 @@ function legLabelAnchors(): Array<{ geo: Lnglat; off: [number, number] }> {
 }
 function renderLegs() {
     clearLegs();
-    if (!map) return;
-    const pts = points();
-    const ring = isPolygon && pts.length >= 3 ? [...pts, pts[0]] : pts;
-    if (ring.length < (isPolygon ? 4 : 3)) return;
     const anchors = legLabelAnchors();
     // Crowded legs show NO labels: overlapping digits read as a wrong number.
-    legLabelsShown = legLabelsFit();
+    legLabelsShown = legLabelsFit(anchors);
     if (!legLabelsShown) return;
-    for (let i = 0; i < ring.length - 1; i++) {
+    const r = ring();
+    anchors.forEach(({ geo, off }, i) => {
         const segKm = turfLength({
             type: "Feature", properties: {},
-            geometry: { type: "LineString", coordinates: [ring[i], ring[i + 1]] },
+            geometry: { type: "LineString", coordinates: [r[i], r[i + 1]] },
         });
-        if (anchors[i]) addLeg(anchors[i].geo, formatMeasureDist(segKm), anchors[i].off);
-    }
+        addLeg(geo, formatMeasureDist(segKm), off);
+    });
 }
 
 function hover(lng: number, lat: number) {
@@ -548,35 +510,19 @@ function snapSeedToSelf(seed: Lnglat): { seed: Lnglat; atSelf: boolean } {
     return { seed, atSelf: false };
 }
 
-function start(seed?: Lnglat) {
-    active = true;
-    armed = null;
-    cursor = null;
-    isPolygon = false;
-    let atSelf = false;
-    if (seed) {
-        const snapped = snapSeedToSelf(seed);
-        seed = snapped.seed;
-        atSelf = snapped.atSelf;
-    }
-    seedAtSelf = atSelf;
-    verts = seed ? [seed] : [];
-    onActivate?.();
-    ensureLayers();
-    render();
-    if (atSelf) onSnapSelf?.();
-}
-function startArmed(kind: "line" | "polygon" | "pin") {
+/** Hands mode starts from a double-tap seed; palette mode starts armed and empty. */
+function start(kind: typeof armed, seed?: Lnglat) {
+    const snapped = seed ? snapSeedToSelf(seed) : null;
     active = true;
     armed = kind;
     cursor = null;
     moveIndex = null;
     isPolygon = false;
-    seedAtSelf = false;
-    verts = [];
+    seedAtSelf = snapped?.atSelf ?? false;
+    verts = snapped ? [snapped.seed] : [];
     onActivate?.();
-    ensureLayers();
     render();
+    if (seedAtSelf) onSnapSelf?.();
 }
 function discard() {
     active = false;
@@ -624,12 +570,12 @@ $effect(() => {
     if (armed) return;
     // A fast final click-to-commit can read as a dblclick; swallow the seed so the fresh popover isn't torn down.
     if (performance.now() - lastCommitAt < 600) return;
-    start([ev.lng, ev.lat]);
+    start(null, [ev.lng, ev.lat]);
 });
 
 $effect(() => {
     const k = armKind;
-    if (k && armed !== k) startArmed(k);
+    if (k && armed !== k) start(k);
     else if (!k && armed) discard();
 });
 
@@ -750,23 +696,14 @@ $effect(() => {
         }
         moved = false;
     };
-    m.on("mousedown", "measure-nodes-halo", down);
-    m.on("touchstart", "measure-nodes-halo", down);
-    m.on("mousedown", "measure-nodes", down);
-    m.on("touchstart", "measure-nodes", down);
-    m.on("mousemove", move);
-    m.on("touchmove", move);
-    m.on("mouseup", up);
-    m.on("touchend", up);
+    const layerEvents = ["mousedown", "touchstart"] as const;
+    const nodeLayers = ["measure-nodes-halo", "measure-nodes"];
+    const mapEvents = [["mousemove", move], ["touchmove", move], ["mouseup", up], ["touchend", up]] as const;
+    for (const l of nodeLayers) for (const ev of layerEvents) m.on(ev, l, down);
+    for (const [ev, fn] of mapEvents) m.on(ev, fn);
     return () => {
-        m.off("mousedown", "measure-nodes-halo", down);
-        m.off("touchstart", "measure-nodes-halo", down);
-        m.off("mousedown", "measure-nodes", down);
-        m.off("touchstart", "measure-nodes", down);
-        m.off("mousemove", move);
-        m.off("touchmove", move);
-        m.off("mouseup", up);
-        m.off("touchend", up);
+        for (const l of nodeLayers) for (const ev of layerEvents) m.off(ev, l, down);
+        for (const [ev, fn] of mapEvents) m.off(ev, fn);
     };
 });
 
@@ -969,10 +906,7 @@ $effect(() => {
         // Guard first: this fires every pan frame for the map's whole life.
         if (!active) return;
         mapMoveSeq += 1;
-        const pts = points();
-        const ring: Lnglat[] =
-            isPolygon && verts.length >= 3 ? [...verts, verts[0]] : pts;
-        setData(MEASURE_TICKS_SRC, buildTicksFC(ring));
+        setData(MEASURE_TICKS_SRC, buildTicksFC(ring()));
         // Rebuild ONLY when the crowding verdict flips; renderLegs recreates every marker's DOM.
         if (legLabelsShown !== legLabelsFit()) renderLegs();
     };
@@ -1124,21 +1058,18 @@ $effect(() => {
             drop-shadow(0 0 3px rgba(0, 0, 0, 0.6));
     }
     /* Sized by HEIGHT: the pin art is much taller than wide and a width cap inflated its button. */
-    .measure-pin-ic { height: 24px; width: auto; flex-shrink: 0; display: block; }
+    .measure-pin-ic, .measure-plot-ic { height: 24px; width: auto; flex-shrink: 0; display: block; }
 
     /* keep in sync with POP_GRID_W */
     .measure-pop.measure-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
         width: 160px;
-        gap: 0.25rem;
-        align-items: stretch;
     }
     .measure-pop.measure-grid .measure-btn {
         padding: 0 0.2rem;
         height: 32px;
     }
-    .measure-plot-ic { height: 24px; width: auto; flex-shrink: 0; display: block; }
 
     /* #1da1f2 matches the user-location dot. */
     .measure-self-badge {
