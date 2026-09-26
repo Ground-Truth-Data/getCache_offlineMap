@@ -42,8 +42,3 @@ export function peekStaticMask(): Set<string> {
 export function warmStaticMask(): void {
 	if (cache === null && inFlight === null) void loadStaticMask();
 }
-
-export function __resetStaticMaskForTest(): void {
-	cache = null;
-	inFlight = null;
-}

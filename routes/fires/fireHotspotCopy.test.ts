@@ -7,8 +7,6 @@ import {
 	CELL_KM,
 	clusterAreaKm2,
 	distanceLine,
-	footprintLine,
-	intensityLabel,
 	intensityOf,
 	kmApart,
 	pingAgo,
@@ -32,13 +30,6 @@ describe("intensity — the 'how big is this' number", () => {
 		expect(intensityOf(Number.NaN)).toBe("low");
 	});
 
-	it("states the heat plainly, with no speculation about the cause", () => {
-		expect(intensityLabel(3)).toBe("Low heat");
-		expect(intensityLabel(900)).toBe("Very high heat");
-		for (const frp of [1, 30, 120, 5000]) {
-			expect(intensityLabel(frp).toLowerCase()).not.toContain("industrial");
-		}
-	});
 });
 
 describe("distance + bearing — 'is it coming for me?'", () => {
@@ -76,17 +67,6 @@ describe("seen — when the SATELLITE saw it", () => {
 
 	it("never shows a negative age from clock skew", () => {
 		expect(seenLabel(NOW + 60_000, NOW)).toBe("Seen 0 min ago");
-	});
-});
-
-describe("footprint — a fact, not a caveat", () => {
-	it("states the pixel size with no lecture attached", () => {
-		expect(footprintLine(0.4)).toBe("Covers 400 m");
-		expect(footprintLine(0.4)).not.toContain("not the whole");
-	});
-
-	it("falls back to VIIRS's nominal 375 m when the feed omits it", () => {
-		expect(footprintLine(undefined)).toBe("Covers 375 m");
 	});
 });
 

@@ -109,10 +109,6 @@ export function regionRange(lng: number, lat: number): Range {
 	};
 }
 
-export function rangeKey(r: Range): string {
-	return `${ANCHOR_Z}/${r.x0}-${r.x1}/${r.y0}-${r.y1}`;
-}
-
 export function rangeBox(r: Range): Box {
 	return {
 		w: xToLng(r.x0, ANCHOR_Z),
@@ -157,10 +153,6 @@ export function rangeTiles(r: Range): Tile[] {
 	return out;
 }
 
-export function regionTiles(lng: number, lat: number): Tile[] {
-	return rangeTiles(regionRange(lng, lat));
-}
-
 export function missingKeys(r: Range, have: Set<string>): string[] {
 	const out: string[] = [];
 	for (const t of rangeTiles(r)) {
@@ -168,19 +160,4 @@ export function missingKeys(r: Range, have: Set<string>): string[] {
 		if (!have.has(k)) out.push(k);
 	}
 	return out;
-}
-
-export function boxToPolygon(b: Box): GeoJSON.Polygon {
-	return {
-		type: "Polygon",
-		coordinates: [
-			[
-				[b.w, b.s],
-				[b.e, b.s],
-				[b.e, b.n],
-				[b.w, b.n],
-				[b.w, b.s],
-			],
-		],
-	};
 }

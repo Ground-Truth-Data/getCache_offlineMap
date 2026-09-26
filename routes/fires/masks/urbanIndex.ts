@@ -62,8 +62,3 @@ export function peekUrban(): UrbanPoly[] {
 export function warmUrban(): void {
 	if (cache === null && inFlight === null) void loadUrban();
 }
-
-export function __resetUrbanForTest(): void {
-	cache = null;
-	inFlight = null;
-}

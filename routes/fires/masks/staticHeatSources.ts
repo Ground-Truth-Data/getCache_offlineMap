@@ -34,22 +34,6 @@ export function isStaticSource(
 	return false;
 }
 
-export function partitionStatic<T extends { coordinates: readonly [number, number] }>(
-	detections: readonly T[],
-	mask: StaticMask,
-): { wildfire: T[]; industrial: T[] } {
-	const wildfire: T[] = [];
-	const industrial: T[] = [];
-	for (const d of detections) {
-		if (isStaticSource(d.coordinates[0], d.coordinates[1], mask)) {
-			industrial.push(d);
-		} else {
-			wildfire.push(d);
-		}
-	}
-	return { wildfire, industrial };
-}
-
 /** Builds the mask from archive detections; the asset must be regenerated with this, not a copy. */
 export function buildMask(
 	detections: readonly { lat: number; lng: number; day: string }[],

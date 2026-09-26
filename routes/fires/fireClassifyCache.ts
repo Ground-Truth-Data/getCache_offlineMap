@@ -13,10 +13,6 @@ export function peekUrbanVerdict(lng: number, lat: number): boolean | null {
 	return v === undefined ? null : v;
 }
 
-export function setUrbanVerdict(lng: number, lat: number, urban: boolean): void {
-	verdicts.set(cellKey(lng, lat), urban);
-}
-
 /**
  * Classifies unseen coordinates in frame-sized slices; true only when it learned something.
  * Never await this before a first paint: the layer draws with what it knows and refines after.
@@ -42,10 +38,6 @@ export async function classifyPending(
 		}
 	}
 	return true;
-}
-
-export function classifiedCount(): number {
-	return verdicts.size;
 }
 
 export function __resetClassifyCacheForTest(): void {

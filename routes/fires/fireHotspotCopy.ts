@@ -21,19 +21,6 @@ export function intensityOf(frp: number): FireIntensity {
 	return "extreme";
 }
 
-export function intensityLabel(frp: number): string {
-	switch (intensityOf(frp)) {
-		case "low":
-			return "Low heat";
-		case "moderate":
-			return "Moderate heat";
-		case "high":
-			return "High heat";
-		case "extreme":
-			return "Very high heat";
-	}
-}
-
 /** Great-circle km; a local copy keeps this module free of map/worker code. */
 export function kmApart(
 	a: readonly [number, number],
@@ -97,12 +84,6 @@ export function pingAgo(t: number, now: number = Date.now()): string {
 	const hours = mins / 60;
 	if (hours < 10) return `${Math.floor(hours)}h ago`;
 	return `${hours.toFixed(1)}h ago`;
-}
-
-/** The detection's pixel footprint, so the marker never reads as a surveyed perimeter. */
-export function footprintLine(px: number | undefined): string {
-	const m = Math.round(sideKm(px) * 1000);
-	return `Covers ${m} m`;
 }
 
 /** VIIRS's nominal pixel side; the real px stretches to ~0.75 km at swath edge. */

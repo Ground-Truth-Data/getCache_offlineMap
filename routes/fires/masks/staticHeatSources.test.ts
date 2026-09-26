@@ -8,7 +8,6 @@ import {
 	buildMask,
 	cellKey,
 	isStaticSource,
-	partitionStatic,
 } from "./staticHeatSources";
 
 // A Richmond BC cell detected on 14 distinct days in one season; genuine fires nearby showed 1–4.
@@ -90,33 +89,6 @@ describe("isStaticSource — a pixel wanders between passes", () => {
 
 	it("flags NOTHING when the mask failed to load", () => {
 		expect(isStaticSource(TANK_FARM[0], TANK_FARM[1], new Set())).toBe(false);
-	});
-});
-
-describe("partitionStatic — FLAG, never DELETE", () => {
-	const mask = new Set([cellKey(...TANK_FARM)]);
-	const detections = [
-		{ coordinates: TANK_FARM },
-		{ coordinates: WILDFIRE },
-		{ coordinates: [-120.0, 51.0] as [number, number] },
-	];
-
-	it("separates industrial from wildfire", () => {
-		const { wildfire, industrial } = partitionStatic(detections, mask);
-		expect(industrial).toHaveLength(1);
-		expect(wildfire).toHaveLength(2);
-	});
-
-	it("KEEPS the flagged detection — a refinery can genuinely catch fire", () => {
-		const { wildfire, industrial } = partitionStatic(detections, mask);
-		expect(wildfire.length + industrial.length).toBe(detections.length);
-		expect(industrial[0].coordinates).toEqual(TANK_FARM);
-	});
-
-	it("treats everything as wildfire when the mask is empty", () => {
-		const { wildfire, industrial } = partitionStatic(detections, new Set());
-		expect(wildfire).toHaveLength(3);
-		expect(industrial).toHaveLength(0);
 	});
 });
 

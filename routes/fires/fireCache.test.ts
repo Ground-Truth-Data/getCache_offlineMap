@@ -18,7 +18,6 @@ import {
 	FIRE_TTL_MS,
 	type FireCacheEntry,
 	type FireHotspot,
-	fireAgeLabel,
 	hotspotsToGeoJSON,
 	invalidateFireEntries,
 	isCoverageFresh,
@@ -204,24 +203,6 @@ describe("unionHotspots", () => {
 	it("flags degraded coverage when a satellite was missing", () => {
 		expect(unionHotspots([entry(T0, [], 2)]).degraded).toBe(true);
 		expect(unionHotspots([entry(T0, [], 3)]).degraded).toBe(false);
-	});
-});
-
-describe("fireAgeLabel — safety copy, not a debug string", () => {
-	it("says 'no fire data' for a null stamp rather than implying freshness", () => {
-		expect(fireAgeLabel(null, T0)).toBe("no fire data");
-	});
-
-	it("reads in plain English across the ranges", () => {
-		expect(fireAgeLabel(T0, T0 + 30_000)).toBe("just now");
-		expect(fireAgeLabel(T0, T0 + 25 * 60_000)).toBe("25 min ago");
-		expect(fireAgeLabel(T0, T0 + 3 * 3600_000)).toBe("3h ago");
-		expect(fireAgeLabel(T0, T0 + 26 * 3600_000)).toBe("1 day ago");
-		expect(fireAgeLabel(T0, T0 + 72 * 3600_000)).toBe("3 days ago");
-	});
-
-	it("never reports a negative age from clock skew", () => {
-		expect(fireAgeLabel(T0, T0 - 60_000)).toBe("just now");
 	});
 });
 

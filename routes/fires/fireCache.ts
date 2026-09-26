@@ -266,18 +266,3 @@ export function hotspotsToGeoJSON(
 		})),
 	};
 }
-
-/** The staleness stamp; `null` yields "no fire data" rather than an implied-fresh blank. */
-export function fireAgeLabel(
-	fetchedAt: number | null,
-	now: number = Date.now(),
-): string {
-	if (fetchedAt === null) return "no fire data";
-	const mins = Math.max(0, Math.floor((now - fetchedAt) / 60_000));
-	if (mins < 2) return "just now";
-	if (mins < 60) return `${mins} min ago`;
-	const hours = Math.floor(mins / 60);
-	if (hours < 24) return `${hours}h ago`;
-	const days = Math.floor(hours / 24);
-	return days === 1 ? "1 day ago" : `${days} days ago`;
-}
