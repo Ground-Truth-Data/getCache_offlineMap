@@ -1,12 +1,8 @@
 // ⚠️ Live position must pass containment before reaching note() — raw ~4-decimal fixes mint a new area (photo + fire fetch) every ~11 m step.
 // ⚠️ Measure distance from nearest COVERAGE, never distance moved: that re-fires on a loop back inside coverage and never fires on a slow drift.
 import { kmBetween, type LngLat } from "./kmGeo";
-import { BLOB_RADIUS_KM } from "../contract/roadBlob";
 import { BAKE_RADIUS_KM } from "../onPhone/satellite/satelliteImage";
 import { FIRE_RADIUS_KM } from "./fireContract";
-
-/** ⛔ Never a literal — BLOB_RADIUS_KM owns the one road radius. Not what MAP_TRIGGER_KM is measured against. */
-export const MAP_COVERAGE_KM = BLOB_RADIUS_KM;
 
 /** "Covered" means the satellite photo, not the wider road disc — measuring against the road ring left users covered while looking at blank ground. */
 export const PHOTO_COVERAGE_KM = BAKE_RADIUS_KM;

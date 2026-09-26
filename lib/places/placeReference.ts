@@ -171,38 +171,3 @@ export function placeReference(
 
 	return { text: parts.join(", "), primary, anchor };
 }
-
-/** A user's own block beats any town name when within maxKm; otherwise the world cascade runs. */
-export interface UserBlock {
-	readonly name: string;
-	readonly coordinates: readonly [number, number];
-}
-
-export const BLOCK_PREFER_KM = 60;
-
-export function blockReference(
-	at: readonly [number, number],
-	blocks: readonly UserBlock[],
-	maxKm: number = BLOCK_PREFER_KM,
-): string | null {
-	let best: { name: string; km: number; bearing: string } | null = null;
-	for (const b of blocks) {
-		const km = distanceKm(at, b.coordinates);
-		if (km > maxKm) continue;
-		if (best === null || km < best.km) {
-			best = { name: b.name, km, bearing: bearing16(b.coordinates, at) };
-		}
-	}
-	if (best === null) return null;
-	const km = roundKm(best.km);
-	if (best.km < AT_PLACE_KM || km === 0) return `at your ${best.name} block`;
-	return `${km} km ${best.bearing} of your ${best.name} block`;
-}
-
-export function locationLine(
-	at: readonly [number, number],
-	places: readonly PlaceRow[],
-	blocks: readonly UserBlock[] = [],
-): string {
-	return blockReference(at, blocks) ?? placeReference(at, places).text;
-}

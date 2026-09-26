@@ -16,20 +16,8 @@ export interface WorkStat {
 	lastSkip: string;
 }
 
-/** A payload handed across a boundary: bytes × frequency, not time. */
-export interface PayloadStat {
-	name: string;
-	sends: number;
-	lastKb: number;
-	maxKb: number;
-	totalKb: number;
-	/** -1 when not a FeatureCollection. */
-	lastFeatures: number;
-}
-
 // SvelteMap, not `$state(new Map())`: Svelte 5 does not proxy Map, so the key set would never re-run `workStats()`
 const stats = new SvelteMap<string, WorkStat>();
-const payloads = new SvelteMap<string, PayloadStat>();
 
 /** idle grey · transit yellow · ok = bytes on disk, STILL yellow · drawn = seen in the viewport, green · err red. Only paintWatch.ts can turn a row green. */
 export type CircuitState = "idle" | "transit" | "ok" | "drawn" | "err";
@@ -55,7 +43,6 @@ export interface PaintStat {
 const circuits = new SvelteMap<string, CircuitStat>();
 const paints = new SvelteMap<string, PaintStat>();
 const probes = new SvelteMap<string, boolean>();
-const circuitListeners = new Set<(c: CircuitStat) => void>();
 
 /** A transit unanswered this long is declared err so the badge stops counting; a late arrival still un-errs it. */
 const GIVE_UP_MS = 30_000;
@@ -63,12 +50,6 @@ const giveUpTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 /** While set, notes tagged with a different area are ignored so a background reconcile cannot overwrite the pin just dropped; untagged notes always land. */
 let focusArea: string | null = null;
-export function focusCircuits(areaKey: string | null): void {
-	focusArea = areaKey;
-}
-export function circuitFocus(): string | null {
-	return focusArea;
-}
 export function noteCircuit(
 	key: string,
 	state: Exclude<CircuitState, "drawn">,
@@ -92,7 +73,6 @@ export function noteCircuit(
 		arrivedAt: state === "ok" ? now : null,
 	};
 	circuits.set(key, next);
-	for (const fn of circuitListeners) fn(next);
 	clearTimeout(giveUpTimers.get(key));
 	giveUpTimers.delete(key);
 	if (state === "transit")
@@ -104,11 +84,6 @@ export function noteCircuit(
 					noteCircuit(key, "err", `nothing after ${GIVE_UP_MS / 1000}s — gave up waiting`);
 			}, GIVE_UP_MS),
 		);
-}
-/** Called on every circuit write; paintWatch forces a repaint when bytes land so an already-idle map is re-counted. */
-export function subscribeCircuits(fn: (c: CircuitStat) => void): () => void {
-	circuitListeners.add(fn);
-	return () => circuitListeners.delete(fn);
 }
 /** undefined = never called (render grey). */
 export function circuitOf(key: string): CircuitStat | undefined {
@@ -202,7 +177,6 @@ export function meterSnapshot() {
 	return {
 		at: new Date().toISOString(),
 		work: workStats().map((s) => ({ ...s })),
-		payloads: payloadStats().map((p) => ({ ...p })),
 		focus: focusArea,
 		circuits: allCircuits().map((c) => ({
 			...c,
@@ -221,38 +195,6 @@ export function meterSnapshot() {
 
 if (import.meta.env.DEV && typeof window !== "undefined") {
 	(window as unknown as { __meter: () => unknown }).__meter = meterSnapshot;
-}
-
-export function payloadStats(): PayloadStat[] {
-	return [...payloads.values()];
-}
-
-/** Never re-stringify an object just to measure it; objects report 0 KB (features only). */
-export function notePayload(name: string, data: unknown): void {
-	let s = payloads.get(name);
-	if (!s) {
-		const fresh: PayloadStat = $state({
-			name,
-			sends: 0,
-			lastKb: 0,
-			maxKb: 0,
-			totalKb: 0,
-			lastFeatures: -1,
-		});
-		payloads.set(name, fresh);
-		s = fresh;
-	}
-	const kb =
-		typeof data === "string" ? Math.round(data.length / 1024) : 0;
-	const feats =
-		data && typeof data === "object" && Array.isArray((data as { features?: unknown[] }).features)
-			? ((data as { features: unknown[] }).features.length)
-			: -1;
-	s.sends++;
-	s.lastKb = kb;
-	s.totalKb += kb;
-	if (kb > s.maxKb) s.maxKb = kb;
-	s.lastFeatures = feats;
 }
 
 function slot(name: string): WorkStat {
@@ -339,13 +281,6 @@ export function resetWorkStats(): void {
 		s.errors = 0;
 		s.skips = 0;
 		s.lastSkip = "";
-	}
-	for (const p of payloads.values()) {
-		p.sends = 0;
-		p.lastKb = 0;
-		p.maxKb = 0;
-		p.totalKb = 0;
-		p.lastFeatures = -1;
 	}
 	// Probes stay: a fact about the network, not a counter.
 	circuits.clear();

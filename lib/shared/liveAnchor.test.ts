@@ -4,7 +4,6 @@ import {
 	fireDiscCentres,
 	FIRE_RELEVANCE_KM,
 	fireCentresWorthFetching,
-	MAP_COVERAGE_KM,
 	MAP_TRIGGER_KM,
 	isUsableFix,
 	kmToNearest,
@@ -14,6 +13,7 @@ import {
 } from "./liveAnchor";
 import { BAKE_RADIUS_KM } from "../onPhone/satellite/satelliteImage";
 import { FIRE_RADIUS_KM } from "./fireContract";
+import { BLOB_RADIUS_KM } from "../contract/roadBlob";
 import type { LngLat } from "./kmGeo";
 
 // A block in the Ottawa valley — the repo's usual test locale.
@@ -26,7 +26,7 @@ function north(from: LngLat, km: number): LngLat {
 
 describe("the trigger radii come from real blob geometry", () => {
 	it("triggers a new map blob INSIDE the coverage it already has", () => {
-		expect(MAP_TRIGGER_KM).toBeLessThan(MAP_COVERAGE_KM);
+		expect(MAP_TRIGGER_KM).toBeLessThan(BLOB_RADIUS_KM);
 	});
 
 	it("triggers a fire refetch INSIDE the disc it already has", () => {

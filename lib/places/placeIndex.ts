@@ -68,9 +68,3 @@ export function peekPlaces(): PlaceRow[] | null {
 export function warmPlaces(): void {
 	if (cache === null && inFlight === null) void loadPlaces();
 }
-
-/** Test seam. */
-export function __resetPlacesForTest(): void {
-	cache = null;
-	inFlight = null;
-}

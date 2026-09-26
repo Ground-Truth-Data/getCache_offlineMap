@@ -31,12 +31,7 @@ import {
 	tilesHost,
 	type WorkerTarget,
 } from "../worker/worker-local-dev/tilesHost";
-import {
-	payloadStats,
-	workStats,
-	type PayloadStat,
-	type WorkStat,
-} from "./workMeter.svelte";
+import { workStats, type WorkStat } from "./workMeter.svelte";
 
 /** Bump when a field's MEANING changes, so an old file is never misread as a new one. */
 export const DEBUG_REPORT_SCHEMA = 1 as const;
@@ -117,7 +112,6 @@ export interface DebugReport {
 		note: string;
 	};
 	work: WorkStat[];
-	payloads: PayloadStat[];
 	budget: { usedBytes: number; totalBytes: number; areas: number };
 	latest: BlobGeometryReport | null;
 	areas: AreaSummary[];
@@ -260,7 +254,6 @@ export async function collectDebugReport(
 			note: live.bakeNote ?? "",
 		},
 		work: workStats(),
-		payloads: payloadStats(),
 		budget: {
 			usedBytes,
 			totalBytes: OFFLINE_BUDGET_BYTES,

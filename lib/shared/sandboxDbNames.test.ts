@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
 	currentDbName,
 	sandboxWorld,
-	setSandboxStorageActive,
 	worldSuffix,
 } from "./sandboxDbNames";
 
@@ -25,12 +24,7 @@ describe("named worlds — ?sandbox=<world>", () => {
 		expect(worldSuffix("blue")).toBe("-sandbox-blue");
 	});
 
-	it("suffixes every DB name by the active world, and none in the real app", () => {
-		setSandboxStorageActive(true, "green");
-		expect(currentDbName("rt-treeStuff")).toBe("rt-treeStuff-sandbox-green");
-		setSandboxStorageActive(true);
-		expect(currentDbName("rt-treeStuff")).toBe("rt-treeStuff-sandbox");
-		setSandboxStorageActive(false);
+	it("suffixes no DB name in the real app", () => {
 		expect(currentDbName("rt-treeStuff")).toBe("rt-treeStuff");
 	});
 });

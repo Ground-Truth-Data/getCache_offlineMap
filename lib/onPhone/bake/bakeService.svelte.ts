@@ -3,7 +3,6 @@
 import { isDownloadGuardTripped } from "../store/downloadGuard";
 
 import { FIRE_REFRESH_ENABLED } from "../../shared/bakeFlags";
-import { registerWipeStopper } from "../store/wipe";
 import {
     allCoverage,
     type CoverageRecord,
@@ -818,9 +817,6 @@ export function startOfflineBakeService(hostPorts: HostPorts): () => void {
         window.addEventListener("online", onOnline);
         teardown.push(() => window.removeEventListener("online", onOnline));
     }
-
-    // Without this, wipe deletes databases this service is re-writing into.
-    teardown.push(registerWipeStopper(stopOfflineBakeService));
 
     return stopOfflineBakeService;
 }

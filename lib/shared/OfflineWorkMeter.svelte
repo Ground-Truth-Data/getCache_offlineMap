@@ -3,11 +3,7 @@
 import "$rig/dev/devCard.css";
 import { dev } from "$app/environment";
 import { onMount } from "svelte";
-import {
-	workStats,
-	payloadStats,
-	resetWorkStats,
-} from "./workMeter.svelte";
+import { workStats, resetWorkStats } from "./workMeter.svelte";
 import {
 	startDataMeter,
 	todayBytes,
@@ -111,37 +107,27 @@ $effect(() => {
 	return () => window.removeEventListener("click", offClick, true);
 });
 
-async function copyJson() {
+async function exportJson(action: "copied" | "saved") {
+	exportOpen = false;
 	if (exporting) return;
 	exporting = true;
 	exportMsg = "";
 	try {
 		const json = compactJson(await buildReport());
-		await navigator.clipboard.writeText(json);
-		flash("copied");
-	} catch (err) {
-		exportMsg = err instanceof Error ? err.message : "copy failed";
-	} finally {
-		exporting = false;
-	}
-}
-
-async function downloadJson() {
-	if (exporting) return;
-	exporting = true;
-	exportMsg = "";
-	try {
-		const json = compactJson(await buildReport());
-		const url = URL.createObjectURL(
-			new Blob([json], { type: "application/json" }),
-		);
-		const a = document.createElement("a");
-		a.href = url;
-		a.download = debugReportFilename();
-		a.click();
-		// Revoking synchronously can cancel the download before the blob is read.
-		setTimeout(() => URL.revokeObjectURL(url), 0);
-		flash("saved");
+		if (action === "copied") {
+			await navigator.clipboard.writeText(json);
+		} else {
+			const url = URL.createObjectURL(
+				new Blob([json], { type: "application/json" }),
+			);
+			const a = document.createElement("a");
+			a.href = url;
+			a.download = debugReportFilename();
+			a.click();
+			// Revoking synchronously can cancel the download before the blob is read.
+			setTimeout(() => URL.revokeObjectURL(url), 0);
+		}
+		flash(action);
 	} catch (err) {
 		exportMsg = err instanceof Error ? err.message : "export failed";
 	} finally {
@@ -216,26 +202,16 @@ onMount(() => {
 	};
 });
 
-const sparkPoints = $derived.by(() => {
-	if (heapTrace.length < 2) return "";
+const spark = $derived.by(() => {
+	if (heapTrace.length < 2) return null;
 	const mbs = heapTrace.map((s) => s.mb);
 	const lo = Math.min(...mbs);
 	const hi = Math.max(...mbs, lo + 1);
-	const n = heapTrace.length;
-	return heapTrace
-		.map((s, i) => {
-			const x = (i / (n - 1)) * 300;
-			const y = 40 - ((s.mb - lo) / (hi - lo)) * 36;
-			return `${x.toFixed(1)},${y.toFixed(1)}`;
-		})
-		.join(" ");
-});
-
-const peakSparkX = $derived.by(() => {
-	if (peakAt === null || heapTrace.length < 2) return null;
-	const idx = heapTrace.findIndex((s) => s.t === peakAt);
-	if (idx === -1) return null;
-	return (idx / (heapTrace.length - 1)) * 300;
+	const x = (i: number) => (i / (mbs.length - 1)) * 300;
+	const y = (mb: number) => 40 - ((mb - lo) / (hi - lo)) * 36;
+	const points = mbs.map((mb, i) => `${x(i).toFixed(1)},${y(mb).toFixed(1)}`).join(" ");
+	const idx = peakAt === null ? -1 : heapTrace.findIndex((s) => s.t === peakAt);
+	return { points, peak: idx === -1 ? null : { x: x(idx), y: y(peak!) } };
 });
 
 // Portal to <body>: `.mobile-preview-frame`'s `contain: layout` traps
@@ -247,8 +223,6 @@ $effect(() => {
 });
 
 const rows = $derived(workStats());
-const pays = $derived(payloadStats());
-const payTotalKb = $derived(pays.reduce((n, p) => n + p.totalKb, 0));
 
 // Not reset by the Reset button: a budget measured from the last button press is not a budget.
 $effect(() => startDataMeter());
@@ -261,11 +235,6 @@ async function copyData(): Promise<void> {
 
 function secs(ms: number): string {
 	return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
-}
-
-function fmtKb(kb: number): string {
-	if (kb <= 0) return "—";
-	return kb < 1024 ? `${kb}KB` : `${(kb / 1024).toFixed(1)}MB`;
 }
 
 function fmtBytes(b: number): string {
@@ -322,24 +291,10 @@ function fmtBytes(b: number): string {
 						{#if focusedBlobName}
 							<div class="em-head">{focusedBlobName}</div>
 						{/if}
-						<button
-							class="em-opt em-opt--active"
-							onclick={() => {
-								exportOpen = false;
-								copyJson();
-							}}
-						>
+						<button class="em-opt em-opt--active" onclick={() => exportJson("copied")}>
 							copy json
 						</button>
-						<button
-							class="em-opt"
-							onclick={() => {
-								exportOpen = false;
-								downloadJson();
-							}}
-						>
-							download
-						</button>
+						<button class="em-opt" onclick={() => exportJson("saved")}>download</button>
 						{#if exportMsg}
 							<div class="em-err">{exportMsg}</div>
 						{/if}
@@ -370,22 +325,16 @@ function fmtBytes(b: number): string {
 					{/if}
 				{/each}
 
-				{#if sparkPoints}
+				{#if spark}
 					<div class="sparkwrap">
 						<svg viewBox="0 0 300 44" preserveAspectRatio="none">
-							<polyline points={sparkPoints} fill="none" stroke={"#6fb3d9"} stroke-width="2" />
-							{#if peakSparkX !== null}
-								{@const py =
-									40 -
-									((peak! - Math.min(...heapTrace.map((s) => s.mb))) /
-										(Math.max(...heapTrace.map((s) => s.mb), Math.min(...heapTrace.map((s) => s.mb)) + 1) -
-											Math.min(...heapTrace.map((s) => s.mb)))) *
-										36}
-								<circle cx={peakSparkX} cy={py} r="3.5" fill="#e2553f" />
+							<polyline points={spark.points} fill="none" stroke={"#6fb3d9"} stroke-width="2" />
+							{#if spark.peak}
+								<circle cx={spark.peak.x} cy={spark.peak.y} r="3.5" fill="#e2553f" />
 								<line
-									x1={peakSparkX}
-									y1={py}
-									x2={peakSparkX}
+									x1={spark.peak.x}
+									y1={spark.peak.y}
+									x2={spark.peak.x}
 									y2="44"
 									stroke="#e2553f"
 									stroke-width="1"
@@ -435,10 +384,6 @@ function fmtBytes(b: number): string {
 				>
 					no bake pass has run yet
 				</div>
-				<div class="foot">
-					<span class="dim">DROP PIN TO START · LONG PRESS ON MAP</span>
-					<button onclick={resetWorkStats}>clear counts</button>
-				</div>
 			{:else}
 				<table>
 					<tbody>
@@ -471,11 +416,11 @@ function fmtBytes(b: number): string {
 						{/each}
 					</tbody>
 				</table>
-				<div class="foot">
-					<span class="dim">DROP PIN TO START · LONG PRESS ON MAP</span>
-					<button onclick={resetWorkStats}>reset</button>
-				</div>
 			{/if}
+			<div class="foot">
+				<span class="dim">DROP PIN TO START · LONG PRESS ON MAP</span>
+				<button onclick={resetWorkStats}>reset</button>
+			</div>
 
 			{#if netRows.length > 0}
 				<div class="paysec netsec">
@@ -509,32 +454,6 @@ function fmtBytes(b: number): string {
 				</div>
 			{/if}
 
-			{#if pays.length > 0}
-				<div class="paysec">
-					<div class="payhead">
-						setData → mapbox worker
-						<span class="dim">{fmtKb(payTotalKb)} total re-parsed</span>
-					</div>
-					<table>
-						<tbody>
-							{#each pays as p (p.name)}
-								<tr>
-									<td class="name">{p.name.replace("v4-", "").replace("-geo", "")}</td>
-									<td class="num" title="sends since load">×{p.sends}</td>
-									<td class="num" title="last payload">{fmtKb(p.lastKb)}</td>
-									<td class="num dim" title="largest payload">{fmtKb(p.maxKb)}</td>
-									<td class="num dim" title="total re-parsed since load">
-										{fmtKb(p.totalKb)}
-									</td>
-								</tr>
-							{/each}
-						</tbody>
-					</table>
-					<div class="foot">
-						<span class="dim">sends · last · biggest · total</span>
-					</div>
-				</div>
-			{/if}
 		{/if}
 	</div>
 {/if}

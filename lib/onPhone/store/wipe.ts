@@ -1,9 +1,3 @@
-import {
-	latchOfflineReadsForWipe,
-	unlatchOfflineReadsAfterFailedWipe,
-	resetOfflineDbHandles,
-} from "../../shared/sandboxDbNames";
-
 /** Databases the wipe destroys. Tiles + bookkeeping only — never user data. */
 export const WIPE_DBS = [
 	"gc-offlineTiles",
@@ -39,8 +33,6 @@ function deleteDb(name: string): Promise<"gone" | "blocked"> {
 }
 
 const BLOCKED_GRACE_MS = 3000;
-/** Lets in-flight transactions drain after stopping the bake service. */
-const IN_FLIGHT_GRACE_MS = 400;
 
 export async function wipeOfflineData(
 	names: readonly string[] = WIPE_DBS,
@@ -85,50 +77,6 @@ export async function wipeOfflineData(
 		deleted,
 	);
 	return { deleted, clean };
-}
-
-// Registered by the caller, never imported here: importing pulls in the whole app.
-const stoppers = new Set<() => void>();
-
-/** Register something to stop before the wipe (e.g. the bake service). */
-export function registerWipeStopper(fn: () => void): () => void {
-	stoppers.add(fn);
-	return () => stoppers.delete(fn);
-}
-
-/** Stops, latches reads, deletes and confirms before reloading: a reload first re-opens the DBs and cancels the queued deletes. */
-export async function wipeOfflineDataAndReload(): Promise<void> {
-	// Closing handles alone is not enough: the bake service reopens the tile DB every tick.
-	for (const stop of stoppers) {
-		try {
-			stop();
-		} catch {
-			/* that delete may block */
-		}
-	}
-	await new Promise((r) => setTimeout(r, IN_FLIGHT_GRACE_MS));
-
-	// Latch first: idbGetTile reopens the DB on every tile request.
-	latchOfflineReadsForWipe();
-	resetOfflineDbHandles();
-
-	const res = await wipeOfflineData();
-
-	if (!res.clean) {
-		// The data is still there; a latch left on makes every read a silent miss.
-		unlatchOfflineReadsAfterFailedWipe();
-
-		// A reload here would recreate the databases and hide the failure.
-		console.error(
-			"[wipe] FAILED — databases still held open, nothing was deleted.",
-			res.deleted,
-			"\nClose other tabs on this origin and press WIPE again.",
-		);
-		throw new Error("wipe blocked: " + JSON.stringify(res.deleted));
-	}
-
-	console.log("[wipe] clean:", res.deleted);
-	location.reload();
 }
 
 function countTiles(): Promise<number> {

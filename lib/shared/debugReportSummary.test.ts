@@ -34,7 +34,6 @@ function cannedReport(overrides: Partial<Body> = {}): Body {
 		meter: {
 			at: "2026-08-31T16:42:06.700Z",
 			work: [],
-			payloads: [],
 			focus: null,
 			circuits: [],
 			paints: [

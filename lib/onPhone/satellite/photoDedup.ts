@@ -3,10 +3,7 @@
  * same ground by `photoReusableFor`, the predicate the bake itself consults.
  */
 
-import {
-	dropCoverage,
-	noteCoverage,
-} from "../store/coverageRegistry";
+import { noteCoverage } from "../store/coverageRegistry";
 import {
 	deleteSatImage,
 	photoReusableFor,
@@ -63,9 +60,4 @@ export async function runPhotoDedup(): Promise<DedupPlan> {
 		`[offline] photo dedup — ${plan.drop.length} duplicate photos removed, ${(plan.bytes / 1048576).toFixed(1)} MB freed, ${plan.keep.length} kept`,
 	);
 	return plan;
-}
-
-export async function dropAreaEntirely(areaKey: string): Promise<void> {
-	await deleteSatImage(areaKey);
-	await dropCoverage(areaKey);
 }

@@ -81,8 +81,3 @@ export async function getLiveFix(): Promise<LngLat | null> {
 		return null;
 	}
 }
-
-/** Test seam — resets the poll rate limiter. */
-export function __resetLiveFixThrottle(): void {
-	lastPollTs = 0;
-}

@@ -1,9 +1,6 @@
 /** keyedIdbStore.ts — the IndexedDB wrapper for the offline boxes (one object store, no keyPath, explicit string keys). ⚠️ SHELL HEAL: a DB that exists but lacks its store throws "object store not found" forever until deleted + recreated on first open. */
 
-import {
-	currentDbName,
-	registerOfflineDbReset,
-} from "../../shared/sandboxDbNames";
+import { currentDbName } from "../../shared/sandboxDbNames";
 
 export interface KeyedIdbStore<T> {
 	get(key: string): Promise<T | undefined>;
@@ -57,13 +54,6 @@ export function makeKeyedIdbStore<T>(opts: {
 		})();
 		return dbPromise;
 	}
-
-	// ⚠️ Close the connection, don't just drop the reference — an open connection blocks deleteDatabase forever, which let a wipe report a store "clean" while it actually survived.
-	registerOfflineDbReset(() => {
-		const pending = dbPromise;
-		dbPromise = null;
-		void pending?.then((db) => db.close()).catch(() => {});
-	});
 
 	/** Settle on the TRANSACTION's outcome, not the request's: a transaction can
 	 *  abort (another connection, a version change, quota) and leave its

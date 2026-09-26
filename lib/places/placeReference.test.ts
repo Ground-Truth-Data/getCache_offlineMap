@@ -8,9 +8,7 @@ import {
 	TIER_VILLAGE,
 	regionNear,
 	bearing16,
-	blockReference,
 	distanceKm,
-	locationLine,
 	nearestInTier,
 	placeReference,
 	roundKm,
@@ -168,30 +166,6 @@ describe("nearestInTier — respects both tier and radius", () => {
 
 	it("returns null when the nearest is outside the radius", () => {
 		expect(nearestInTier([-115.28, 54.15], AB, TIER_VILLAGE, 1)).toBeNull();
-	});
-});
-
-describe("the user's own block wins — 'your Sundance block'", () => {
-	const blocks = [
-		{ name: "Sundance", coordinates: [-115.5, 54.2] as [number, number] },
-	];
-
-	it("beats any town name when the detection is near it", () => {
-		const line = locationLine([-115.7, 54.35], AB, blocks);
-		expect(line).toMatch(/^\d+ km \w+ of your Sundance block$/);
-	});
-
-	it("says 'at your … block' when you're standing in it", () => {
-		expect(blockReference([-115.5, 54.2], blocks)).toBe("at your Sundance block");
-	});
-
-	it("falls back to the world cascade when the block is far away", () => {
-		const line = locationLine([-120.3192, 50.6665], [KAMLOOPS], blocks);
-		expect(line).toBe("at Kamloops");
-	});
-
-	it("returns null with no blocks at all", () => {
-		expect(blockReference([-115.5, 54.2], [])).toBeNull();
 	});
 });
 

@@ -15,15 +15,6 @@ export function isMaplibreMap(map: unknown): boolean {
 	return el?.className?.includes("maplibregl") ?? false;
 }
 
-// The GL library that built this map, imported lazily — both are already bundled, so this is a cache lookup, not a download.
-export async function glOf(map: unknown): Promise<typeof import("mapbox-gl").default> {
-	if (isMaplibreMap(map)) {
-		const m = await import("maplibre-gl");
-		return m.default as unknown as typeof import("mapbox-gl").default;
-	}
-	return (await import("mapbox-gl")).default;
-}
-
 // Synchronous on purpose — pin rendering is a hot loop (one call per pin per reconcile) that can't await a per-marker import; both libs are statically imported since they're bundled anyway.
 // Callers construct with: new (markerCtor(map))({...})
 export function markerCtor(map: unknown): typeof mapboxgl.Marker {
