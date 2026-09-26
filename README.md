@@ -124,10 +124,10 @@ import { attachFireLayer } from "$parent/siblings/getCache_OfflineMap/lib/onPhon
 
 Every `lib/mapUi` component takes a required `ports: MapHostPorts` prop; every
 store factory that needs the host takes it as a parameter. ReTreever's real
-`MapStore` is ASSIGNED to `MapHostStore` in `retreeverMapPorts.ts` — that
-assignment is the type-check at the boundary. The one thing still in
-ReTreever on purpose: `mapStore.svelte.ts` — it IS the database. It comes in
-as `ports.store`.
+store (`v2MapStore.svelte.ts`) is ASSIGNED to `MapHostStore` in
+`retreeverMapPorts.ts` — that assignment is the type-check at the boundary.
+The store stays in ReTreever on purpose — it IS the database. It comes in as
+`ports.store`.
 
 **Declared pair:** this child imports `getCache_OnlineMap` (mapDraw, areaLabels,
 safeMap, coord, safeMarker, …), declared in ReTreever's
