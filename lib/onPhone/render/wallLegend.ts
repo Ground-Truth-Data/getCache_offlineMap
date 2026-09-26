@@ -1,11 +1,5 @@
-/** The layer toggles and the read-only colour key. */
+/** The layer toggles. */
 
-import {
-    PATH_LINE,
-    RAIL_LINE,
-    ROAD_LINE,
-    ROAD_MAJOR_LINE,
-} from "./offlineColors";
 import type { PackRead } from "../../contract/packLayers";
 
 export interface LayerToggle {
@@ -93,18 +87,4 @@ export const LAYER_TOGGLES: readonly LayerToggle[] = [
         hint: "cluster",
         feed: "fires",
     },
-] as const;
-
-export interface LegendEntry {
-    label: string;
-    color: string;
-    swatch: "line" | "dashed" | "fill" | "rail";
-}
-
-/** Only what this map actually paints. */
-export const LEGEND: readonly LegendEntry[] = [
-    { label: "Roads", color: ROAD_LINE, swatch: "line" },
-    { label: "Major roads / highways", color: ROAD_MAJOR_LINE, swatch: "line" },
-    { label: "Trails / paths", color: PATH_LINE, swatch: "dashed" },
-    { label: "Railways", color: RAIL_LINE, swatch: "rail" },
 ] as const;
