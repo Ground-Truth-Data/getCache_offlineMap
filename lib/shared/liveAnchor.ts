@@ -1,14 +1,5 @@
-// ⚠️ Live position must pass containment before reaching note() — raw ~4-decimal fixes mint a new area (photo + fire fetch) every ~11 m step.
-// ⚠️ Measure distance from nearest COVERAGE, never distance moved: that re-fires on a loop back inside coverage and never fires on a slow drift.
 import { kmBetween, type LngLat } from "./kmGeo";
-import { BAKE_RADIUS_KM } from "../onPhone/satellite/satelliteImage";
 import { FIRE_RADIUS_KM } from "./fireContract";
-
-/** "Covered" means the satellite photo, not the wider road disc — measuring against the road ring left users covered while looking at blank ground. */
-export const PHOTO_COVERAGE_KM = BAKE_RADIUS_KM;
-
-/** 75% of the photo radius — a containment test, not a distance-moved test. */
-export const MAP_TRIGGER_KM = PHOTO_COVERAGE_KM * 0.75;
 
 export const FIRE_COVERAGE_KM = FIRE_RADIUS_KM;
 
@@ -18,7 +9,7 @@ export const FIRE_TRIGGER_KM = Math.round(FIRE_COVERAGE_KM * 0.7);
 /** Two discs' reach — a day's drive stays covered, the far side of the country costs nothing. */
 export const FIRE_RELEVANCE_KM = FIRE_COVERAGE_KM * 2;
 
-/** Infinity when there are no centres, so the first fix always triggers a bake. */
+/** Infinity when there are no centres. */
 export function kmToNearest(
 	pos: readonly [number, number],
 	centres: readonly (readonly [number, number])[],
@@ -29,14 +20,6 @@ export function kmToNearest(
 		if (d < best) best = d;
 	}
 	return best;
-}
-
-/** centres includes feature anchors — a planter beside their own pin must not mint a second blob 11 m away. */
-export function needsMapBlob(
-	pos: LngLat,
-	centres: readonly LngLat[],
-): boolean {
-	return kmToNearest(pos, centres) > MAP_TRIGGER_KM;
 }
 
 /** Geography only — time-based freshness is fireIsFresh's axis; don't conflate the two. */
@@ -68,14 +51,6 @@ export function fireCentresWorthFetching(
 ): Array<readonly [number, number]> {
 	if (here.length === 0) return [...centres];
 	return centres.filter((c) => kmToNearest(c, here) <= reachKm);
-}
-
-/** A coarse (~0.25°) area key for a moving point — never satImageKey, which is 4-decimal. */
-export function snapLiveAnchor(pos: LngLat): LngLat {
-	const step = 0.25;
-	// + 0 turns -0 into 0, or a coordinate near Greenwich could occupy two cells.
-	const snap = (n: number): number => Math.round(n / step) * step + 0;
-	return [snap(pos[0]), snap(pos[1])];
 }
 
 export function isUsableFix(pos: unknown): pos is LngLat {

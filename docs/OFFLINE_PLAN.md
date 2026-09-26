@@ -73,9 +73,7 @@ separately from the blob download: a dead fire feed must not stall blobs, and
 a slow blob must not suppress a fire refresh. Don't merge the passes.
 
 An **honest age stamp beats an empty map** — a map showing nothing reads as
-"no fires near you", the one wrong answer that gets somebody hurt. When the
-user opens the app *specifically* to check a fire (`takeFireArrival`), a
-cached record is not good enough and the pass forces a fetch.
+"no fires near you", the one wrong answer that gets somebody hurt.
 
 **Fires are never opt-in** — settled, don't re-litigate. *"You can't turn
 them off if there's fires they need to know."* The fires layer starts on;

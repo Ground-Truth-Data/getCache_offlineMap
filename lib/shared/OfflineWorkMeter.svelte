@@ -11,52 +11,12 @@ import {
 	dailyAverage,
 	dataSnapshot,
 } from "./dataMeter.svelte";
-import { subscribeOfflineBake } from "../onPhone/bake/bakeService.svelte";
 import {
 	HEAP_NOTE,
 	collectFocusedBlobReport,
 	compactJson,
 	debugReportFilename,
 } from "./debugReport";
-let bakeOn = $state(false);
-let bakePend = $state(0);
-let bakeFail = $state(0);
-let bakeNote = $state("");
-let bakeSecs = $state(0);
-let bakeT0 = 0;
-// = the client's fetch deadline: past it, it's stuck, not slow.
-const STALL_AFTER_S = 150;
-
-// Reassurance is short-lived, not running commentary.
-const HIDE_AFTER_S = 20;
-let bakeTick: ReturnType<typeof setInterval> | undefined;
-
-$effect(() => {
-	const off = subscribeOfflineBake((st) => {
-		if (st.downloading && !bakeOn) {
-			// Resetting bakeT0 on every downloading edge (one per area) froze the clock at 0.
-			if (!bakeTick) {
-				bakeT0 = Date.now();
-				bakeSecs = 0;
-				bakeTick = setInterval(() => {
-					bakeSecs = Math.round((Date.now() - bakeT0) / 1000);
-				}, 1000);
-			}
-		} else if (!st.downloading && bakeOn) {
-			clearInterval(bakeTick);
-			bakeTick = undefined;
-			bakeSecs = 0;
-		}
-		bakeOn = st.downloading;
-		bakePend = st.pending;
-		bakeFail = st.failing;
-		bakeNote = st.note;
-	});
-	return () => {
-		clearInterval(bakeTick);
-		off();
-	};
-});
 
 interface Props {
 	route?: string;
@@ -354,36 +314,8 @@ function fmtBytes(b: number): string {
 		{/if}
 
 		{#if open}
-			<div class="bake-live" class:on={bakeOn && bakeSecs < HIDE_AFTER_S}>
-				{#if bakeOn && bakeSecs >= HIDE_AFTER_S && bakeSecs < STALL_AFTER_S}
-					<strong class="dim">working…</strong>
-				{:else if bakeOn && bakeSecs >= STALL_AFTER_S}
-					<strong class="fail">⚠️ stalled</strong>
-					<span class="secs">{bakeSecs}s</span>
-					{#if bakePend > 0}<span class="dim">· {bakePend} queued</span>{/if}
-				{:else if bakeOn}
-					<strong>⏳ downloading</strong>
-					<span class="secs">{bakeSecs}s</span>
-					{#if bakePend > 0}<span class="dim">· {bakePend} queued</span>{/if}
-				{:else}
-					<strong class="dim">idle</strong>
-					{#if bakePend > 0}<span class="dim">· {bakePend} queued</span>{/if}
-				{/if}
-				{#if bakeFail > 0}
-					<span class="fail">· {bakeFail} failing</span>
-				{/if}
-			</div>
-			{#if bakeNote}
-				<div class="hint bake-note">{bakeNote}</div>
-			{/if}
-
 			{#if rows.length === 0}
-				<div
-					class="empty"
-					title="waiting for first pass — bake boots ~20s after load"
-				>
-					no bake pass has run yet
-				</div>
+				<div class="empty">nothing has run yet</div>
 			{:else}
 				<table>
 					<tbody>
@@ -397,22 +329,9 @@ function fmtBytes(b: number): string {
 									{#if r.startedAt !== null}
 										<span class="run">▶ {secs(now - r.startedAt)}</span>
 									{/if}
-									{#if r.queued}<span class="q">QUEUED</span>{/if}
-									{#if r.skips > 0}
-										<span class="skip" title={r.lastSkip}>
-											{r.skips} skipped
-										</span>
-									{/if}
 									{#if r.errors > 0}<span class="err">{r.errors}✕</span>{/if}
 								</td>
 							</tr>
-							{#if r.skips > 0 && r.lastSkip}
-								<tr>
-									<td colspan="5" class="why">
-										↳ last skip: {r.lastSkip}
-									</td>
-								</tr>
-							{/if}
 						{/each}
 					</tbody>
 				</table>
@@ -518,23 +437,12 @@ tr.hot .name {
 .run {
 	color: var(--gold);
 }
-.q {
-	color: var(--amber);
-	font-weight: 700;
-}
 .err {
 	color: var(--red);
 }
 .empty {
 	color: var(--muted);
 	margin-top: 3px;
-}
-.hint {
-	color: var(--muted2);
-	font-size: 11px;
-	margin-top: 2px;
-	max-width: 100%;
-	white-space: normal;
 }
 .heap {
 	margin-top: 16px;
@@ -643,15 +551,6 @@ tr.hot .name {
 .zero-btn {
 	margin-top: 8px;
 }
-/* Amber, not red: refusing to run is often CORRECT. */
-.skip {
-	color: var(--amber);
-}
-.why {
-	color: var(--muted);
-	font-size: 11px;
-	padding-bottom: 3px;
-}
 .netsec .big {
 	margin-left: auto;
 	font-size: 1.35em;
@@ -694,26 +593,6 @@ tr.hot .name {
 	text-decoration: underline;
 }
 
-.bake-live {
-	display: flex;
-	align-items: baseline;
-	gap: 0.35em;
-	padding: 10px 0 0;
-	font-variant-numeric: tabular-nums;
-}
-.bake-live.on strong {
-	color: var(--gold);
-}
-.bake-live .secs {
-	color: var(--gold);
-	font-weight: 700;
-}
-.bake-live .fail {
-	color: var(--red);
-}
-.bake-note {
-	padding-bottom: 0.25rem;
-}
 .head-row {
 	flex-wrap: wrap;
 	gap: 8px 10px;

@@ -8,12 +8,7 @@ export interface WorkStat {
 	totalMs: number;
 	/** Wall-clock start of the in-flight run, or null when idle. */
 	startedAt: number | null;
-	/** Set by the caller when a fresh run was requested mid-flight. */
-	queued: boolean;
 	errors: number;
-	/** Triggered but returned at the door (breaker latched, already running, nothing to do). */
-	skips: number;
-	lastSkip: string;
 }
 
 // SvelteMap, not `$state(new Map())`: Svelte 5 does not proxy Map, so the key set would never re-run `workStats()`
@@ -207,10 +202,7 @@ function slot(name: string): WorkStat {
 		maxMs: 0,
 		totalMs: 0,
 		startedAt: null,
-		queued: false,
 		errors: 0,
-		skips: 0,
-		lastSkip: "",
 	});
 	stats.set(name, fresh);
 	return fresh;
@@ -218,18 +210,6 @@ function slot(name: string): WorkStat {
 
 export function workStats(): WorkStat[] {
 	return [...stats.values()];
-}
-
-/** A queued that stays permanently true means the op can't keep up with its trigger rate. */
-export function noteQueued(name: string, queued = true): void {
-	slot(name).queued = queued;
-}
-
-/** Call at EVERY early return or the panel can't tell "idle" from "refusing". */
-export function noteSkip(name: string, why: string): void {
-	const s = slot(name);
-	s.skips++;
-	s.lastSkip = why;
 }
 
 /** Time one run of fn; a throw is recorded and re-thrown. */
@@ -279,8 +259,6 @@ export function resetWorkStats(): void {
 		s.maxMs = 0;
 		s.totalMs = 0;
 		s.errors = 0;
-		s.skips = 0;
-		s.lastSkip = "";
 	}
 	// Probes stay: a fact about the network, not a counter.
 	circuits.clear();

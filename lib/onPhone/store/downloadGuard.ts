@@ -32,10 +32,6 @@ export class DownloadBudgetError extends Error {
     }
 }
 
-export function isDownloadGuardTripped(): boolean {
-    return tripped;
-}
-
 function trip(reason: string, extra: Record<string, unknown>): never {
     // Flip the breaker + alert Sentry exactly once; subsequent guards just throw.
     if (!tripped) {

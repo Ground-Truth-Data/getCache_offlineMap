@@ -16,7 +16,6 @@ import {
 	describePackLayer,
 	packShips,
 } from "../contract/packLayers";
-import { FIRE_REFRESH_ENABLED } from "./bakeFlags";
 import { circuitOf, light, paintOf, type CircuitState } from "./workMeter.svelte";
 import { LAYER_TOGGLES } from "../onPhone/render/wallLegend";
 import { meterSnapshot } from "./workMeter.svelte";
@@ -103,14 +102,6 @@ export interface DebugReport {
 	};
 	/** A heap number means nothing without knowing whether satellite was on. */
 	layers: { key: string; on: boolean }[];
-	bake: {
-		on: boolean;
-		pending: number;
-		failing: number;
-		secs: number;
-		stalled: boolean;
-		note: string;
-	};
 	work: WorkStat[];
 	budget: { usedBytes: number; totalBytes: number; areas: number };
 	latest: BlobGeometryReport | null;
@@ -184,12 +175,6 @@ export interface LivePanelState {
 	heapLowMb?: number | null;
 	heapPeakMb?: number | null;
 	heapAtLoadMb?: number | null;
-	bakeOn?: boolean;
-	bakePending?: number;
-	bakeFailing?: number;
-	bakeSecs?: number;
-	bakeStalled?: boolean;
-	bakeNote?: string;
 	layers?: { key: string; on: boolean }[];
 	/** Used ONLY to report which pins lack coverage. */
 	pins?: LngLatPin[];
@@ -245,14 +230,6 @@ export async function collectDebugReport(
 			note: HEAP_NOTE,
 		},
 		layers: live.layers ?? [],
-		bake: {
-			on: live.bakeOn ?? false,
-			pending: live.bakePending ?? 0,
-			failing: live.bakeFailing ?? 0,
-			secs: live.bakeSecs ?? 0,
-			stalled: live.bakeStalled ?? false,
-			note: live.bakeNote ?? "",
-		},
 		work: workStats(),
 		budget: {
 			usedBytes,
@@ -312,7 +289,7 @@ export interface FocusedBlobReport {
 const PACK_WHERE = `inside the z${BLOB_TILE_Z} blob tile(s), keyed pin/<lng>,<lat>/${BLOB_TILE_Z}/x/y in gc-offlineTiles`;
 const EXPECTS_FIXED: Record<string, string> = {
 	sat: "one satellite photo per pin, ~2 km around it, in IndexedDB gc-offlineSatellite (photoBytes)",
-	fires: `hotspots within FIRE_RADIUS_KM of the pin, in the fires store — per-pin fire refresh is ${FIRE_REFRESH_ENABLED ? "ON" : "OFF (FIRE_REFRESH_ENABLED=false in bakeService): fires are not baked per pin at the moment, so this row stays grey by design"}`,
+	fires: "hotspots within FIRE_RADIUS_KM of the pin, in the fires store",
 };
 function expectsFor(t: (typeof LAYER_TOGGLES)[number]): string {
 	if (EXPECTS_FIXED[t.key]) return EXPECTS_FIXED[t.key];

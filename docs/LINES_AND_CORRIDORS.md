@@ -28,7 +28,7 @@ Overlap between anchors is expected and free — they dedup downstream by
 A line sets `corridor: true` purely from its geometry type, at the host port
 boundary (`retreeverPorts.ts`). That flag does three things:
 
-- **No satellite.** `bakeService` returns before the photo task: `if (corridor) return`.
+- **No satellite.** `blobService.ts` queues the blob with `photo: !p.corridor`.
 - **Roads-only pack.** The request carries `&ring=corridor`; the Worker filters
   the pack to the `roads` layer alone — no water, no labels, no POIs
   (`packBuilder.ts`, `keepSet`). `&ring=corridor` is also a distinct edge-cache

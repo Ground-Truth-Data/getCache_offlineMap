@@ -169,7 +169,7 @@ the online child (`_siblings/` in a clone).
 ## Test baseline — what red is NORMAL
 
 `npm test` here: rune files (`*.svelte.ts` and the tests that import them,
-e.g. `lib/onPhone/bake/bakeService.test.ts`) fail with `$state is not defined`
+e.g. `lib/shared/workMeter.test.ts`) fail with `$state is not defined`
 — this repo's bare vitest has no Svelte plugin, so they only run under a
 parent's suite. `routes/fires/masks/urbanExclusion.test.ts` SKIPS until
 `./fetchAssets.sh` has run. Anything else is yours.
