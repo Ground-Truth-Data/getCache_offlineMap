@@ -1,12 +1,10 @@
 // ⛔ Two pins sharing one grid address were served each other's roads tiles — measured a 36.6 km offset.
 import { describe, expect, it } from "vitest";
 import { pinTileKey } from "../../contract/grid";
-import {
-	keyForAddress,
-	keysForAddress,
-	parsePinTileKey,
-	tileCentre,
-} from "./pinTileLookup";
+import { keysForAddress, parsePinTileKey, tileCentre } from "./pinTileLookup";
+
+const keyForAddress = (stored: string[], z: number, x: number, y: number) =>
+	keysForAddress(stored, z, x, y)[0] ?? null;
 
 const MORAN = { lng: -110.7261, lat: 44.0618 };
 const YELLOWSTONE = { lng: -110.747, lat: 44.6629 };

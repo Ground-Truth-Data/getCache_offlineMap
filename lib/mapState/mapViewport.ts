@@ -133,16 +133,3 @@ export function saveFramedMapKey(key: string | null): void {
 	} catch {
 	}
 }
-
-/** URL camera beats the persisted one, which beats home. Both maps resolve through this so the crow toggle lands where you were. */
-export function openingCamera(
-	url: { center: [number, number]; zoom?: number } | undefined,
-	saved: SavedCamera | null,
-	home: { center: [number, number]; zoom: number },
-): { center: [number, number]; zoom: number } {
-	if (url) {
-		return { center: url.center, zoom: url.zoom ?? saved?.zoom ?? home.zoom };
-	}
-	if (saved) return { center: saved.center, zoom: saved.zoom };
-	return home;
-}

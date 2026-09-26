@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { keysForAddress } from "./pinTileLookup";
-import { pinTileKey } from "../../contract/grid";
-import { cellsFor } from "../../contract/grid";
-import { BLOB_TILE_Z } from "../../contract/grid";
-import { RAW_MIN_Z, RAW_MAX_Z } from "./rawWallProtocol";
+import { BLOB_TILE_Z, cellsFor, pinTileKey } from "../../contract/grid";
+import { BLOB_MIN_Z as RAW_MIN_Z, BLOB_MAX_Z as RAW_MAX_Z } from "../../contract/roadBlob";
 
 // A real pin (Ottawa valley) — one of the three fixture pins the bake service reconciles over.
 const PIN = { lng: -76.16798, lat: 45.061348 };

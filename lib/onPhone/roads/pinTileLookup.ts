@@ -107,16 +107,6 @@ export function keysForAddress(
 	return hits.map((h) => h.key);
 }
 
-/** The single nearest owner. Never for rendering: one owner of a shared address is half a map. */
-export function keyForAddress(
-	stored: Iterable<string>,
-	z: number,
-	x: number,
-	y: number,
-): string | null {
-	return keysForAddress(stored, z, x, y)[0] ?? null;
-}
-
 /** keysForAddress over `shallow/…` keys; membership is z === SHALLOW_Z, not blobHasZoom. */
 export function shallowKeysForAddress(
 	stored: Iterable<string>,

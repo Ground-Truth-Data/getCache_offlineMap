@@ -96,9 +96,6 @@ export const LAYER_TOGGLES: readonly LayerToggle[] = [
     },
 ] as const;
 
-/** Toggle keys `resetLayersAllOn()` must not force back on. */
-export const OPT_IN_LAYERS: readonly string[] = [];
-
 export interface LegendEntry {
     label: string;
     color: string;

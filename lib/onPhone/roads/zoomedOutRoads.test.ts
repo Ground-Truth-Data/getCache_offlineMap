@@ -1,22 +1,10 @@
-// The ancestor (z5) cases exercise the lookup's depth only: RAW_MIN_Z === BLOB_MIN_Z
-// means the protocol is never asked a shallower address.
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { keysForAddress } from "./pinTileLookup";
-import {
-	RAW_MAX_Z,
-	RAW_MIN_Z,
-	RAW_TILE_URL,
-	RAW_SOURCE,
-	rawSourceSpec,
-	SHALLOW_SOURCE,
-	SHALLOW_TILE_URL,
-	shallowSourceSpec,
-} from "./rawWallProtocol";
 import { BLOB_MIN_Z } from "../../contract/roadBlob";
 import { SHALLOW_Z } from "../../contract/grid";
-import { wallLayers } from "../render/wallStyle";
+import { RAW_SOURCE, SHALLOW_SOURCE, wallLayers } from "../render/wallStyle";
 
 const PIN = "pin/-117.10620,47.34330";
 const Z8 = { z: 8, x: 41, y: 90 };
@@ -51,35 +39,9 @@ describe("a zoomed-out camera still finds the stored roads", () => {
 		expect(keysForAddress([stale], Z8.z, Z8.x, Z8.y)).toEqual([]);
 		expect(keysForAddress([stale], 6, Math.floor(Z8.x / 4), Math.floor(Z8.y / 4))).toEqual([]);
 	});
-
-	it("declares a render floor EQUAL to the stored level — no stretched tier below it", () => {
-		expect(RAW_MIN_Z).toBe(RAW_MAX_Z);
-		expect(RAW_MIN_Z).toBe(BLOB_MIN_Z);
-	});
 });
 
-describe("the SHALLOW tier is wired to its OWN source — never the disc", () => {
-	it("serves rtraw://shallow at EXACTLY SHALLOW_Z — overzoom covers z7, silence below", () => {
-		const spec = shallowSourceSpec();
-		expect(spec.type).toBe("vector");
-		expect(spec.tiles).toEqual([SHALLOW_TILE_URL]);
-		expect(spec.minzoom).toBe(SHALLOW_Z);
-		expect(spec.maxzoom).toBe(SHALLOW_Z);
-	});
-
-	it("the DISC spec is unchanged — still its own URL, still floored at z8", () => {
-		const spec = rawSourceSpec();
-		expect(spec.tiles).toEqual([RAW_TILE_URL]);
-		expect(spec.minzoom).toBe(BLOB_MIN_Z);
-		expect(spec.maxzoom).toBe(RAW_MAX_Z);
-	});
-
-	it("the two tiers never share a namespace", () => {
-		expect(SHALLOW_TILE_URL).not.toBe(RAW_TILE_URL);
-		expect(SHALLOW_SOURCE).not.toBe(RAW_SOURCE);
-		expect(SHALLOW_Z).toBeLessThan(BLOB_MIN_Z);
-	});
-
+describe("the SHALLOW tier is painted from its OWN source — never the disc", () => {
 	it("wallLayers paints the shallow tier ONLY under the disc's floor", () => {
 		const layer = wallLayers().find((l) => l.id === "v4-roads-shallow");
 		expect(layer).toBeDefined();

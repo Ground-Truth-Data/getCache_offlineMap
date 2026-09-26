@@ -10,10 +10,12 @@ import {
     WATER_FILL,
     WATER_LINE,
 } from "./offlineColors";
-import { RAW_SOURCE, SHALLOW_SOURCE } from "../roads/rawWallProtocol";
 import { BLOB_MIN_Z } from "../../contract/roadBlob";
 import { BLOB_TILE_Z, SHALLOW_Z } from "../../contract/grid";
-import { BLOB_GRID_SOURCE } from "./blobGrid";
+
+export const RAW_SOURCE = "v4-raw";
+export const SHALLOW_SOURCE = "v4-raw-shallow";
+export const BLOB_GRID_SOURCE = "v4-blob-grid";
 
 /** The layer per-area satellite photos mount before: under roads, over water. */
 export const SAT_INSERT_BEFORE = "v4-roads";
@@ -251,9 +253,4 @@ export function wallLayers(): mapboxgl.LayerSpecification[] {
             },
         } as mapboxgl.LayerSpecification,
     ];
-}
-
-/** Every layer id this module owns, derived so it cannot drift from the stack. */
-export function wallLayerIds(): string[] {
-    return wallLayers().map((l) => l.id);
 }
