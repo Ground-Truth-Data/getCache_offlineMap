@@ -8,22 +8,17 @@ export interface WorkStat {
 	totalMs: number;
 	/** Wall-clock start of the in-flight run, or null when idle. */
 	startedAt: number | null;
-	/** Set by the caller when a fresh run was requested mid-flight. */
-	queued: boolean;
 	errors: number;
-	/** Triggered but returned at the door (breaker latched, already running, nothing to do). */
-	skips: number;
-	lastSkip: string;
 }
 
 // SvelteMap, not `$state(new Map())`: Svelte 5 does not proxy Map, so the key set would never re-run `workStats()`
 const stats = new SvelteMap<string, WorkStat>();
 
-/** idle grey · transit yellow · ok = bytes on disk, STILL yellow · drawn = seen in the viewport, green · err red. Only paintWatch.ts can turn a row green. */
-export type CircuitState = "idle" | "transit" | "ok" | "drawn" | "err";
+/** idle grey · transit yellow · ok = bytes on disk, STILL yellow · err red. */
+export type CircuitState = "idle" | "transit" | "ok" | "err";
 export interface CircuitStat {
 	key: string;
-	state: Exclude<CircuitState, "drawn">;
+	state: CircuitState;
 	/** Epoch ms of the last change. */
 	at: number;
 	note: string;
@@ -31,17 +26,7 @@ export interface CircuitStat {
 	arrivedAt: number | null;
 }
 
-/** What the map ACTUALLY PAINTED for one layer row on the last idle. */
-export interface PaintStat {
-	key: string;
-	count: number;
-	at: number;
-	/** First idle that saw count > 0 AFTER the feed's current arrivedAt; reset when a newer arrival lands. */
-	drawnAt: number | null;
-}
-
 const circuits = new SvelteMap<string, CircuitStat>();
-const paints = new SvelteMap<string, PaintStat>();
 const probes = new SvelteMap<string, boolean>();
 
 /** A transit unanswered this long is declared err so the badge stops counting; a late arrival still un-errs it. */
@@ -52,7 +37,7 @@ const giveUpTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let focusArea: string | null = null;
 export function noteCircuit(
 	key: string,
-	state: Exclude<CircuitState, "drawn">,
+	state: CircuitState,
 	note = "",
 	areaKey?: string,
 ): void {
@@ -93,65 +78,18 @@ export function allCircuits(): CircuitStat[] {
 	return [...circuits.values()];
 }
 
-/** `drawnAt` latches on the first non-zero count and drops when the feed's arrival is newer. */
-export function notePaint(layerKey: string, feedKey: string | undefined, count: number): void {
-	const now = Date.now();
-	const prev = paints.get(layerKey);
-	const arrivedAt = feedKey ? (circuits.get(feedKey)?.arrivedAt ?? null) : null;
-	const stillValid =
-		prev?.drawnAt != null && (arrivedAt == null || prev.drawnAt >= arrivedAt);
-	const drawnAt = stillValid ? prev!.drawnAt : count > 0 ? now : null;
-	paints.set(layerKey, { key: layerKey, count, at: now, drawnAt });
-}
-export function paintOf(layerKey: string): PaintStat | undefined {
-	return paints.get(layerKey);
-}
-export function allPaints(): PaintStat[] {
-	return [...paints.values()];
-}
-
 export interface Light {
 	state: CircuitState;
 	circuit?: CircuitStat;
-	paint?: PaintStat;
 	/** ask → bytes on disk */
 	transitMs: number | null;
-	/** bytes on disk → first sighting in the viewport */
-	paintLagMs: number | null;
-	/** ask → first sighting on screen; null until drawn */
-	seenMs: number | null;
-	/** Bytes arrived and a LATER idle counted ZERO of this row's features: the area holds none, so stop counting. */
-	settledEmpty?: boolean;
 }
-/** The colour of a row: `drawn` ONLY when one of `layerKeys` was painted after the feed's current arrival. */
-export function light(circuitKey: string | undefined, layerKeys: readonly string[]): Light {
+export function light(circuitKey: string | undefined): Light {
 	const circuit = circuitKey ? circuits.get(circuitKey) : undefined;
-	if (!circuit) return { state: "idle", transitMs: null, paintLagMs: null, seenMs: null };
+	if (!circuit) return { state: "idle", transitMs: null };
 	const transitMs =
 		circuit.askedAt != null && circuit.arrivedAt != null ? circuit.arrivedAt - circuit.askedAt : null;
-	if (circuit.state !== "ok") return { state: circuit.state, circuit, transitMs, paintLagMs: null, seenMs: null };
-	let paint: PaintStat | undefined;
-	for (const k of layerKeys) {
-		const p = paints.get(k);
-		if (p?.drawnAt != null && circuit.arrivedAt != null && p.drawnAt >= circuit.arrivedAt && (!paint || p.drawnAt < paint.drawnAt!)) paint = p;
-	}
-	if (!paint) {
-		let settledEmpty = false;
-		if (circuit.arrivedAt != null)
-			for (const k of layerKeys) {
-				const p = paints.get(k);
-				if (p && p.at >= circuit.arrivedAt) settledEmpty = true;
-			}
-		return { state: "ok", circuit, transitMs, paintLagMs: null, seenMs: null, settledEmpty };
-	}
-	return {
-		state: "drawn",
-		circuit,
-		paint,
-		transitMs,
-		paintLagMs: paint.drawnAt! - circuit.arrivedAt!,
-		seenMs: circuit.askedAt != null ? paint.drawnAt! - circuit.askedAt : null,
-	};
+	return { state: circuit.state, circuit, transitMs };
 }
 
 /** Back to grey on pin drop, so circles describe THIS ask. */
@@ -161,7 +99,6 @@ export function resetCircuits(areaKey: string | null = null): void {
 	for (const t of giveUpTimers.values()) clearTimeout(t);
 	giveUpTimers.clear();
 	circuits.clear();
-	paints.clear();
 }
 
 /** Reachability, for greying/retry ONLY. */
@@ -184,11 +121,6 @@ export function meterSnapshot() {
 			arrivedAtIso: c.arrivedAt == null ? null : new Date(c.arrivedAt).toISOString(),
 			transitMs: c.askedAt != null && c.arrivedAt != null ? c.arrivedAt - c.askedAt : null,
 		})),
-		paints: allPaints().map((p) => ({
-			...p,
-			atIso: new Date(p.at).toISOString(),
-			drawnAtIso: p.drawnAt == null ? null : new Date(p.drawnAt).toISOString(),
-		})),
 		probes: Object.fromEntries(probes),
 	};
 }
@@ -207,10 +139,7 @@ function slot(name: string): WorkStat {
 		maxMs: 0,
 		totalMs: 0,
 		startedAt: null,
-		queued: false,
 		errors: 0,
-		skips: 0,
-		lastSkip: "",
 	});
 	stats.set(name, fresh);
 	return fresh;
@@ -218,38 +147,6 @@ function slot(name: string): WorkStat {
 
 export function workStats(): WorkStat[] {
 	return [...stats.values()];
-}
-
-/** A queued that stays permanently true means the op can't keep up with its trigger rate. */
-export function noteQueued(name: string, queued = true): void {
-	slot(name).queued = queued;
-}
-
-/** Call at EVERY early return or the panel can't tell "idle" from "refusing". */
-export function noteSkip(name: string, why: string): void {
-	const s = slot(name);
-	s.skips++;
-	s.lastSkip = why;
-}
-
-/** Time one run of fn; a throw is recorded and re-thrown. */
-export async function track<T>(name: string, fn: () => Promise<T>): Promise<T> {
-	const s = slot(name);
-	s.startedAt = Date.now();
-	const t0 = performance.now();
-	try {
-		return await fn();
-	} catch (err) {
-		s.errors++;
-		throw err;
-	} finally {
-		const ms = performance.now() - t0;
-		s.runs++;
-		s.lastMs = ms;
-		if (ms > s.maxMs) s.maxMs = ms;
-		s.totalMs += ms;
-		s.startedAt = null;
-	}
 }
 
 /** Manual bracket for code that can't wrap in a callback; call the returned fn in finally. */
@@ -279,10 +176,7 @@ export function resetWorkStats(): void {
 		s.maxMs = 0;
 		s.totalMs = 0;
 		s.errors = 0;
-		s.skips = 0;
-		s.lastSkip = "";
 	}
 	// Probes stay: a fact about the network, not a counter.
 	circuits.clear();
-	paints.clear();
 }

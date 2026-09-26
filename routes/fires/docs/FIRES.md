@@ -14,7 +14,7 @@ in signal the cache is topped up, and the UI must say how old it is.
 |---|---|
 | Worker `GET /fires?lng=&lat=&km=` | `workers/worker-local-dev/src/index.ts` (route) + `lib/worker/firesWorker.ts` (pure FIRMS logic) |
 | Phone fetch + IndexedDB | `lib/worker/worker-local-dev/fires/fireFetch.ts`, `routes/fires/fireCache.ts` (`rt-fire-cache`) |
-| The pass | `routes/fires/fireService.ts`, started by the host's `(getcache)` layout with the blob centres; `FIRE_REFRESH_ENABLED` in `lib/shared/bakeFlags.ts` |
+| The pass | `routes/fires/fireService.ts`, started by the host's `(getcache)` layout with the blob centres |
 | Render layer | offline: `lib/onPhone/render/fireLayer.ts` (`attachFireLayer`), the Fires row in `lib/onPhone/render/wallLegend.ts` carries its ids; online: `getCache_OnlineMap/lib/fire/fireLayer.ts`, mounted by `MobMapPage.svelte` |
 
 ReTreever mounts the phone half through `retreeverPorts.ts`; this repo's
@@ -94,13 +94,6 @@ ever land — CWFIS / NIFC WFIGS / EFFIS were specced and never built.
   correct answer looks like, bump **both** `FIRE_ANSWER_VERSION` (Worker
   cache key) and `FIRE_CACHE_VERSION` (phone). The
   `DAY_RANGE=1` empties took four hours per cell to clear because nobody did.
-- **Arrival beats the TTL** (`routes/fires/fireArrival.ts`). App open, tab
-  visible, and `online` each arm a one-shot TTL bypass — **one debt per
-  reader** (`"bake"` refreshes anchors, `"map"` refreshes what you look at);
-  a single shared token let the bake tick eat the map's turn and every unit
-  test still passed. Both the time gate and the geographic gate
-  (`needsFireDisc`) must yield. Only arrivals arm it — never the 20 s loop, or
-  it becomes a permanent poll over a burning province.
 - **Never lie about zero fires.** Network error, bad key, HTML body → the
   Worker returns 502 and the phone **throws** and keeps its last good cache
   with an honest age. An empty collection reads as "no fires near you".

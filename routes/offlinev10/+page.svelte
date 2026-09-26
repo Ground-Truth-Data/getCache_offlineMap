@@ -416,7 +416,7 @@ onMount(() => {
 			origins: () => origins(m),
 			onShowMyLocation: () => void drawControlsRef?.requestMyLocation(),
 		});
-		photos = createSatelliteMount(m, undefined, PHOTO_INSERT_BEFORE);
+		photos = createSatelliteMount(m, PHOTO_INSERT_BEFORE);
 		reconcilePhotos();
 	});
 	const unfires = onFires(() => fireHandle?.repaint());

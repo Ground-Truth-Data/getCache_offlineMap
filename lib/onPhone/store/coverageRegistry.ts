@@ -3,11 +3,7 @@ import { makeKeyedIdbStore } from "./keyedIdbStore";
 const DB_NAME = "rt-mapRegistry";
 const STORE = "coverage";
 
-/** LRU-evicted over this. */
 export const OFFLINE_BUDGET_BYTES = 1024 * 1024 * 1024;
-
-/** Per-area byte estimate for areas not yet downloaded (~3.2 MB photo + line pack). */
-export const EST_AREA_BYTES = 3.5 * 1024 * 1024;
 
 export interface CoverageRecord {
 	areaKey: string;
@@ -35,42 +31,25 @@ export async function allCoverage(): Promise<CoverageRecord[]> {
 	return idb.getAll();
 }
 
-/** Sets lastTouched: touchAt (verbatim) > touch (now) > prior stamp — a no-op re-bake must not reset recency. */
 export async function noteCoverage(
 	areaKey: string,
 	lng: number,
 	lat: number,
-	patch: {
-		bakedAt?: number;
-		hasPhoto?: boolean;
-		hasLines?: boolean;
-		bytes?: number;
-		photoBytes?: number;
-		lineBytes?: number;
-		lineCount?: number;
-		blobVersion?: string;
-	},
-	touch = false,
-	touchAt?: number,
+	patch: { hasPhoto?: boolean; photoBytes?: number },
 ): Promise<void> {
 	const prev = await idb.get(areaKey);
-	const lastTouched = Number.isFinite(touchAt)
-		? (touchAt as number)
-		: touch
-			? Date.now()
-			: (prev?.lastTouched ?? Date.now());
 	const rec: CoverageRecord = {
 		areaKey,
 		lng,
 		lat,
 		hasPhoto: patch.hasPhoto ?? prev?.hasPhoto ?? false,
-		hasLines: patch.hasLines ?? prev?.hasLines ?? false,
-		bytes: patch.bytes ?? prev?.bytes ?? 0,
+		hasLines: prev?.hasLines ?? false,
+		bytes: prev?.bytes ?? 0,
 		photoBytes: patch.photoBytes ?? prev?.photoBytes ?? 0,
-		lineBytes: patch.lineBytes ?? prev?.lineBytes ?? 0,
-		lineCount: patch.lineCount ?? prev?.lineCount ?? 0,
-		blobVersion: patch.blobVersion ?? prev?.blobVersion,
-		lastTouched,
+		lineBytes: prev?.lineBytes ?? 0,
+		lineCount: prev?.lineCount ?? 0,
+		blobVersion: prev?.blobVersion,
+		lastTouched: prev?.lastTouched ?? Date.now(),
 	};
 	await idb.put(rec.areaKey, rec);
 }
@@ -78,5 +57,3 @@ export async function noteCoverage(
 export async function dropCoverage(areaKey: string): Promise<void> {
 	await idb.delete(areaKey);
 }
-
-// Eviction lives in offlineBakeService.bakeAll(): a registry-only one can't see orphan blobs.

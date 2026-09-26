@@ -36,12 +36,6 @@ function cannedReport(overrides: Partial<Body> = {}): Body {
 			work: [],
 			focus: null,
 			circuits: [],
-			paints: [
-				{ key: "sat", count: 1, at: 0, drawnAt: 0, atIso: "", drawnAtIso: "" },
-				{ key: "vector", count: 1162, at: 0, drawnAt: 0, atIso: "", drawnAtIso: "" },
-				{ key: "labels", count: 0, at: 0, drawnAt: null, atIso: "", drawnAtIso: null },
-				{ key: "fires", count: 0, at: 0, drawnAt: null, atIso: "", drawnAtIso: null },
-			],
 			probes: { "worker-cloud-prod": true, "worker-cloud-dev": true, "worker-local-dev": false },
 		},
 		disk: {
@@ -89,13 +83,9 @@ function layer(key: string, label: string, feed: string, transitMs: number | nul
 		feed,
 		status: "idle",
 		arrived: true,
-		onScreen: false,
 		askedAt: null,
 		arrivedAt: null,
-		drawnAt: null,
 		transitMs,
-		paintLagMs: null,
-		paintedCount: null,
 		reason: "",
 		expects: "",
 	};
@@ -123,12 +113,9 @@ describe("summarizeFocusedReport", () => {
 		expect(s.timeToDownload).toContain("25 min ago");
 	});
 
-	it("puts the on-disk total and painted layers in human units", () => {
+	it("puts the on-disk total in human units", () => {
 		const s = summarizeFocusedReport(cannedReport());
 		expect(s.onDisk).toContain("9 areas cached, 6.0 MB");
-		expect(s.onScreen).toContain("Satellite (1)");
-		expect(s.onScreen).toContain("Roads/water (1,162)");
-		expect(s.onScreen).toContain("nothing to draw for Labels, Fires");
 		expect(s.workers).toBe("prod reachable · dev reachable · local not running");
 		expect(s.memory).toBe("46 MB now, peaked at 59 MB (main thread only)");
 	});

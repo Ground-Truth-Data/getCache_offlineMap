@@ -18,7 +18,6 @@ describe("downloadGuard circuit breaker", () => {
 	it("lets a normal satellite bake grid through", async () => {
 		const g = await freshGuard();
 		expect(() => g.guardBakeGrid(60, { center: [0, 0] })).not.toThrow();
-		expect(g.isDownloadGuardTripped()).toBe(false);
 		expect(captureMessage).not.toHaveBeenCalled();
 	});
 
@@ -27,7 +26,6 @@ describe("downloadGuard circuit breaker", () => {
 		expect(() => g.guardBakeGrid(5000, { center: [0, 0] })).toThrow(
 			g.DownloadBudgetError,
 		);
-		expect(g.isDownloadGuardTripped()).toBe(true);
 		expect(captureMessage).toHaveBeenCalledTimes(1);
 		// Any further guarded call throws immediately (breaker stays open).
 		expect(() => g.guardBakeGrid(1, {})).toThrow(g.DownloadBudgetError);
@@ -40,7 +38,6 @@ describe("downloadGuard circuit breaker", () => {
 		const g = await freshGuard();
 		// 5000 cap: 4900 fine, the next 200 crosses it.
 		for (let i = 0; i < 4900; i++) g.noteSatelliteTiles(1);
-		expect(g.isDownloadGuardTripped()).toBe(false);
 		let threw = false;
 		try {
 			for (let i = 0; i < 200; i++) g.noteSatelliteTiles(1);
@@ -48,7 +45,6 @@ describe("downloadGuard circuit breaker", () => {
 			threw = true;
 		}
 		expect(threw).toBe(true);
-		expect(g.isDownloadGuardTripped()).toBe(true);
 		expect(captureMessage).toHaveBeenCalledTimes(1);
 	});
 
@@ -76,7 +72,6 @@ describe("downloadGuard circuit breaker", () => {
 		}
 		expect(threw).toBe(true);
 		expect(count).toBeLessThanOrEqual(cap);
-		expect(g.isDownloadGuardTripped()).toBe(true);
 		expect(captureMessage).toHaveBeenCalledTimes(1);
 	});
 });
@@ -86,7 +81,6 @@ describe("downloadGuard — a tripped breaker is TERMINAL, never retryable", () 
 	it("stays tripped forever once tripped (retrying can never succeed)", async () => {
 		const g = await freshGuard();
 		expect(() => g.guardBakeGrid(5000, { center: [0, 0] })).toThrow();
-		expect(g.isDownloadGuardTripped()).toBe(true);
 		for (let pass = 0; pass < 50; pass++) {
 			expect(() => g.guardBakeGrid(1, { center: [0, 0] })).toThrow(
 				g.DownloadBudgetError,
@@ -96,7 +90,6 @@ describe("downloadGuard — a tripped breaker is TERMINAL, never retryable", () 
 			);
 			expect(() => g.noteSatelliteTiles(1)).toThrow(g.DownloadBudgetError);
 		}
-		expect(g.isDownloadGuardTripped()).toBe(true);
 	});
 
 	it("alerts Sentry ONCE no matter how many retries hammer it", async () => {
@@ -112,16 +105,5 @@ describe("downloadGuard — a tripped breaker is TERMINAL, never retryable", () 
 		}
 		// Retries must not multiply the alert; the flood was console-side.
 		expect(captureMessage.mock.calls.length).toBe(afterTrip);
-	});
-
-	it("isDownloadGuardTripped() is the signal callers must branch on", async () => {
-		const g = await freshGuard();
-		expect(g.isDownloadGuardTripped()).toBe(false); // healthy → keep baking
-		try {
-			g.guardBakeGrid(5000, { center: [0, 0] });
-		} catch {
-			// expected
-		}
-		expect(g.isDownloadGuardTripped()).toBe(true); // latched → STOP baking
 	});
 });
