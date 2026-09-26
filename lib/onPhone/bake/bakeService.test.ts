@@ -62,16 +62,6 @@ vi.mock("../../worker/worker-local-dev/roads/packDownload", () => ({
 	],
 }));
 
-vi.mock("../store/tombstones/purgeRoadRasters", () => ({
-	purgeDeadRoadRasters: vi.fn(() => undefined),
-}));
-
-vi.mock("../offlineDownloadGate", () => ({
-	checkDownloadGate: vi.fn(async () => false),
-	isPerFeatureOnly: () => false,
-	noteDownloadedBytes: () => undefined,
-}));
-
 vi.mock("../satellite/satelliteImage", () => ({
 	bakeSatelliteImage: h.bakeSatelliteImage,
 	getSatImageByKey: vi.fn(async (k: string) =>
@@ -107,7 +97,6 @@ vi.mock("../satellite/satelliteImage", () => ({
 vi.mock("../store/tombstones/legacyVectorCleanup", () => ({
 	deleteVectorAt: h.deleteVectorAt,
 	getVectorKeys: vi.fn(async () => []),
-	getVectorFeaturesAt: vi.fn(async () => []),
 }));
 
 vi.mock("../store/coverageRegistry", () => ({

@@ -149,10 +149,7 @@ the online child (`_siblings/` in a clone).
 1. **AN EMPTY ANSWER LOOKS LIKE SUCCESS.** The Worker returns HTTP 200 with an
    empty pack when it has nothing. A miss is indistinguishable from a hit at
    every layer above. Make it error.
-2. **DEAD EXPORTS.** Written, exported, never called: `setCoverageMirror`
-   (`lib/onPhone/store/coverageRegistry.ts`), `parseCellKey`, `tileHoldsRadius`
-   (`lib/contract/grid.ts`), `idbDeleteMany` (`packDownload.ts`),
-   `offlineDownloadGateStats` (`lib/onPhone/offlineDownloadGate.ts`). Wire or delete.
+2. **DEAD EXPORT.** `idbDeleteMany` (`packDownload.ts`) is never called. Delete it.
 3. **A BLOCKED WIPE IS AN UNHANDLED REJECTION.** `lib/onPhone/store/wipe.ts`
    closes connections and waits out `onblocked`, but a genuinely blocked wipe
    still `throw`s instead of surfacing as a toast.

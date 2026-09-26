@@ -6,7 +6,7 @@ import {
 	BLOB_MIN_Z,
 	BLOB_ZOOMS,
 	SHALLOW_Z,
-	cellKmAt,
+	BLOB_TILE_Z,
 	GRID_RADIUS_KM,
 	tileKm,
 } from "./blob";
@@ -32,9 +32,8 @@ describe("the blob's shape", () => {
 
 	it("⛔ ONE TILE IS BIGGER THAN THE RADIUS — the whole law", () => {
 		// ⚠️ must span the full diameter, checked per-latitude since a slippy tile narrows with cos(lat) — falling short needs a second blob per pin, the nine-blobs-per-pin failure that made the map a lottery.
-		expect(cellKmAt(0)).toBeGreaterThan(cellKmAt(60));
 		for (const lat of [0, 46.5, 60, 66]) {
-			expect(cellKmAt(lat), `too small at lat ${lat}`).toBeGreaterThanOrEqual(
+			expect(tileKm(BLOB_TILE_Z, lat), `too small at lat ${lat}`).toBeGreaterThanOrEqual(
 				GRID_RADIUS_KM * 2,
 			);
 		}

@@ -1,7 +1,5 @@
 /** ONE pin → ONE request → ONE blob → every road within the radius. */
 
-import { km } from "./geo";
-
 export const GRID_RADIUS_KM = 30;
 
 /** Zoom the blob is ADDRESSED at, not its size (contents are always radiusBox); MapLibre never scales a tile down, so never lower it — SHALLOW_Z is the fix. */
@@ -57,12 +55,6 @@ export function cellKey(c: Cell): string {
 	return `${c.z}_${c.ix}_${c.iy}`;
 }
 
-export function parseCellKey(key: string): Cell | null {
-	const m = /^(\d+)_(-?\d+)_(-?\d+)$/.exec(key);
-	if (!m) return null;
-	return { z: Number(m[1]), ix: Number(m[2]), iy: Number(m[3]) };
-}
-
 /** The storage key AND the slippy address MapLibre requests, deliberately one string. */
 export function cellTileKey(c: Cell): string {
 	return `${c.z}/${c.ix}/${c.iy}`;
@@ -95,69 +87,27 @@ export function radiusBox(lng: number, lat: number): CellBox {
 
 /** EVERY cell the radius touches (up to 4), the pin's own first; a single tile clips at its edge. */
 export function cellsFor(lng: number, lat: number): Cell[] {
-	const box = radiusBox(lng, lat);
-	const n = 2 ** BLOB_TILE_Z;
-	const X = (lo: number) =>
-		Math.min(n - 1, Math.max(0, Math.floor(((lo + 180) / 360) * n)));
-	const Y = (la: number) =>
-		Math.min(n - 1, Math.max(0, Math.floor(mercY(la) * n)));
-
-	const x0 = X(box.w);
-	const x1 = X(box.e);
-	const y0 = Y(box.n); // north = smaller y
-	const y1 = Y(box.s);
-
-	const home = cellOf(lng, lat);
-	const out: Cell[] = [];
-	const seen = new Set<string>();
-	const push = (c: Cell) => {
-		const k = cellKey(c);
-		if (seen.has(k)) return;
-		seen.add(k);
-		out.push(c);
-	};
-	push(home);
-	for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) {
-		for (let y = Math.min(y0, y1); y <= Math.max(y0, y1); y++) {
-			push({ ix: x, iy: y, z: BLOB_TILE_Z });
-		}
-	}
-	return out;
+	return cellsAt(BLOB_TILE_Z, lng, lat);
 }
 
 export function shallowCellsFor(lng: number, lat: number): Cell[] {
+	return cellsAt(SHALLOW_Z, lng, lat);
+}
+
+function cellsAt(z: number, lng: number, lat: number): Cell[] {
 	const box = radiusBox(lng, lat);
-	const n = 2 ** SHALLOW_Z;
+	const n = 2 ** z;
 	const X = (lo: number) =>
 		Math.min(n - 1, Math.max(0, Math.floor(((lo + 180) / 360) * n)));
 	const Y = (la: number) =>
 		Math.min(n - 1, Math.max(0, Math.floor(mercY(la) * n)));
-
-	const x0 = X(box.w);
-	const x1 = X(box.e);
-	const y0 = Y(box.n); // north = smaller y
-	const y1 = Y(box.s);
-
-	const out: Cell[] = [];
-	const seen = new Set<string>();
+	const out = new Map<string, Cell>();
 	const push = (c: Cell) => {
-		const k = cellKey(c);
-		if (seen.has(k)) return;
-		seen.add(k);
-		out.push(c);
+		if (!out.has(cellKey(c))) out.set(cellKey(c), c);
 	};
-	push({ ix: X(lng), iy: Y(lat), z: SHALLOW_Z });
-	for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) {
-		for (let y = Math.min(y0, y1); y <= Math.max(y0, y1); y++) {
-			push({ ix: x, iy: y, z: SHALLOW_Z });
-		}
+	push({ ix: X(lng), iy: Y(lat), z });
+	for (let x = X(box.w); x <= X(box.e); x++) {
+		for (let y = Y(box.n); y <= Y(box.s); y++) push({ ix: x, iy: y, z });
 	}
-	return out;
-}
-
-export function tileHoldsRadius(z: number, lat: number): boolean {
-	const n = 2 ** z;
-	const wDeg = 360 / n;
-	const widthKm = km(0, lat, wDeg, lat);
-	return widthKm >= GRID_RADIUS_KM * 2;
+	return [...out.values()];
 }

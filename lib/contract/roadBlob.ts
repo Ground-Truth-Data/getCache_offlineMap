@@ -15,7 +15,3 @@ export const BLOB_MIN_Z = Math.min(...BLOB_ZOOMS);
 export function blobHasZoom(z: number): boolean {
 	return (BLOB_ZOOMS as readonly number[]).includes(z);
 }
-
-export function tileWidthKm(z: number, lat: number): number {
-	return (40075.016686 * Math.cos((lat * Math.PI) / 180)) / 2 ** z;
-}

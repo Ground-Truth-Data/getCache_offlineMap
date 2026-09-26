@@ -37,9 +37,4 @@ export async function getVectorKeys(): Promise<string[]> {
 	return idb.keys();
 }
 
-/** The stored lines for ONE area key, or [] if none. */
-export async function getVectorFeaturesAt(key: string): Promise<GeoJSON.Feature[]> {
-	return (await idb.get(key)) ?? [];
-}
-
 // NOTE: size readout comes from coverageRegistry's coverageSizes, NOT stored GeoJSON — never add a getAllVectorFeatures()/vectorStats() that loads every feature on a timer; that pinned the main-thread heap at 1 GB+.

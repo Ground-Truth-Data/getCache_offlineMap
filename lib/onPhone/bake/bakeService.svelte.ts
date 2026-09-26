@@ -6,7 +6,6 @@ import { FIRE_REFRESH_ENABLED } from "../../shared/bakeFlags";
 import { registerWipeStopper } from "../store/wipe";
 import {
     allCoverage,
-    backfillCoverageMirror,
     type CoverageRecord,
     dropCoverage,
     EST_AREA_BYTES,
@@ -15,7 +14,6 @@ import {
 } from "../store/coverageRegistry";
 import {
     deleteVectorAt,
-    getVectorFeaturesAt,
     getVectorKeys,
 } from "../store/tombstones/legacyVectorCleanup";
 import {
@@ -35,7 +33,6 @@ import {
     needsMapBlob,
     snapLiveAnchor,
 } from "../../shared/liveAnchor";
-import { checkDownloadGate, noteDownloadedBytes } from "../offlineDownloadGate";
 import {
     areaCentreCovered,
     areaTilesPresent,
@@ -48,7 +45,6 @@ import {
 import { GRID_RADIUS_KM } from "../../contract/blob";
 import { BLOB_TILE_Z } from "../../contract/grid";
 import { FIRE_RADIUS_KM } from "../../shared/fireContract";
-import { purgeDeadRoadRasters } from "../store/tombstones/purgeRoadRasters";
 import {
     beginWork,
     noteQueued,
@@ -133,17 +129,26 @@ let ports: HostPorts | null = null;
 
 let reconciling = false;
 let rerun = false;
-let backfilled = false;
 
 let covByKey = new Map<string, CoverageRecord>();
 let touchByKey = new Map<string, number>();
 
+type Breaker = { until: number; fails: number };
+/** Doubles from 30 s to a 15 min cap. */
+function tripped(prev: Breaker | null | undefined): Breaker {
+    const fails = (prev?.fails ?? 0) + 1;
+    return {
+        fails,
+        until: Date.now() + Math.min(900_000, 30_000 * 2 ** Math.min(fails - 1, 5)),
+    };
+}
+const secsLeft = (b: Breaker) => Math.round((b.until - Date.now()) / 1000);
 // Per-area photo cooldown; gates the photo only, never the roads.
-const satCooldown = new Map<string, { until: number; fails: number }>();
+const satCooldown = new Map<string, Breaker>();
 // One per host, not per area: the fires Worker is up or it isn't.
-let fireBreaker: { until: number; fails: number } | null = null;
+let fireBreaker: Breaker | null = null;
 // The tiles Worker serves packs AND fires, so a connection-level failure (TypeError) from either pass pauses both; HTTP errors stay per-area
-let workerBreaker: { until: number; fails: number } | null = null;
+let workerBreaker: Breaker | null = null;
 function isHostDown(err: unknown): boolean {
     return err instanceof TypeError;
 }
@@ -151,11 +156,9 @@ function workerBreakerOpen(): boolean {
     return workerBreaker !== null && workerBreaker.until > Date.now();
 }
 function tripWorkerBreaker(pass: string, err: unknown): void {
-    const fails = (workerBreaker?.fails ?? 0) + 1;
-    const backoff = Math.min(900_000, 30_000 * 2 ** Math.min(fails - 1, 5));
-    workerBreaker = { fails, until: Date.now() + backoff };
+    workerBreaker = tripped(workerBreaker);
     console.warn(
-        `[offline-bake] tiles Worker unreachable (seen by ${pass}) — roads and fires paused, attempt ${fails}, retrying in ${Math.round(backoff / 1000)}s`,
+        `[offline-bake] tiles Worker unreachable (seen by ${pass}) — roads and fires paused, attempt ${workerBreaker.fails}, retrying in ${secsLeft(workerBreaker)}s`,
         err,
     );
 }
@@ -264,13 +267,7 @@ async function ensureAreaData(
             );
             // A photo timeout is the imagery provider's problem: it gets this area's cooldown, never the pass-level back-off
             if (isTimeoutErr(err)) {
-                const fails = (cd?.fails ?? 0) + 1;
-                satCooldown.set(key, {
-                    fails,
-                    until:
-                        Date.now() +
-                        Math.min(900_000, 30_000 * 2 ** Math.min(fails - 1, 5)),
-                });
+                satCooldown.set(key, tripped(cd));
                 return;
             }
             throw err;
@@ -293,13 +290,7 @@ async function ensureAreaData(
                 "photo bake returned nothing (throttled / empty)",
                 key,
             );
-            const fails = (cd?.fails ?? 0) + 1;
-            satCooldown.set(key, {
-                fails,
-                until:
-                    Date.now() +
-                    Math.min(900_000, 30_000 * 2 ** Math.min(fails - 1, 5)),
-            });
+            satCooldown.set(key, tripped(cd));
         }
     })();
 
@@ -361,7 +352,6 @@ async function ensureAreaData(
             hasLines = true; // covered even when empty, so the record persists
             lineBytes = dl.bytes;
             lineCount = dl.downloaded;
-            noteDownloadedBytes(dl.bytes);
             if (dl.downloaded > 0) passChanged = true;
         }
     })();
@@ -438,7 +428,6 @@ async function refreshFires(
                 "ok",
                 `${r.hotspots.length} hotspots · ${r.sourcesOk}/3 sats`,
             );
-            noteDownloadedBytes(r.bytes);
             passChanged = true;
             vlog(
                 "fire",
@@ -455,15 +444,10 @@ async function refreshFires(
                 return;
             }
             // The first failure ends the pass; the rest would fail against the same feed.
-            const fails = (fireBreaker?.fails ?? 0) + 1;
-            const backoff = Math.min(
-                900_000,
-                30_000 * 2 ** Math.min(fails - 1, 5),
-            );
-            fireBreaker = { fails, until: Date.now() + backoff };
+            fireBreaker = tripped(fireBreaker);
             // codestyle-allow-swallow: not a swallow — this catch drives the retry backoff and warns by default; the layer keeps its last good hotspots.
             console.warn(
-                `[v4 fire] fires feed failed at ${key} — ${centres.length} area(s) paused, attempt ${fails}, retrying in ${Math.round(backoff / 1000)}s — keeping cached hotspots`,
+                `[v4 fire] fires feed failed at ${key} — ${centres.length} area(s) paused, attempt ${fireBreaker.fails}, retrying in ${secsLeft(fireBreaker)}s — keeping cached hotspots`,
                 err,
             );
             return;
@@ -570,7 +554,6 @@ async function bakeAll(): Promise<void> {
 
         // Newest-touched first, accumulating KEPT bytes (not total disk bytes), or a disk full of old photos blocks every new pin
         let keptBytes = 0;
-        let gatePaused = false;
         let downloaded = 0;
         // Stop cleanly between areas, never mid-ensureAreaData.
         const passDeadline = Date.now() + BAKE_PASS_BUDGET_MS;
@@ -595,10 +578,6 @@ async function bakeAll(): Promise<void> {
             const tilesOnDisk =
                 serverHasNothing || areaTilesPresentIn(tileKeys, c[0], c[1]);
             if (satOnDisk && tilesOnDisk) continue;
-            if (await checkDownloadGate()) {
-                gatePaused = true;
-                break;
-            }
             setActivity(true, ++downloaded, satCooldown.size);
             try {
                 await ensureAreaData(c, corridor);
@@ -640,7 +619,7 @@ async function bakeAll(): Promise<void> {
         // Evict: (a) a baked area whose pin is gone — a photo with no record belongs to the online map's shared cache; (b) LRU past the budget
         const kept = new Set<string>();
         // ready(), not places().length: a briefly-empty place list must not make every blob look unreferenced; a paused walk leaves keptBytes partial, blocking eviction too
-        if (!gatePaused && !budgetPaused && (ports?.ready() ?? false)) {
+        if (!budgetPaused && (ports?.ready() ?? false)) {
             const touchOf = (k: string): number => {
                 const t = touchByKey.get(k);
                 if (t !== undefined) return t;
@@ -766,44 +745,6 @@ async function bakeAll(): Promise<void> {
     }
 }
 
-/** Backfills split photo/line byte fields, one area at a time to bound peak heap. */
-async function backfillCoverageSizes(): Promise<void> {
-    if (backfilled) return;
-    backfilled = true;
-    try {
-        const recs = await allCoverage();
-        const need = recs.filter(
-            (r) =>
-                (r.hasPhoto && !r.photoBytes) || (r.hasLines && !r.lineBytes),
-        );
-        if (!need.length) return;
-        const photoBytesByKey = new Map<string, number>();
-        if (need.some((r) => r.hasPhoto)) {
-            for (const { key, bytes } of await satImageMeta()) {
-                photoBytesByKey.set(key, bytes);
-            }
-        }
-        for (const r of need) {
-            const patch: {
-                photoBytes?: number;
-                lineBytes?: number;
-                lineCount?: number;
-            } = {};
-            if (r.hasPhoto)
-                patch.photoBytes =
-                    photoBytesByKey.get(r.areaKey) ?? r.photoBytes ?? 0;
-            if (r.hasLines) {
-                const feats = await getVectorFeaturesAt(r.areaKey);
-                patch.lineBytes = JSON.stringify(feats).length;
-                patch.lineCount = feats.length;
-            }
-            await noteCoverage(r.areaKey, r.lng, r.lat, patch, false);
-        }
-    } catch (err) {
-        console.warn("[offline-bake] coverage size backfill failed", err);
-    }
-}
-
 /** Run a pass now; cheap on every change since a present blob is zero work. */
 export function kickBake(): void {
     const now = Date.now();
@@ -842,11 +783,6 @@ export function startOfflineBakeService(hostPorts: HostPorts): () => void {
 
     // Before the first pass, so all-empty discs re-download rather than read as covered.
     void purgeEmptyTilesOnce();
-
-    purgeDeadRoadRasters();
-
-    void backfillCoverageSizes();
-    void backfillCoverageMirror();
 
     bootBakeAt = Date.now() + BOOT_BAKE_DELAY_MS;
     // App open, focus and reconnect are each an arrival: the ask that bypasses the fire TTL.
