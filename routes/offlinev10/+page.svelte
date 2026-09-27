@@ -34,7 +34,7 @@ import { onFires } from "../fires/fireService";
 import { HOSPITAL_LAYER_ID_LIST, type HospitalLayerHandle, attachHospitalLayer } from "../hospitals/hospitalLayer";
 import { dropPhoto, onPhoto, type PhotoInfo, photoInfo, setPhotoNarration } from "./satellite";
 import { FOLLOW_MARGIN_KM, marginKm, moved } from "./follow";
-import { PLANET_TILES, installProtocol, setReadThrough } from "./protocol";
+import { PLANET_TILES, installProtocol } from "./protocol";
 import { type Kept, type Region, checkRegions, deleteRegion, keepStorage, listRegions, putRegion, stats, wipe } from "./store";
 import { validLatLng } from "../../lib/shared/cameraFromUrl";
 import { LEGEND, PHOTO_INSERT_BEFORE, PLANET, REGIONS, buildStyle } from "./style";
@@ -54,7 +54,6 @@ let busy = $state(false);
 let progress = $state<Progress | null>(null);
 let last = $state<Region | null>(null);
 let tier = $state<WorkerTarget>(getWorkerTarget());
-let readThrough = $state(false);
 let budgetMb = $state(readBudgetMb());
 let kept = $state<Kept>("unknown");
 /** Per blob id, tiles not on disk; 0 is whole. */
@@ -502,8 +501,6 @@ onMount(() => {
 		<ConfigDock
 			{tier}
 			onTier={(t) => { tier = t; setWorkerTarget(t); }}
-			{readThrough}
-			onReadThrough={(on) => { readThrough = on; setReadThrough(on); }}
 			{light}
 			{dlStart}
 			{dlMs}

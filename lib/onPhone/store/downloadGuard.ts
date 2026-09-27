@@ -1,8 +1,8 @@
 /** downloadGuard — a HARD circuit breaker on offline-map network volume; a safety floor, never a tuning knob. Once tripped, only a reload resets it — a runaway must not be able to un-trip itself. */
 import * as Sentry from "@sentry/sveltekit";
 
-/** One satellite bake's tile grid. ~13 legit (3 km z14); >this = an absurd area → stop cold. */
-const PER_BAKE_TILE_CAP = 400;
+/** One satellite bake's tile grid. ~515 legit (2 km z17, the MapTiler bake); >this = an absurd area → stop cold. */
+const PER_BAKE_TILE_CAP = 550;
 /** Satellite tiles per rolling hour; ~13/area. A runaway re-baking every 20 s blows past this in minutes; a human with 440 areas (5,720 tiles) does not, because a full re-bake takes longer than an hour. */
 const HOURLY_TILE_CAP = 5000;
 /** v4 vector /pack downloads per rolling hour. ⚠️ A budget must count what the user does (bake an area), never what the implementation happens to do (issue a request). */

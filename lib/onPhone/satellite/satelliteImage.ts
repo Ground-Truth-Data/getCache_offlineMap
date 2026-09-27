@@ -21,7 +21,7 @@ const STORE = "images";
 export type Bounds = [number, number, number, number]; // [w,s,e,n]
 
 /** Bump whenever bake geometry changes, or a mis-bounded photo stays pinned forever. */
-export const BAKE_VERSION = 7;
+export const BAKE_VERSION = 8;
 
 export interface SatImage {
 	blob: Blob;

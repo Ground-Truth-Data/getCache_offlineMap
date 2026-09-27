@@ -1,6 +1,6 @@
 <script lang="ts">
 /**
- * Which tiles Worker blobs come from, read-through, and one switch per pyramid layer.
+ * Which tiles Worker blobs come from, and one switch per pyramid layer.
  * The circle: grey never asked · yellow asked or on disk · green painted in the viewport · red broke.
  */
 import { onMount } from "svelte";
@@ -19,8 +19,6 @@ export interface LayerRow {
 let {
 	tier,
 	onTier,
-	readThrough,
-	onReadThrough,
 	light = "idle",
 	dlStart = null,
 	dlMs = null,
@@ -31,8 +29,6 @@ let {
 }: {
 	tier: WorkerTarget;
 	onTier: (t: WorkerTarget) => void;
-	readThrough: boolean;
-	onReadThrough: (on: boolean) => void;
 	light?: Light;
 	/** performance.now() when the current ask started */
 	dlStart?: number | null;
@@ -116,12 +112,6 @@ onMount(() => {
 			<span class="sw" class:sw-on={tier === t.id}></span>
 		</button>
 	{/each}
-	<button class="cfg-row" class:sel={readThrough} onclick={() => onReadThrough(!readThrough)}>
-		<span class="cfg-label">read-through when online</span>
-		<span class="cfg-hint">off = airplane-mode truth</span>
-		<span class="circ blank"></span>
-		<span class="sw" class:sw-on={readThrough}></span>
-	</button>
 	<button class="cfg-row" class:sel={budgetMb !== BUDGET_MB} onclick={nextBudget} title="tap to cycle {BUDGET_PRESETS_MB.join(' / ')} MB — the store refuses the batch that would cross it">
 		<span class="cfg-label">budget {budgetMb} MB</span>
 		<span class="cfg-hint">{budgetMb === BUDGET_MB ? "the product line · tap to shrink" : `test line · ${BUDGET_MB} is the product`}</span>

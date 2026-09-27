@@ -1,12 +1,11 @@
 /**
- * `v10://planet/{z}/{x}/{y}`: MapLibre reads the tile store. A miss is a 404; with read-through
- * on it goes to the Worker instead, off by default so airplane mode is what you are testing.
- * A tile above the cut is clipped on the way out to the blobs it belongs to; the raw tile
- * stays on disk because two blobs can share it and each wants a different cut.
+ * `v10://planet/{z}/{x}/{y}`: MapLibre reads the tile store; a miss is a 404 — airplane mode
+ * is what you are testing. A tile above the cut is clipped on the way out to the blobs it
+ * belongs to; the raw tile stays on disk because two blobs can share it and each wants a
+ * different cut.
  */
 
 import maplibregl from "maplibre-gl";
-import { tileUrl } from "../../lib/worker/worker-local-dev/tilesHost";
 import { clipTile, type Rect } from "./clip";
 import { getTile, regionsSnapshot } from "./store";
 import { ANCHOR_Z, rangeBox, rangeContains, toMerc } from "./tiles";
@@ -23,11 +22,6 @@ export interface ReadCounts {
 }
 
 const counts: ReadCounts = { hit: 0, miss: 0, net: 0 };
-let readThrough = false;
-
-export function setReadThrough(on: boolean): void {
-	readThrough = on;
-}
 
 export function readCounts(): ReadCounts {
 	return { ...counts };
@@ -102,14 +96,6 @@ export function installProtocol(): void {
 			if (data) {
 				counts.hit++;
 				return { data };
-			}
-		}
-		const url = readThrough && navigator.onLine ? tileUrl(z, x, y) : null;
-		if (url !== null) {
-			const res = await fetch(url, { signal: abort.signal });
-			if (res.status === 200) {
-				counts.net++;
-				return { data: await res.arrayBuffer() };
 			}
 		}
 		counts.miss++;
