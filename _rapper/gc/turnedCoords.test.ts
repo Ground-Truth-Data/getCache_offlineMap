@@ -2,23 +2,9 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-/**
- * OVERLAYS SURVIVE THE QUARTER TURN.
- *
- * The landscape rig puts `.mobile-preview-screen` — rotated -90° — between the
- * phone frame and the page. Two whole classes of maths break silently on it,
- * and both shipped:
- *
- *   • `rect.width / offsetWidth` reads the element's ASPECT RATIO instead of
- *     its scale once turned, so anything sized by it came out ~2x too big;
- *   • a raw difference of two rects' `.left`/`.right` is a SCREEN-space
- *     distance, and turned, the screen's "right" is the page's "down" — the
- *     share quad drove out of its button and straight down the window.
- *
- * Neither showed up as an exception. They are arithmetic that stays finite and
- * plausible while describing the wrong axis, which is why they are pinned here
- * as source assertions rather than left to a rendering check.
- */
+// The landscape rig rotates `.mobile-preview-screen` -90°: turned, `rect.width /
+// offsetWidth` reads the aspect ratio not the scale, and a raw rect-edge difference
+// is a screen-space distance on the wrong axis. Both stay plausible, so pinned here.
 const read = (rel: string) =>
 	readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
 
@@ -29,14 +15,11 @@ const atv = read("./atvShare.ts");
 const portal = read("./handPortal.ts");
 
 describe("the scale survives a turn", () => {
-	// hypot(a, b) is the x-axis scale of the accumulated matrix, which holds the
-	// rotation and the scale separately. The rect ratio conflates them.
+	// hypot(a, b) is the accumulated matrix's x-axis scale; the rect ratio conflates it with rotation.
 	it("derives scale from the matrix, not the rect's width", () => {
 		expect(strip(fcb)).toMatch(/Math\.hypot\(\s*m\.a\s*,\s*m\.b\s*\)/);
 	});
 
-	// The fallback is still correct whenever nothing is rotated, so it stays —
-	// but it must not be the primary answer.
 	it("keeps the rect ratio only as a fallback", () => {
 		const body = strip(fcb);
 		const ratio = body.indexOf("r.width / el.offsetWidth");
@@ -55,8 +38,6 @@ describe("a point conversion exists, because two axes cannot express a turn", ()
 });
 
 describe("the quad measures its runway in page axes", () => {
-	// The exact shape that drove the quad downward: subtracting one rect's edge
-	// from another's and calling the result a rightward distance.
 	it("never subtracts one raw rect edge from another", () => {
 		const body = strip(atv);
 		expect(body).not.toMatch(
@@ -71,8 +52,6 @@ describe("the quad measures its runway in page axes", () => {
 		expect(strip(atv)).toMatch(/point\([^)]*\.right[^)]*\.bottom[^)]*\)/);
 	});
 
-	// Turned, the conversion can flip which end is larger, so the pair has to be
-	// sorted rather than assumed to arrive in order.
 	it("sorts the converted edges instead of trusting their order", () => {
 		const body = strip(atv);
 		expect(body).toMatch(/Math\.min\(/);
@@ -81,8 +60,7 @@ describe("the quad measures its runway in page axes", () => {
 });
 
 describe("the overlay home follows the turn", () => {
-	// The frame is not rotated and the screen inside it is, so an overlay given
-	// the frame rides along an axis the page does not share.
+	// The frame is not rotated and the screen inside it is, so an overlay given the frame rides the wrong axis.
 	it("prefers the turned screen box over the frame that holds it", () => {
 		const body = strip(portal);
 		expect(body).toContain("mobile-preview-screen");
@@ -95,9 +73,7 @@ describe("the overlay home follows the turn", () => {
 });
 
 describe("the quad does not re-invent the conversion", () => {
-	// overlayCoordLaw bans hand-rolled frame maths in ReTreever/src; atvShare
-	// moved to rapper, out of that scan's reach, and promptly grew its own copy
-	// back — which is the copy that broke on the turn.
+	// overlayCoordLaw scans only ReTreever/src, so rapper needs its own guard.
 	it("uses localFrom rather than its own scale", () => {
 		const body = strip(atv);
 		expect(body).toMatch(/localFrom\(/);

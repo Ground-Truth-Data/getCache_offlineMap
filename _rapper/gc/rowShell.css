@@ -1,5 +1,5 @@
-/* Row shell — single source of truth for the pill-in-a-track row (shared by Get Cache CacheRowList + Quality704 RowPill). Do not re-declare these selectors in a component's scoped <style>; add only component-specific modifiers there. */
-/* Geometry is load-bearing: track overhang + the card's 2px margins/width:calc seat the pill; the container needs ≥0.7rem left / 0.5rem right padding or the overhang clips. */
+/* Shared by CacheRowList + RowPill — do not re-declare these selectors in a scoped <style>. */
+/* Geometry is load-bearing: track overhang + the card's margins/width:calc seat the pill; the container needs ≥0.7rem left / 0.5rem right padding or the overhang clips. */
 
 .row-drag-surface {
 	padding: 0;
@@ -11,8 +11,6 @@
 	display: block;
 	box-sizing: border-box;
 }
-
-/* Drag-surface swipe feedback is the GOLD WASH (::after in CacheRowList) — no inset ring/border here. */
 
 .row-wrapper {
 	position: relative;
@@ -27,7 +25,6 @@
 	width: 100%;
 }
 
-/* Border #1 — the track groove the pill sits in. */
 .row-track {
 	position: absolute;
 	top: -2px;
@@ -43,26 +40,22 @@
 
 /* Swipe colours: bagging=GOLD (right, unbagged), unbagging=ORANGE (left, bagged), wrong-way=RED, bagged-rest=GOLD tint. The drag-surface gold wash is separate — always gold, not the directional signal. */
 
-/* Bagged resting state — gold track tint; this is the "bagged" look, not a swipe state. */
 .row-track--bagged {
 	background: rgba(255, 215, 0, 0.35);
 	border-color: rgba(255, 215, 0, 0.5);
 	box-shadow: none;
 }
 
-/* unbagging (swipe LEFT from a bagged row) = ORANGE */
 .row-track--swiping-unbundle {
 	background: rgba(201, 122, 74, 0.5);
 	border-color: rgba(201, 122, 74, 0.7);
 }
 
-/* bagging up (swipe RIGHT) = GOLD */
 .row-track--swiping-bundle {
 	background: rgba(255, 215, 0, 0.5);
 	border-color: rgba(255, 215, 0, 0.7);
 }
 
-/* WRONG-WAY swipe = RED (un-bagged swiped left, or bagged swiped right). */
 .row-track--invalid-right,
 .row-track--invalid-left {
 	background: rgba(80, 20, 20, 0.6);
@@ -92,7 +85,6 @@
 	-webkit-touch-callout: none;
 }
 
-/* Bagged STATE = the row's shifted resting position (+ darker fill). */
 .row-card--bagged {
 	--row-rest: calc(10px + 0.6rem);
 	background: #2e2e2e;

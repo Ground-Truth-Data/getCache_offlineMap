@@ -1,17 +1,9 @@
 <script lang="ts">
 /**
- * The header and footer bars a child does NOT own.
- *
- * Get Cache draws a nav bar and a tab bar around every mini-app, but those
- * belong to the mounting tier — a child served on its own has neither, so a
- * layout built against the full window is re-fitted the moment it is mounted
- * and the panes jump. This reserves the same bands standalone, marked with the
- * gold rule, so a child is laid out against the height it will really get.
- *
- * A STAND-IN, NEVER AN EXTRA. It is rendered from a child's own
- * routes/+layout.svelte, which SvelteKit builds only when the child serves
- * itself; mounted, the tier's layout runs instead and the real bars appear in
- * these positions. That is the swap — nothing to switch off by hand.
+ * Reserves the nav and tab-bar bands a mounting tier draws, so a child served
+ * alone is laid out against the height it will really get. Rendered only from
+ * a child's own routes/+layout.svelte; mounted, the tier's real bars take
+ * these positions.
  */
 import { page } from "$app/state";
 import type { Snippet } from "svelte";
@@ -28,10 +20,8 @@ let {
 	footer?: string;
 } = $props();
 
-// Reserve exactly what the mounted tier will draw. A route the tier gives no
-// top bar must not be handed one here either, or the stand-in reserves a band
-// that never arrives and the child is laid out against the wrong height —
-// which is the one thing this component exists to prevent.
+// Reserve exactly what the mounted tier will draw, or the child is laid out
+// against the wrong height.
 const topBar = $derived(hasTopBar(page.url));
 const bottomBar = $derived(hasBottomBar(page.url));
 </script>
@@ -49,8 +39,6 @@ const bottomBar = $derived(hasBottomBar(page.url));
 <style>
 .host {
 	display: grid;
-	/* Only the page flexes; the reserved bands keep their height whatever the
-	   page does, which is the whole point of reserving them. */
 	grid-template-rows: auto 1fr auto;
 	height: 100%;
 	min-height: 0;

@@ -1,22 +1,9 @@
 <script lang="ts">
 import "./devCard.css";
 /**
- * EPHEMERAL DOCK — a dev-only side column for page-specific instruments.
- *
- * The TRAY is what every page shares (tier pill, debug toggle). A page's own
- * panels — the offline map's memory/blobs/config rails — belong to one page
- * and are big, so they go in a dock instead. Empty dock, no dock: `:empty`
- * hides it, so a page that has not toggled its panels on shows nothing.
- *
- * THE BOX IS <SideCard>, not this file. Where a panel sits beside the phone
- * is one question with one answer — span the viewport edge to the frame, even
- * margins, measured from the frame's real box — and that answer used to live
- * here, gated behind `{#if dev}`. A public page needing the same geometry
- * therefore had to rewrite it, which is exactly what the wiki pages did and
- * got wrong. Escaping to <body> moved there too — a card that has not escaped
- * sits on top of the phone, so it is part of the box, not of the dev gate.
- * What stays here is genuinely dev-only: the gate, and the `bind:host` handle
- * a page uses to move its own nodes in.
+ * A dev-only side column for one page's own instruments (the tray is what
+ * every page shares). The box is <SideCard>; only the gate and the
+ * `bind:host` handle live here. `:empty` hides an empty dock.
  */
 import type { Snippet } from "svelte";
 import { page } from "$app/state";
@@ -25,8 +12,7 @@ import { devChromeShows } from "$gc/devChrome";
 
 let {
 	side = "left",
-	/** Extra offset below the host nav — e.g. the tray's height, so a dock
-	 * can sit under the tray on the same side. */
+	/** Extra offset below the host nav, e.g. the tray's height. */
 	top = "0px",
 	host = $bindable<HTMLElement | undefined>(undefined),
 	children,
@@ -39,13 +25,8 @@ let {
 
 const dev = import.meta.env.DEV;
 
-/**
- * A PAGE THAT MOUNTS ANOTHER PAGE inherits its instruments. The wiki pages
- * render the offline map's whole +page.svelte as a poster, and it brings its
- * three rails with it — they landed over the phone and beside the copy, on a
- * page whose entire job is to be read. The child cannot know it is a poster,
- * so the question is asked of the URL, here, once for every dock.
- */
+// A page that mounts another page inherits its instruments; the child cannot
+// know it is a poster, so the URL is asked here, once for every dock.
 const shows = $derived(dev && devChromeShows(page.url));
 </script>
 
@@ -56,14 +37,11 @@ const shows = $derived(dev && devChromeShows(page.url));
 {/if}
 
 <style>
-/* Only what a DOCK adds to a side panel: the instrument-rail look, and the
-   rule that an empty one disappears. The box is SideCard's. */
 :global(.dock) {
 	z-index: 8900;
 	color: #d8d4c8;
 	font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
-	/* A rail of readouts, not a card of sentences — the tight padding is the
-	   instrument look. SideCard's roomier default is for the public cards. */
+	/* A rail of readouts, not a card of sentences. */
 	--card-pad: 12px 14px;
 }
 :global(.dock:empty) { display: none; }

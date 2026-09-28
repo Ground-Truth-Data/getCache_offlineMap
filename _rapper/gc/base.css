@@ -1,10 +1,8 @@
-/* Shared Base Styles for ReTreever and rapper projects */
-/* This file contains all structural CSS that should be identical across projects */
-/* Color themes, Tailwind configuration, and Mapbox imports are in each project's app.css */
+/* Structural CSS shared by both tiers; themes and vendor imports live in theme.css. */
 
 @import 'tailwindcss';
 
-/* Stage Breadcrumbs - chevron flow style (bee pattern: gold/black alternating) */
+/* Chevron breadcrumbs, gold/black alternating */
 .stage-breadcrumbs [data-slot="breadcrumb-list"] {
 	display: flex;
 	align-items: center;
@@ -25,21 +23,19 @@
 	z-index: 1;
 }
 
-/* First item (nth-child 1): gold background, black text */
+/* Odd nth-children: the separators sit between items. */
 .stage-breadcrumbs [data-slot="breadcrumb-item"]:nth-child(1) [data-slot="breadcrumb-link"] {
 	background: var(--color-accent);
 	color: #000;
 	z-index: 3;
 }
 
-/* Second item (nth-child 3, after separator): black background, gold text */
 .stage-breadcrumbs [data-slot="breadcrumb-item"]:nth-child(3) [data-slot="breadcrumb-link"] {
 	background: #1a1a1a;
 	color: var(--color-accent);
 	z-index: 2;
 }
 
-/* Third item (nth-child 5): gold background, black text */
 .stage-breadcrumbs [data-slot="breadcrumb-item"]:nth-child(5) [data-slot="breadcrumb-link"] {
 	background: var(--color-accent);
 	color: #000;
@@ -60,7 +56,6 @@
 	display: none;
 }
 
-/* Section wrapper — normal flow, becomes small top-left strip when selected */
 .stage-who-what-select-section {
 	display: grid;
 	height: 100%;
@@ -88,7 +83,6 @@
 	align-items: center;
 }
 
-/* Shrink container when selected */
 .stage-who-what-select-container--selected {
 	animation: none !important;
 	max-width: 16rem !important;
@@ -104,19 +98,11 @@
 }
 
 @theme {
-	/* These work on both Light (rapper) and Dark (ReTreever) modes */
-
-	/* Border & Input: #525252 (Neutral Gray-600) - Visible on white, subtle on dark */
+	/* Greys chosen to read on both a white and a dark ground. */
 	--color-border: #525252;
 	--color-input: #525252;
-
-	/* Muted: #737373 (Neutral Gray-500) - Mid-tone for disabled/secondary text */
 	--color-muted: #737373;
-
-	/* Destructive: #ef4444 (Red-500) - Universal danger color */
 	--color-destructive: #ef4444;
-
-	/* Lower Accent: #EE9900 - Universal lower accent for links, highlights */
 	--color-accent-lower: #EE9900;
 
 	--font-sans:
@@ -170,7 +156,6 @@
 	}
 }
 
-/* Intentional accent link class - use when you want accent colored links */
 .link-accent {
 	color: var(--color-accent);
 	transition: color 0.2s ease;
@@ -181,7 +166,6 @@
 	transition: opacity 0.2s ease;
 }
 
-/* Table links and contact sections - Use lower accent to reduce visual noise */
 table a, [role="table"] a, .table-container a, .contact-section a {
 	color: var(--color-accent);
 }
@@ -198,43 +182,38 @@ table a:hover, [role="table"] a:hover, .table-container a:hover, .contact-sectio
 	}
 }
 
-/* Shared Button Convention — enforce grey/dark grey for default buttons, overriding the default primary color */
+/* Default buttons are dark grey, overriding the primary colour; every hover is 40% translucent. */
 [data-slot='button'].bg-primary {
-	background-color: #262626 !important; /* Neutral Dark Grey */
-	color: #fafafa !important; /* White Text */
+	background-color: #262626 !important;
+	color: #fafafa !important;
 	border: 1px solid var(--color-border) !important;
 }
 
 [data-slot='button'].bg-primary:hover {
-	background-color: rgb(from #404040 r g b / 0.4) !important; /* 40% transparency hover */
-	color: var(--color-accent) !important; /* Hover text to accent color */
+	background-color: rgb(from #404040 r g b / 0.4) !important;
+	color: var(--color-accent) !important;
 	border-color: var(--color-border);
 }
 
-/* Ghost and Outline buttons - make hover 40% transparency */
 [data-slot='button'].hover\:bg-accent:hover {
 	background-color: rgb(from var(--color-accent) r g b / 0.4) !important;
 	color: var(--color-accent-foreground) !important;
 }
 
-/* Secondary buttons - make hover 40% transparency */
 [data-slot='button'].hover\:bg-secondary\/80:hover {
 	background-color: rgb(from var(--color-secondary) r g b / 0.4) !important;
 }
 
-/* Destructive buttons - make hover 40% transparency */
 [data-slot='button'].hover\:bg-destructive\/90:hover {
 	background-color: rgb(from var(--color-destructive) r g b / 0.4) !important;
 }
 
-/* Secondary buttons — 50% opacity by default with black text */
 [data-slot='button'].bg-secondary {
 	background-color: color-mix(in srgb, var(--color-secondary), transparent 30%) !important;
 	color: #000000 !important;
 	border: 1px solid transparent !important;
 }
 
-/* Make dropdown hover translucent */
 [data-highlighted]:not([data-highlighted='false']) {
 	background-color: color-mix(in srgb, var(--color-accent), transparent 40%) !important;
 }
@@ -253,7 +232,6 @@ img[alt*="Who"] {
 	transition: all 0.2s ease !important;
 }
 
-/* Active/Enabled state - gold shadow and brighter border */
 .map-nav-button.active,
 img[alt*="What"].active,
 img[alt*="Who"].active {
@@ -262,7 +240,6 @@ img[alt*="Who"].active {
 	background-color: rgba(255, 215, 0, 0.1) !important;
 }
 
-/* Inactive state - slightly greyed out */
 .map-nav-button:not(.active),
 img[alt*="What"]:not(.active),
 img[alt*="Who"]:not(.active) {
@@ -286,7 +263,6 @@ img[alt*="Who"]:active {
 	transform: scale(0.98) !important;
 }
 
-/* Force SVG icons to gold */
 .map-nav-button svg,
 .map-nav-button svg path,
 .map-nav-button svg circle {
@@ -295,7 +271,6 @@ img[alt*="Who"]:active {
 	stroke: #ffd700 !important;
 }
 
-/* Fix shovel button - remove nested button styling and increase icon size */
 .map-nav-button img,
 img[alt*="What"] img,
 img[alt*="Who"] img {
@@ -304,7 +279,7 @@ img[alt*="Who"] img {
 	object-fit: contain !important;
 }
 
-/* Remove any nested button styling - AGGRESSIVE */
+/* Strip nested vendor button chrome. */
 .map-nav-button button,
 .map-nav-button button:hover,
 .map-nav-button button:active,
@@ -329,7 +304,6 @@ button.mapboxgl-ctrl:active,
 	height: auto !important;
 }
 
-/* Force shovel icon to fill parent button */
 img[alt*="shovel"],
 img[alt*="Shovel"] {
 	width: 28px !important;
@@ -341,8 +315,6 @@ img[alt*="Shovel"] {
 	border: none !important;
 }
 
-/* Container - applies unified glow animation to children */
-/* Simple breathe: brighter for 2s, dimmer for 2s */
 .stage-who-what-select-container {
 	animation: stage-who-what-select-glow 4s ease-in-out infinite;
 }
@@ -356,7 +328,6 @@ img[alt*="Shovel"] {
 	}
 }
 
-/* Globe icon container */
 .stage-who-what-select-globe {
 	display: flex;
 	align-items: center;
@@ -367,7 +338,6 @@ img[alt*="Shovel"] {
 	color: var(--color-accent);
 }
 
-/* Input field */
 .stage-who-what-select-input {
 	border-color: var(--color-accent) !important;
 	caret-color: color-mix(in srgb, var(--color-accent), transparent 30%);
@@ -409,7 +379,6 @@ img[alt*="Shovel"] {
 }
 
 
-/* Selection pulse animation */
 .stage-who-what-select-input--selecting {
 	animation: stage-who-what-select-pulse 0.3s ease-out;
 }
@@ -420,7 +389,6 @@ img[alt*="Shovel"] {
 	100% { transform: scale(1); }
 }
 
-/* Dropdown panel */
 .stage-who-what-select-dropdown {
 	position: absolute;
 	top: 100%;
@@ -437,7 +405,6 @@ img[alt*="Shovel"] {
 	z-index: 50;
 }
 
-/* Dropdown items */
 .stage-who-what-select-item {
 	display: block;
 	width: 100%;

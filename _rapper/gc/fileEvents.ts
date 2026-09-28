@@ -1,16 +1,7 @@
-// File-lifecycle DOM events — the ONE wire between "a file moved" and the
-// celebration arms (celebrate.svelte.ts listens: export → RIGHT thumbs-up,
-// import → LEFT thumbs-up, both on the shared every-other pacing gate).
-//
-// Announce at the ACTION level, not the transport level: an export counts
-// whether it left via the native share sheet, the Web Share API, or the
-// browser download leg — the user doesn't care which tier fired. Every
-// export transport calls announceExport at its success point; importRouter
-// (the single import funnel) calls announceImport.
-//
-// the harness's shareFile dispatches the export event with an inline string —
-// open-core rule: it cannot import this proprietary module. Keep the
-// literals in sync with mapShareFeature.ts.
+// Announce at the ACTION level, not the transport level: every export transport
+// (share sheet, Web Share API, download) calls announceExport at its success point.
+// rapper's own shareFile dispatches this event with an inline string literal — open-core
+// rule bars it from importing this module — so keep the literals in sync with mapShareFeature.ts.
 
 export const FILE_EXPORTED_EVENT = "getcache:file-exported";
 export const FILE_IMPORTED_EVENT = "getcache:file-imported";

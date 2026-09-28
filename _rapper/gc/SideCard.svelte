@@ -1,37 +1,10 @@
 <script lang="ts">
-/**
- * SIDE CARD — the card that sits in the gutter beside the phone, and becomes
- * a centred card over the app when there is no phone to sit beside.
- *
- * ONE COMPONENT, BOTH STATES. The desktop/mobile split is not the caller's
- * problem: a caller has a card's worth of content and this decides where it
- * goes. Splitting it was the bug — every caller then re-derived "is there a
- * phone" from a media query, and a media query is the wrong question (debug
- * routes are wide with no frame, and the frame mounts after the page does).
- *
- * THREE PLACEMENTS, ONE RULE. Beside the phone when the gutter is at least
- * MIN_LANE_REM wide; floating over the phone screen when there is a frame but
- * the gutter is narrower than that — a card squeezed to a column of five-word
- * lines is unreadable, and the phone is the one box on the page guaranteed
- * to be wide enough; centred in the viewport when there is no phone at all,
- * like every other Get Cache popover. Nothing slides off an edge.
- *
- * IT ESCAPES TO <body> ON MOUNT, and must. The phone rig is drawn with a
- * transform, and a transformed ancestor becomes the containing block for
- * `position: fixed` — so a card rendered inside the rig measures its `left`
- * from the PHONE's edge and lands on top of it. This is not an optional extra
- * a caller could bolt on: a side card that has not escaped is a card over the
- * phone. It lived in <EphemeralDock> behind a dev gate, which is why every
- * public attempt at this landed in the wrong place.
- *
- * <EphemeralCard> and <EphemeralDock> are this card with a dev gate and a
- * content portal. Fix the box here and all three move.
- */
+// Three placements from the MEASURED frame, never a media query. Escapes to <body> on
+// mount: the rig's transform would otherwise be the containing block for `position: fixed`.
 import type { Snippet } from "svelte";
 import { onMount } from "svelte";
 import { type FrameBox, watchPhoneFrame } from "./phoneFrame.svelte";
 
-/** Narrowest gutter a card will sit in. ~300px at the default root size. */
 const MIN_LANE_REM = 18.75;
 import "$rig/dev/devCard.css";
 
@@ -46,25 +19,18 @@ let {
 	...rest
 }: {
 	side?: "left" | "right";
-	/** Small label in the header row. Omitted = no header. */
+	/** Omitted = no header. */
 	title?: string;
-	/** Extra offset below the host chrome. */
 	top?: string;
-	/** Beside the phone: hang from the phone's top edge instead of riding its
-	 *  midline. A card that grows keeps its top where it is; a centred one grows
-	 *  upward, into the nav. */
+	/** "top": hangs from the phone's top edge, so a growing card grows down, not into the nav. */
 	align?: "centre" | "top";
-	/** The element itself, for a caller that portals DOM into it. */
 	el?: HTMLElement;
-	/** Merged with the box's own classes, never in place of them. */
 	class?: string;
 	children?: Snippet;
 	[key: string]: unknown;
 } = $props();
 
-// The measured frame, not a breakpoint. `undefined` until it has been looked
-// for — painting a guess first is the flash of a card in the wrong place that
-// every reload used to show. `null` is a page with no frame.
+// `undefined` until looked for — painting a guess first flashes a card in the wrong place.
 let frame = $state<FrameBox | null | undefined>(undefined);
 $effect(() => watchPhoneFrame((box) => (frame = box)));
 
@@ -86,8 +52,7 @@ onMount(() => {
 });
 </script>
 
-<!-- `class` is taken out of `rest` above. Left in, a caller's `class="dock"`
-     replaces this attribute wholesale and the card loses its shell. -->
+<!-- `class` is taken out of `rest`: left in, a caller's class replaces this attribute wholesale. -->
 <aside
 	bind:this={el}
 	class="dev-card side-card {className}"
@@ -106,8 +71,7 @@ onMount(() => {
 </aside>
 
 <style>
-/* .dev-card owns the look, .gc-lane owns the gutter geometry. Only the
-   vertical extent is left to decide. */
+/* .dev-card owns the look, .gc-lane owns the gutter geometry. */
 .side-card {
 	display: flex;
 	flex-direction: column;
@@ -115,48 +79,28 @@ onMount(() => {
 	overflow-y: auto;
 	max-height: calc(100dvh - var(--host-chrome, 0px) - 4rem);
 	z-index: 40;
-	/* GOLD EDGE IN ALL THREE PLACEMENTS. It used to be set only on the two
-	   floating ones, so the same card changed colour when the gutter grew wide
-	   enough to sit in — a card is the app's own furniture wherever it lands. */
 	border-color: var(--rt-yellow, #e8b923);
-	/* .dev-card's 12px is a debugger's padding, sized for a dense panel of
-	   readouts. A card carrying sentences needs air, and a caller overriding it
-	   one page at a time is how the three placements drifted in the first
-	   place. --card-pad lets a dense panel ask for the tight value back. */
+	/* .dev-card's 12px is a debugger's padding; --card-pad lets a dense panel ask for it back. */
 	padding: var(--card-pad, 20px 22px);
 }
 
-/* Beside the phone: hovering in the middle of the space under the host
-   chrome, equal air above and below. Translated from its own centre so the
-   card's height never enters into it. */
 .side-card.gc-lane {
 	top: calc(50% + var(--host-chrome, 0px) / 2);
 	transform: translateY(calc(-50% + var(--nudge, 0px)));
 }
-/* Top edge on the phone's top edge, never above the host chrome. No centre
-   maths: the card's own height plays no part, so growing content pushes the
-   bottom down instead of the top up. */
 .side-card.gc-lane.side-card--top {
 	top: max(var(--phone-frame-top, 0px), var(--host-chrome, 0px) + 12px);
 	transform: translateY(var(--nudge, 0px));
 }
 
-/* Floating, centred on its box from its own centre. */
 .side-card--centred,
 .side-card--over {
 	position: fixed;
 	transform: translate(-50%, -50%);
 }
 
-/* No phone: the box is the VIEWPORT MINUS ITS CHROME. Sized with a gutter
-   rather than a percentage, so there is padding off the edge at every width —
-   88vw of a narrow phone is still a card touching both sides.
-
-   The chrome term is what keeps the card off the bars. Against the bare
-   viewport the card's own gold edge lands part-way down the tab bar, which
-   reads as the FOOTER being broken rather than the card overhanging it.
-   Centring shifts by half the difference: the bars are not symmetrical, and
-   a card centred on the window sits too low inside the space left over. */
+/* A gutter, not a percentage, so there is padding off the edge at every width; the bars
+   are not symmetrical, so centring shifts by half their difference. */
 .side-card--centred {
 	left: 50%;
 	top: calc(50% + var(--host-chrome-top, 0px) / 2 - var(--host-chrome-bottom, 0px) / 2);
@@ -166,7 +110,7 @@ onMount(() => {
 	);
 }
 
-/* Gutter too narrow: the box is the PHONE SCREEN, as the frame publishes it. */
+/* Gutter too narrow: the box is the phone screen, as the frame publishes it. */
 .side-card--over {
 	left: calc(var(--phone-frame-left) + var(--phone-frame-width) / 2);
 	top: calc(var(--phone-frame-top) + var(--phone-frame-height) / 2);
@@ -174,8 +118,7 @@ onMount(() => {
 	max-height: calc(var(--phone-frame-height) - 2 * var(--card-gutter, 20px));
 }
 
-/* Not yet placed: it exists and has measured, but nothing is painted until we
-   know WHERE. Rendering it centred first and moving it is a visible jump. */
+/* Nothing is painted until placed: rendering centred first and moving is a visible jump. */
 .side-card--unplaced {
 	position: fixed;
 	visibility: hidden;

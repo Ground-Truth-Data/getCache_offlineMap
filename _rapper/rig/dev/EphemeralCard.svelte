@@ -1,35 +1,9 @@
 <script lang="ts">
 import "./devCard.css";
 /**
- * EPHEMERAL CARD — the dev-only tray that every tier shares.
- *
- * Everything that must NOT ship sits in here: the tier pill (drawn by the
- * card itself — every page switches tiers), plus whatever a page hands in,
- * e.g. its debug toggle. It exists in `vite dev` and nowhere
- * else — `import.meta.env.DEV` is false on Vercel, on TestFlight and in a
- * `vite build`, so the card, and everything handed to it, is simply absent
- * there. No route, no flag, nothing to forget.
- *
- * NOT A NAV. SharedNav was the first attempt at "the dev chrome both tiers
- * share", and it was the wrong shape: Get Cache has its own nav, so a shared
- * one either doubled it or fought it. This is a tray, not a bar — it draws no
- * links of its own and takes no position in the page. Whatever a page puts in
- * it is the page's business.
- *
- * OUTSIDE THE PHONE, BY CONSTRUCTION. The card is `position: fixed` and is
- * moved to <body> on mount, so it does not matter where in the tree a page
- * renders it — inside ReTreever's phone shell, inside rapper's stage, it
- * floats over the window either way. A page never has to escape its layout
- * to get dev chrome outside its layout.
- *
- * HOW A PAGE HANDS THINGS IN. Two ways, both fine:
- *   1. children — `<EphemeralCard>…</EphemeralCard>` renders what you write.
- *   2. `bind:host` — the card's content element, for a component that needs
- *      to MOVE its own DOM here (the offline map's rail hosts do this via
- *      EphemeralDock, so its panels keep their state and scoped styles).
- *
- * Lives in rapper/rig because that is the one tree both tiers read.
- * Names no tier.
+ * The dev-only tray every tier shares: the tier pill plus whatever a page
+ * hands in, as children or by portalling DOM into `bind:host`. A tray, not a
+ * nav — it draws no links and takes no position in the page.
  */
 import type { Snippet } from "svelte";
 import { page } from "$app/state";
@@ -37,11 +11,9 @@ import ParentPill from "./ParentPill.svelte";
 import { TIER_HOME, otherTierOrigin, otherTierPath } from "../nav/tierRoutes";
 
 let {
-	/** Small label in the tray's header, e.g. the page name. */
 	title = "",
 	/** The content element, for components that portal their DOM in. */
 	host = $bindable<HTMLElement | undefined>(undefined),
-	/** The fold button was pressed. The tray owns what "folded" looks like. */
 	onfold,
 	children,
 }: {
@@ -53,15 +25,8 @@ let {
 
 const dev = import.meta.env.DEV;
 
-/**
- * THE TIER PILL LIVES HERE, NOT IN ANY PAGE. Every child page can be served
- * by either tier, so "which tier is this, and where is the same page on the
- * other one" is a fact about the SESSION, not about a map. The facts arrive
- * as VITE_* defines from whichever vite.config is running (rapper's and
- * ReTreever's both set them, dev server only); an npm install or a build has
- * none, so T_TIER is "" and the pill is simply absent. The url math is
- * tierRoutes.ts — the pill never guesses a host or a port.
- */
+// The tier facts arrive as VITE_* defines from whichever vite.config is
+// running (dev server only); a build has none, so the pill is absent.
 const ENV_T = import.meta.env as Record<string, string | undefined>;
 const T_TIER = ENV_T.VITE_RAPPER_TIER ?? "";
 const T_OTHER = ENV_T.VITE_OTHER_TIER ?? "";
@@ -82,9 +47,7 @@ const tOtherOrigin = $derived(
 );
 const tHref = $derived(
 	T_OTHER_ORIGIN
-		// search rides along here; the hash is appended at CLICK time by
-		// ParentPill (carryHash) — replaceState hash writes update no store,
-		// so a derived hash could only ever be stale.
+		// The hash is appended at click time by ParentPill: a derived hash is stale.
 		? (tOtherOrigin ?? T_OTHER_ORIGIN) + (tOtherPath ?? TIER_HOME) + page.url.search
 		: undefined,
 );
@@ -143,11 +106,7 @@ const tHref = $derived(
 	overflow: auto;
 	min-height: 0;
 }
-/* THE TRAY OWNS THE LAYOUT OF WHAT IS DROPPED IN. Anything portalled here was
-   styled for somewhere else — a pill pinned `absolute` to a stage corner, a
-   rail that `flex: 1 1 0`s into a row. In a column tray those rules give a
-   zero-height rail and a pill hovering over the header. Neutralise the
-   placement rules only; each item's own look is untouched. */
+/* Anything portalled here was styled for somewhere else; neutralise its placement rules only. */
 .content > :global(*) {
 	position: static;
 	flex: 0 0 auto;

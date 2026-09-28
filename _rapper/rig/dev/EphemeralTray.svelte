@@ -1,31 +1,8 @@
 <script lang="ts">
 /**
- * THE TRAY, MOUNTED ONCE PER TIER — never per page.
- *
- * Every page wants the same tray: the `dev` pill, the tier switch, the page
- * name. Mounting it per page made that a LIST — ten call sites across five
- * repos, each of which had to remember to mount it AND to wrap the mount in
- * `{#if dev}` so it did not ship. Both halves were forgettable, and both were
- * forgotten: pages had no tray, and production bundles carried the card and
- * devCard.css to every visitor because an unconditional mount is a live
- * reference the bundler must keep.
- *
- * One mount in the root layout deletes the list. Every route passes through
- * the layout, so the tray is on every page by construction — including pages
- * nobody has written yet. There is nothing to add and nothing to forget.
- *
- * WHY THE GATE IS HERE AND NOT ONLY INSIDE THE CARD. EphemeralCard has its
- * own `{#if dev}`, which stops it RENDERING but cannot stop it SHIPPING — a
- * component gating itself can never delete its own call site. This is the
- * only call site now, so this is the only gate that has to be right.
- *
- * `import.meta.env.DEV` is a build-time literal: in a build the condition
- * folds to false, Svelte drops the block, and Rollup drops the import. False
- * on Vercel, on TestFlight and in any `vite build`.
- *
- * A page never mounts a second tray. A page that wants its own side rails
- * mounts an EphemeralDock, which stays per-page because `bind:host` is
- * per-page wiring.
+ * The tray, mounted once per tier in the root layout — never per page. The
+ * `{#if dev}` gate is HERE because a component gating itself cannot delete its
+ * own call site; this is the only one, so it is the only gate that must be right.
  */
 import { onMount } from "svelte";
 import { page } from "$app/state";
@@ -37,14 +14,9 @@ let { title }: { title?: string } = $props();
 
 const dev = import.meta.env.DEV;
 
-/**
- * FOLDED BY DEFAULT — the tray is dev chrome over the page under test, so it
- * starts out of the way and comes back from a small tab in the corner.
- * `?ephem=1` / `?ephem=0` force the starting state for one load; otherwise
- * the last fold is remembered per tab (sessionStorage, so a fresh tab starts
- * clean). Storage is read after mount: the tray renders on the server too,
- * and the param is the only input both sides can agree on.
- */
+// Folded by default. `?ephem=1|0` forces one load; otherwise the last fold is
+// remembered per tab. Storage is read after mount: the tray renders on the
+// server too, and the param is the only input both sides agree on.
 const FOLD_KEY = "rt-ephem-collapsed";
 const urlEphem = page.url.searchParams.get("ephem");
 let collapsed = $state(urlEphem !== "1");
@@ -59,8 +31,7 @@ function toggleFold() {
 	sessionStorage.setItem(FOLD_KEY, collapsed ? "1" : "0");
 }
 
-// Same escape SideCard makes: a transformed ancestor (the phone rig) would
-// otherwise become the containing block and pin the tab to the phone's corner.
+// The phone rig's transform would otherwise be the containing block and pin the tab to the phone.
 $effect(() => {
 	const el = tab;
 	if (!el) return;
@@ -68,11 +39,6 @@ $effect(() => {
 	return () => el.remove();
 });
 
-/**
- * The page name is READ FROM THE URL, not passed in. Passing it was the last
- * reason a page had to know the tray existed; deriving it means a new route
- * is labelled correctly the day it is created. `/` is the tier's own home.
- */
 const derived = $derived(
 	page.url.pathname.split("/").filter(Boolean).join(" / ") || "home",
 );

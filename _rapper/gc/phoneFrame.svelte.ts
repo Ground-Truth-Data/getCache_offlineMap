@@ -1,17 +1,7 @@
 /**
- * THE PHONE FRAME, AS A FACT ANY COMPONENT CAN ASK FOR.
- *
- * Two things depend on it and both used to guess: a side card needs to know
- * whether there is a gutter to sit in and how wide it is, and the lane needs
- * the frame's measured width. Both were answered with a media query and a
- * mount-time querySelector — which is wrong twice over. The frame is drawn by
- * the (getcache) layout, so at a page component's onMount it may not exist
- * yet; and the layout's own rule is route-dependent (debug routes opt out), so
- * a media query can say "wide" on a page that has no frame.
- *
- * So: watch the DOM for the frame, publish its box while it is there, and
- * report it — `null` when there is no frame. One observer, one answer, every
- * caller, re-reported on every resize.
+ * The phone frame as a measured fact: the layout draws it after a page's
+ * onMount and only on some routes, so neither a media query nor a mount-time
+ * querySelector can answer. `null` = no frame.
  */
 import { publishDockWidths, type FrameBox } from "$rig/dev/dockWidths";
 
@@ -20,16 +10,8 @@ export type { FrameBox };
 export function watchPhoneFrame(onChange: (box: FrameBox | null) => void): () => void {
 	let stopWidths: (() => void) | undefined;
 	let current: HTMLElement | null = null;
-	/**
-	 * WHETHER WE HAVE ANSWERED YET, kept apart from WHAT the answer was.
-	 *
-	 * Both start as `null` otherwise — "not looked yet" and "looked, no frame"
-	 * are the same value — so the `frame === current` guard below read the very
-	 * first look at a frameless page as "nothing changed" and reported nothing.
-	 * A caller waiting for its first answer then waited forever: SideCard stayed
-	 * `--unplaced`, which is `visibility: hidden`, so every card on every page
-	 * with no phone was invisible rather than centred.
-	 */
+	// Kept apart from `current`: "not looked yet" and "looked, no frame" are
+	// both null, and a caller waiting for its first answer would wait forever.
 	let reported = false;
 
 	const sync = () => {

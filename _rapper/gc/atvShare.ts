@@ -1,87 +1,31 @@
-/**
- * atvShare — the gold ATV ("share quad") that drives out from behind a
- * share/export button.
- *
- * The trick: the play-once WebP strip is cropped so it contains ONLY the
- * ATV + dust (the painted "Export Cache" button in the source frames is cut
- * away entirely). The strip rides on its own full-stage layer at Z_HANDS —
- * the same tier and the same home (phone frame on dt-web, <body> on a
- * device) as the teaching / celebration hands, so it paints over sheets,
- * popovers and toasts instead of dying inside whatever drawer the button
- * sits in. A hole the size of the button is punched out of that layer, its
- * cut edge tucked under the button by the button's own corner radius + 2px —
- * so the real button IS the mask, whatever its shape. Buttons shorter than
- * MIN_H get an oversized ATV whose cut edge is feathered with a gradient
- * mask (reads as dust, since the oversize strip pokes past the button's
- * silhouette).
- *
- * Direction is AUTO by runway: if there's ANY room to the button's right,
- * the quad exits right; only a button hugging the right edge sends it left.
- * `"left"` / `"right"` remain as explicit overrides.
- *
- * Use `playAtvShare(btn)` imperatively (SharePicker calls it on format
- * choose), or `use:atvShare` on any direct-share button.
- */
+/** ATV sprite rides its own layer at Z_HANDS with the button's rect masked out. */
 
 import { localFrom } from "./fixedContainingBlock.js";
 import { frameFor } from "./handPortal";
 import { Z_HANDS } from "./zTiers";
 import { FILE_EXPORTED_EVENT } from "./fileEvents.js";
 
-const MIN_H = 36; // px — floor so tiny icon buttons still throw a visible ATV
-// "Any room at all on the right → go right." One quad-length of visible
-// runway is the floor below which right just reads as a glitch.
-const MIN_RUNWAY = 48;
+const MIN_H = 36; // px floor so tiny icon buttons still throw a visible ATV
+const MIN_RUNWAY = 48; // one quad-length; less and exiting right reads as a glitch
 
-/**
- * ── The treadmill + polyline rig ────────────────────────────────────────
- * The ORIGINAL asset baked the travel into the frames: a 911px canvas where
- * each frame painted the quad further right. That made a straight line the
- * only possible path.
- *
- * `share_atv_tread_*.webp` is that same art, re-cut: frames 9–20 (the window
- * where the quad is fully on-canvas) cropped to a fixed 314×132 box
- * REGISTERED ON THE QUAD'S NOSE — not on the frame's ink bbox, because the
- * dust plume changes length every frame and would have made the quad jitter.
- * Result: the quad drives in place, wheels spinning, dust trailing, and CSS
- * owns 100% of the travel. It loops forever, so path length is free.
- *
- * Quads don't drive straight on a planting site — they pick around debris.
- * So the path is a random polyline: a short straight launch out from under
- * the button, then 1–5 turns, every segment still net-advancing toward the
- * exit edge. Duration is derived from the summed path length so the quad
- * holds the SAME ground speed no matter how twisty the route is.
- */
-const SPRITE_W = 314; // treadmill canvas, px
+// Sprite treadmills in place; CSS drives the polyline. Duration derives from
+// path length so ground speed is constant however twisty.
+const SPRITE_W = 314;
 const SPRITE_H = 132;
-// Rear axle, in sprite px — a quad pivots about its back wheels, so this is
-// the transform-origin. Measured off the gold-body box (x 146–300, y 9–126).
+// Rear axle in sprite px: a quad pivots about its back wheels.
 const PIVOT_X = 175;
 const PIVOT_Y = 100;
-// Ground speed of the ORIGINAL clip, preserved exactly. The old strip moved
-// the quad across its 911px canvas in 19 frames @ 58ms — but that canvas was
-// SCALED to the button (height 132 → imgH), so the on-screen speed was
-// 911 * scale px in 1.1s. Expressed per unit of scale, that is:
+// Ground speed of the source clip: 911px canvas in 19 frames @ 58ms, per unit of scale.
 const SPEED_SPRITE_PX_PER_S = (911 / (19 * 58)) * 1000;
 const LAUNCH_FRAC = 0.06; // straight run out from under the button
-const MIN_LEG_FRAC = 0.15; // floor between turns — below this it reads as vibration
-const MAX_TURN_DEG = 25; // per-turn swing; clamped so it never heads backwards
-// Cumulative deviation cap. Kept well under 45° because the vertical drift of
-// a long leg is len*sin(heading) — at 55° a final leg walks the quad clean
-// off the top or bottom of the shell before it ever reaches the side.
+const MIN_LEG_FRAC = 0.15; // below this a leg reads as vibration
+const MAX_TURN_DEG = 25;
+// Kept well under 45°: at 55° a leg's vertical drift (len*sin) walks the quad off-frame first.
 const MAX_HEADING_DEG = 30;
 const SETTLE_MS = 120;
 
 type Exit = "left" | "right" | "auto";
 
-/**
- * The quad CONFIRMS an export — it must never fire before the file actually
- * left. Share buttons therefore ARM the quad (remember the origin button),
- * and the ride is triggered by `announceExport`'s FILE_EXPORTED_EVENT — the
- * same success wire that sets the ✓ and evokes the celebration arms. Flows
- * with detours (format picker → "export ALL?" confirm → filter drawer) get
- * this for free: no announce, no quad.
- */
 let armed: { btn: HTMLElement; exit: Exit; at: number } | null = null;
 let listenerInstalled = false;
 const ARM_TTL_MS = 3 * 60_000; // a stale arm from an abandoned flow never rides
@@ -103,17 +47,9 @@ export function armAtvShare(btn: HTMLElement, exit: Exit = "auto"): void {
 
 function resolveExit(btn: HTMLElement, exit: Exit): "left" | "right" {
 	if (exit !== "auto") return exit;
-	// Measure runway against the APP SHELL, not the browser viewport — in the
-	// dt-web phone-frame preview the window is far wider than the app, and
-	// window-based room would send every quad right. Same frame-local law as
-	// the pointing hands.
+	// Runway against .mobile-shell, not the viewport (dt-web's preview is wider than the
+	// app), in CSS px along the PAGE's right — turned a quarter turn, screen-right is wrong.
 	const host = btn.closest(".mobile-shell") ?? document.documentElement;
-	// MIN_RUNWAY is a CSS-px constant, so the gap must be CSS px too — a raw
-	// screen-px gap is compared against an effectively smaller threshold the
-	// more dt-web scales the phone up, which flips the exit direction. And it
-	// must be the PAGE's rightward gap, not the screen's: turned a quarter
-	// turn those are different directions, and the screen's answer describes
-	// the room BELOW the button.
 	const { point } = localFrom(btn);
 	const hr = host.getBoundingClientRect();
 	const br = btn.getBoundingClientRect();
@@ -128,25 +64,14 @@ function resolveExit(btn: HTMLElement, exit: Exit): "left" | "right" {
 
 type Leg = { x: number; y: number; heading: number; len: number };
 
-/**
- * Build the random route. Distances come in as fractions of `run` (the
- * straight-line distance the quad must cover to clear the viewport), so a
- * 40px icon button and a full-width bar get the same-shaped ride.
- *
- * `sign` is +1 driving right, -1 driving left. Headings are in the quad's
- * own frame — 0 = straight ahead — so the same maths serves both directions
- * and only the final transform flips.
- */
+/** Route in fractions of `run`, so a 40px icon and a full-width bar ride the same shape. */
 function buildRoute(run: number, drift: number): Leg[] {
 	const legs: Leg[] = [];
 	let x = 0;
 	let y = 0;
 	let heading = 0;
 
-	// Launch on a RANDOM heading, not straight. If the launch were straight,
-	// a 1-turn route would have its single turn cancelled by the homing exit
-	// leg below and ~1 ride in 5 would drive in a dead straight line — the
-	// exact thing this rig exists to stop.
+	// A 1-turn route has its only turn cancelled by the homing exit leg, so ~1/5 rides straight.
 	heading = (Math.random() * 2 - 1) * MAX_TURN_DEG;
 	const launch = run * LAUNCH_FRAC;
 	const lrad = (heading * Math.PI) / 180;
@@ -154,8 +79,6 @@ function buildRoute(run: number, drift: number): Leg[] {
 	y += Math.sin(lrad) * launch;
 	legs.push({ x, y, heading, len: launch });
 
-	// 1–5 turns INCLUDING the one that sets up the final exit leg, so the
-	// visible count matches the spec rather than overshooting by one.
 	const turns = 1 + Math.floor(Math.random() * 5);
 	const minLeg = run * MIN_LEG_FRAC;
 
@@ -163,12 +86,9 @@ function buildRoute(run: number, drift: number): Leg[] {
 		const forwardLeft = run - x;
 		if (forwardLeft <= minLeg) break;
 
-		// Turn first, then drive the new heading. Steer back toward centre
-		// when the quad is running out of vertical room, so the drift cap is
-		// respected by AIM rather than by a hard clamp that would show up as
-		// the quad visibly sliding along an invisible wall.
+		// A hard clamp here reads as the quad sliding along an invisible wall.
 		const swing = (Math.random() * 2 - 1) * MAX_TURN_DEG;
-		const room = drift > 0 ? y / drift : 0; // -1..1, how close to the edge
+		const room = drift > 0 ? y / drift : 0;
 		heading = Math.max(
 			-MAX_HEADING_DEG,
 			Math.min(MAX_HEADING_DEG, heading + swing - room * MAX_TURN_DEG),
@@ -177,7 +97,6 @@ function buildRoute(run: number, drift: number): Leg[] {
 		const maxLeg = forwardLeft / Math.max(1, turns - i);
 		let len = Math.max(minLeg, maxLeg * (0.6 + Math.random() * 0.6));
 
-		// Never let a single leg punch through the vertical budget.
 		const rad = (heading * Math.PI) / 180;
 		const dy = Math.sin(rad);
 		if (drift > 0 && Math.abs(dy) > 0.01) {
@@ -191,15 +110,9 @@ function buildRoute(run: number, drift: number): Leg[] {
 		legs.push({ x, y, heading, len });
 	}
 
-	// Final leg: whatever it takes to actually clear the edge, on a heading
-	// aimed back toward the button's own vertical line. Without this a short
-	// random route could strand the quad mid-screen — it must always leave.
+	// Homes toward y=0 to shed drift, so the ride straightens just as it exits.
 	const forwardLeft = run - x;
 	if (forwardLeft > 0) {
-		// Aim the exit so it sheds MOST of the accumulated drift — but only
-		// most. Homing exactly to y=0 would straighten the ride out just as
-		// it leaves; leaving a share of the offset keeps the quad angling off
-		// the edge the way it was travelling.
 		heading = Math.max(
 			-MAX_HEADING_DEG,
 			Math.min(
@@ -218,30 +131,12 @@ function buildRoute(run: number, drift: number): Leg[] {
 }
 
 export function playAtvShare(btn: HTMLElement, exit: Exit = "auto"): void {
-	// Deliberately NOT gated on prefers-reduced-motion: the quad is the app's
-	// share signature, plays once, and the guard silently killed it on every
-	// Mac with Reduce Motion on (including the author's).
+	// Not gated on prefers-reduced-motion: that guard killed the share signature on every Mac with Reduce Motion on.
 	const dir = resolveExit(btn, exit);
 
-	// Home = the hands' home (handPortal): the phone frame on dt-web, whose
-	// `contain: layout` makes it the containing block for the fixed layer and
-	// whose overflow:hidden clips the ride to the bezel; <body> on a device,
-	// where fixed resolves to the viewport.
-	// ONE COORDINATE SPACE — the home's own CSS px, via the shared conversion.
-	// This used to hand-roll `rect.width / offsetWidth`, which reads the ASPECT
-	// RATIO rather than the scale once the rig is turned a quarter turn, and
-	// drew the quad at ~2x on every landscape route. localFrom owns that maths
-	// for exactly this reason; overlayCoordLaw.test.ts bans the copy.
+	// All distances go through point(): a raw rect/offsetWidth divide reads aspect ratio, not scale, once turned.
 	const local = localFrom(btn);
-	// No `k` here on purpose: every distance below is converted through
-	// point(), which carries the scale already. A loose scale factor in scope
-	// is what invited the raw `rect - rect` divides that broke on the turn.
 	const { point } = local;
-	// The layer is `position: fixed`, so it resolves against the containing
-	// block localFrom measured from — NOT necessarily the box frameFor picked.
-	// Appending to one and measuring from the other offsets the whole ride by
-	// the gap between them, so the measured box wins and frameFor is only the
-	// fallback for a page with no containing block at all (native).
 	const home = local.origin ?? frameFor(btn) ?? document.body;
 
 	const h = btn.offsetHeight;
@@ -261,11 +156,7 @@ export function playAtvShare(btn: HTMLElement, exit: Exit = "auto"): void {
 	type AtvHost = HTMLElement & { __atvLayer?: HTMLElement | null };
 	(btn as AtvHost).__atvLayer?.remove();
 
-	// The layer is the stage: full home box, above everything at Z_HANDS, with
-	// the button's rect punched out (two mask layers, composited exclude) so
-	// the quad starts hidden UNDER the button and drives out of it. Both the
-	// -webkit- and standard mask properties are written: WebKit needs the
-	// prefix, Chrome < 120 ignored the unprefixed composite.
+	// Full-home layer masks out the button's rect (composited exclude) so the quad starts under it.
 	const layer = document.createElement("div");
 	(btn as AtvHost).__atvLayer = layer;
 	layer.setAttribute("aria-hidden", "true");
@@ -293,17 +184,11 @@ export function playAtvShare(btn: HTMLElement, exit: Exit = "auto"): void {
 	const img = new Image();
 	img.alt = "";
 	img.setAttribute("aria-hidden", "true");
-	// The treadmill loops forever (loop=0), so no cache-buster is needed —
-	// the old strip was loop=1 and a reused URL would have shown its spent
-	// final frame. Dropping the buster also lets the browser cache it.
 	img.src =
 		dir === "left"
 			? "/mobileAssets/share_atv_tread_left.webp"
 			: "/mobileAssets/share_atv_tread_right.webp";
 
-	// The quad's nose sits at the sprite's right edge (left edge when
-	// mirrored). Park that nose at the button's edge, tucked under by the
-	// corner radius, and let the transform do everything from there.
 	const st = img.style;
 	st.position = "absolute";
 	st.pointerEvents = "none";
@@ -315,28 +200,18 @@ export function playAtvShare(btn: HTMLElement, exit: Exit = "auto"): void {
 		dir === "left"
 			? `${bx + overlap}px`
 			: `${bx + w - overlap - SPRITE_W * scale}px`;
-	// Rotate about the rear axle — where a real quad pivots. Mirrored art
-	// mirrors the pivot too.
 	const pvx = dir === "left" ? SPRITE_W - PIVOT_X : PIVOT_X;
 	st.transformOrigin = `${pvx * scale}px ${PIVOT_Y * scale}px`;
-	// Feather the cut edge on oversized strips so it reads as dust, not a
-	// hard crop, while the quad is still tucked under a short button.
+	// Feather the cut edge on oversized strips so it reads as dust, not a crop.
 	if (imgH > h * 1.05) {
 		const m = `linear-gradient(to ${dir}, transparent 2px, #000 14px)`;
 		st.webkitMaskImage = m;
 		st.maskImage = m;
 	}
 
-	// Runway: how far the quad must travel to fully clear the app shell.
-	// EVERY edge goes through the same conversion as the button's own, because
-	// a raw rect difference is a SCREEN-space distance: turned a quarter turn,
-	// the shell's "right edge minus the button's right edge" is the gap BELOW
-	// the button, and the quad was handed a downward runway to drive along.
+	// Shell edges go through point() too: turned, "right of the button" can be the gap below it.
 	const host = btn.closest(".mobile-shell") ?? document.documentElement;
 	const hostRect = host.getBoundingClientRect();
-	// A turn SWAPS the ends as well as the axes — at -90° the screen's left edge
-	// maps to the page's bottom — so both corners go through the conversion and
-	// the pair is then sorted rather than assumed.
 	const a = point(hostRect.left, hostRect.top);
 	const b = point(hostRect.right, hostRect.bottom);
 	const hostLeft = Math.min(a.x, b.x);
@@ -347,21 +222,15 @@ export function playAtvShare(btn: HTMLElement, exit: Exit = "auto"): void {
 		(dir === "right" ? hostRight - (bx + w) : bx - hostLeft) +
 		SPRITE_W * scale;
 
-	// Vertical headroom: the quad must not leave through the TOP or BOTTOM.
-	// Whatever room it has above/below the button caps how far it may drift.
 	const driftUp = by - hostTop;
 	const driftDown = hostBottom - (by + h);
 
 	const legs = buildRoute(run, Math.max(0, Math.min(driftUp, driftDown)));
 	const total = legs.reduce((s, l) => s + l.len, 0);
-	// Speed is preserved by converting the path (CSS px) back into sprite px
-	// before dividing — the same space the original clip's speed was measured
-	// in. Mixing the two is what made the first cut of this ride 4× too fast.
+	// Divide in sprite px, the space the clip's speed was measured in.
 	const durMs = (total / scale / SPEED_SPRITE_PX_PER_S) * 1000;
 
-	// One keyframe per waypoint. `sx` flips the advancing axis for a
-	// left-bound quad; `sy` flips the turn direction with it so a "left
-	// turn" stays visually left in both mirrorings.
+	// `sx` flips both the advancing axis and the turn direction for a left-bound quad.
 	const sx = dir === "left" ? -1 : 1;
 	let acc = 0;
 	const frames = [
@@ -378,9 +247,6 @@ export function playAtvShare(btn: HTMLElement, exit: Exit = "auto"): void {
 	layer.appendChild(img);
 	home.appendChild(layer);
 
-	// Linear easing throughout: a quad picking its way round debris doesn't
-	// accelerate out of every corner, and constant speed is the whole point
-	// of deriving duration from path length.
 	const anim = img.animate(frames, {
 		duration: durMs,
 		easing: "linear",
@@ -393,14 +259,11 @@ export function playAtvShare(btn: HTMLElement, exit: Exit = "auto"): void {
 			(btn as AtvHost).__atvLayer = null;
 	};
 	anim.addEventListener("finish", () => setTimeout(cleanup, SETTLE_MS));
-	// Belt-and-braces: a backgrounded tab can freeze the WAAPI clock and the
-	// `finish` event never lands, which would leave the sprite parked on the
-	// button forever. Same frozen-clock trap the waapiWatchdog exists for.
+	// A backgrounded tab freezes the WAAPI clock and `finish` never lands.
 	setTimeout(cleanup, durMs + SETTLE_MS + 1500);
 }
 
-/** Svelte action: `<button use:atvShare>` ARMS the quad on tap; the ride
- *  fires only when the export success event lands. `{{ exit }}` overrides auto. */
+/** Svelte action: arms the quad on tap; `{ exit }` overrides auto. */
 export function atvShare(node: HTMLElement, opts?: { exit?: Exit }) {
 	let exit: Exit = opts?.exit ?? "auto";
 	const onClick = () => armAtvShare(node, exit);

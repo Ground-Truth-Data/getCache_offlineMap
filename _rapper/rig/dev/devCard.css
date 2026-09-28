@@ -1,8 +1,4 @@
-/*
- * DEV CARD — the ONE shell for every dev card: the EphemeralCard tray, the
- * EphemeralDock column and every panel dropped in them. Nothing styles its
- * own shell; a card that looks different is a card not wearing this class.
- */
+/* THE ONE shell for every dev card. Nothing styles its own shell — a card that looks different is a card not wearing this class. */
 .dev-card {
 	--bg: #0a0a0a;
 	--panel: #141414;
@@ -35,7 +31,6 @@
 	box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
 }
 
-/* The header is a ROW INSIDE the padding — no band, no border, no fill. */
 .dev-card__head {
 	display: flex;
 	align-items: center;
@@ -53,13 +48,8 @@
 	white-space: nowrap;
 }
 
-/* DEV LANE — where a tray or dock sits: viewport edge → phone. The page
-   measures the phone and publishes --dock-width-left/right; the lane is
-   left+right both set, the card is capped at --dock-max and margin-inline
-   auto centres it in the lane. */
-/* The lane geometry is $gc/theme.css `.gc-lane` — one definition, shared with
-   the public side panels. These are aliases so a dev dock and a wiki card sit
-   in exactly the same box; changing one changes both, which is the point. */
+/* Aliases $gc/theme.css `.gc-lane` — one definition, shared with the public side panels,
+   so a dev dock and a wiki card sit in exactly the same box on purpose. */
 .dev-lane {
 	position: fixed;
 	--band: var(--dock-width, min(28vw, 40rem));
@@ -71,10 +61,8 @@
 .dev-lane--left { --dock-width: var(--dock-width-left); left: 12px; right: var(--lane-far); }
 .dev-lane--right { --dock-width: var(--dock-width-right); right: 12px; left: var(--lane-far); }
 
-/* A SCROLLING CARD'S TRACK STOPS SHY OF THE CORNERS. Left to itself the track
-   runs the full height of the box and the thumb rides out over the curve,
-   crossing the gold edge at both ends. The inset is the radius, so a card that
-   changes its corner keeps the gap. */
+/* Track stops shy of the corners: left alone it runs full height and the thumb crosses
+   the gold edge. The inset is the radius, so a card that changes its corner keeps the gap. */
 .dev-card {
 	scrollbar-color: var(--border) transparent;
 	scrollbar-width: thin;
@@ -86,8 +74,7 @@
 
 .dev-card::-webkit-scrollbar-track {
 	background: transparent;
-	/* margin, not padding: the track BOX shrinks, so the thumb cannot reach
-	   the corner even at the extremes of the scroll. */
+	/* margin, not padding: the track BOX shrinks, so the thumb cannot reach the corner. */
 	margin-block: var(--card-radius);
 }
 
