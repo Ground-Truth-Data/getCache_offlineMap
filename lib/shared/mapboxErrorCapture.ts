@@ -1,7 +1,6 @@
 import * as Sentry from "@sentry/sveltekit";
 
 // Attach at CONSTRUCTION time (onMapCreated), not onMapReady — a style that never finishes loading never fires onMapReady, so it would go unreported.
-// Lives on the ReTreever side — open-core rule, no Sentry imports in the harness.
 // Dedupe: each distinct URL is captured at most once per session; repeats become breadcrumbs.
 
 const sentKeys = new Set<string>();
