@@ -16,7 +16,7 @@ and polygons added to the map. Repos:
 ```bash
 git clone https://github.com/Ground-Truth-Data/getCache_offlineMap
 cd getCache_offlineMap
-cp .env.example .env      # then fill in VITE_TILES_HOST — ask me for the dev worker
+npm run build             # prebuild writes .env from .env.schema — ask me for a Bitwarden token
 npm install
 npm run dev
 ```
@@ -27,7 +27,7 @@ That is the whole setup. `_rapper/` and `_siblings/` in here are the app shell
 and the online map's shared code, committed alongside so a clone is a complete
 app — they are generated, so change them upstream rather than in place.
 
-Without `VITE_TILES_HOST` the satellite layer still draws but no vector roads
+Without `PUBLIC_GC_tiles_prod_worker` the satellite layer still draws but no vector roads
 ever download, which looks like a bug rather than missing configuration. The
 ~50 MB basemap is NOT in git — `mobileAssets/` holds only `LICENSE.md`
 (proprietary terms); `fetchAssets.sh` copies it from a local
@@ -36,7 +36,7 @@ ever download, which looks like a bug rather than missing configuration. The
 **You are set up when:** the map shows, you drop a pin near Ottawa
 (`?at=45.42,-75.70&z=11`), and roads appear inside the blob within a minute.
 If the satellite photo appears but roads never do, `.env` is missing or wrong
-— the console says so on the first line (`VITE_TILES_HOST is not set`).
+— the console says so on the first line (`PUBLIC_GC_tiles_prod_worker is not set`).
 `?at=lat,lng&z=` jumps the camera (lat first, the order a human reads one off
 a screen). `/` lands on the offline map too — see `hooks.ts`. The debug rails
 are a toggle on the map itself, not a second URL.
@@ -156,7 +156,7 @@ the online child (`_siblings/` in a clone).
 4. **THE WORKER TRUSTS EVERYONE.** Every request to `tiles-prod` is anonymous —
    the app has no more standing than a stranger's `curl`, so a third party
    could build their own service on the tile Worker. Add a shared token: the
-   client sends a header read from `.env` (beside `VITE_TILES_HOST`), the
+   client sends a header read from `.env` (beside `PUBLIC_GC_tiles_prod_worker`), the
    Worker rejects requests without it. The token ships in a public web bundle,
    so this is a fence, not a lock — the win is rotation. Build and test it
    against `worker-local-dev`; no Cloudflare account needed.

@@ -22,7 +22,7 @@ static/mobileAssets/
 .env
 .env.*
 .env.local
-!.env.example
+!.env.schema
 credentials*.json
 *.pem
 *.key

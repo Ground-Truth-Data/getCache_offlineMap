@@ -21,8 +21,8 @@ fires fetch.
   prod/dev records come from `wrangler deploy` — see the Worker README.
 - ⛔ No prod/dev host is baked into this child — the parent's `(gc)` layout calls
   `configureTilesFromEnv()` (`worker-local-dev/tilesFromEnv.ts`), which reads
-  `VITE_TILES_HOST` / `VITE_TILES_DEV_HOST` from the `.env` beside vite's root
-  (`rapper/.env`, from `.env.example`). Unset → `null` → the row greys out, and
+  `PUBLIC_GC_tiles_prod_worker` / `PUBLIC_GC_tiles_dev_worker` from the `.env` beside
+  vite's root (generated from `.env.schema`). Unset → `null` → the row greys out, and
   the console warns on the first line. A hardcoded default bills the
   maintainer's R2 account for every stranger who clones the repo.
 - A dev build defaults to `worker-local-dev` — the developer starts pointed at their

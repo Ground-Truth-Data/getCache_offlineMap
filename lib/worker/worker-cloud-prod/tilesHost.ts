@@ -71,7 +71,7 @@ export function packUrl(): string | null {
 		if (h === null) {
 			console.error(
 				`[tiles] ⛔ NO HOST for target "${getWorkerTarget()}" — no /pack request will be sent. ` +
-					"Nothing will appear in the Network tab. Set VITE_TILES_HOST (or pick a reachable target).",
+					"Nothing will appear in the Network tab. Set PUBLIC_GC_tiles_prod_worker (or pick a reachable target).",
 			);
 		} else {
 			console.info(`[tiles] ✅ /pack will be fetched from ${h}`);

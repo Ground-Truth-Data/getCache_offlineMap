@@ -124,7 +124,7 @@ async function probeAll() {
 			`[tiles] ${target} is not answering — nothing will download until it does. ` +
 				(target === "worker-local-dev"
 					? "Start it: cd workers/worker-local-dev && npm install && npm run dev:local — or click another tier."
-					: "Check VITE_TILES_HOST resolves, or click another tier."),
+					: "Check PUBLIC_GC_tiles_prod_worker resolves, or click another tier."),
 		);
 	}
 }
