@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { latToTileY, lngToTileX } from "../../contract/geo";
 import {
     isBestPhotoSource,
     PHOTO_SOURCES,
+    photoSourceCovers,
     photoSourcesFor,
 } from "./photoSources";
 
@@ -61,5 +63,22 @@ describe("photo sources", () => {
             const canvasMpp = 4000 / s.canvasPx;
             expect(canvasMpp).toBeGreaterThanOrEqual(srcMpp * 0.3);
         }
+    });
+
+    it("a boxed row is asked for ONE tile at the pin, and a 404 there skips the disc", async () => {
+        // the storm: Vancouver pins just south of 49° are inside USGS's box but
+        // outside NAIP, so every bake asked USGS for ~50 tiles it 404s
+        const asked: string[] = [];
+        vi.stubGlobal("fetch", async (url: string) => {
+            asked.push(url);
+            return { ok: false };
+        });
+        const [usgs] = PHOTO_SOURCES;
+        expect(await photoSourceCovers(usgs, -122.75, 48.98)).toBe(false);
+        expect(asked).toEqual([usgs.url(15, lngToTileX(-122.75, 15), latToTileY(48.98, 15))]);
+        for (const world of PHOTO_SOURCES.filter((s) => s.boxes.length === 0))
+            expect(await photoSourceCovers(world, -122.75, 48.98)).toBe(true);
+        expect(asked).toHaveLength(1);
+        vi.unstubAllGlobals();
     });
 });

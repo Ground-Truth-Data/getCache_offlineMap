@@ -1,5 +1,6 @@
 /** Where a photo's pixels come from: every row whose box holds the pin, in order, then the world row. */
 
+import { latToTileY, lngToTileX } from "../../contract/geo";
 import { satelliteTileUrl } from "../../worker/worker-local-dev/tilesHost";
 import type { Bounds } from "./satelliteImage";
 
@@ -78,6 +79,16 @@ export function isBestPhotoSource(
     if (name === undefined) return false;
     const rows = photoSourcesFor(lng, lat);
     return rows.length > 0 && rows[0].name === name;
+}
+
+/** One tile at the pin before the disc: a boxed row's box is coarser than its coverage (NAIP stops at the border), and a disc it has nothing for is fifty 404s. */
+export function photoSourceCovers(src: PhotoSource, lng: number, lat: number): Promise<boolean> {
+    if (!src.boxes.length) return Promise.resolve(true);
+    const z = src.zoom;
+    return fetch(src.url(z, lngToTileX(lng, z), latToTileY(lat, z))).then(
+        (r) => r.ok,
+        () => false,
+    );
 }
 
 /** The rows to try for a pin, in order. Never empty: the world row is always last. */
