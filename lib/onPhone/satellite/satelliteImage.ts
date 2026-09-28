@@ -8,6 +8,7 @@ import { makeKeyedIdbStore } from "../store/keyedIdbStore";
 import {
 	isBestPhotoSource,
 	type PhotoSource,
+	photoSourceCovers,
 	photoSourcesFor,
 } from "./photoSources";
 
@@ -311,6 +312,7 @@ export async function bakeSatelliteImage(
 		return existing ?? null;
 
 	for (const src of photoSourcesFor(center[0], center[1])) {
+		if (!(await photoSourceCovers(src, center[0], center[1]))) continue;
 		const out = await bakeFrom(src, center);
 		if (out) {
 			await idb.put(key, out);
