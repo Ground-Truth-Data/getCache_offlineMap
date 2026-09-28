@@ -50,8 +50,8 @@ interface Env {
   PMTILES_KEY: string;
   PACK_PMTILES_KEY: string;
   /** Worker SECRETs (`wrangler secret put`), never [vars] — they must not reach the app bundle. */
-  FIRMS_MAP_KEY: string;
-  MAPTILER_KEY: string;
+  GC_firms_map_key: string;
+  GC_mapTiler_key: string;
 }
 
 interface ReadStats {
@@ -203,10 +203,10 @@ export default {
           headers: CORS_HEADERS,
         });
       }
-      if (!env.FIRMS_MAP_KEY) {
+      if (!env.GC_firms_map_key) {
         // Never an empty 200: "no fires near you" is the most dangerous lie this layer can tell.
         return new Response(
-          "FIRMS_MAP_KEY is not configured on this Worker (wrangler secret put FIRMS_MAP_KEY)",
+          "GC_firms_map_key is not configured on this Worker (wrangler secret put GC_firms_map_key)",
           { status: 500, headers: CORS_HEADERS },
         );
       }
@@ -229,7 +229,7 @@ export default {
       let sourcesOk: number;
       let fetchedAt: number;
       try {
-        const r = await fetchFires(env.FIRMS_MAP_KEY, lng, lat, km);
+        const r = await fetchFires(env.GC_firms_map_key, lng, lat, km);
         body = JSON.stringify(r.collection);
         sourcesOk = r.sourcesOk;
         fetchedAt = r.fetchedAt;
@@ -421,10 +421,10 @@ export default {
           headers: CORS_HEADERS,
         });
       }
-      if (!env.MAPTILER_KEY) {
+      if (!env.GC_mapTiler_key) {
         // Fail loud, like /fires: a blank basemap looks merely "not loaded yet".
         return new Response(
-          "MAPTILER_KEY is not configured on this Worker (wrangler secret put MAPTILER_KEY)",
+          "GC_mapTiler_key is not configured on this Worker (wrangler secret put GC_mapTiler_key)",
           { status: 500, headers: CORS_HEADERS },
         );
       }
@@ -442,7 +442,7 @@ export default {
 
       let body: ArrayBuffer;
       try {
-        const upstream = await fetch(satelliteUrl(env.MAPTILER_KEY, z, x, y));
+        const upstream = await fetch(satelliteUrl(env.GC_mapTiler_key, z, x, y));
         if (!upstream.ok) {
           throw new Error(`MapTiler responded ${upstream.status}`);
         }

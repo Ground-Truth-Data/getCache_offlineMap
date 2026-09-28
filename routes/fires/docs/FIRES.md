@@ -38,8 +38,8 @@ https://firms.modaps.eosdis.nasa.gov/api/area/csv/{MAP_KEY}/{SOURCE}/{w,s,e,n}/{
 Sources: `VIIRS_NOAA20_NRT`, `VIIRS_SNPP_NRT`, `VIIRS_NOAA21_NRT` (375 m).
 MODIS is excluded — its 0–100 confidence does not match VIIRS `l/n/h`.
 
-**The key.** `FIRMS_MAP_KEY` is a Worker secret (`wrangler secret put
-FIRMS_MAP_KEY`), never a `[vars]` entry, never in the app bundle. The phone
+**The key.** `GC_firms_map_key` is a Worker secret (`wrangler secret put
+GC_firms_map_key`), never a `[vars]` entry, never in the app bundle. The phone
 only ever talks to our Worker. Register at
 `https://firms.modaps.eosdis.nasa.gov/api/map_key/`; quota is **5000
 transactions / 10 min** per key. A missing key returns **500**, never an empty

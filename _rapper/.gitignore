@@ -46,7 +46,7 @@ src/lib/generated/
 .env.production
 .env.development
 .env*.local
-!.env.example
+!.env.schema
 !.env.test
 credentials*.json
 *.pem

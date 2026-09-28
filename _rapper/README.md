@@ -34,20 +34,20 @@ child's copy.
 
 ### Environment
 
-A hand-cloned rapper starts from `.env.example` (copy it to `rapper/.env`).
-Nothing here is required by rapper itself — each variable belongs to a
-component:
+`rapper/.env` is generated from `.env.schema` by `scripts/envFromBitwarden.mjs`
+(npm prebuild). Nothing here is required by rapper itself — each variable
+belongs to a component:
 
 | Variable | Needed by | Unset means |
 |---|---|---|
-| `VITE_TILES_HOST` | `getCache_OfflineMap` | no tiles are downloaded; the satellite layer still draws, so it reads as "roads are broken" — the console says so on the first line |
-| `VITE_MAPBOX_TOKEN` | `getCache_OnlineMap`, `ReTreever_where` | no map is created; the page says which variable is missing |
+| `PUBLIC_GC_tiles_prod_worker` | `getCache_OfflineMap` | no tiles are downloaded; the satellite layer still draws, so it reads as "roads are broken" — the console says so on the first line |
+| `PUBLIC_GC_RT_mapbox_token` | `getCache_OnlineMap`, `ReTreever_where` | no map is created; the page says which variable is missing |
 
-`.env.example` names Ground Truth's public, read-only tile hosts
-(`tiles-prod.getcache.org`, `tiles-dev.getcache.org`) and shows how to run a
-Worker locally with no cloud account. The component bakes in no host (its
+`.env.schema` points the tile hosts at Bitwarden secrets rather than naming
+them; `getCache_OfflineMap/lib/worker/README.md` shows how to run a Worker
+locally with no cloud account. The component bakes in no host (its
 `tierNaming.test.ts` fails if one appears), so a fork never inherits someone
-else's bill. `VITE_MAPBOX_TOKEN` has no default — a token is billed to
+else's bill. `PUBLIC_GC_RT_mapbox_token` has no default — a token is billed to
 whoever created it.
 
 > The offline map's ~50 MB basemap is not in git; `npm run dev` downloads it

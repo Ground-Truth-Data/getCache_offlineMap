@@ -64,7 +64,7 @@ already deployed and already holding every key. A local Worker without a
 `.dev.vars` still serves roads; only `/satellite` and `/fires` 500 there, and
 photos fall through to EOX automatically — blurrier, never blank. If you want
 those two routes locally, put a gitignored `workers/worker-local-dev/.dev.vars`
-with `MAPTILER_KEY=` and `FIRMS_MAP_KEY=` (ask Chris for the MapTiler one — the
+with `GC_mapTiler_key=` and `GC_firms_map_key=` (ask Chris for the MapTiler one — the
 licence is per-account; FIRMS is free at firms.modaps.eosdis.nasa.gov).
 
 ## What this is
