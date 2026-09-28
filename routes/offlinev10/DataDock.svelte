@@ -60,8 +60,8 @@ const share = (b: number) => (total > 0 ? Math.round((b / total) * 100) : 0);
 		{/each}
 	{/if}
 
-	<!-- transferSize is 0 for a cache hit and for a cross-origin response with no Timing-Allow-Origin. -->
-	<div class="note dim">compressed wire bytes · a total is a floor, not a ceiling</div>
+	<!-- transferSize is 0 for a cache hit and for a cross-origin response with no Timing-Allow-Origin; the tile hosts send none, so map tiles and satellite are counted from the bodies. -->
+	<div class="note dim">wire bytes, tiles by body size · a total is a floor, not a ceiling</div>
 </div>
 
 <style>

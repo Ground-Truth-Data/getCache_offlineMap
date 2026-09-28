@@ -2,6 +2,7 @@ import {
 	guardBakeGrid,
 	noteSatelliteTiles,
 } from "../store/downloadGuard";
+import { noteBytes } from "../../shared/dataMeter.svelte";
 import { kmBetween, kmToDegSpan } from "../../shared/kmGeo";
 import { latToTileY, lngToTileX, tileToLat, tileToLng } from "../../contract/geo";
 import { makeKeyedIdbStore } from "../store/keyedIdbStore";
@@ -161,53 +162,28 @@ async function pool(n: number, limit: number, fn: (i: number) => Promise<void>):
 }
 
 type TileSrc = ImageBitmap | HTMLImageElement;
-/** Keep in sync with CACHE_MAX in satBakeWorker.ts. 48 × 262 KB ≈ 12 MB. */
-const TILE_CACHE_MAX = 48;
-const tileCache = new Map<string, Promise<TileSrc | null>>();
-function loadTileBitmap(url: string): Promise<TileSrc | null> {
-	const hit = tileCache.get(url);
-	if (hit) {
-		tileCache.delete(url);
-		tileCache.set(url, hit); // LRU bump
-		return hit;
-	}
-	const p = (async (): Promise<TileSrc | null> => {
-		try {
-			if (typeof createImageBitmap === "function") {
-				// A stalled tile otherwise pins the connection for the full TCP timeout.
-				const r = await fetch(url, { signal: AbortSignal.timeout(20_000) });
-				if (!r.ok) return null;
-				return await createImageBitmap(await r.blob());
-			}
-			return await loadImage(url);
-		} catch {
-			return null;
+async function loadTileBitmap(url: string, onBytes: (n: number) => void): Promise<TileSrc | null> {
+	try {
+		if (typeof createImageBitmap === "function") {
+			// A stalled tile otherwise pins the connection for the full TCP timeout.
+			const r = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+			if (!r.ok) return null;
+			const blob = await r.blob();
+			onBytes(blob.size);
+			return await createImageBitmap(blob);
 		}
-	})();
-	tileCache.set(url, p);
-	p.then((v) => {
-		if (!v) tileCache.delete(url);
-	}).catch(() => tileCache.delete(url));
-	// `while`, not `if`: an `if` cannot shrink an already-over cache.
-	while (tileCache.size > TILE_CACHE_MAX) {
-		const oldest = tileCache.keys().next().value as string | undefined;
-		if (oldest === undefined || oldest === url) break;
-		const ev = tileCache.get(oldest);
-		tileCache.delete(oldest);
-		ev?.then((v) => {
-			if (v && "close" in v) v.close();
-		// codestyle-allow-swallow: bitmap cache eviction is best-effort; close() failure leaves GPU memory until GC, not a data loss
-		}).catch(() => { /* best-effort eviction */ });
+		return await loadImage(url);
+	} catch {
+		return null;
 	}
-	return p;
 }
 
 type TileDraw = { url: string; dx: number; dy: number; dw: number; dh: number };
-type BakeRes = { id: number; blob: Blob | null; loaded: number; fetched: number };
+type BakeRes = { id: number; blob: Blob | null; loaded: number; fetched: number; bytes: number };
 let bakeWorker: Worker | null = null;
 let workerBroken = false;
 let reqId = 0;
-const pendingBakes = new Map<number, (r: BakeRes) => void>();
+const pendingBakes = new Map<number, (r: BakeRes | null) => void>();
 
 function offscreenSupported(): boolean {
 	return (
@@ -235,6 +211,8 @@ function getBakeWorker(): Worker | null {
 		bakeWorker.onerror = () => {
 			workerBroken = true;
 			bakeWorker = null;
+			for (const cb of pendingBakes.values()) cb(null);
+			pendingBakes.clear();
 		};
 		return bakeWorker;
 	} catch {
@@ -243,7 +221,7 @@ function getBakeWorker(): Worker | null {
 	}
 }
 
-/** Resolves null if the worker is unavailable or hangs; the caller falls back to the main thread. */
+/** Resolves null only if the worker is unavailable or dies; a bake that ran and drew nothing is a result. */
 function compositeInWorker(
 	tiles: TileDraw[],
 	w: number,
@@ -255,19 +233,6 @@ function compositeInWorker(
 	const id = ++reqId;
 	return new Promise<BakeRes | null>((resolve) => {
 		pendingBakes.set(id, resolve);
-		const timer = setTimeout(() => {
-			if (pendingBakes.has(id)) {
-				pendingBakes.delete(id);
-				resolve(null);
-			}
-		}, 30000);
-		const done = pendingBakes.get(id);
-		if (done) {
-			pendingBakes.set(id, (r) => {
-				clearTimeout(timer);
-				resolve(r);
-			});
-		}
 		wk.postMessage({ id, tiles, w, h, quality });
 	}).finally(() => {
 		scheduleBakeWorkerTeardown();
@@ -395,38 +360,35 @@ async function bakeFrom(
 	let blob: Blob | null = null;
 	let fetched = 0;
 	let loaded = 0;
+	let bytes = 0;
 
-	if (offscreenSupported()) {
-		const res = await compositeInWorker(tileDraw, W, H, src.quality);
-		if (res?.blob) {
-			blob = res.blob;
-			fetched = res.fetched;
-			loaded = res.loaded;
-		}
-	}
-
-	if (!blob) {
+	const res = offscreenSupported()
+		? await compositeInWorker(tileDraw, W, H, src.quality)
+		: null;
+	if (res) {
+		({ blob, fetched, loaded, bytes } = res);
+	} else {
 		const canvas = document.createElement("canvas");
 		canvas.width = W;
 		canvas.height = H;
 		const ctx = canvas.getContext("2d");
 		if (!ctx) return null;
-		let mtFetched = 0;
 		await pool(tileDraw.length, SAT_FETCH_CONCURRENCY, async (i) => {
 			const t = tileDraw[i];
-			const wasCached = tileCache.has(t.url);
-			const src = await loadTileBitmap(t.url);
-			if (!src) return;
-			if (!wasCached) mtFetched += 1;
-			ctx.drawImage(src, t.dx, t.dy, t.dw, t.dh);
+			fetched += 1;
+			const tile = await loadTileBitmap(t.url, (n) => {
+				bytes += n;
+			});
+			if (!tile) return;
+			ctx.drawImage(tile, t.dx, t.dy, t.dw, t.dh);
+			if ("close" in tile) tile.close();
 			loaded += 1;
 		});
 		if (!loaded) return null;
 		// WebP keeps the alpha channel for the jagged mask; older WKWebView falls back to PNG.
-		blob = await new Promise<Blob | null>((res) =>
-			canvas.toBlob((b) => res(b), "image/webp", src.quality),
+		blob = await new Promise<Blob | null>((r) =>
+			canvas.toBlob((b) => r(b), "image/webp", src.quality),
 		);
-		fetched = mtFetched;
 	}
 
 	if (!blob) return null;
@@ -435,6 +397,7 @@ async function bakeFrom(
 	const minTiles = Math.max(1, Math.ceil(tileGeo.length * 0.4));
 	if (loaded < minTiles) return null;
 
+	noteBytes("satellite", bytes);
 	if (fetched > 0) noteSatelliteTiles(fetched);
 	return {
 		blob,

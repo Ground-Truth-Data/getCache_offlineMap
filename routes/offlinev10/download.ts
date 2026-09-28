@@ -4,6 +4,7 @@
  * A failed download takes back every tile it wrote, so nothing sits on disk without a blob.
  */
 
+import { noteBytes } from "../../lib/shared/dataMeter.svelte";
 import { tileUrl } from "../../lib/worker/worker-local-dev/tilesHost";
 import { BudgetError, budgetBytes } from "./budget";
 import { nearestPlace } from "./places";
@@ -127,6 +128,7 @@ async function fetchInto(
 				pending.push([tileKey(t), buf]);
 				p.fetched++;
 				p.bytes += buf.byteLength;
+				noteBytes("map tiles", buf.byteLength);
 			} else if (res.status === 204) {
 				pending.push([tileKey(t), new ArrayBuffer(0)]);
 				p.empty++;

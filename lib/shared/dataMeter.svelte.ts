@@ -2,8 +2,9 @@
  * Bytes this device pulled off the network, by kind, per day; survives reloads.
  * Bytes are PerformanceResourceTiming.transferSize (compressed wire size, not
  * body length); it's 0 for a cache hit or a cross-origin response without
- * Timing-Allow-Origin, so a total is a FLOOR. Blind spot: satBakeWorker.ts
- * fetches on its own thread with its own timeline.
+ * Timing-Allow-Origin, so a total is a FLOOR. The tile hosts send no such
+ * header, and satBakeWorker.ts fetches on its own thread with its own
+ * timeline, so those two report through noteBytes at the fetch instead.
  */
 
 import { SvelteMap } from "svelte/reactivity";
@@ -141,7 +142,12 @@ function flushSoon(): void {
 	}, 2000);
 }
 
-function note(url: string, bytes: number): void {
+/** Body bytes counted where they are read; a no-op until the meter is running. */
+export function noteBytes(kind: string, bytes: number): void {
+	if (observer) note(kind, bytes);
+}
+
+function note(kind: string, bytes: number): void {
 	if (bytes <= 0) return;
 	// Midnight mid-session: bank the old day first.
 	const now = dayKey();
@@ -150,7 +156,6 @@ function note(url: string, bytes: number): void {
 		today.clear();
 		todayKey = now;
 	}
-	const kind = kindOf(url);
 	today.set(kind, (today.get(kind) ?? 0) + bytes);
 	flushSoon();
 }
@@ -174,7 +179,7 @@ export function startDataMeter(): () => void {
 	const take = (entries: PerformanceEntryList): void => {
 		for (const e of entries) {
 			const r = e as PerformanceResourceTiming;
-			if (typeof r.transferSize === "number") note(r.name, r.transferSize);
+			if (typeof r.transferSize === "number") note(kindOf(r.name), r.transferSize);
 		}
 	};
 	take(performance.getEntriesByType("resource"));

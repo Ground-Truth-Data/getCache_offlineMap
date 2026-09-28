@@ -9,54 +9,29 @@ type BakeReq = {
 	h: number;
 	quality: number;
 };
-type BakeRes = { id: number; blob: Blob | null; loaded: number; fetched: number };
+type BakeRes = { id: number; blob: Blob | null; loaded: number; fetched: number; bytes: number };
 
-// ⚠️ Sized in ENTRIES but the cost is in BYTES (a z14 tile is ~262 KB decoded, a ~37× expansion from its ~7 KB wire size) — if tiles get bigger (z15, @2x, RGBA16) this number must come DOWN, not stay put. 48 × 262 KB ≈ 12 MB.
-const CACHE_MAX = 48;
-const cache = new Map<string, Promise<ImageBitmap | null>>();
-
-function loadTile(url: string, onFetch: () => void): Promise<ImageBitmap | null> {
-	const hit = cache.get(url);
-	if (hit) {
-		// LRU bump — move to the most-recently-used end.
-		cache.delete(url);
-		cache.set(url, hit);
-		return hit;
+// Each tile is drawn once and dropped: a bake never asks for a URL twice, so a decoded-tile cache only held memory.
+async function loadTile(url: string, onBytes: (n: number) => void): Promise<ImageBitmap | null> {
+	try {
+		// The bake has no wall clock, so a stalled tile ends here, alone — a wall clock made the caller refetch every tile.
+		const r = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+		if (!r.ok) return null;
+		const blob = await r.blob();
+		onBytes(blob.size);
+		return await createImageBitmap(blob);
+	} catch {
+		return null;
 	}
-	onFetch();
-	const p = (async (): Promise<ImageBitmap | null> => {
-		try {
-			const r = await fetch(url);
-			if (!r.ok) return null;
-			return await createImageBitmap(await r.blob());
-		} catch {
-			return null;
-		}
-	})();
-	cache.set(url, p);
-	// Don't pin a failure: drop it so a later (online) pass can retry the tile.
-	p.then((bm) => {
-		if (!bm) cache.delete(url);
-	}).catch(() => cache.delete(url));
-	// Evict oldest-first with `while`, not `if` — after a cap reduction, `if` only removes one entry and strands the surplus at the old high-water mark forever.
-	while (cache.size > CACHE_MAX) {
-		const oldest = cache.keys().next().value as string | undefined;
-		// Never evict the entry just inserted, and stop if that's all that's left — otherwise the loop could spin forever.
-		if (oldest === undefined || oldest === url) break;
-		const ev = cache.get(oldest);
-		cache.delete(oldest);
-		// codestyle-allow-swallow: bitmap cache eviction is best-effort; a close() failure leaves GPU memory until GC, not a data loss
-		ev?.then((bm) => bm?.close()).catch(() => {});
-	}
-	return p;
 }
 
 self.onmessage = async (e: MessageEvent<BakeReq>): Promise<void> => {
 	const { id, tiles, w, h, quality } = e.data;
 	let loaded = 0;
 	let fetched = 0;
+	let bytes = 0;
 	const post = (blob: Blob | null): void => {
-		const res: BakeRes = { id, blob, loaded, fetched };
+		const res: BakeRes = { id, blob, loaded, fetched, bytes };
 		(self as unknown as Worker).postMessage(res);
 	};
 	const canvas = new OffscreenCanvas(w, h);
@@ -65,17 +40,19 @@ self.onmessage = async (e: MessageEvent<BakeReq>): Promise<void> => {
 		post(null);
 		return;
 	}
-	// Bounded concurrency, mirroring the main-thread pool (6 in flight).
-	const LIMIT = 6;
+	// Bounded concurrency, mirroring the main-thread pool.
+	const LIMIT = 16;
 	let next = 0;
 	const work = async (): Promise<void> => {
 		while (next < tiles.length) {
 			const t = tiles[next++];
-			const bm = await loadTile(t.url, () => {
-				fetched += 1;
+			fetched += 1;
+			const bm = await loadTile(t.url, (n) => {
+				bytes += n;
 			});
 			if (!bm) continue; // gap → transparent → jagged mask
 			ctx.drawImage(bm, t.dx, t.dy, t.dw, t.dh);
+			bm.close();
 			loaded += 1;
 		}
 	};
