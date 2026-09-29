@@ -8,10 +8,13 @@ import {
     type Bounds,
 } from "./satelliteImage";
 import { kmToDegSpan } from "../../shared/kmGeo";
+import { PHOTO_SOURCES } from "./photoSources";
 
 export interface SatelliteMount {
     /** Mount the already-baked photo for this centre, if one is on disk. */
     display(center: [number, number]): Promise<void>;
+    /** New close-up tiles are on disk; MapLibre remembers the 404s until told. */
+    closeUpChanged(): void;
     /** Mount the photos near this camera, unmount the far ones; returns how many are on the map. */
     reconcile(
         camera: Bounds,
@@ -27,6 +30,10 @@ export interface SatelliteMount {
 export function satLayerId(key: string): string {
     return `v4-sat-${key.replace(/[^a-z0-9]/gi, "_")}`;
 }
+
+/** The photo's raw source tiles over it: close in, the shrunk photo has no more pixels to give. */
+export const SAT_CLOSE_ID = "v4-sat-close";
+export const SAT_CLOSE_LAYER = `${SAT_CLOSE_ID}-l`;
 
 // The viewport cull: RAM scales with photos on screen, not pin count. Two rings give hysteresis so a photo near the edge does not flap on every pan.
 
@@ -85,11 +92,19 @@ export function photoCullPlan(
 export function createSatelliteMount(
     map: maplibregl.Map,
     insertBefore: string,
+    closeUpTiles: string,
 ): SatelliteMount {
     const mountedSat = new Set<string>();
     let disposed = false;
     // createObjectURL pins the blob in memory until revoked.
     const satUrls = new Map<string, string>();
+
+    const z = PHOTO_SOURCES[0].zoom;
+    map.addSource(SAT_CLOSE_ID, { type: "raster", tiles: [closeUpTiles], tileSize: 512, minzoom: z, maxzoom: z });
+    map.addLayer(
+        { id: SAT_CLOSE_LAYER, type: "raster", source: SAT_CLOSE_ID, paint: { "raster-fade-duration": SAT_FADE_MS } },
+        map.getLayer(insertBefore) ? insertBefore : undefined,
+    );
 
     const mountSat = (key: string, blob: Blob, bounds: Bounds): void => {
         if (disposed) return;
@@ -153,7 +168,7 @@ export function createSatelliteMount(
                     ],
                 },
             } as mapboxgl.LayerSpecification,
-            map.getLayer(insertBefore) ? insertBefore : undefined,
+            map.getLayer(SAT_CLOSE_LAYER) ? SAT_CLOSE_LAYER : undefined,
         );
         mountedSat.add(key);
     };
@@ -176,6 +191,9 @@ export function createSatelliteMount(
             if (disposed || mountedSat.has(key)) return;
             const img = await getSatImageByKey(key);
             if (img && !disposed) mountSat(key, img.blob, img.bounds);
+        },
+        closeUpChanged(): void {
+            if (!disposed) (map.getSource(SAT_CLOSE_ID) as maplibregl.RasterTileSource | undefined)?.setTiles([closeUpTiles]);
         },
         async reconcile(
             camera: Bounds,

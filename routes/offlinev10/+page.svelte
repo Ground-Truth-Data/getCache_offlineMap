@@ -10,7 +10,7 @@ import MapLegend from "../../lib/mapUi/MapLegend.svelte";
 import { attachCameraPersistence, loadCamera, MAP_HOME_CENTER } from "../../lib/mapState/mapViewport";
 import { attachDoubleTapToPin } from "../../lib/shared/doubleTapToPin";
 import { FIRE_LAYER_ID_LIST, type FireLayerHandle, attachFireLayer } from "../../lib/onPhone/render/fireLayer";
-import { type SatelliteMount, createSatelliteMount, satLayerId } from "../../lib/onPhone/satellite/mountSatellite";
+import { SAT_CLOSE_LAYER, type SatelliteMount, createSatelliteMount, satLayerId } from "../../lib/onPhone/satellite/mountSatellite";
 import { NiceScaleBarControl } from "$parent/siblings/getCache_OnlineMap/lib/chrome/mapScaleBar";
 import { safeFlyTo } from "$parent/siblings/getCache_OnlineMap/lib/core/safeMap";
 import EphemeralDock from "$rig/dev/EphemeralDock.svelte";
@@ -34,7 +34,7 @@ import { onFires } from "../fires/fireService";
 import { HOSPITAL_LAYER_ID_LIST, type HospitalLayerHandle, attachHospitalLayer } from "../hospitals/hospitalLayer";
 import { dropPhoto, onPhoto, type PhotoInfo, photoInfo, setPhotoNarration } from "./satellite";
 import { FOLLOW_MARGIN_KM, marginKm, moved } from "./follow";
-import { PLANET_TILES, installProtocol } from "./protocol";
+import { PHOTO_TILES, PLANET_TILES, installProtocol } from "./protocol";
 import { type Kept, type Region, checkRegions, deleteRegion, keepStorage, listRegions, putRegion, stats, wipe } from "./store";
 import { validLatLng } from "../../lib/shared/cameraFromUrl";
 import { LEGEND, PHOTO_INSERT_BEFORE, PLANET, REGIONS, buildStyle } from "./style";
@@ -159,6 +159,7 @@ async function nameOldBlobs(): Promise<void> {
 }
 
 function onPhotoLanded(): void {
+	photos?.closeUpChanged();
 	reconcilePhotos();
 	void photoInfo().then((p) => {
 		photoMeta = p;
@@ -357,7 +358,7 @@ function buildLayerRows(m: maplibregl.Map): void {
 }
 
 function rowIds(r: LayerRow): string[] {
-	return r.key === PHOTO_ROW ? photoIds() : r.ids;
+	return r.key === PHOTO_ROW ? [...photoIds(), SAT_CLOSE_LAYER] : r.ids;
 }
 
 function toggleLayer(key: string): void {
@@ -415,7 +416,7 @@ onMount(() => {
 			origins: () => origins(m),
 			onShowMyLocation: () => void drawControlsRef?.requestMyLocation(),
 		});
-		photos = createSatelliteMount(m, PHOTO_INSERT_BEFORE);
+		photos = createSatelliteMount(m, PHOTO_INSERT_BEFORE, PHOTO_TILES);
 		reconcilePhotos();
 	});
 	const unfires = onFires(() => fireHandle?.repaint());

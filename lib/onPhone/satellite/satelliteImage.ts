@@ -19,7 +19,38 @@ const STORE = "images";
 export type Bounds = [number, number, number, number]; // [w,s,e,n]
 
 /** Bump whenever bake geometry changes, or a mis-bounded photo stays pinned forever. */
-export const BAKE_VERSION = 8;
+export const BAKE_VERSION = 9;
+
+/** A source tile as fetched, keyed `z/x/y`: the close-up the shrunk photo cannot hold. */
+export type RawTile = [string, ArrayBuffer];
+
+export interface DiscTile {
+	x: number;
+	y: number;
+	w: number;
+	e: number;
+	n: number;
+	s: number;
+}
+
+/** The zoom-z tiles whose ground reaches within BAKE_RADIUS_KM of the centre — the bake's and the eviction's one answer. */
+export function photoTilesFor(center: [number, number], z: number): DiscTile[] {
+	const [clng, clat] = center;
+	const { dLat, dLng } = kmToDegSpan(BAKE_RADIUS_KM, clat);
+	const out: DiscTile[] = [];
+	for (let x = lngToTileX(clng - dLng, z); x <= lngToTileX(clng + dLng, z); x++) {
+		for (let y = latToTileY(clat + dLat, z); y <= latToTileY(clat - dLat, z); y++) {
+			const w = tileToLng(x, z);
+			const e = tileToLng(x + 1, z);
+			const n = tileToLat(y, z);
+			const s = tileToLat(y + 1, z);
+			const cx = Math.min(Math.max(clng, w), e);
+			const cy = Math.min(Math.max(clat, s), n);
+			if (kmBetween([clng, clat], [cx, cy]) <= BAKE_RADIUS_KM) out.push({ x, y, w, e, n, s });
+		}
+	}
+	return out;
+}
 
 export interface SatImage {
 	blob: Blob;
@@ -164,15 +195,18 @@ async function pool(n: number, limit: number, fn: (i: number) => Promise<void>):
 }
 
 type TileSrc = ImageBitmap | HTMLImageElement;
-async function loadTileBitmap(url: string, onBytes: (n: number) => void): Promise<TileSrc | null> {
+async function loadTileBitmap(
+	url: string,
+	onBytes: (buf: ArrayBuffer) => void,
+): Promise<TileSrc | null> {
 	try {
 		if (typeof createImageBitmap === "function") {
 			// A stalled tile otherwise pins the connection for the full TCP timeout.
 			const r = await fetch(url, { signal: AbortSignal.timeout(20_000) });
 			if (!r.ok) return null;
-			const blob = await r.blob();
-			onBytes(blob.size);
-			return await createImageBitmap(blob);
+			const buf = await r.arrayBuffer();
+			onBytes(buf);
+			return await createImageBitmap(new Blob([buf]));
 		}
 		return await loadImage(url);
 	} catch {
@@ -180,8 +214,8 @@ async function loadTileBitmap(url: string, onBytes: (n: number) => void): Promis
 	}
 }
 
-type TileDraw = { url: string; dx: number; dy: number; dw: number; dh: number };
-type BakeRes = { id: number; blob: Blob | null; loaded: number; fetched: number; bytes: number };
+type TileDraw = { key: string; url: string; dx: number; dy: number; dw: number; dh: number };
+type BakeRes = { id: number; blob: Blob | null; loaded: number; fetched: number; bytes: number; tiles: RawTile[] };
 let bakeWorker: Worker | null = null;
 let workerBroken = false;
 let reqId = 0;
@@ -274,9 +308,11 @@ function scheduleBakeWorkerTeardown(): void {
 	}, BAKE_WORKER_IDLE_MS);
 }
 
-/** Bake the masked photo for a centre; sources are tried in registry order. Null only if none drew. */
+/** Bake the masked photo for a centre; sources are tried in registry order. Null only if none drew.
+ * `keepTiles` receives the raw source tiles before the photo is written, so a photo on disk has its close-up. */
 export async function bakeSatelliteImage(
 	center: [number, number],
+	keepTiles: (tiles: RawTile[]) => Promise<void> = async () => {},
 ): Promise<SatImage | null> {
 	const key = satImageKey(center);
 	const existing = await idb.get(key);
@@ -292,8 +328,9 @@ export async function bakeSatelliteImage(
 	for (const src of PHOTO_SOURCES) {
 		const out = await bakeFrom(src, center);
 		if (out) {
-			await idb.put(key, out);
-			return out;
+			await keepTiles(out.tiles);
+			await idb.put(key, out.img);
+			return out.img;
 		}
 	}
 	return existing ?? null;
@@ -303,28 +340,10 @@ export async function bakeSatelliteImage(
 async function bakeFrom(
 	src: PhotoSource,
 	center: [number, number],
-): Promise<SatImage | null> {
+): Promise<{ img: SatImage; tiles: RawTile[] } | null> {
 	const [clng, clat] = center;
 	const z = src.zoom;
-	const { dLat, dLng } = kmToDegSpan(BAKE_RADIUS_KM, clat);
-	const xMin = lngToTileX(clng - dLng, z);
-	const xMax = lngToTileX(clng + dLng, z);
-	const yMin = latToTileY(clat + dLat, z);
-	const yMax = latToTileY(clat - dLat, z);
-
-	const tileGeo: { x: number; y: number; w: number; e: number; n: number; s: number }[] = [];
-	for (let x = xMin; x <= xMax; x++) {
-		for (let y = yMin; y <= yMax; y++) {
-			const w = tileToLng(x, z);
-			const e = tileToLng(x + 1, z);
-			const n = tileToLat(y, z);
-			const s = tileToLat(y + 1, z);
-			const cx = Math.min(Math.max(clng, w), e);
-			const cy = Math.min(Math.max(clat, s), n);
-			if (kmBetween([clng, clat], [cx, cy]) > BAKE_RADIUS_KM) continue;
-			tileGeo.push({ x, y, w, e, n, s });
-		}
-	}
+	const tileGeo = photoTilesFor(center, z);
 	if (!tileGeo.length) return null;
 
 	guardBakeGrid(tileGeo.length, { center, z, radiusKm: BAKE_RADIUS_KM });
@@ -360,6 +379,7 @@ async function bakeFrom(
 		const dx = Math.floor(xf(t.w));
 		const dy = Math.floor(yf(t.n));
 		return {
+			key: `${z}/${t.x}/${t.y}`,
 			url: src.url(z, t.x, t.y),
 			dx,
 			dy,
@@ -373,12 +393,13 @@ async function bakeFrom(
 	let fetched = 0;
 	let loaded = 0;
 	let bytes = 0;
+	let tiles: RawTile[] = [];
 
 	const res = offscreenSupported()
 		? await compositeInWorker(tileDraw, W, H, src.quality)
 		: null;
 	if (res) {
-		({ blob, fetched, loaded, bytes } = res);
+		({ blob, fetched, loaded, bytes, tiles } = res);
 	} else {
 		const canvas = document.createElement("canvas");
 		canvas.width = W;
@@ -389,9 +410,10 @@ async function bakeFrom(
 			if (sessionCap.tripped) return;
 			const t = tileDraw[i];
 			fetched += 1;
-			const tile = await loadTileBitmap(t.url, (n) => {
-				bytes += n;
-				spendBytes(n);
+			const tile = await loadTileBitmap(t.url, (buf) => {
+				bytes += buf.byteLength;
+				spendBytes(buf.byteLength);
+				tiles.push([t.key, buf]);
 			});
 			if (!tile) return;
 			ctx.drawImage(tile, t.dx, t.dy, t.dw, t.dh);
@@ -414,11 +436,14 @@ async function bakeFrom(
 	noteBytes("satellite", bytes);
 	if (fetched > 0) noteSatelliteTiles(fetched);
 	return {
-		blob,
-		bounds: [cw, cs, ce, cn],
-		bakeVersion: BAKE_VERSION,
-		source: src.name,
-		zoom: src.zoom,
-		canvasPx: src.canvasPx,
+		img: {
+			blob,
+			bounds: [cw, cs, ce, cn],
+			bakeVersion: BAKE_VERSION,
+			source: src.name,
+			zoom: src.zoom,
+			canvasPx: src.canvasPx,
+		},
+		tiles,
 	};
 }

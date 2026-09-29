@@ -86,7 +86,15 @@ const report = (r: Region) => {
 			added: r.newBytes == null ? "unknown" : mb(r.newBytes),
 			ground: `${RADIUS_KM} km radius on whole z${ANCHOR_Z} tiles · z${MIN_Z}–z${MAX_Z}`,
 		},
-		photo: r.photo === false ? "follow-me · no pin, no photo" : { ...specOf(r), radiusKm: PHOTO_SPEC.radiusKm, size: p ? kb(p.bytes) : "not baked yet" },
+		photo:
+			r.photo === false
+				? "follow-me · no pin, no photo"
+				: {
+						...specOf(r),
+						radiusKm: PHOTO_SPEC.radiusKm,
+						size: p ? kb(p.bytes) : "not baked yet",
+						closeUp: p ? `${p.closeUp.tiles} raw z${p.zoom} tiles · ${kb(p.closeUp.bytes)}` : "not baked yet",
+					},
 		fetched: {
 			new: r.fetched,
 			shared: r.tiles - r.fetched,
@@ -127,7 +135,10 @@ async function tidyPhotos(): Promise<void> {
 }
 const used = $derived(bytes + photoTotal);
 // What the blob ADDED, not what it covers.
-const rowBytes = (r: Region): number => blobBytes(r.newBytes ?? r.bytes, photoOf(r)?.bytes);
+const rowBytes = (r: Region): number => {
+	const p = photoOf(r);
+	return blobBytes(r.newBytes ?? r.bytes, p && p.bytes + p.closeUp.bytes);
+};
 const broken = $derived(regions.filter((r) => (missing[r.id] ?? 0) > 0).length);
 const nameOf = (r: Region): string => (r.place ? placeLabel(r.place) : r.id);
 const secs = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
@@ -239,6 +250,15 @@ onMount(() => {
 								<span class="lbytes">{photoOf(r) == null ? "—" : kb((photoOf(r) as PhotoInfo).bytes)}</span>
 							{/if}
 						</div>
+						{#if r.photo !== false}
+							<div class="layer" class:on={(photoOf(r)?.closeUp.tiles ?? 0) > 0}>
+								<span class="dir">in</span>
+								<span class="ico">🔍</span>
+								<span class="lname">close-up</span>
+								<span class="ldetail">{photoOf(r)?.closeUp.tiles ?? 0} raw z{specOf(r).zoom} tiles · from z{specOf(r).zoom - 0.5}</span>
+								<span class="lbytes">{photoOf(r) == null ? "—" : kb((photoOf(r) as PhotoInfo).closeUp.bytes)}</span>
+							</div>
+						{/if}
 						<div class="layer on">
 							<span class="dir">net</span>
 							<span class="ico">⬇️</span>

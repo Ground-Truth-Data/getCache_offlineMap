@@ -57,7 +57,7 @@ class HonestWorker extends FakeWorker {
 	postMessage(req: { id: number; tiles: unknown[] }): void {
 		for (let i = 0; i < req.tiles.length; i++) this.onmessage?.({ data: { spent: TILE_BYTES } });
 		this.onmessage?.({
-			data: { id: req.id, blob: new Blob(["x"]), loaded: req.tiles.length, fetched: req.tiles.length, bytes: req.tiles.length * TILE_BYTES },
+			data: { id: req.id, blob: new Blob(["x"]), loaded: req.tiles.length, fetched: req.tiles.length, bytes: req.tiles.length * TILE_BYTES, tiles: [] },
 		});
 	}
 }

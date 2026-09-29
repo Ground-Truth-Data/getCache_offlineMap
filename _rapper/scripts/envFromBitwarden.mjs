@@ -76,7 +76,12 @@ const named = (key) => new RegExp(`(^|[^A-Za-z0-9_])${key}(?![A-Za-z0-9_])`).tes
 
 // No bws (Vercel): the committed block stands. It was written from the vault
 // on a developer's machine, and the audit below still proves it against code.
-const bws = spawnSync("bws", ["secret", "list", "--output", "json"], { encoding: "utf8" });
+// bws reads its token only from the environment; on a developer's Mac the token
+// is a Keychain item that only varlock can hand it.
+const LOCAL_TOKEN = path.join(process.env.HOME ?? "", ".config/varlock/.env.retreever-local");
+const bws = existsSync(LOCAL_TOKEN)
+	? varlock(["run", "-p", LOCAL_TOKEN, "--", "bws", "--color", "no", "secret", "list", "--output", "json"])
+	: spawnSync("bws", ["--color", "no", "secret", "list", "--output", "json"], { encoding: "utf8" });
 if (bws.error?.code === "ENOENT") {
 	if (!process.env.VERCEL) fail("bws CLI not on PATH. Install it:  curl https://bws.bitwarden.com/install | sh");
 	console.warn(`⚠ envFromBitwarden: bws CLI not on PATH — ${SCHEMA} kept as committed, not rewritten from the vault.`);

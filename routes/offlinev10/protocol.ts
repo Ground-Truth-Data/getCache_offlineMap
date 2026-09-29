@@ -7,13 +7,15 @@
 
 import maplibregl from "maplibre-gl";
 import { clipTile, type Rect } from "./clip";
-import { getTile, regionsSnapshot } from "./store";
+import { getTile, PHOTO_PREFIX, regionsSnapshot } from "./store";
 import { ANCHOR_Z, rangeBox, rangeContains, toMerc } from "./tiles";
 
 export const SCHEME = "v10";
 export const PLANET_TILES = `${SCHEME}://planet/{z}/{x}/{y}`;
+/** The satellite photo's own source tiles, served raw. */
+export const PHOTO_TILES = `${SCHEME}://photo/{z}/{x}/{y}`;
 
-const RE = /^v10:\/\/planet\/(\d+)\/(\d+)\/(\d+)/;
+const RE = /^v10:\/\/(planet|photo)\/(\d+)\/(\d+)\/(\d+)/;
 
 export interface ReadCounts {
 	hit: number;
@@ -88,11 +90,12 @@ export function installProtocol(): void {
 			throw Object.assign(new Error("aborted"), { name: "AbortError" });
 		const m = RE.exec(params.url);
 		if (!m) throw notFound(params.url);
-		const key = `${m[1]}/${m[2]}/${m[3]}`;
-		const [z, x, y] = [Number(m[1]), Number(m[2]), Number(m[3])];
-		const buf = await getTile(key);
+		const photo = m[1] === "photo";
+		const key = `${m[2]}/${m[3]}/${m[4]}`;
+		const [z, x, y] = [Number(m[2]), Number(m[3]), Number(m[4])];
+		const buf = await getTile(photo ? PHOTO_PREFIX + key : key);
 		if (buf && buf.byteLength > 0) {
-			const data = z < ANCHOR_Z ? await clippedTile(key, z, x, y, buf) : buf;
+			const data = !photo && z < ANCHOR_Z ? await clippedTile(key, z, x, y, buf) : buf;
 			if (data) {
 				counts.hit++;
 				return { data };

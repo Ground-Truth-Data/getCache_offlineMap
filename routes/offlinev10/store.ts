@@ -1,6 +1,8 @@
 /** The tile store: one IndexedDB store keyed `z/x/y`, one copy per tile
  * however many blobs cover it; a second store lists the blobs. */
 
+import { photoTilesFor, type RawTile } from "../../lib/onPhone/satellite/satelliteImage";
+import { PHOTO_SOURCES } from "../../lib/onPhone/satellite/photoSources";
 import { BudgetError, budgetBytes } from "./budget";
 import { toEvict } from "./evict";
 import type { Place } from "./places";
@@ -193,6 +195,47 @@ export async function putTiles(
 	tileBytes = Promise.resolve(used - photoBytes + adding);
 }
 
+/** Photo tiles share the road tiles' store and budget; the prefix keeps a z13 photo tile off a z13 road tile. */
+export const PHOTO_PREFIX = "p/";
+
+export function putPhotoTiles(tiles: RawTile[]): Promise<void> {
+	return putTiles(tiles.map(([k, b]) => [PHOTO_PREFIX + k, b]));
+}
+
+/** The photo tiles under a blob's pin; none for a follow-me blob. */
+function photoKeysOf(r: Region): string[] {
+	if (r.photo === false) return [];
+	const z = PHOTO_SOURCES[0].zoom;
+	return photoTilesFor([r.lng, r.lat], z).map((t) => `${PHOTO_PREFIX}${z}/${t.x}/${t.y}`);
+}
+
+/** Bytes of each blob's photo tiles, one cursor pass; shared tiles count for every blob covering them. */
+export async function photoTileBytes(regions: readonly Region[]): Promise<Map<string, { tiles: number; bytes: number }>> {
+	const owners = new Map<string, string[]>();
+	const out = new Map<string, { tiles: number; bytes: number }>();
+	for (const r of regions) {
+		out.set(r.id, { tiles: 0, bytes: 0 });
+		for (const k of photoKeysOf(r)) owners.set(k, [...(owners.get(k) ?? []), r.id]);
+	}
+	const db = await open();
+	const st = db.transaction(TILES, "readonly").objectStore(TILES);
+	await new Promise<void>((resolve, reject) => {
+		const req = st.openCursor(IDBKeyRange.bound(PHOTO_PREFIX, `${PHOTO_PREFIX}￿`));
+		req.onsuccess = () => {
+			const cur = req.result;
+			if (!cur) return resolve();
+			for (const id of owners.get(cur.key as string) ?? []) {
+				const o = out.get(id) as { tiles: number; bytes: number };
+				o.tiles += 1;
+				o.bytes += (cur.value as ArrayBuffer).byteLength;
+			}
+			cur.continue();
+		};
+		req.onerror = () => reject(req.error);
+	});
+	return out;
+}
+
 export async function deleteTiles(keys: string[]): Promise<void> {
 	if (keys.length === 0) return;
 	const db = await open();
@@ -318,10 +361,13 @@ export async function deleteRegion(id: string): Promise<number> {
 	const regions = await listRegions();
 	const gone = regions.find((r) => r.id === id);
 	if (!gone) return 0;
-	const keep = regions.filter((r) => r.id !== id).map((r) => r.range);
+	const others = regions.filter((r) => r.id !== id);
+	const keep = others.map((r) => r.range);
+	const keepPhoto = new Set(others.flatMap(photoKeysOf));
 	const doomed = rangeTiles(gone.range)
 		.filter((t) => !keep.some((r) => rangeContains(r, t)))
-		.map(tileKey);
+		.map(tileKey)
+		.concat(photoKeysOf(gone).filter((k) => !keepPhoto.has(k)));
 	const db = await open();
 	const tx = db.transaction([TILES, REGIONS], "readwrite");
 	const st = tx.objectStore(TILES);

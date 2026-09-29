@@ -15,7 +15,7 @@ import {
 } from "../../lib/onPhone/satellite/satelliteImage";
 import { passQueue } from "../../lib/shared/passQueue";
 import { onBlob } from "./blobService";
-import { notePhotoBytes, regionsSnapshot } from "./store";
+import { notePhotoBytes, photoTileBytes, putPhotoTiles, regionsSnapshot } from "./store";
 
 // The only per-photo account of what the pass pulled; off unless the debug route turns it on.
 let narrate = false;
@@ -42,21 +42,27 @@ export interface PhotoInfo {
 	source: string;
 	zoom: number;
 	canvasPx: number;
+	/** The raw source tiles kept for the close-up; they live in the tile store, so its budget already counts them. */
+	closeUp: { tiles: number; bytes: number };
 }
 
 const WORLD = PHOTO_SOURCES[0];
 
 /** Metadata per photo key, never the pixels; the total is reported to the tile store's budget. */
 export async function photoInfo(): Promise<Record<string, PhotoInfo>> {
+	const regions = await regionsSnapshot().regions;
+	const [meta, close] = await Promise.all([satImageMeta(), photoTileBytes(regions)]);
+	const closeByKey = new Map(regions.map((r) => [photoKey(r.lng, r.lat), close.get(r.id)]));
 	const out: Record<string, PhotoInfo> = {};
 	let total = 0;
-	for (const m of await satImageMeta()) {
+	for (const m of meta) {
 		total += m.bytes;
 		out[m.key] = {
 			bytes: m.bytes,
 			source: m.source ?? WORLD.name,
 			zoom: m.zoom ?? WORLD.zoom,
 			canvasPx: m.canvasPx ?? WORLD.canvasPx,
+			closeUp: closeByKey.get(m.key) ?? { tiles: 0, bytes: 0 },
 		};
 	}
 	notePhotoBytes(total);
@@ -98,7 +104,7 @@ async function pass(centres: readonly [number, number][]): Promise<number> {
 		if (isCurrentPhoto(await getSatImageByKey(photoKey(lng, lat)))) continue;
 		let img: Awaited<ReturnType<typeof bakeSatelliteImage>> = null;
 		try {
-			img = await bakeSatelliteImage([lng, lat]);
+			img = await bakeSatelliteImage([lng, lat], putPhotoTiles);
 		} catch (error) {
 			console.warn(
 				`[offlineV10] photo bake threw at ${lat.toFixed(4)},${lng.toFixed(4)}`,

@@ -38,6 +38,8 @@ vi.mock("./store", () => ({
 	notePhotoBytes: (n: number) => {
 		photoBytesReported = n;
 	},
+	putPhotoTiles: async () => undefined,
+	photoTileBytes: async () => new Map(),
 }));
 vi.mock("./blobService", () => ({ onBlob: () => () => undefined }));
 

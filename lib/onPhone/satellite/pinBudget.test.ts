@@ -40,7 +40,7 @@ class FakeWorker {
 		setTimeout(
 			() =>
 				this.onmessage?.({
-					data: { id: req.id, blob: new Blob(["x"]), loaded: req.tiles.length, fetched: req.tiles.length, bytes: 1 },
+					data: { id: req.id, blob: new Blob(["x"]), loaded: req.tiles.length, fetched: req.tiles.length, bytes: 1, tiles: [] },
 				}),
 			WORKER_MS,
 		);
