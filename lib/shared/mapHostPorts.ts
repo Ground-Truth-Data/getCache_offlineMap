@@ -119,8 +119,6 @@ export interface MapUiPorts {
 	CrowSwitch: Component<Record<string, unknown>>;
 	copyToClipboard(text: string): Promise<boolean>;
 	reportSwallowed(scope: string, err: unknown, extra?: Record<string, unknown>): void;
-	/** TEMP remote diagnostic breadcrumb (host's /api/devlog). */
-	devlog?(data: Record<string, unknown>): void;
 	/** Svelte action that lifts a node into the host's overlay layer. */
 	overlayPortal(node: HTMLElement): { destroy(): void } | void;
 	createEyeToggle(): {
