@@ -21,13 +21,11 @@ const ALLOWED = [
 const BANNED = [
 	"$tinyStore",
 	"mapStore",
-	// Breach direction is now $lib/mobile/ (below), not $parent/siblings — this file's own home after the move.
-	"$lib/mobile/",
+	// A child imports no app $lib at all.
+	"$lib/",
 	"$mobRoutes",
 	"$app/",
 	"@supabase",
-	"$lib/mobile/components/",
-	"$lib/mobile/stores/",
 ];
 
 /** Framework/runtime specifiers, banned by EXACT match — this module must run without any Svelte runtime present (test, Worker, or plain page). */

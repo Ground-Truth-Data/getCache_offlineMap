@@ -120,8 +120,8 @@ import { attachFireLayer } from "$parent/siblings/getCache_OfflineMap/lib/onPhon
 | Storage, bake service, renderer, roads, satellite | `lib/onPhone/` |
 | Tile contract (byte-identical to `workers/worker-local-dev/src/`) | `lib/contract/` |
 | Shared helpers, places index, debug panels, map UI components, map state stores | `lib/shared/`, `lib/places/`, `lib/panels/`, `lib/mapUi/`, `lib/mapState/` |
-| Engine door — `HostPorts` | `lib/shared/hostPorts.ts` — ReTreever's implementation: `ReTreever/src/lib/mobile/offline/host/retreeverPorts.ts` |
-| Map-UI door — `MapHostPorts { store, ui, gps, scenes?, q704? }` | `lib/shared/mapHostPorts.ts` — ReTreever's implementation: `ReTreever/src/lib/mobile/offline/host/retreeverMapPorts.ts` |
+| Engine door — `HostPorts` | `lib/shared/hostPorts.ts` — Get Cache's implementation: `getCache/src/lib/offline/host/retreeverPorts.ts` |
+| Map-UI door — `MapHostPorts { store, ui, gps, scenes?, q704? }` | `lib/shared/mapHostPorts.ts` — Get Cache's implementation: `getCache/src/lib/offline/host/retreeverMapPorts.ts` |
 
 Every `lib/mapUi` component takes a required `ports: MapHostPorts` prop; every
 store factory that needs the host takes it as a parameter. ReTreever's real

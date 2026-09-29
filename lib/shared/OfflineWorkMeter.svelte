@@ -215,7 +215,7 @@ function fmtBytes(b: number): string {
 			>
 				<span class="dev-card__title">CURRENT SESSION</span> {open ? "▾" : "▸"}
 			</button>
-			<!-- Hand-built SharePicker shape: this child may not import $lib/mobile. -->
+			<!-- Hand-built SharePicker shape: this child may not import $lib. -->
 			<div class="export-wrap">
 				<button
 					class="export-trigger"
