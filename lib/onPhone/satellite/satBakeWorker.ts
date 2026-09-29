@@ -49,6 +49,8 @@ self.onmessage = async (e: MessageEvent<BakeReq>): Promise<void> => {
 			fetched += 1;
 			const bm = await loadTile(t.url, (n) => {
 				bytes += n;
+				// Per tile, not at the end: the page's byte cap can only stop what it hears about.
+				(self as unknown as Worker).postMessage({ spent: n });
 			});
 			if (!bm) continue; // gap → transparent → jagged mask
 			ctx.drawImage(bm, t.dx, t.dy, t.dw, t.dh);

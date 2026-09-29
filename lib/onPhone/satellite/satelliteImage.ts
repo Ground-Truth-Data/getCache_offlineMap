@@ -3,6 +3,7 @@ import {
 	noteSatelliteTiles,
 } from "../store/downloadGuard";
 import { noteBytes } from "../../shared/dataMeter.svelte";
+import { sessionCap, spendBytes } from "../../shared/sessionByteCap.svelte";
 import { kmBetween, kmToDegSpan } from "../../shared/kmGeo";
 import { latToTileY, lngToTileX, tileToLat, tileToLng } from "../../contract/geo";
 import { makeKeyedIdbStore } from "../store/keyedIdbStore";
@@ -194,14 +195,29 @@ function offscreenSupported(): boolean {
 	);
 }
 
+/** The byte cap's way out of a runaway: kill the worker outright and fail every bake waiting on it. */
+function haltBakeWorker(): void {
+	if (bakeWorker) {
+		bakeWorker.onmessage = null;
+		bakeWorker.terminate();
+		bakeWorker = null;
+	}
+	for (const cb of pendingBakes.values()) cb(null);
+	pendingBakes.clear();
+}
+
 function getBakeWorker(): Worker | null {
-	if (workerBroken) return null;
+	if (workerBroken || sessionCap.tripped) return null;
 	if (bakeWorker) return bakeWorker;
 	try {
 		bakeWorker = new Worker(new URL("./satBakeWorker.ts", import.meta.url), {
 			type: "module",
 		});
-		bakeWorker.onmessage = (e: MessageEvent<BakeRes>) => {
+		bakeWorker.onmessage = (e: MessageEvent<BakeRes | { spent: number }>) => {
+			if ("spent" in e.data) {
+				if (!spendBytes(e.data.spent)) haltBakeWorker();
+				return;
+			}
 			const cb = pendingBakes.get(e.data.id);
 			if (cb) {
 				pendingBakes.delete(e.data.id);
@@ -272,6 +288,7 @@ export async function bakeSatelliteImage(
 		return existing;
 	const covering = await photoCovering(center);
 	if (covering) return covering;
+	if (sessionCap.tripped) return existing ?? null;
 	// Offline, every tile fetch would fail and trip the session breaker.
 	if (typeof navigator !== "undefined" && navigator.onLine === false)
 		return existing ?? null;
@@ -374,10 +391,12 @@ async function bakeFrom(
 		const ctx = canvas.getContext("2d");
 		if (!ctx) return null;
 		await pool(tileDraw.length, SAT_FETCH_CONCURRENCY, async (i) => {
+			if (sessionCap.tripped) return;
 			const t = tileDraw[i];
 			fetched += 1;
 			const tile = await loadTileBitmap(t.url, (n) => {
 				bytes += n;
+				spendBytes(n);
 			});
 			if (!tile) return;
 			ctx.drawImage(tile, t.dx, t.dy, t.dw, t.dh);

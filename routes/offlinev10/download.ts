@@ -5,6 +5,7 @@
  */
 
 import { noteBytes } from "../../lib/shared/dataMeter.svelte";
+import { sessionCap, spendBytes } from "../../lib/shared/sessionByteCap.svelte";
 import { tileUrl } from "../../lib/worker/worker-local-dev/tilesHost";
 import { BudgetError, budgetBytes } from "./budget";
 import { nearestPlace } from "./places";
@@ -114,6 +115,7 @@ async function fetchInto(
 	const worker = async () => {
 		while (next < todo.length) {
 			if (failed) throw failed;
+			if (sessionCap.tripped) throw new Error("session byte cap reached");
 			if (p.bytes > room)
 				throw new BudgetError(budgetBytes() - room, budgetBytes(), p.bytes);
 			const t = todo[next++];
@@ -129,6 +131,7 @@ async function fetchInto(
 				p.fetched++;
 				p.bytes += buf.byteLength;
 				noteBytes("map tiles", buf.byteLength);
+				spendBytes(buf.byteLength);
 			} else if (res.status === 204) {
 				pending.push([tileKey(t), new ArrayBuffer(0)]);
 				p.empty++;
