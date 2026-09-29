@@ -42,7 +42,7 @@ export const LEGEND = [
 
 const BASE_TILES = "/mobileAssets/worldBase/base/tiles";
 const GLYPHS = "/mobileAssets/worldBase/glyphs/{fontstack}/{range}.pbf";
-const SPRITE = "/offlineV10/sprites/dark";
+const SPRITE = "/mobileAssets/offlineV10/dark";
 /** The one face bundled for airplane mode; bold/italic map onto it. */
 const FONT = "Noto Sans Regular";
 

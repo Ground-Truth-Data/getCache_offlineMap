@@ -42,6 +42,8 @@ export interface HospitalLayerOptions {
 	readonly origins: () => readonly LngLat[];
 	/** the app's own locate action; omitted → no button */
 	readonly onShowMyLocation?: () => void;
+	/** false on the offline preview: it paints only stored discs, and a dropped pin's disc comes from the pass */
+	readonly hauls?: boolean;
 }
 
 type Popup = maplibregl.Popup;
@@ -233,7 +235,7 @@ export function attachHospitalLayer(
 		});
 	};
 	repaint();
-	wantHospitals(opts.origins());
+	if (opts.hauls !== false) wantHospitals(opts.origins());
 	const offLanded = onHospitals(repaint);
 	// A style swap drops every custom layer.
 	const onStyle = (): void => {
@@ -347,7 +349,7 @@ export function attachHospitalLayer(
 	};
 	handle.repaint = () => {
 		repaint();
-		wantHospitals(opts.origins());
+		if (opts.hauls !== false) wantHospitals(opts.origins());
 	};
 	return handle;
 }
