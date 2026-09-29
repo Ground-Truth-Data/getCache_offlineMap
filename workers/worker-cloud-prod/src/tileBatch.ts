@@ -1,18 +1,21 @@
-import type { PMTiles } from "pmtiles";
-
 /** Tiles one request may ask for: each is an R2 read, and a Worker invocation has a subrequest ceiling. */
 export const MAX_BATCH = 800;
 
-// R2 reads in flight: /pack found 8 too slow and 100 over the 128 MB Worker limit.
+/** Satellite tiles per request: each costs a cache read, an upstream fetch and a cache write against the same ceiling. */
+export const MAX_SAT_BATCH = 300;
+
+// Reads in flight: /pack found 8 too slow and 100 over the 128 MB Worker limit.
 const POOL = 32;
 
+export type TileGet = (z: number, x: number, y: number) => Promise<ArrayBuffer | null | undefined>;
+
 /**
- * Raw tiles from one archive in the /pack wire format, so one decoder reads both:
+ * Raw tiles in the /pack wire format, so one decoder reads both:
  * [uint32 LE manifestByteLen][manifest JSON {total, empty, tiles:[{k:"z/x/y", n}]}][tile bytes, in manifest order].
- * A tile the archive lacks is `n: 0` (the single-tile route's 204).
+ * A tile the source lacks is `n: 0` (the single-tile route's 204).
  */
 export async function buildTileBatch(
-  archive: Pick<PMTiles, "getZxy">,
+  get: TileGet,
   keys: ReadonlyArray<readonly [z: number, x: number, y: number]>,
 ): Promise<ArrayBuffer> {
   const bodies = new Array<ArrayBuffer | null>(keys.length).fill(null);
@@ -21,7 +24,7 @@ export async function buildTileBatch(
     while (next < keys.length) {
       const i = next++;
       const [z, x, y] = keys[i];
-      bodies[i] = (await archive.getZxy(z, x, y))?.data ?? null;
+      bodies[i] = (await get(z, x, y)) ?? null;
     }
   };
   await Promise.all(Array.from({ length: Math.min(POOL, keys.length) }, worker));

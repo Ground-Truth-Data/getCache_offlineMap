@@ -105,6 +105,12 @@ export function tilesBatchUrl(): string | null {
 	return h === null ? null : `${h}/tiles`;
 }
 
+/** POST [[z,x,y],…] here for many satellite tiles in one response. */
+export function satelliteBatchUrl(): string | null {
+	const h = tilesHost();
+	return h === null ? null : `${h}/satellite`;
+}
+
 export function hospitalsUrl(
 	lng: number,
 	lat: number,

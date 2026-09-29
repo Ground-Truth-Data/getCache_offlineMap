@@ -8,6 +8,7 @@ import { noteBytes } from "../../lib/shared/dataMeter.svelte";
 import { sessionCap, spendBytes } from "../../lib/shared/sessionByteCap.svelte";
 import { tilesBatchUrl } from "../../lib/worker/worker-local-dev/tilesHost";
 import { BudgetError, budgetBytes } from "./budget";
+import { readPack } from "./pack";
 import { nearestPlace } from "./places";
 import {
 	allTileKeys,
@@ -130,26 +131,20 @@ async function fetchInto(
 			});
 			if (!res.ok || !res.body)
 				throw new Error(`tile batch: HTTP ${res.status} ${await res.text().catch(() => "")}`.trim());
-			// [uint32 LE manifestLen][manifest JSON][tile bytes in manifest order], gzipped by hand.
+			// /tiles gzips its pack by hand, with no Content-Encoding.
 			const buf = new Uint8Array(
 				await new Response(res.body.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer(),
 			);
-			const manifestLen = new DataView(buf.buffer, buf.byteOffset, 4).getUint32(0, true);
-			const manifest = JSON.parse(new TextDecoder().decode(buf.subarray(4, 4 + manifestLen))) as {
-				tiles: Array<{ k: string; n: number }>;
-			};
-			let off = 4 + manifestLen;
-			for (const { k, n } of manifest.tiles) {
-				if (n === 0) {
+			for (const [k, b] of readPack(buf)) {
+				if (b === null) {
 					pending.push([k, new ArrayBuffer(0)]);
 					p.empty++;
 				} else {
-					pending.push([k, buf.slice(off, off + n).buffer]);
-					off += n;
+					pending.push([k, b]);
 					p.fetched++;
-					p.bytes += n;
-					noteBytes("map tiles", n);
-					spendBytes(n);
+					p.bytes += b.byteLength;
+					noteBytes("map tiles", b.byteLength);
+					spendBytes(b.byteLength);
 				}
 				if (pending.length >= BATCH) flush();
 				p.done++;

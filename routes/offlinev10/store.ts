@@ -202,6 +202,22 @@ export function putPhotoTiles(tiles: RawTile[]): Promise<void> {
 	return putTiles(tiles.map(([k, b]) => [PHOTO_PREFIX + k, b]));
 }
 
+/** The photo tiles on disk among `keys` (`z/x/y`), one transaction. */
+export async function getPhotoTiles(keys: readonly string[]): Promise<Map<string, ArrayBuffer>> {
+	const db = await open();
+	const tx = db.transaction(TILES, "readonly");
+	const st = tx.objectStore(TILES);
+	const out = new Map<string, ArrayBuffer>();
+	for (const k of keys) {
+		const req = st.get(PHOTO_PREFIX + k) as IDBRequest<ArrayBuffer | undefined>;
+		req.onsuccess = () => {
+			if (req.result?.byteLength) out.set(k, req.result);
+		};
+	}
+	await done(tx);
+	return out;
+}
+
 /** The photo tiles under a blob's pin; none for a follow-me blob. */
 function photoKeysOf(r: Region): string[] {
 	if (r.photo === false) return [];

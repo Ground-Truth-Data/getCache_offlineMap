@@ -14,7 +14,7 @@ import {
   MAX_RADIUS_KM,
 } from "../../../lib/worker/firesWorker";
 import { buildPack } from "./packBuilder";
-import { buildTileBatch, MAX_BATCH } from "./tileBatch";
+import { buildTileBatch, MAX_BATCH, MAX_SAT_BATCH } from "./tileBatch";
 import {
   cellKeysForDisc,
   HOSPITAL_MAX_KM,
@@ -147,6 +147,25 @@ const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Max-Age": "86400",
 };
 
+const SAT_HEADERS: Record<string, string> = {
+  ...CORS_HEADERS,
+  "Content-Type": "image/jpeg",
+  "X-Tile-Source": "maptiler",
+  "Cache-Control": "public, max-age=31536000, immutable",
+};
+
+/** One MapTiler tile through the edge cache; the single route and the batch share the key, so either warms the other. */
+async function satelliteTile(env: Env, ctx: ExecutionContext, origin: string, z: number, x: number, y: number): Promise<ArrayBuffer> {
+  const key = new Request(`${origin}/satellite/${z}/${x}/${y}.jpg?build=${SATELLITE_BUILD}`, { method: "GET" });
+  const hit = await caches.default.match(key);
+  if (hit) return hit.arrayBuffer();
+  const upstream = await fetch(satelliteUrl(env.GC_mapTiler_key, z, x, y));
+  if (!upstream.ok) throw new Error(`MapTiler responded ${upstream.status} for ${z}/${x}/${y}`);
+  const body = await upstream.arrayBuffer();
+  ctx.waitUntil(caches.default.put(key, new Response(body, { status: 200, headers: SAT_HEADERS })));
+  return body;
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     if (request.method === "OPTIONS") {
@@ -155,7 +174,7 @@ export default {
 
     const url = new URL(request.url);
 
-    if (request.method !== "GET" && request.method !== "HEAD" && !(request.method === "POST" && url.pathname === "/tiles")) {
+    if (request.method !== "GET" && request.method !== "HEAD" && !(request.method === "POST" && (url.pathname === "/tiles" || url.pathname === "/satellite"))) {
       return new Response("Method Not Allowed", {
         status: 405,
         headers: { ...CORS_HEADERS, Allow: "GET, HEAD, OPTIONS" },
@@ -356,7 +375,8 @@ export default {
         await archive.getHeader();
         const wanted = keys as Array<[number, number, number]>;
         // The first read of a cold isolate can hit a PMTiles directory race; the retry runs on the warm directory.
-        batch = await buildTileBatch(archive, wanted).catch(() => buildTileBatch(archive, wanted));
+        const get = async (z: number, x: number, y: number) => (await archive.getZxy(z, x, y))?.data;
+        batch = await buildTileBatch(get, wanted).catch(() => buildTileBatch(get, wanted));
         batch = await gzipBuf(batch);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -437,6 +457,43 @@ export default {
       });
     }
 
+    // POST /satellite: [[z,x,y],…] of MapTiler imagery in one response, so a photo is one request instead of one per tile.
+    if (url.pathname === "/satellite") {
+      let keys: unknown;
+      try {
+        keys = await request.json();
+      } catch {
+        return new Response("Bad Request — expected a JSON body [[z,x,y],…]", { status: 400, headers: CORS_HEADERS });
+      }
+      const valid =
+        Array.isArray(keys) &&
+        keys.length > 0 &&
+        keys.length <= MAX_SAT_BATCH &&
+        keys.every(
+          (k) =>
+            Array.isArray(k) &&
+            k.length === 3 &&
+            k.every((n) => Number.isInteger(n) && n >= 0) &&
+            k[0] <= SATELLITE_MAX_Z &&
+            k[1] < 2 ** k[0] &&
+            k[2] < 2 ** k[0],
+        );
+      if (!valid) {
+        return new Response(`Bad Request — 1..${MAX_SAT_BATCH} tiles, each [z,x,y] with z ≤ ${SATELLITE_MAX_Z}`, { status: 400, headers: CORS_HEADERS });
+      }
+      if (!env.GC_mapTiler_key) {
+        return new Response("GC_mapTiler_key is not configured on this Worker (wrangler secret put GC_mapTiler_key)", { status: 500, headers: CORS_HEADERS });
+      }
+      try {
+        const batch = await buildTileBatch((z, x, y) => satelliteTile(env, ctx, url.origin, z, x, y), keys as Array<[number, number, number]>);
+        // JPEG does not compress, so unlike /tiles this is sent as is.
+        return new Response(batch, { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/octet-stream" } });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return new Response(`Satellite batch failed: ${message}`, { status: 502, headers: CORS_HEADERS });
+      }
+    }
+
     // /satellite/{z}/{x}/{y}.jpg: MapTiler imagery, key held here.
     const sat = SATELLITE_PATH.exec(url.pathname);
     if (sat !== null) {
@@ -464,24 +521,9 @@ export default {
         );
       }
 
-      const satCacheUrl = new URL(url.toString());
-      satCacheUrl.search = `?build=${SATELLITE_BUILD}`;
-      const satCacheKey = new Request(satCacheUrl.toString(), { method: "GET" });
-      const satEdge = caches.default;
-      const satHit = await satEdge.match(satCacheKey);
-      if (satHit) {
-        return request.method === "HEAD"
-          ? new Response(null, { status: 200, headers: satHit.headers })
-          : satHit;
-      }
-
       let body: ArrayBuffer;
       try {
-        const upstream = await fetch(satelliteUrl(env.GC_mapTiler_key, z, x, y));
-        if (!upstream.ok) {
-          throw new Error(`MapTiler responded ${upstream.status}`);
-        }
-        body = await upstream.arrayBuffer();
+        body = await satelliteTile(env, ctx, url.origin, z, x, y);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return new Response(`Satellite fetch failed: ${message}`, {
@@ -489,25 +531,15 @@ export default {
           headers: CORS_HEADERS,
         });
       }
-
-      const satHeaders = {
-        ...CORS_HEADERS,
-        "Content-Type": "image/jpeg",
-        "X-Tile-Source": "maptiler",
-        "Cache-Control": "public, max-age=31536000, immutable",
-      };
-      ctx.waitUntil(
-        satEdge.put(satCacheKey, new Response(body, { status: 200, headers: satHeaders })),
-      );
       return new Response(request.method === "HEAD" ? null : body, {
         status: 200,
-        headers: satHeaders,
+        headers: SAT_HEADERS,
       });
     }
 
     const match = TILE_PATH.exec(url.pathname);
     if (match === null) {
-      return new Response("Not Found — expected /{z}/{x}/{y}.pbf, POST /tiles, /satellite/{z}/{x}/{y}.jpg, /pack?lng=&lat=, /fires?lng=&lat=, or /hospitals?lng=&lat=&km=", {
+      return new Response("Not Found — expected /{z}/{x}/{y}.pbf, POST /tiles, POST /satellite, /satellite/{z}/{x}/{y}.jpg, /pack?lng=&lat=, /fires?lng=&lat=, or /hospitals?lng=&lat=&km=", {
         status: 404,
         headers: CORS_HEADERS,
       });

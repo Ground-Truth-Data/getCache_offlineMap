@@ -1,7 +1,5 @@
 /** Where a photo's pixels come from. MapTiler only: it is paid for, and a free row behind it only ever baked a blurrier photo. */
 
-import { satelliteTileUrl } from "../../worker/worker-local-dev/tilesHost";
-
 export interface PhotoSource {
     name: string;
     /** the sharpest zoom worth fetching; above it tiles only upsample */
@@ -10,7 +8,6 @@ export interface PhotoSource {
     canvasPx: number;
     /** WebP quality 0–1 */
     quality: number;
-    url(z: number, x: number, y: number): string;
 }
 
 export const PHOTO_SOURCES: readonly PhotoSource[] = [
@@ -23,7 +20,6 @@ export const PHOTO_SOURCES: readonly PhotoSource[] = [
         canvasPx: 3456,
         // The last encode of pixels nothing will sharpen again.
         quality: 0.92,
-        url: (z, x, y) => satelliteTileUrl(z, x, y) ?? "",
     },
 ];
 

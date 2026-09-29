@@ -1,16 +1,10 @@
-import {
-	guardBakeGrid,
-	noteSatelliteTiles,
-} from "../store/downloadGuard";
-import { noteBytes } from "../../shared/dataMeter.svelte";
-import { sessionCap, spendBytes } from "../../shared/sessionByteCap.svelte";
+import { guardBakeGrid } from "../store/downloadGuard";
+import { sessionCap } from "../../shared/sessionByteCap.svelte";
 import { kmBetween, kmToDegSpan } from "../../shared/kmGeo";
 import { latToTileY, lngToTileX, tileToLat, tileToLng } from "../../contract/geo";
 import { makeKeyedIdbStore } from "../store/keyedIdbStore";
 import { isBestPhotoSource, PHOTO_SOURCES, type PhotoSource } from "./photoSources";
 
-/** Against Chrome's per-host ceiling; higher starves the concurrent roads download. */
-const SAT_FETCH_CONCURRENCY = 16;
 /** Satellite-photo radius (km); the page spaces line samples by it so discs overlap. */
 export const BAKE_RADIUS_KM = 2;
 const DB_NAME = "gc-offlineSatellite";
@@ -166,56 +160,11 @@ export async function photoCovering(
 	return c && photoReusableFor(near.source, c, center) ? near : undefined;
 }
 
-function loadImage(url: string): Promise<HTMLImageElement | null> {
-	return new Promise((resolve) => {
-		const img = new Image();
-		// <img> has no AbortSignal, so the lie-fi timeout is a timer.
-		const timer = setTimeout(() => resolve(null), 20_000);
-		img.crossOrigin = "anonymous";
-		img.onload = () => {
-			clearTimeout(timer);
-			resolve(img);
-		};
-		img.onerror = () => {
-			clearTimeout(timer);
-			resolve(null);
-		};
-		img.src = url;
-	});
-}
-async function pool(n: number, limit: number, fn: (i: number) => Promise<void>): Promise<void> {
-	let next = 0;
-	const worker = async () => {
-		while (next < n) {
-			const i = next++;
-			await fn(i);
-		}
-	};
-	await Promise.all(Array.from({ length: Math.min(limit, n) }, worker));
-}
+/** The bake's only way to tiles: `z/x/y` → bytes, from disk or the network. A key it cannot supply is simply absent. */
+export type PhotoTileSource = (keys: string[]) => Promise<Map<string, ArrayBuffer>>;
 
-type TileSrc = ImageBitmap | HTMLImageElement;
-async function loadTileBitmap(
-	url: string,
-	onBytes: (buf: ArrayBuffer) => void,
-): Promise<TileSrc | null> {
-	try {
-		if (typeof createImageBitmap === "function") {
-			// A stalled tile otherwise pins the connection for the full TCP timeout.
-			const r = await fetch(url, { signal: AbortSignal.timeout(20_000) });
-			if (!r.ok) return null;
-			const buf = await r.arrayBuffer();
-			onBytes(buf);
-			return await createImageBitmap(new Blob([buf]));
-		}
-		return await loadImage(url);
-	} catch {
-		return null;
-	}
-}
-
-type TileDraw = { key: string; url: string; dx: number; dy: number; dw: number; dh: number };
-type BakeRes = { id: number; blob: Blob | null; loaded: number; fetched: number; bytes: number; tiles: RawTile[] };
+type TileDraw = { buf: ArrayBuffer; dx: number; dy: number; dw: number; dh: number };
+type BakeRes = { id: number; blob: Blob | null; loaded: number };
 let bakeWorker: Worker | null = null;
 let workerBroken = false;
 let reqId = 0;
@@ -230,29 +179,14 @@ function offscreenSupported(): boolean {
 	);
 }
 
-/** The byte cap's way out of a runaway: kill the worker outright and fail every bake waiting on it. */
-function haltBakeWorker(): void {
-	if (bakeWorker) {
-		bakeWorker.onmessage = null;
-		bakeWorker.terminate();
-		bakeWorker = null;
-	}
-	for (const cb of pendingBakes.values()) cb(null);
-	pendingBakes.clear();
-}
-
 function getBakeWorker(): Worker | null {
-	if (workerBroken || sessionCap.tripped) return null;
+	if (workerBroken) return null;
 	if (bakeWorker) return bakeWorker;
 	try {
 		bakeWorker = new Worker(new URL("./satBakeWorker.ts", import.meta.url), {
 			type: "module",
 		});
-		bakeWorker.onmessage = (e: MessageEvent<BakeRes | { spent: number }>) => {
-			if ("spent" in e.data) {
-				if (!spendBytes(e.data.spent)) haltBakeWorker();
-				return;
-			}
+		bakeWorker.onmessage = (e: MessageEvent<BakeRes>) => {
 			const cb = pendingBakes.get(e.data.id);
 			if (cb) {
 				pendingBakes.delete(e.data.id);
@@ -284,7 +218,7 @@ function compositeInWorker(
 	const id = ++reqId;
 	return new Promise<BakeRes | null>((resolve) => {
 		pendingBakes.set(id, resolve);
-		wk.postMessage({ id, tiles, w, h, quality });
+		wk.postMessage({ id, tiles, w, h, quality }, tiles.map((t) => t.buf));
 	}).finally(() => {
 		scheduleBakeWorkerTeardown();
 	});
@@ -308,11 +242,10 @@ function scheduleBakeWorkerTeardown(): void {
 	}, BAKE_WORKER_IDLE_MS);
 }
 
-/** Bake the masked photo for a centre; sources are tried in registry order. Null only if none drew.
- * `keepTiles` receives the raw source tiles before the photo is written, so a photo on disk has its close-up. */
+/** Bake the masked photo for a centre from `tiles`; sources are tried in registry order. Null only if none drew. */
 export async function bakeSatelliteImage(
 	center: [number, number],
-	keepTiles: (tiles: RawTile[]) => Promise<void> = async () => {},
+	tiles: PhotoTileSource,
 ): Promise<SatImage | null> {
 	const key = satImageKey(center);
 	const existing = await idb.get(key);
@@ -321,16 +254,12 @@ export async function bakeSatelliteImage(
 	const covering = await photoCovering(center);
 	if (covering) return covering;
 	if (sessionCap.tripped) return existing ?? null;
-	// Offline, every tile fetch would fail and trip the session breaker.
-	if (typeof navigator !== "undefined" && navigator.onLine === false)
-		return existing ?? null;
 
 	for (const src of PHOTO_SOURCES) {
-		const out = await bakeFrom(src, center);
+		const out = await bakeFrom(src, center, tiles);
 		if (out) {
-			await keepTiles(out.tiles);
-			await idb.put(key, out.img);
-			return out.img;
+			await idb.put(key, out);
+			return out;
 		}
 	}
 	return existing ?? null;
@@ -340,7 +269,8 @@ export async function bakeSatelliteImage(
 async function bakeFrom(
 	src: PhotoSource,
 	center: [number, number],
-): Promise<{ img: SatImage; tiles: RawTile[] } | null> {
+	tiles: PhotoTileSource,
+): Promise<SatImage | null> {
 	const [clng, clat] = center;
 	const z = src.zoom;
 	const tileGeo = photoTilesFor(center, z);
@@ -375,75 +305,55 @@ async function bakeFrom(
 
 	const xf = (lng: number) => (((lng - cw) * Math.PI) / 180 / xExt) * W;
 	const yf = (lat: number) => ((yTop - mercY(lat)) / yExt) * H;
-	const tileDraw: TileDraw[] = tileGeo.map((t) => {
+	const keys = tileGeo.map((t) => `${z}/${t.x}/${t.y}`);
+	const have = await tiles(keys);
+	const tileDraw: TileDraw[] = [];
+	tileGeo.forEach((t, i) => {
+		const buf = have.get(keys[i]);
+		if (!buf?.byteLength) return;
 		const dx = Math.floor(xf(t.w));
 		const dy = Math.floor(yf(t.n));
-		return {
-			key: `${z}/${t.x}/${t.y}`,
-			url: src.url(z, t.x, t.y),
-			dx,
-			dy,
-			// +1 px so adjacent tiles overlap (no plaid).
-			dw: Math.ceil(xf(t.e) - dx) + 1,
-			dh: Math.ceil(yf(t.s) - dy) + 1,
-		};
+		// +1 px so adjacent tiles overlap (no plaid).
+		tileDraw.push({ buf, dx, dy, dw: Math.ceil(xf(t.e) - dx) + 1, dh: Math.ceil(yf(t.s) - dy) + 1 });
 	});
 
-	let blob: Blob | null = null;
-	let fetched = 0;
-	let loaded = 0;
-	let bytes = 0;
-	let tiles: RawTile[] = [];
+	// A mostly-empty disc is a throttled fetch, not a photo; fail so the reconcile retries.
+	const minTiles = Math.max(1, Math.ceil(tileGeo.length * 0.4));
+	if (tileDraw.length < minTiles) return null;
 
+	let blob: Blob | null = null;
+	let loaded = 0;
 	const res = offscreenSupported()
 		? await compositeInWorker(tileDraw, W, H, src.quality)
 		: null;
 	if (res) {
-		({ blob, fetched, loaded, bytes, tiles } = res);
+		({ blob, loaded } = res);
 	} else {
 		const canvas = document.createElement("canvas");
 		canvas.width = W;
 		canvas.height = H;
 		const ctx = canvas.getContext("2d");
 		if (!ctx) return null;
-		await pool(tileDraw.length, SAT_FETCH_CONCURRENCY, async (i) => {
-			if (sessionCap.tripped) return;
-			const t = tileDraw[i];
-			fetched += 1;
-			const tile = await loadTileBitmap(t.url, (buf) => {
-				bytes += buf.byteLength;
-				spendBytes(buf.byteLength);
-				tiles.push([t.key, buf]);
-			});
-			if (!tile) return;
-			ctx.drawImage(tile, t.dx, t.dy, t.dw, t.dh);
-			if ("close" in tile) tile.close();
+		for (const t of tileDraw) {
+			const bm = await createImageBitmap(new Blob([t.buf])).catch(() => null);
+			if (!bm) continue;
+			ctx.drawImage(bm, t.dx, t.dy, t.dw, t.dh);
+			bm.close();
 			loaded += 1;
-		});
-		if (!loaded) return null;
+		}
 		// WebP keeps the alpha channel for the jagged mask; older WKWebView falls back to PNG.
 		blob = await new Promise<Blob | null>((r) =>
 			canvas.toBlob((b) => r(b), "image/webp", src.quality),
 		);
 	}
+	if (!blob || loaded < minTiles) return null;
 
-	if (!blob) return null;
-
-	// A mostly-empty disc is a throttled fetch, not a photo; fail so the reconcile retries.
-	const minTiles = Math.max(1, Math.ceil(tileGeo.length * 0.4));
-	if (loaded < minTiles) return null;
-
-	noteBytes("satellite", bytes);
-	if (fetched > 0) noteSatelliteTiles(fetched);
 	return {
-		img: {
-			blob,
-			bounds: [cw, cs, ce, cn],
-			bakeVersion: BAKE_VERSION,
-			source: src.name,
-			zoom: src.zoom,
-			canvasPx: src.canvasPx,
-		},
-		tiles,
+		blob,
+		bounds: [cw, cs, ce, cn],
+		bakeVersion: BAKE_VERSION,
+		source: src.name,
+		zoom: src.zoom,
+		canvasPx: src.canvasPx,
 	};
 }

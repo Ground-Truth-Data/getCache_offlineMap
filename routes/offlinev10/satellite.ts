@@ -13,9 +13,43 @@ import {
 	satImageKey,
 	satImageMeta,
 } from "../../lib/onPhone/satellite/satelliteImage";
+import { noteSatelliteTiles } from "../../lib/onPhone/store/downloadGuard";
+import { noteBytes } from "../../lib/shared/dataMeter.svelte";
 import { passQueue } from "../../lib/shared/passQueue";
+import { sessionCap, spendBytes } from "../../lib/shared/sessionByteCap.svelte";
+import { satelliteBatchUrl } from "../../lib/worker/worker-local-dev/tilesHost";
 import { onBlob } from "./blobService";
-import { notePhotoBytes, photoTileBytes, putPhotoTiles, regionsSnapshot } from "./store";
+import { readPack } from "./pack";
+import { getPhotoTiles, notePhotoBytes, photoTileBytes, putPhotoTiles, regionsSnapshot } from "./store";
+
+// Tiles per request; the Worker refuses more than 300.
+const SAT_PER_REQUEST = 300;
+
+/** A photo's tiles: disk first, the rest in as few requests as the Worker allows, written before they are drawn. */
+export async function photoTiles(keys: string[]): Promise<Map<string, ArrayBuffer>> {
+	const have = await getPhotoTiles(keys);
+	const missing = keys.filter((k) => !have.has(k));
+	if (missing.length === 0 || (typeof navigator !== "undefined" && navigator.onLine === false)) return have;
+	const url = satelliteBatchUrl();
+	if (url === null) throw new Error("no tiles host configured — configureTilesHost() must run before a photo bakes.");
+	for (let i = 0; i < missing.length; i += SAT_PER_REQUEST) {
+		if (sessionCap.tripped) break;
+		const chunk = missing.slice(i, i + SAT_PER_REQUEST);
+		noteSatelliteTiles(chunk.length);
+		const res = await fetch(url, { method: "POST", body: JSON.stringify(chunk.map((k) => k.split("/").map(Number))) });
+		if (!res.ok) throw new Error(`satellite batch: HTTP ${res.status} ${await res.text().catch(() => "")}`.trim());
+		const got: Array<[string, ArrayBuffer]> = [];
+		for (const [k, b] of readPack(new Uint8Array(await res.arrayBuffer()))) {
+			if (!b) continue;
+			got.push([k, b]);
+			noteBytes("satellite", b.byteLength);
+			spendBytes(b.byteLength);
+		}
+		await putPhotoTiles(got);
+		for (const [k, b] of got) have.set(k, b);
+	}
+	return have;
+}
 
 // The only per-photo account of what the pass pulled; off unless the debug route turns it on.
 let narrate = false;
@@ -104,7 +138,7 @@ async function pass(centres: readonly [number, number][]): Promise<number> {
 		if (isCurrentPhoto(await getSatImageByKey(photoKey(lng, lat)))) continue;
 		let img: Awaited<ReturnType<typeof bakeSatelliteImage>> = null;
 		try {
-			img = await bakeSatelliteImage([lng, lat], putPhotoTiles);
+			img = await bakeSatelliteImage([lng, lat], photoTiles);
 		} catch (error) {
 			console.warn(
 				`[offlineV10] photo bake threw at ${lat.toFixed(4)},${lng.toFixed(4)}`,

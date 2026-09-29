@@ -1,11 +1,16 @@
 /** The close-up's raw tiles live in the road store: a deleted blob takes the ones no other pin's disc still covers. */
 import "fake-indexeddb/auto";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { photoTilesFor } from "../../lib/onPhone/satellite/satelliteImage";
 import { PHOTO_SOURCES } from "../../lib/onPhone/satellite/photoSources";
+import { configureTilesDevHost } from "../../lib/worker/worker-local-dev/tilesHost";
 import { setBudgetMb } from "./budget";
+import { photoTiles } from "./satellite";
 import { allTileKeys, deleteRegion, PHOTO_PREFIX, photoTileBytes, putPhotoTiles, putRegion, type Region, wipe } from "./store";
 import { regionRange } from "./tiles";
+
+vi.mock("./blobService", () => ({ onBlob: () => () => undefined }));
+configureTilesDevHost("https://tiles.test");
 
 const Z = PHOTO_SOURCES[0].zoom;
 
@@ -54,5 +59,49 @@ describe("photo close-up tiles", () => {
 		await putRegion(follow);
 		await deleteRegion("f");
 		expect((await photoKeysOnDisk()).length).toBe(new Set([...keysOf(A), ...keysOf(B)]).size);
+	});
+});
+
+/** The Worker's POST /satellite answer for these keys: every tile 7 bytes. */
+function pack(keys: number[][]): ArrayBuffer {
+	const manifest = new TextEncoder().encode(JSON.stringify({ tiles: keys.map(([z, x, y]) => ({ k: `${z}/${x}/${y}`, n: 7 })) }));
+	const out = new Uint8Array(4 + manifest.length + keys.length * 7);
+	new DataView(out.buffer).setUint32(0, manifest.length, true);
+	out.set(manifest, 4);
+	return out.buffer;
+}
+
+describe("what a photo's tiles cost on the wire", () => {
+	const fetchMock = vi.fn(async (_url: string, init: { body: string }) => ({
+		ok: true,
+		arrayBuffer: async () => pack(JSON.parse(init.body)),
+	}));
+	beforeEach(() => {
+		fetchMock.mockClear();
+		vi.stubGlobal("fetch", fetchMock);
+	});
+	afterEach(() => vi.unstubAllGlobals());
+
+	it("a disc already on disk costs zero requests", async () => {
+		const got = await photoTiles(keysOf(A));
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(got.size).toBe(keysOf(A).length);
+	});
+
+	it("an overlapping disc fetches only its missing tiles, in one request, and keeps them", async () => {
+		const C = region("c", -81.5076, 43.1226);
+		const onDisk = new Set([...keysOf(A), ...keysOf(B)]);
+		const missing = keysOf(C).filter((k) => !onDisk.has(k));
+		expect(missing.length).toBeGreaterThan(0);
+		expect(missing.length).toBeLessThan(keysOf(C).length);
+
+		const got = await photoTiles(keysOf(C));
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(JSON.parse(fetchMock.mock.calls[0][1].body).map((k: number[]) => k.join("/"))).toEqual(missing);
+		expect(got.size).toBe(keysOf(C).length);
+
+		fetchMock.mockClear();
+		await photoTiles(keysOf(C));
+		expect(fetchMock).not.toHaveBeenCalled();
 	});
 });
