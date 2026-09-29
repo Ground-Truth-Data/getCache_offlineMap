@@ -189,5 +189,6 @@ The three cards wear the shared `.dev-card` shell and copy the old map's
 panel layout; their state comes from V10 only (no bake service, no paint
 watcher). Sizes are MB everywhere.
 
-Sprites: the host's `static/offlineV10/sprites/dark*`.
+Sprites: the host's `static/mobileAssets/offlineV10/dark*` — under `mobileAssets/` so the phone
+build keeps them and the browser's service worker precaches them.
 Route folder is lowercase because the getcache host 301s every path to lowercase.

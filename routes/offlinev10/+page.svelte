@@ -415,6 +415,7 @@ onMount(() => {
 		hospitalHandle = attachHospitalLayer(m, {
 			origins: () => origins(m),
 			onShowMyLocation: () => void drawControlsRef?.requestMyLocation(),
+			hauls: false,
 		});
 		photos = createSatelliteMount(m, PHOTO_INSERT_BEFORE, PHOTO_TILES);
 		reconcilePhotos();
