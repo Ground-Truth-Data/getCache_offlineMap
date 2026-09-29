@@ -147,6 +147,25 @@ const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Max-Age": "86400",
 };
 
+const SAT_HEADERS: Record<string, string> = {
+  ...CORS_HEADERS,
+  "Content-Type": "image/jpeg",
+  "X-Tile-Source": "maptiler",
+  "Cache-Control": "public, max-age=31536000, immutable",
+};
+
+/** One MapTiler tile through the edge cache; the single route and the batch share the key, so either warms the other. */
+async function satelliteTile(env: Env, ctx: ExecutionContext, origin: string, z: number, x: number, y: number): Promise<ArrayBuffer> {
+  const key = new Request(`${origin}/satellite/${z}/${x}/${y}.jpg?build=${SATELLITE_BUILD}`, { method: "GET" });
+  const hit = await caches.default.match(key);
+  if (hit) return hit.arrayBuffer();
+  const upstream = await fetch(satelliteUrl(env.GC_mapTiler_key, z, x, y));
+  if (!upstream.ok) throw new Error(`MapTiler responded ${upstream.status} for ${z}/${x}/${y}`);
+  const body = await upstream.arrayBuffer();
+  ctx.waitUntil(caches.default.put(key, new Response(body, { status: 200, headers: SAT_HEADERS })));
+  return body;
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     if (request.method === "OPTIONS") {
@@ -520,7 +539,7 @@ export default {
 
     const match = TILE_PATH.exec(url.pathname);
     if (match === null) {
-      return new Response("Not Found — expected /{z}/{x}/{y}.pbf, POST /tiles, /satellite/{z}/{x}/{y}.jpg, /pack?lng=&lat=, /fires?lng=&lat=, or /hospitals?lng=&lat=&km=", {
+      return new Response("Not Found — expected /{z}/{x}/{y}.pbf, POST /tiles, POST /satellite, /satellite/{z}/{x}/{y}.jpg, /pack?lng=&lat=, /fires?lng=&lat=, or /hospitals?lng=&lat=&km=", {
         status: 404,
         headers: CORS_HEADERS,
       });
