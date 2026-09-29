@@ -1,5 +1,12 @@
 # /app/offlinev10 — the offline map, cut on the z10 grid
 
+> **Measuring network or data usage (the debug page included): run
+> [`tests/netBytes.mjs`](../../tests/netBytes.mjs).** It reads the Chrome DevTools
+> Protocol's `Network.loadingFinished` `encodedDataLength` — the number the Network
+> panel itself displays — for the page and its workers. Never `performance.getEntriesByType`,
+> never a separate headless browser with its own profile, never ask Chris to paste
+> numbers from his screen.
+
 The map lives HERE, in the child. A host tier mounts it with a one-file route
 that hands in the two port bundles plus `MapDrawControls` and `fireOrigins`,
 which live in a repo this one may not import.

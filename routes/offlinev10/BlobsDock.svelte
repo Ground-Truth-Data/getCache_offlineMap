@@ -70,6 +70,16 @@ const specOf = (r: Region): { name: string; zoom: number; canvasPx: number } => 
 	const name = photoSourceFor(r.lng, r.lat);
 	return PHOTO_SPEC.sources.find((s) => s.name === name) ?? PHOTO_SPEC.sources[PHOTO_SPEC.sources.length - 1];
 };
+let copied = $state<string | null>(null);
+async function copyJson(r: Region): Promise<void> {
+	try {
+		await navigator.clipboard.writeText(JSON.stringify({ ...r, photo: photoOf(r) ?? null }, null, 2));
+		copied = r.id;
+	} catch {
+		copied = `!${r.id}`;
+	}
+	setTimeout(() => (copied = null), 1500);
+}
 const eyeBlink = ui.createEyeBlink();
 onDestroy(() => eyeBlink.destroy());
 const photoTotal = $derived(Object.values(photos).reduce((a, b) => a + b.bytes, 0));
@@ -179,6 +189,7 @@ onMount(() => {
 							<ui.MaskedFrameIcon src={eyeBlink.srcFor(r.id)} frames={ui.eyeAllFrames} size={23} color="var(--rt-yellow, #ffd700)" />
 						</button>
 						<span class="bytes">{mb(rowBytes(r))}</span>
+						<button class="x" onclick={() => copyJson(r)} title="copy this blob's JSON">{copied === r.id ? "✓" : copied === `!${r.id}` ? "✕" : "⧉"}</button>
 						<button class="x" onclick={() => onDelete(r.id)} disabled={busy} title="delete this blob">✕</button>
 					</div>
 					<div class="layers">

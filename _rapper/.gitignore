@@ -144,7 +144,8 @@ _director/
 
 # 49 MB of basemap tiles + pin art, copied in by getCache_OfflineMap/fetchAssets.sh.
 # NEVER commit: 3587 binary files, and ReTreever/static is their source of truth.
-static/mobileAssets/
+# No trailing slash: in a card worktree it is a symlink to the live copy.
+static/mobileAssets
 
 # Written by the installer into a scaffold only; absent here = serve every child.
 mounted.json

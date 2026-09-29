@@ -2,7 +2,6 @@ import { existsSync, readdirSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Plugin } from "vite";
 
-// rapper's own copy of ReTreever's src/lib/core/harnessGuards/noEscapePlugin.ts — a guard that had to raw-climb into a parent to be imported wouldn't be a guard. ⚠️ Keep the two byte-identical below this line; there is no build step that checks that for you.
 // Rule: inside the repo, `../` is ordinary; leaving the repo is allowed ONLY through an alias ($parent/siblings, $lib …); node_modules/virtual modules are exempt.
 // ⚠️ Case must match exactly what readdir reports, never just whether the file opens — APFS is case-insensitive so a wrong-case import 200s locally and 404s on Vercel's Linux build.
 

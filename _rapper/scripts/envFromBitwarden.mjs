@@ -78,6 +78,7 @@ const named = (key) => new RegExp(`(^|[^A-Za-z0-9_])${key}(?![A-Za-z0-9_])`).tes
 // on a developer's machine, and the audit below still proves it against code.
 const bws = spawnSync("bws", ["secret", "list", "--output", "json"], { encoding: "utf8" });
 if (bws.error?.code === "ENOENT") {
+	if (!process.env.VERCEL) fail("bws CLI not on PATH. Install it:  curl https://bws.bitwarden.com/install | sh");
 	console.warn(`⚠ envFromBitwarden: bws CLI not on PATH — ${SCHEMA} kept as committed, not rewritten from the vault.`);
 } else {
 	if (bws.status !== 0) fail(`bws secret list failed:\n${bws.stderr}`);
@@ -86,7 +87,15 @@ if (bws.error?.code === "ENOENT") {
 	if (begin < 0 || end < begin) fail(`${SCHEMA} has no Bitwarden block. Add these two lines:\n  ${BEGIN}\n  ${END}`);
 	const block = [BEGIN];
 	const prefixed = [];
-	for (const s of JSON.parse(bws.stdout).sort((a, b) => a.key.localeCompare(b.key))) {
+	const vault = JSON.parse(bws.stdout).sort((a, b) => a.key.localeCompare(b.key));
+	const seen = new Set(vault.map((s) => s.key));
+	// A pointer this machine account cannot read fails every `varlock run`, so it
+	// cannot stay; declared empty, the audit still holds and the code that needs
+	// the value fails at use. Chris's account sees everything and rewrites it back.
+	const unseen = [...schemaSrc.slice(begin, end).matchAll(/^(\w+)=bitwarden\(/gm)]
+		.map((m) => m[1])
+		.filter((k) => !seen.has(k) && named(k));
+	for (const s of vault) {
 		if (named(s.key)) {
 			// The note is the secret's documentation; an at-sign in it would read as a decorator.
 			const note = (s.note ?? "").replace(/\s+/g, " ").replaceAll("@", "at ").trim();
@@ -97,10 +106,16 @@ if (bws.error?.code === "ENOENT") {
 			prefixed.push(`${BROWSER_PREFIX}${s.key} is read; Bitwarden has "${s.key}". The browser needs the prefix, so the SECRET is renamed ${BROWSER_PREFIX}${s.key} in Bitwarden. Only Chris does that.`);
 		}
 	}
+	for (const k of unseen) {
+		block.push("# not readable by this machine account: empty here, fails where it is used");
+		block.push(`# @auditIgnore${k.startsWith(BROWSER_PREFIX) ? "" : " @sensitive"}`);
+		block.push(`${k}=`);
+	}
 	schemaSrc = schemaSrc.slice(0, begin) + block.join("\n") + "\n" + schemaSrc.slice(end);
 	writeFileSync(SCHEMA, schemaSrc);
 	console.log(`✓ envFromBitwarden: ${SCHEMA} Bitwarden block written from the vault (${(block.length - 1) / 3 | 0} secrets named in ${roots.join(", ")}).`);
 	if (prefixed.length) console.warn(`⚠ envFromBitwarden:\n  ${prefixed.join("\n  ")}`);
+	if (unseen.length) console.warn(`⚠ envFromBitwarden: this machine account cannot read ${unseen.join(", ")} — declared empty. Do not commit ${SCHEMA}; a full account rewrites it.`);
 }
 
 const schemaKeys = [...schemaSrc.matchAll(KEY_LINE)].map((m) => m[1]);

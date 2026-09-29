@@ -41,10 +41,10 @@ export const PHOTO_SOURCES: readonly PhotoSource[] = [
         boxes: [],
         // The Maxar global floor, at the sharpest zoom MapTiler's own site shows.
         zoom: 17,
-        // Not 4096: 4096² is over WebKit's ~16.7 MP canvas ceiling, which bakes blank.
-        canvasPx: 3072,
+        // Not 4096: 4096² is over WebKit's ~16.7 MP canvas ceiling, which bakes blank. 3456² is the most the 12 MP guard below allows.
+        canvasPx: 3456,
         // The last encode of pixels nothing will sharpen again.
-        quality: 0.82,
+        quality: 0.92,
         url: (z, x, y) => satelliteTileUrl(z, x, y) ?? "",
     },
     {

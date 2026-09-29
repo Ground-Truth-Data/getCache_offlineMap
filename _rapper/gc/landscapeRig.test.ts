@@ -110,8 +110,8 @@ describe("which routes are turned", () => {
 
 	it("is asked by every mount that draws a bar", () => {
 		const chrome = read("./HostChrome.svelte");
-		const rt = read("../../ReTreever/src/routes/(getcache)/+layout@.svelte");
-		for (const src of [chrome, rt]) expect(src).toMatch(/hasBottomBar\(/);
+		const gc = read("../../getCache/src/routes/(getcache)/+layout@.svelte");
+		for (const src of [chrome, gc]) expect(src).toMatch(/hasBottomBar\(/);
 	});
 
 	it("leaves every other route standing up", () => {
@@ -134,7 +134,7 @@ describe("which routes are turned", () => {
 		const mounts = [
 			read("../../getCache_OnlineMap/routes/+layout.svelte"),
 			read("../src/routes/(gc)/+layout.svelte"),
-			read("../../ReTreever/src/routes/(getcache)/+layout@.svelte"),
+			read("../../getCache/src/routes/(getcache)/+layout@.svelte"),
 		];
 		for (const m of mounts) expect(m).toMatch(/isLandscapeRoute\(/);
 	});

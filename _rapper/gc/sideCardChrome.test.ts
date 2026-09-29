@@ -14,7 +14,7 @@ const read = (rel: string) =>
 
 const card = read("./SideCard.svelte");
 const gcLayout = read(
-	"../../ReTreever/src/routes/(getcache)/+layout@.svelte",
+	"../../getCache/src/routes/(getcache)/+layout@.svelte",
 );
 
 const centredRule = () =>
