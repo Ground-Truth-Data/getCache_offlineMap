@@ -1,5 +1,5 @@
 /** The blob engine, app-wide: a pin dropped anywhere earns its blob while
- * there is still signal. One queue, one download at a time. A blob is its
+ * there is signal, or the moment it comes back. One queue, one download at a time. A blob is its
  * pin's spot, not its ground — a pin over an older blob's tiles still earns
  * its own row and photo, fetching nothing. A deleted pin takes its blob. */
 
@@ -169,8 +169,9 @@ export function startBlobService(ports: HostPorts): () => void {
 	void keepStorage();
 	// A spot that leaves this set was deleted or moved.
 	let seen: Map<string, [number, number]> | null = null;
-	const off = ports.onPlacesChanged(() => {
-		if (!ports.ready()) return;
+	// Diff the pins against disk rather than remember what failed: a pin that missed its signal is just a pin with no blob.
+	const reconcile = (): Map<string, [number, number]> | null => {
+		if (!ports.ready()) return null;
 		const now = new Map<string, [number, number]>();
 		for (const p of ports.places()) {
 			for (const [lng, lat] of p.anchors) {
@@ -178,12 +179,21 @@ export function startBlobService(ports: HostPorts): () => void {
 				void queueBlob(lng, lat, { photo: !p.corridor });
 			}
 		}
+		return now;
+	};
+	const off = ports.onPlacesChanged(() => {
+		const now = reconcile();
+		if (!now) return;
+		// Only a place change deletes; a reconnect never does.
 		if (seen)
 			for (const [id, at] of seen) if (!now.has(id)) void removeBlob(id, at);
 		seen = now;
 	});
+	const online = (): void => void reconcile();
+	window.addEventListener("online", online);
 	stop = () => {
 		off();
+		window.removeEventListener("online", online);
 		stop = null;
 	};
 	return stop;

@@ -7,6 +7,8 @@ const disk: Region[] = [];
 const downloads: Array<[number, number]> = [];
 const photosDropped: string[] = [];
 let release: (() => void) | null = null;
+let failNext = false;
+vi.stubGlobal("window", new EventTarget());
 
 let keepAsked = 0;
 vi.mock("./store", () => ({
@@ -40,6 +42,10 @@ vi.mock("./download", () => ({
 		opts: { photo?: boolean } = {},
 	) => {
 		downloads.push([lng, lat]);
+		if (failNext) {
+			failNext = false;
+			throw new TypeError("Failed to fetch");
+		}
 		await new Promise<void>((r) => {
 			release = r;
 		});
@@ -241,6 +247,37 @@ describe("blob service", () => {
 		await tick();
 		await tick();
 		expect(disk.map((r) => r.photo)).toEqual([false, undefined]);
+	});
+
+	it("a pin dropped with no signal earns its blob when signal returns; a reconnect deletes nothing", async () => {
+		failNext = true;
+		const events: string[] = [];
+		const off = onBlob((e) => events.push(e.kind));
+		const list = [{ anchors: [PENTICTON], lastTouched: soon(), corridor: false }];
+		const { ports } = fakePorts(() => list);
+		const stop = startBlobService(ports);
+		await tick();
+		await tick();
+		expect(events).toEqual(["start", "failed"]);
+		expect(blobBusy()).toBe(false);
+		window.dispatchEvent(new Event("online"));
+		await tick();
+		expect(downloads).toEqual([PENTICTON, PENTICTON]);
+		release?.();
+		await tick();
+		await tick();
+		expect(disk.length).toBe(1);
+		window.dispatchEvent(new Event("online"));
+		await tick();
+		await tick();
+		expect(downloads.length).toBe(2);
+		expect(disk.length).toBe(1);
+		expect(events).toEqual(["start", "failed", "start", "landed"]);
+		stop();
+		window.dispatchEvent(new Event("online"));
+		await tick();
+		expect(downloads.length).toBe(2);
+		off();
 	});
 
 	it("a pin inside an older blob's ground still earns its own blob", async () => {
