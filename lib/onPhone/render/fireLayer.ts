@@ -320,9 +320,10 @@ function cardHtml(title: string, rows: readonly CardRow[]): string {
     return `<div class="rt-fire-card"><h4>${esc(title)}</h4>${body}</div>`;
 }
 
-// Only if the gazetteer is already warm: a tap must never wait on a 5 MB fetch.
+// The gazetteer loads on the first tap, not at boot; that tap shows coordinates rather than waiting on the fetch.
 function whereFor(at: [number, number]): string | null {
     const places = peekPlaces();
+    if (places === null) warmPlaces();
     if (places === null || places.length === 0) return null;
     const ref = placeReference(at, places);
     return ref.primary === null ? null : ref.text;
@@ -424,7 +425,6 @@ export function attachFireLayer(
             ? entries.reduce((m, e) => Math.max(m, e.fetchedAt), 0)
             : null;
         setPlacesRegion([c0.lng, c0.lat]);
-        warmPlaces();
         const { fc, shown } = fireFeatureCollection({
             hotspots: all,
             origin,

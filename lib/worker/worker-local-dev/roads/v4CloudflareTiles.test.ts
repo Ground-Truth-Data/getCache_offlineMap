@@ -4,8 +4,6 @@ import { BLOB_RADIUS_KM, BLOB_ZOOMS } from "../../../contract/roadBlob";
 import { BLOB_MIN_Z } from "../../../contract/blob";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-vi.mock("@sentry/sveltekit", () => ({ captureMessage: vi.fn() }));
-
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

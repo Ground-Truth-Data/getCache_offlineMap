@@ -5,8 +5,6 @@
 import "fake-indexeddb/auto";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@sentry/sveltekit", () => ({ captureMessage: vi.fn() }));
-
 import Pbf from "pbf";
 import { VectorTile } from "@mapbox/vector-tile";
 import {

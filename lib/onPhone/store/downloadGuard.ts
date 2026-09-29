@@ -1,5 +1,4 @@
 /** downloadGuard — a HARD circuit breaker on offline-map network volume; a safety floor, never a tuning knob. Once tripped, only a reload resets it — a runaway must not be able to un-trip itself. */
-import * as Sentry from "@sentry/sveltekit";
 
 /** One satellite bake's tile grid. ~515 legit (2 km z17, the MapTiler bake); >this = an absurd area → stop cold. */
 const PER_BAKE_TILE_CAP = 550;
@@ -33,27 +32,14 @@ export class DownloadBudgetError extends Error {
 }
 
 function trip(reason: string, extra: Record<string, unknown>): never {
-    // Flip the breaker + alert Sentry exactly once; subsequent guards just throw.
+    // Flip the breaker and log exactly once; subsequent guards just throw.
     if (!tripped) {
         tripped = true;
         trippedReason = reason;
-        // Loud operator signal — this should NEVER fire in normal use.
         console.error(
             `[downloadGuard] 🛑 CIRCUIT TRIPPED — offline-map download runaway blocked: ${reason}`,
             { ...extra, sessionTiles, sessionPacks },
         );
-        try {
-            Sentry.captureMessage(
-                `[downloadGuard] offline-map runaway BLOCKED — ${reason}`,
-                {
-                    level: "fatal",
-                    extra: { ...extra, sessionTiles, sessionPacks },
-                    tags: { area: "offline-download-guard" },
-                },
-            );
-        } catch {
-            // Sentry must never mask the real failure — the throw below is what matters.
-        }
     }
     throw new DownloadBudgetError(reason);
 }
