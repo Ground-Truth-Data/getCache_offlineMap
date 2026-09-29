@@ -1,7 +1,7 @@
 # offline-tiles — range-serve the planet from R2
 
 A Cloudflare Worker that turns one Protomaps **planet `.pmtiles`** archive on
-**R2** into what the offline map downloads. Self-contained: own `package.json`
+**R2** into what the offline preview downloads. Self-contained: own `package.json`
 and `node_modules`, touches nothing above this folder.
 
 ```

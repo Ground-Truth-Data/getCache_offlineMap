@@ -1,9 +1,9 @@
-# Offline Map — Laws, Rules and Stack
+# Offline Preview — Laws, Rules and Stack
 
-> The rules the offline map (V10, `/app/offlinev10`) must obey, and what it is
+> The rules the offline preview (V10, `/app/offlinev10`) must obey, and what it is
 > built from. How the route works file by file: [`routes/offlinev10/README.md`](../routes/offlinev10/README.md).
 
-The offline map lets Get Cache work with **no signal**: a downloaded area (a
+The offline preview lets Get Cache work with **no signal**: a downloaded area (a
 blob) shows its roads, water and satellite photo over a dark world base,
 around the user's own pins — plus the two **safety layers**, fires and
 hospitals. It runs on **MapLibre GL**; the online map (`/app/map`) stays on
@@ -54,7 +54,7 @@ wrong change. Overzoom past `MAX_Z` is accepted — it is what makes this law
 affordable.
 
 **Tier 2 — process laws:**
-6. **Reuse the tool chrome — never rebuild it.** The offline map mounts the
+6. **Reuse the tool chrome — never rebuild it.** The offline preview mounts the
    online map's drawer, eye/crow and scale bar; a new version swaps only the
    base/data layer.
 7. **Verify with TESTS, never eyeballs.** A law that matters gets a test that
@@ -115,7 +115,7 @@ folders are its twins — never delete one); bucket binding and routes in
 
 | package | version | where | what it is |
 |---|---|---|---|
-| [maplibre-gl](https://github.com/maplibre/maplibre-gl-js) | 5.24.0 | phone, offline map | the renderer |
+| [maplibre-gl](https://github.com/maplibre/maplibre-gl-js) | 5.24.0 | phone, offline preview | the renderer |
 | [@protomaps/basemaps](https://github.com/protomaps/basemaps) | 5.7.2 | phone | the DARK style and the planet's tile schema |
 | [pmtiles](https://github.com/protomaps/pmtiles) | 4.4.1 | Worker | reads one tile out of `planet.pmtiles` by ranged read |
 | [fflate](https://github.com/101arrowz/fflate) | 0.8.2 | Worker | gunzip for tiny tiles |

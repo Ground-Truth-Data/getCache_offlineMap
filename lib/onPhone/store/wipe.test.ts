@@ -28,7 +28,7 @@ describe("wipeOfflineData", () => {
 		for (const n of await listDbs()) indexedDB.deleteDatabase(n);
 	});
 
-	it("deletes every offline map database", async () => {
+	it("deletes every offline preview database", async () => {
 		for (const n of WIPE_DBS) await makeDb(n);
 		expect((await listDbs()).sort()).toEqual([...WIPE_DBS].sort());
 

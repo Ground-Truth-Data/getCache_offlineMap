@@ -1,4 +1,4 @@
-/** The offline map's fire renderer. Paints what the bake stored; never fetches. */
+/** The offline preview's fire renderer. Paints what the bake stored; never fetches. */
 import maplibregl from "maplibre-gl";
 import fireIconUrl from "../../assets/fire_icon.webp";
 import fireIntensity1 from "../../assets/fire_intensity/1-fire_intensity.webp";

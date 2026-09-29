@@ -112,7 +112,7 @@ function heapMb(): number | null {
 let heap = $state<number | null>(null);
 let heap0 = $state<number | null>(null);
 
-// The offline map's problem is the interaction SPIKE, which a live read can't catch.
+// The offline preview's problem is the interaction SPIKE, which a live read can't catch.
 let peak = $state<number | null>(null);
 let floor = $state<number | null>(null);
 let heapSum = 0;

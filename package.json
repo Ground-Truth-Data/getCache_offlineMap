@@ -3,7 +3,7 @@
 	"version": "0.0.0",
 	"private": true,
 	"type": "module",
-	"description": "Offline map engine. A CHILD: takes its host as HostPorts props and stands alone without one.",
+	"description": "Offline preview engine. A CHILD: takes its host as HostPorts props and stands alone without one.",
 	"exports": {
 		"./lib/*": "./lib/*",
 		"./routes/*": "./routes/*",

@@ -1,14 +1,15 @@
-# Get Cache offline map — handoff
+# Get Cache offline preview — handoff
 
 Get Cache is a mobile app used in the reforestation industry. See it on the
 [App Store (iPhone)](https://apps.apple.com/ca/app/get-cache/id6765921100) and the
 [Play Store (Android)](https://play.google.com/store/apps/details?id=com.retreever.map).
 
-The feature is an offline map: what data is stored locally on the phone (or
-browser, since it is a Capacitor app). The vector roads and satellite tile
+The feature is an offline preview: it previews the map data stored on the
+phone (or browser, since it is a Capacitor app) for use offline, and works
+with no network. The vector roads and satellite tile
 "blobs" are downloaded dynamically based on the user's location and the pins
 and polygons added to the map. Repos:
-[offline map GitHub](https://github.com/Ground-Truth-Data/getCache_offlineMap) ·
+[offline preview GitHub](https://github.com/Ground-Truth-Data/getCache_offlineMap) ·
 [rapper GitHub](https://github.com/Ground-Truth-Data/rapper)
 
 ## Running it
@@ -38,7 +39,7 @@ ever download, which looks like a bug rather than missing configuration. The
 If the satellite photo appears but roads never do, `.env` is missing or wrong
 — the console says so on the first line (`PUBLIC_GC_tiles_prod_worker is not set`).
 `?at=lat,lng&z=` jumps the camera (lat first, the order a human reads one off
-a screen). `/` lands on the offline map too — see `hooks.ts`. The debug rails
+a screen). `/` lands on the offline preview too — see `hooks.ts`. The debug rails
 are a toggle on the map itself, not a second URL.
 
 I made an [explainer video about the "blobs"](https://youtu.be/ksRR6UpchDc).
@@ -69,7 +70,7 @@ licence is per-account; FIRMS is free at firms.modaps.eosdis.nasa.gov).
 
 ## What this is
 
-The offline map is V10, `routes/offlinev10/` (its `README.md`), served at
+The offline preview is V10, `routes/offlinev10/` (its `README.md`), served at
 `/app/offlinev10` by every parent. It downloads map tiles and satellite
 photos for blobs around pins, stores them in IndexedDB, and renders them
 (MapLibre GL) with no network. Tiles come from the Worker; satellite photos
@@ -87,12 +88,12 @@ attached to a stand-in produce confident wrong answers.
 | Fires | NASA FIRMS — VIIRS on NOAA-20, NOAA-21 and Suomi-NPP, last 48 h, proxied through the Worker's `/fires` route so the API key stays a Worker secret | yes — `attachFireLayer` (`lib/onPhone/render/fireLayer.ts`) | 500 km (`lib/shared/fireContract.ts`) |
 | Hospitals | the Worker's `/hospitals` route, from the world list bundled in the Worker | yes | 500 km |
 
-A phone holds at most 1 GB of offline map data (`routes/offlinev10/budget.ts`).
+A phone holds at most 1 GB of offline preview data (`routes/offlinev10/budget.ts`).
 
 ## THE ONE RULE
 
 All map code belongs in THIS repo. Not in ReTreever, not split across both.
-"Offline map" is a narrow name for a folder that also holds fires, hospitals
+`getCache_OfflineMap` is a narrow name for a folder that also holds fires, hospitals
 and places — deliberate: this repo has the debugger, so code here can be
 watched while it runs. Do not propose renaming it or a second "shared map" repo.
 

@@ -1,4 +1,4 @@
-/** The narrow interface between the offline map engine and whatever app hosts it. */
+/** The narrow interface between the offline preview engine and whatever app hosts it. */
 
 export interface HostPlace {
 	/** [lng, lat]. A point has one; a line has many. */

@@ -47,7 +47,7 @@ describe("usesBundledGlyphs", () => {
 });
 
 describe("glyphStack", () => {
-    it("gives the offline map only the family it actually bundles", () => {
+    it("gives the offline preview only the family it actually bundles", () => {
         const m = mapWithGlyphs(`http://getcache.localhost:5173${BUNDLED}`);
         expect(glyphStack(m)).toEqual(["Noto Sans Regular"]);
         // Bold has no bundled variant — asking for one is what 404s.

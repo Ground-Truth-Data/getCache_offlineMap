@@ -1,5 +1,5 @@
 /**
- * One JSON snapshot of the offline map's live session. No app imports: live
+ * One JSON snapshot of the offline preview's live session. No app imports: live
  * readings arrive as a parameter (debugReport.portability.test.ts).
  */
 import { BLOB_TILE_Z, GRID_RADIUS_KM } from "../contract/grid";

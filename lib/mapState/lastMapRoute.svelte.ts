@@ -1,7 +1,7 @@
 export const ONLINE_MAP_ROUTE = "/app/map";
-export const OFFLINE_MAP_ROUTE = "/app/offlinev10";
+export const OFFLINE_PREVIEW_ROUTE = "/app/offlinev10";
 
-export type MapRoute = typeof ONLINE_MAP_ROUTE | typeof OFFLINE_MAP_ROUTE;
+export type MapRoute = typeof ONLINE_MAP_ROUTE | typeof OFFLINE_PREVIEW_ROUTE;
 
 import { worldStorageSuffix } from "../shared/sandboxDbNames";
 
@@ -14,12 +14,12 @@ function storageKey(): string {
 
 // An unvalidated value would 404 the MAP tab via goto.
 function isMapRoute(v: unknown): v is MapRoute {
-	return v === ONLINE_MAP_ROUTE || v === OFFLINE_MAP_ROUTE;
+	return v === ONLINE_MAP_ROUTE || v === OFFLINE_PREVIEW_ROUTE;
 }
 
-// The offline map is the only map route with a store behind it; `/app/map`
+// The offline preview is the only map route with a store behind it; `/app/map`
 // draws no pins.
-const DEFAULT_MAP_ROUTE: MapRoute = OFFLINE_MAP_ROUTE;
+const DEFAULT_MAP_ROUTE: MapRoute = OFFLINE_PREVIEW_ROUTE;
 
 // ⚠️ localStorage is NOT reactive — read via this $state cell, or the UI silently goes stale.
 // ⚠️ Seed eagerly at module scope — lazy seeding inside $derived throws state_unsafe_mutation.
@@ -77,6 +77,6 @@ export function seeOnMapUrl(
 export function isMapPath(pathname: string): boolean {
 	return (
 		pathname.startsWith(ONLINE_MAP_ROUTE) ||
-		pathname.startsWith(OFFLINE_MAP_ROUTE)
+		pathname.startsWith(OFFLINE_PREVIEW_ROUTE)
 	);
 }

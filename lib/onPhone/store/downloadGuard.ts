@@ -1,4 +1,4 @@
-/** downloadGuard — a HARD circuit breaker on offline-map network volume; a safety floor, never a tuning knob. Once tripped, only a reload resets it — a runaway must not be able to un-trip itself. */
+/** downloadGuard — a HARD circuit breaker on offline-preview network volume; a safety floor, never a tuning knob. Once tripped, only a reload resets it — a runaway must not be able to un-trip itself. */
 
 /** One satellite bake's tile grid. ~515 legit (2 km z17, the MapTiler bake); >this = an absurd area → stop cold. */
 const PER_BAKE_TILE_CAP = 550;
@@ -37,7 +37,7 @@ function trip(reason: string, extra: Record<string, unknown>): never {
         tripped = true;
         trippedReason = reason;
         console.error(
-            `[downloadGuard] 🛑 CIRCUIT TRIPPED — offline-map download runaway blocked: ${reason}`,
+            `[downloadGuard] 🛑 CIRCUIT TRIPPED — offline-preview download runaway blocked: ${reason}`,
             { ...extra, sessionTiles, sessionPacks },
         );
     }

@@ -1,4 +1,4 @@
-# /app/offlinev10 — the offline map, cut on the z10 grid
+# /app/offlinev10 — the offline preview, cut on the z10 grid
 
 > **Measuring network or data usage (the debug page included): run
 > [`tests/netBytes.mjs`](../../tests/netBytes.mjs).** It reads the Chrome DevTools
@@ -23,7 +23,7 @@ What it stands on (bucket, Worker, phone, libraries) and the laws it obeys:
 🗜️ **The gold border is the real border.** It is the edge of the tiles on disk, identical at every zoom.
 🗜️ Airplane mode changes nothing above z8 inside a blob.
 🗜️ Stock parts only: MapLibre, the Protomaps dark style, IndexedDB keyed by tile address.
-🗜️ A phone holds at most 1 GB of offline map data, tiles and photos together (`budget.ts`).
+🗜️ A phone holds at most 1 GB of offline preview data, tiles and photos together (`budget.ts`).
 🗜️ Green means every tile of the blob is on disk, never "the download finished".
 
 ## What a blob is
@@ -110,7 +110,7 @@ refresh.
 The queue lives in `blobService.ts`, started once by
 `(getcache)/+layout@.svelte` beside the bake service. A pin dropped or
 moved anywhere in the app — the online map above all — earns its blob the
-moment it lands, while there is still signal; people open the offline map when
+moment it lands, while there is still signal; people open the offline preview when
 they need it, and by then it is too late. The page only listens (`onBlob`) to
 light the dock and time the paint, and reflects a download that started on
 another page. Pins that existed before the service started are left alone.
@@ -179,7 +179,7 @@ in its BASEMAP card), and the scale bar. The camera is the shared saved one
 online map now reads and writes beside its `#z/lat/lng` hash. So the two
 maps open on the same spot from either side.
 
-`OFFLINE_MAP_ROUTE` (`lastMapRoute.svelte.ts`) is `/app/offlinev10`: the
+`OFFLINE_PREVIEW_ROUTE` (`lastMapRoute.svelte.ts`) is `/app/offlinev10`: the
 online crow, the MAP tab and every "See on map" eye land here, and the crow
 carries `?at&z`. The drawer's LEGEND card opens the shared `MapLegend`
 with the DARK palette's rows (`LEGEND` in style.ts); GRID is the online

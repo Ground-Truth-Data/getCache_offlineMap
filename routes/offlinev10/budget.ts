@@ -1,4 +1,4 @@
-/** How much offline map a phone may hold, tiles and photos together; enforced at the tile store's write boundary. */
+/** How much offline preview data a phone may hold, tiles and photos together; enforced at the tile store's write boundary. */
 
 export const BUDGET_MB = 1024;
 /** A second wall: a thousand small blobs cost little disk but make the coverage geometry slow. */

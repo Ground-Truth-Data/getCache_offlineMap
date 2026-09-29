@@ -10,7 +10,7 @@ vi.stubGlobal("localStorage", {
 vi.stubGlobal("location", { search: "" });
 
 import {
-	OFFLINE_MAP_ROUTE,
+	OFFLINE_PREVIEW_ROUTE,
 	ONLINE_MAP_ROUTE,
 	isMapPath,
 	loadLastMapRoute,
@@ -31,39 +31,39 @@ describe("lastMapRoute", () => {
 
 	describe("the default", () => {
 		// offline is the only map with a store behind its host page's pin renderer
-		it("opens the OFFLINE map when nothing is stored", () => {
-			expect(loadLastMapRoute()).toBe(OFFLINE_MAP_ROUTE);
+		it("opens the offline preview when nothing is stored", () => {
+			expect(loadLastMapRoute()).toBe(OFFLINE_PREVIEW_ROUTE);
 		});
 
 		it("falls back to the default when the stored value is unrecognised", () => {
 			localStorage.setItem(KEY, "/some-route-that-no-longer-exists");
-			expect(loadLastMapRoute()).toBe(OFFLINE_MAP_ROUTE);
+			expect(loadLastMapRoute()).toBe(OFFLINE_PREVIEW_ROUTE);
 		});
 	});
 
 	describe("stickiness — the whole point", () => {
-		it("returns the OFFLINE map after the offline route records itself", () => {
-			saveLastMapRoute(OFFLINE_MAP_ROUTE);
-			expect(loadLastMapRoute()).toBe(OFFLINE_MAP_ROUTE);
+		it("returns the offline preview after its route records itself", () => {
+			saveLastMapRoute(OFFLINE_PREVIEW_ROUTE);
+			expect(loadLastMapRoute()).toBe(OFFLINE_PREVIEW_ROUTE);
 		});
 
 		it("survives a round trip back to online", () => {
-			saveLastMapRoute(OFFLINE_MAP_ROUTE);
+			saveLastMapRoute(OFFLINE_PREVIEW_ROUTE);
 			saveLastMapRoute(ONLINE_MAP_ROUTE);
 			expect(loadLastMapRoute()).toBe(ONLINE_MAP_ROUTE);
 		});
 
 		it("ignores a route that is not one of the two maps", () => {
-			saveLastMapRoute(OFFLINE_MAP_ROUTE);
+			saveLastMapRoute(OFFLINE_PREVIEW_ROUTE);
 			saveLastMapRoute("/app/cache" as never);
-			expect(loadLastMapRoute()).toBe(OFFLINE_MAP_ROUTE);
+			expect(loadLastMapRoute()).toBe(OFFLINE_PREVIEW_ROUTE);
 		});
 	});
 
 	describe("seeOnMapUrl — every eye follows the sticky choice", () => {
 		it("targets the default map, carrying its params", () => {
 			const url = seeOnMapUrl({ map: "m1", feature: "f1" });
-			expect(url).toBe(`${OFFLINE_MAP_ROUTE}?map=m1&feature=f1`);
+			expect(url).toBe(`${OFFLINE_PREVIEW_ROUTE}?map=m1&feature=f1`);
 		});
 
 		it("targets the ONLINE map once online is the last-used one", () => {
@@ -74,19 +74,19 @@ describe("lastMapRoute", () => {
 
 		it("encodes keys that contain URL-significant characters", () => {
 			const url = seeOnMapUrl({ map: "a b&c=d" });
-			expect(url).toBe(`${OFFLINE_MAP_ROUTE}?map=a+b%26c%3Dd`);
+			expect(url).toBe(`${OFFLINE_PREVIEW_ROUTE}?map=a+b%26c%3Dd`);
 		});
 
 		it("accepts a URLSearchParams (the quality704 callers' shape)", () => {
 			const q = new URLSearchParams();
 			q.set("map", "m1");
-			expect(seeOnMapUrl(q)).toBe(`${OFFLINE_MAP_ROUTE}?map=m1`);
+			expect(seeOnMapUrl(q)).toBe(`${OFFLINE_PREVIEW_ROUTE}?map=m1`);
 		});
 
 		it("returns a bare route when there are no params", () => {
 			// quality704's empty param set (goToMapToDropPlot) must not produce a trailing "?"
-			expect(seeOnMapUrl(new URLSearchParams())).toBe(OFFLINE_MAP_ROUTE);
-			expect(seeOnMapUrl()).toBe(OFFLINE_MAP_ROUTE);
+			expect(seeOnMapUrl(new URLSearchParams())).toBe(OFFLINE_PREVIEW_ROUTE);
+			expect(seeOnMapUrl()).toBe(OFFLINE_PREVIEW_ROUTE);
 		});
 	});
 
@@ -96,8 +96,8 @@ describe("lastMapRoute", () => {
 			saveLastMapRoute(ONLINE_MAP_ROUTE);
 
 			vi.stubGlobal("location", { search: "?sandbox=1" });
-			saveLastMapRoute(OFFLINE_MAP_ROUTE);
-			expect(loadLastMapRoute()).toBe(OFFLINE_MAP_ROUTE);
+			saveLastMapRoute(OFFLINE_PREVIEW_ROUTE);
+			expect(loadLastMapRoute()).toBe(OFFLINE_PREVIEW_ROUTE);
 
 			vi.stubGlobal("location", { search: "" });
 			expect(loadLastMapRoute()).toBe(ONLINE_MAP_ROUTE);
@@ -107,7 +107,7 @@ describe("lastMapRoute", () => {
 	describe("isMapPath — which paths light the MAP tab", () => {
 		it("is true for BOTH map routes", () => {
 			expect(isMapPath(ONLINE_MAP_ROUTE)).toBe(true);
-			expect(isMapPath(OFFLINE_MAP_ROUTE)).toBe(true);
+			expect(isMapPath(OFFLINE_PREVIEW_ROUTE)).toBe(true);
 		});
 
 		it("is true for sub-paths and query-bearing paths", () => {

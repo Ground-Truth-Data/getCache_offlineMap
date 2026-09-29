@@ -1,11 +1,11 @@
 <script lang="ts">
-/** The offline map: a blob is whole z10 tiles and the pyramids under them, so
+/** The offline preview: a blob is whole z10 tiles and the pyramids under them, so
  * the gold border IS the data's edge at every zoom. */
 import { dev } from "$app/environment";
 import { goto, replaceState } from "$app/navigation";
 import { page } from "$app/state";
 import MapTopControls from "../../lib/mapUi/MapTopControls.svelte";
-import { OFFLINE_MAP_ROUTE, ONLINE_MAP_ROUTE, saveLastMapRoute } from "../../lib/mapState/lastMapRoute.svelte";
+import { OFFLINE_PREVIEW_ROUTE, ONLINE_MAP_ROUTE, saveLastMapRoute } from "../../lib/mapState/lastMapRoute.svelte";
 import MapLegend from "../../lib/mapUi/MapLegend.svelte";
 import { attachCameraPersistence, loadCamera, MAP_HOME_CENTER } from "../../lib/mapState/mapViewport";
 import { attachDoubleTapToPin } from "../../lib/shared/doubleTapToPin";
@@ -394,7 +394,7 @@ function markPainted(m: maplibregl.Map): void {
 
 onMount(() => {
 	if (!host) return;
-	saveLastMapRoute(OFFLINE_MAP_ROUTE);
+	saveLastMapRoute(OFFLINE_PREVIEW_ROUTE);
 	installProtocol();
 	const { center, zoom } = readUrl();
 	const m = new maplibregl.Map({

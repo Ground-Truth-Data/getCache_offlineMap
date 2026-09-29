@@ -8,7 +8,7 @@ import { configureTilesFromEnv } from "../lib/worker/worker-local-dev/tilesFromE
 configureTilesFromEnv();
 
 const CHILD = {
-	name: "offlineMap",
+	name: "offline preview",
 	owner: "Get Cache",
 	// Casing matters — this becomes a GitHub URL; must match the repo/folder exactly or the link 404s.
 	repo: "getCache_OfflineMap",
