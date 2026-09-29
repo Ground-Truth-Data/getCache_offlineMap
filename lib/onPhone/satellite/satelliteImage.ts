@@ -7,14 +7,9 @@ import { sessionCap, spendBytes } from "../../shared/sessionByteCap.svelte";
 import { kmBetween, kmToDegSpan } from "../../shared/kmGeo";
 import { latToTileY, lngToTileX, tileToLat, tileToLng } from "../../contract/geo";
 import { makeKeyedIdbStore } from "../store/keyedIdbStore";
-import {
-	isBestPhotoSource,
-	type PhotoSource,
-	photoSourceCovers,
-	photoSourcesFor,
-} from "./photoSources";
+import { isBestPhotoSource, PHOTO_SOURCES, type PhotoSource } from "./photoSources";
 
-/** Against Chrome's per-host ceiling; higher risks EOX throttling and starves the concurrent roads download. */
+/** Against Chrome's per-host ceiling; higher starves the concurrent roads download. */
 const SAT_FETCH_CONCURRENCY = 16;
 /** Satellite-photo radius (km); the page spaces line samples by it so discs overlap. */
 export const BAKE_RADIUS_KM = 2;
@@ -37,6 +32,11 @@ export interface SatImage {
 }
 
 const idb = makeKeyedIdbStore<SatImage>({ dbName: DB_NAME, storeName: STORE });
+
+/** The one freshness test: the bake and the photo pass both ask it, so a stale photo cannot be kept by one and re-baked by the other. */
+export function isCurrentPhoto(img: SatImage | undefined): img is SatImage {
+	return !!img && img.bakeVersion === BAKE_VERSION && isBestPhotoSource(img.source);
+}
 
 export async function deleteSatImage(key: string): Promise<void> {
 	await idb.delete(key);
@@ -101,7 +101,7 @@ export function photoReusableFor(
 ): boolean {
 	return (
 		kmBetween(haveCenter, wantCenter) <= PHOTO_REUSE_KM &&
-		isBestPhotoSource(haveSource, wantCenter[0], wantCenter[1])
+		isBestPhotoSource(haveSource)
 	);
 }
 
@@ -114,11 +114,12 @@ function centerOfKey(key: string): [number, number] | null {
 export async function photoCovering(
 	center: [number, number],
 ): Promise<SatImage | undefined> {
-	const exact = await getSatImageByKey(satImageKey(center));
-	if (exact) return exact;
+	// The pin's own key is the caller's to judge: stale there must re-bake, not be "reused".
+	const own = satImageKey(center);
 	let bestKey: string | null = null;
 	let bestKm = PHOTO_REUSE_KM;
 	for (const key of await idb.keys()) {
+		if (key === own) continue;
 		const c = centerOfKey(key);
 		if (!c) continue;
 		const km = kmBetween(center, c);
@@ -280,12 +281,7 @@ export async function bakeSatelliteImage(
 	const key = satImageKey(center);
 	const existing = await idb.get(key);
 	// A stale stamp or a since-beaten source is a miss, so a sharper source reaches ground already saved
-	if (
-		existing &&
-		existing.bakeVersion === BAKE_VERSION &&
-		isBestPhotoSource(existing.source, center[0], center[1])
-	)
-		return existing;
+	if (isCurrentPhoto(existing)) return existing;
 	const covering = await photoCovering(center);
 	if (covering) return covering;
 	if (sessionCap.tripped) return existing ?? null;
@@ -293,8 +289,7 @@ export async function bakeSatelliteImage(
 	if (typeof navigator !== "undefined" && navigator.onLine === false)
 		return existing ?? null;
 
-	for (const src of photoSourcesFor(center[0], center[1])) {
-		if (!(await photoSourceCovers(src, center[0], center[1]))) continue;
+	for (const src of PHOTO_SOURCES) {
 		const out = await bakeFrom(src, center);
 		if (out) {
 			await idb.put(key, out);

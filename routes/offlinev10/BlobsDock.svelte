@@ -10,7 +10,7 @@ import {
 	planPhotoDedup,
 	runPhotoDedup,
 } from "../../lib/onPhone/satellite/photoDedup";
-import { PHOTO_SPEC, type PhotoInfo, photoKey, photoSourceFor } from "./satellite";
+import { PHOTO_SPEC, type PhotoInfo, photoKey } from "./satellite";
 import type { Kept, Region } from "./store";
 
 let {
@@ -63,17 +63,44 @@ let quota = $state<number | null>(null);
 const mb = (b: number) => `${(b / 1048576).toFixed(1)} MB`;
 const kb = (b: number) => (b < 1048576 ? `${Math.round(b / 1024)} KB` : mb(b));
 const photoOf = (r: Region): PhotoInfo | undefined => photos[photoKey(r.lng, r.lat)];
-/** From the photo itself; before it lands, the source a bake here would pick. */
+/** From the photo itself; before it lands, the source a bake will use. */
 const specOf = (r: Region): { name: string; zoom: number; canvasPx: number } => {
 	const p = photoOf(r);
-	if (p) return { name: p.source, zoom: p.zoom, canvasPx: p.canvasPx };
-	const name = photoSourceFor(r.lng, r.lat);
-	return PHOTO_SPEC.sources.find((s) => s.name === name) ?? PHOTO_SPEC.sources[PHOTO_SPEC.sources.length - 1];
+	return p ? { name: p.source, zoom: p.zoom, canvasPx: p.canvasPx } : PHOTO_SPEC.sources[0];
+};
+const health = (r: Region): string =>
+	missing[r.id] === undefined ? "not checked yet" : missing[r.id] === 0 ? "whole — every tile on disk" : `${missing[r.id]} of ${r.tiles} tiles not on disk`;
+/** Everything the row shows, in its words, then the stored row it came from. */
+const report = (r: Region) => {
+	const p = photoOf(r);
+	const s = r.ms / 1000;
+	return {
+		name: nameOf(r),
+		focused: r.id === focus?.id,
+		health: health(r),
+		saved: `${new Date(r.at).toLocaleString()} (${ago(r.at)})`,
+		added: mb(rowBytes(r)),
+		tiles: {
+			count: r.tiles,
+			onDisk: mb(r.bytes),
+			added: r.newBytes == null ? "unknown" : mb(r.newBytes),
+			ground: `${RADIUS_KM} km radius on whole z${ANCHOR_Z} tiles · z${MIN_Z}–z${MAX_Z}`,
+		},
+		photo: r.photo === false ? "follow-me · no pin, no photo" : { ...specOf(r), radiusKm: PHOTO_SPEC.radiusKm, size: p ? kb(p.bytes) : "not baked yet" },
+		fetched: {
+			new: r.fetched,
+			shared: r.tiles - r.fetched,
+			took: secs(r.ms),
+			speed: `${(r.fetched / s).toFixed(0)} tiles/s${r.newBytes == null ? "" : ` · ${(r.newBytes / 1048576 / s).toFixed(1)} MB/s`}`,
+		},
+		painted: r.msPaint == null ? "not yet" : `${secs(r.msPaint)} · ${r.paintMoved ? "moved while landing" : "disk → screen"}`,
+		stored: { region: r, photo: p ?? null },
+	};
 };
 let copied = $state<string | null>(null);
 async function copyJson(r: Region): Promise<void> {
 	try {
-		await navigator.clipboard.writeText(JSON.stringify({ ...r, photo: photoOf(r) ?? null }, null, 2));
+		await navigator.clipboard.writeText(JSON.stringify(report(r), null, 2));
 		copied = r.id;
 	} catch {
 		copied = `!${r.id}`;
@@ -179,7 +206,7 @@ onMount(() => {
 						<span class="focustag">● FOCUSED — LAST PIN BLOB</span>
 					{/if}
 					<div class="row-top">
-						<span class="dot {(missing[r.id] ?? 0) > 0 ? 'evictable' : missing[r.id] === 0 ? 'kept' : 'unknown'}" title={missing[r.id] === undefined ? "not checked yet" : missing[r.id] === 0 ? "whole — every tile on disk" : `${missing[r.id]} of ${r.tiles} tiles not on disk`}></span>
+						<span class="dot {(missing[r.id] ?? 0) > 0 ? 'evictable' : missing[r.id] === 0 ? 'kept' : 'unknown'}" title={health(r)}></span>
 						<button class="name" onclick={() => onFly(r)} title="fly there · {r.id}">{nameOf(r)}</button>
 						{#if (missing[r.id] ?? 0) > 0}
 							<button class="repair" onclick={() => onRepair(r)} disabled={busy} title="fetch the {missing[r.id]} missing tiles">{missing[r.id]} missing · repair</button>

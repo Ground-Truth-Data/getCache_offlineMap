@@ -14,6 +14,7 @@ import {
   MAX_RADIUS_KM,
 } from "../../../lib/worker/firesWorker";
 import { buildPack } from "./packBuilder";
+import { buildTileBatch, MAX_BATCH } from "./tileBatch";
 import {
   cellKeysForDisc,
   HOSPITAL_MAX_KM,
@@ -140,7 +141,7 @@ const EXPOSED_HEADERS = [
 
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, HEAD, POST, OPTIONS",
   "Access-Control-Allow-Headers": "*",
   "Access-Control-Expose-Headers": EXPOSED_HEADERS,
   "Access-Control-Max-Age": "86400",
@@ -152,14 +153,14 @@ export default {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
 
-    if (request.method !== "GET" && request.method !== "HEAD") {
+    const url = new URL(request.url);
+
+    if (request.method !== "GET" && request.method !== "HEAD" && !(request.method === "POST" && url.pathname === "/tiles")) {
       return new Response("Method Not Allowed", {
         status: 405,
         headers: { ...CORS_HEADERS, Allow: "GET, HEAD, OPTIONS" },
       });
     }
-
-    const url = new URL(request.url);
 
     // /bench: TEMP diagnostic — does the R2 binding parallelise reads?
     if (url.pathname === "/bench") {
@@ -333,6 +334,40 @@ export default {
       });
     }
 
+    // POST /tiles: [[z,x,y],…] from the planet archive in one gzipped response, so a blob is a few requests instead of one per tile.
+    if (url.pathname === "/tiles") {
+      let keys: unknown;
+      try {
+        keys = await request.json();
+      } catch {
+        return new Response("Bad Request — expected a JSON body [[z,x,y],…]", { status: 400, headers: CORS_HEADERS });
+      }
+      const valid =
+        Array.isArray(keys) &&
+        keys.length > 0 &&
+        keys.length <= MAX_BATCH &&
+        keys.every((k) => Array.isArray(k) && k.length === 3 && k.every((n) => Number.isInteger(n) && n >= 0) && k[0] <= 20);
+      if (!valid) {
+        return new Response(`Bad Request — 1..${MAX_BATCH} tiles, each [z,x,y] with z ≤ 20`, { status: 400, headers: CORS_HEADERS });
+      }
+      const archive = new PMTiles(new R2Source(env.TILES, env.PMTILES_KEY), cache, decompress);
+      let batch: ArrayBuffer;
+      try {
+        await archive.getHeader();
+        const wanted = keys as Array<[number, number, number]>;
+        // The first read of a cold isolate can hit a PMTiles directory race; the retry runs on the warm directory.
+        batch = await buildTileBatch(archive, wanted).catch(() => buildTileBatch(archive, wanted));
+        batch = await gzipBuf(batch);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return new Response(`Tile batch failed: ${message}`, { status: 502, headers: CORS_HEADERS });
+      }
+      return new Response(batch, {
+        status: 200,
+        headers: { ...CORS_HEADERS, "Content-Type": "application/octet-stream", "X-Pack-Encoding": "gzip" },
+      });
+    }
+
     // /hospitals: world hospitals within km (default 200, max 500), filtered here so the phone never downloads the world's.
     if (url.pathname === "/hospitals") {
       const lng = Number(url.searchParams.get("lng"));
@@ -472,7 +507,7 @@ export default {
 
     const match = TILE_PATH.exec(url.pathname);
     if (match === null) {
-      return new Response("Not Found — expected /{z}/{x}/{y}.pbf, /satellite/{z}/{x}/{y}.jpg, /pack?lng=&lat=, /fires?lng=&lat=, or /hospitals?lng=&lat=&km=", {
+      return new Response("Not Found — expected /{z}/{x}/{y}.pbf, POST /tiles, /satellite/{z}/{x}/{y}.jpg, /pack?lng=&lat=, /fires?lng=&lat=, or /hospitals?lng=&lat=&km=", {
         status: 404,
         headers: CORS_HEADERS,
       });

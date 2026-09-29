@@ -2,7 +2,6 @@
  * The satellite byte cap holds whatever is driving the fetching: here a worker stuck in a
  * loop that reports one tile forever. The cap has to stop the loop itself, not just the count.
  */
-import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const store = new Map<string, unknown>();
@@ -19,7 +18,7 @@ vi.mock("../store/keyedIdbStore", () => ({
 
 /** Nice, France: MapTiler z17, ~300 tiles across 2 km. */
 const PIN: [number, number] = [7.2, 43.68];
-const TILE_BYTES = 28_000;
+const TILE_BYTES = 200_000;
 
 let workers: FakeWorker[] = [];
 let ticks = 0;
@@ -146,13 +145,5 @@ describe("the session byte cap", () => {
 		expect(sessionCap.tripped).toBe(false);
 		expect(sessionCap.spent).toBeGreaterThan(0);
 		expect(sessionCap.spent).toBeLessThan(SESSION_BYTE_CAP);
-	});
-
-	it("puts an alert on screen when it trips", () => {
-		const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
-		const alert = read("../../mapUi/SessionCapAlert.svelte");
-		expect(alert).toContain("{#if sessionCap.tripped}");
-		expect(alert).toContain('role="alert"');
-		expect(read("../../../routes/+layout.svelte")).toContain("<SessionCapAlert />");
 	});
 });

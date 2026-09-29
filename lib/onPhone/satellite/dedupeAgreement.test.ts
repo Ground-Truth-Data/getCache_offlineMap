@@ -1,12 +1,8 @@
 /** THE DEDUPE AGREEMENT: the bake decides whether to skip a download, the sweep whether a photo was redundant — one predicate answers both, or the writer mints photos the sweeper calls waste. */
 import { describe, expect, it } from "vitest";
-import { isBestPhotoSource } from "./photoSources";
 import { photoReusableFor, PHOTO_REUSE_KM } from "./satelliteImage";
 
-/** Argentina — outside every USGS box, so the world rows serve it. */
 const AR: [number, number] = [-63.9235, -27.5171];
-/** Montana — inside the USGS lower-48 box, so USGS wins and the others are beaten. */
-const US: [number, number] = [-110.0, 46.0];
 /** ~300 m east: inside PHOTO_REUSE_KM of its neighbour. */
 const near = ([lng, lat]: [number, number]): [number, number] => [
 	lng + 0.003,
@@ -20,9 +16,8 @@ describe("THE DEDUPE AGREEMENT", () => {
 	});
 
 	it("refuses a near photo whose source has been beaten", () => {
-		// close enough on the ground, but the bake wants USGS here, so it declines to reuse and bakes its own
-		expect(isBestPhotoSource("MapTiler", US[0], US[1])).toBe(false);
-		expect(photoReusableFor("MapTiler", US, near(US))).toBe(false);
+		// close enough on the ground, but the bake wants MapTiler, so it declines to reuse and bakes its own
+		expect(photoReusableFor("USGS", AR, near(AR))).toBe(false);
 	});
 
 	it("reuses a near photo from the best source", () => {

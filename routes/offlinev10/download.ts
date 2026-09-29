@@ -6,7 +6,7 @@
 
 import { noteBytes } from "../../lib/shared/dataMeter.svelte";
 import { sessionCap, spendBytes } from "../../lib/shared/sessionByteCap.svelte";
-import { tileUrl } from "../../lib/worker/worker-local-dev/tilesHost";
+import { tilesBatchUrl } from "../../lib/worker/worker-local-dev/tilesHost";
 import { BudgetError, budgetBytes } from "./budget";
 import { nearestPlace } from "./places";
 import {
@@ -21,7 +21,8 @@ import {
 } from "./store";
 import { rangeTiles, regionRange, type Tile, tileKey } from "./tiles";
 
-const POOL = 32;
+// Tiles per request; the Worker refuses more than 800.
+const PER_REQUEST = 700;
 const BATCH = 64;
 
 export interface Progress {
@@ -111,43 +112,51 @@ async function fetchInto(
 		});
 	};
 
-	let next = 0;
-	const worker = async () => {
-		while (next < todo.length) {
+	const url = tilesBatchUrl();
+	if (url === null)
+		throw new Error(
+			"no tiles host configured — configureTilesHost() must run before a blob downloads.",
+		);
+	try {
+		for (let i = 0; i < todo.length; i += PER_REQUEST) {
 			if (failed) throw failed;
 			if (sessionCap.tripped) throw new Error("session byte cap reached");
 			if (p.bytes > room)
 				throw new BudgetError(budgetBytes() - room, budgetBytes(), p.bytes);
-			const t = todo[next++];
-			const url = tileUrl(t.z, t.x, t.y);
-			if (url === null)
-				throw new Error(
-					"no tiles host configured — configureTilesHost() must run before a blob downloads.",
-				);
-			const res = await fetch(url);
-			if (res.status === 200) {
-				const buf = await res.arrayBuffer();
-				pending.push([tileKey(t), buf]);
-				p.fetched++;
-				p.bytes += buf.byteLength;
-				noteBytes("map tiles", buf.byteLength);
-				spendBytes(buf.byteLength);
-			} else if (res.status === 204) {
-				pending.push([tileKey(t), new ArrayBuffer(0)]);
-				p.empty++;
-			} else {
-				throw new Error(`tile ${tileKey(t)}: HTTP ${res.status}`);
+			const chunk = todo.slice(i, i + PER_REQUEST);
+			const res = await fetch(url, {
+				method: "POST",
+				body: JSON.stringify(chunk.map((t) => [t.z, t.x, t.y])),
+			});
+			if (!res.ok || !res.body)
+				throw new Error(`tile batch: HTTP ${res.status} ${await res.text().catch(() => "")}`.trim());
+			// [uint32 LE manifestLen][manifest JSON][tile bytes in manifest order], gzipped by hand.
+			const buf = new Uint8Array(
+				await new Response(res.body.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer(),
+			);
+			const manifestLen = new DataView(buf.buffer, buf.byteOffset, 4).getUint32(0, true);
+			const manifest = JSON.parse(new TextDecoder().decode(buf.subarray(4, 4 + manifestLen))) as {
+				tiles: Array<{ k: string; n: number }>;
+			};
+			let off = 4 + manifestLen;
+			for (const { k, n } of manifest.tiles) {
+				if (n === 0) {
+					pending.push([k, new ArrayBuffer(0)]);
+					p.empty++;
+				} else {
+					pending.push([k, buf.slice(off, off + n).buffer]);
+					off += n;
+					p.fetched++;
+					p.bytes += n;
+					noteBytes("map tiles", n);
+					spendBytes(n);
+				}
+				if (pending.length >= BATCH) flush();
+				p.done++;
 			}
-			if (pending.length >= BATCH) flush();
-			p.done++;
 			p.ms = performance.now() - t0;
 			onProgress?.(p);
 		}
-	};
-	try {
-		await Promise.all(
-			Array.from({ length: Math.min(POOL, todo.length) }, worker),
-		);
 	} catch (e) {
 		// `written` is only complete once the last batch lands, and the rollback reads it
 		await flushing.catch(() => undefined);

@@ -1,12 +1,13 @@
 /**
- * Hard ceiling on the satellite bytes one page session may fetch, whatever is asking for them.
+ * Loop breaker, not a budget: one pin legitimately costs ~22 MB (roads + a MapTiler photo), so the
+ * ceiling sits far above any real session and only a runaway reaches it. It stops fetching and says
+ * so in the console, never on screen.
  * Bytes are counted at the fetch, one tile at a time, so a bake stuck in a loop is stopped
  * mid-loop rather than reported after the fact. A reload is a new session.
  */
 
-export const SESSION_BYTE_CAP = 20 * 1024 * 1024;
+export const SESSION_BYTE_CAP = 500 * 1024 * 1024;
 
-/** Read by the page: `tripped` is what puts the alert on screen. */
 export const sessionCap = $state({ spent: 0, tripped: false });
 
 /** Count bytes just fetched. False once the cap is crossed (the crossing call included): the caller must stop fetching. */

@@ -23,7 +23,7 @@ vi.mock("../store/keyedIdbStore", () => ({
 }));
 vi.mock("./photoSources", () => ({
 	isBestPhotoSource: () => best,
-	photoSourcesFor: () => [],
+	PHOTO_SOURCES: [],
 	registerPhotoSource: () => {},
 }));
 

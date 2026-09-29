@@ -14,6 +14,7 @@ vi.mock(
 		satImageKey: (c: [number, number]) =>
 			`${c[0].toFixed(4)},${c[1].toFixed(4)}`,
 		getSatImageByKey: async (k: string) => onDisk.get(k),
+		isCurrentPhoto: (img?: { source?: string }) => !!img && img.source !== "USGS",
 		satImageMeta: async () =>
 			[...onDisk.entries()].map(([key, v]) => ({
 				key,
@@ -57,6 +58,13 @@ beforeEach(() => {
 });
 
 describe("the photo pass", () => {
+	it("a photo from a beaten source is re-baked, not kept because one exists", async () => {
+		// the bug: the pass skipped any centre with a photo on disk, so a USGS photo stayed after USGS was dropped
+		onDisk.set(photoKey(...PENTICTON), { ...photo(), source: "USGS" });
+		await bakePhotos([PENTICTON]);
+		expect(bakes).toEqual([PENTICTON]);
+	});
+
 	it("a blob without a photo gets one, keyed on its centre", async () => {
 		const n = await bakePhotos([PENTICTON]);
 		expect(n).toBe(1);

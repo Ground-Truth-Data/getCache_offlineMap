@@ -3,15 +3,13 @@
  * is a green field with a pin on it; the photo is the frame of reference.
  */
 
-import {
-	PHOTO_SOURCES,
-	photoSourcesFor,
-} from "../../lib/onPhone/satellite/photoSources";
+import { PHOTO_SOURCES } from "../../lib/onPhone/satellite/photoSources";
 import {
 	BAKE_RADIUS_KM,
 	bakeSatelliteImage,
 	deleteSatImage,
 	getSatImageByKey,
+	isCurrentPhoto,
 	satImageKey,
 	satImageMeta,
 } from "../../lib/onPhone/satellite/satelliteImage";
@@ -46,7 +44,7 @@ export interface PhotoInfo {
 	canvasPx: number;
 }
 
-const WORLD = PHOTO_SOURCES[PHOTO_SOURCES.length - 1];
+const WORLD = PHOTO_SOURCES[0];
 
 /** Metadata per photo key, never the pixels; the total is reported to the tile store's budget. */
 export async function photoInfo(): Promise<Record<string, PhotoInfo>> {
@@ -63,10 +61,6 @@ export async function photoInfo(): Promise<Record<string, PhotoInfo>> {
 	}
 	notePhotoBytes(total);
 	return out;
-}
-
-export function photoSourceFor(lng: number, lat: number): string {
-	return photoSourcesFor(lng, lat)[0].name;
 }
 
 const listeners = new Set<() => void>();
@@ -101,7 +95,7 @@ async function pass(centres: readonly [number, number][]): Promise<number> {
 	if (Date.now() < pausedUntil) return 0;
 	let landed = 0;
 	for (const [lng, lat] of centres) {
-		if (await getSatImageByKey(photoKey(lng, lat))) continue;
+		if (isCurrentPhoto(await getSatImageByKey(photoKey(lng, lat)))) continue;
 		let img: Awaited<ReturnType<typeof bakeSatelliteImage>> = null;
 		try {
 			img = await bakeSatelliteImage([lng, lat]);

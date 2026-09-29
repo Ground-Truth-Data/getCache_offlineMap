@@ -162,7 +162,7 @@ function note(kind: string, bytes: number): void {
 
 let observer: PerformanceObserver | undefined;
 
-/** Start counting. Idempotent. Reads the existing buffer first: an observer registered after boot sees none of the boot traffic. */
+/** Start counting. Idempotent. `buffered: true` replays the boot traffic already in the timeline, so it is not read separately. */
 export function startDataMeter(): () => void {
 	if (typeof window === "undefined" || observer) return () => undefined;
 
@@ -179,10 +179,11 @@ export function startDataMeter(): () => void {
 	const take = (entries: PerformanceEntryList): void => {
 		for (const e of entries) {
 			const r = e as PerformanceResourceTiming;
+			// Vite serves source modules from the page's own origin; those never reach a phone, and their paths (`/fires/…ts`, `/satellite/…ts`) match the kinds above.
+			if (import.meta.env.DEV && r.name.startsWith(location.origin)) continue;
 			if (typeof r.transferSize === "number") note(kindOf(r.name), r.transferSize);
 		}
 	};
-	take(performance.getEntriesByType("resource"));
 	observer = new PerformanceObserver((list) => take(list.getEntries()));
 	observer.observe({ type: "resource", buffered: true });
 	// The buffer is capped (~250 entries); a minute of panning fills it.

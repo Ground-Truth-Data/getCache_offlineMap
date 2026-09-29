@@ -99,6 +99,12 @@ export function satelliteTileUrl(z: number, x: number, y: number): string | null
 	return h === null ? null : `${h}/satellite/${z}/${x}/${y}.jpg`;
 }
 
+/** POST [[z,x,y],…] here for many raw tiles in one gzipped response. */
+export function tilesBatchUrl(): string | null {
+	const h = tilesHost();
+	return h === null ? null : `${h}/tiles`;
+}
+
 export function hospitalsUrl(
 	lng: number,
 	lat: number,

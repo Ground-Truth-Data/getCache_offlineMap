@@ -3,7 +3,6 @@ import Layout from "$rig/Layout.svelte";
 import PhoneRig from "$gc/PhoneRig.svelte";
 import logoUrl from "$gc/assets/GC_fly_logo_transparent.webp";
 import iconUrl from "$gc/assets/favicon.png";
-import SessionCapAlert from "../lib/mapUi/SessionCapAlert.svelte";
 import { configureTilesFromEnv } from "../lib/worker/worker-local-dev/tilesFromEnv";
 
 configureTilesFromEnv();
@@ -19,6 +18,5 @@ let { children } = $props();
 </script>
 
 <Layout child={CHILD} logo={logoUrl} icon={iconUrl}>
-	<SessionCapAlert />
 	<PhoneRig>{@render children()}</PhoneRig>
 </Layout>
