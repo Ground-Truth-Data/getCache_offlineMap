@@ -8,6 +8,7 @@ import MapPopoverShell from "../panels/MapPopoverShell.svelte";
 import type {
 	MapHostPorts,
 	MapQ704DeckExports,
+	MapQ704PlotEdit,
 	MapQ704PlotPinData,
 	MapQ704PlotRow,
 	MapShareFormat,
@@ -45,10 +46,7 @@ function atvShare(node: HTMLElement) {
 // Never discard a plot on unmount: only the host's "cancel plot" gate discards.
 const mapFeatureKey = $derived((feature?.properties?.mapFeatureKey as string) ?? "");
 const isCreate = $derived(pendingPlotNo != null);
-// plotByGpsKey reads the store imperatively; plotVersion must bump after every write or `counted` freezes.
-let plotVersion = $state(0);
 const plot = $derived.by<MapQ704PlotPinData | null>(() => {
-	void plotVersion;
 	if (!q704) return null;
 	if (isCreate) return q704.pendingDropPinData();
 	return mapFeatureKey ? q704.plotByGpsKey(mapFeatureKey) : null;
@@ -187,21 +185,32 @@ const missingReported = new Set<string>();
 
 $effect(() => {
 	if (!hydrated || !q704) return;
-	// Bump plotVersion ONLY on a real write, or this effect loops forever.
-	let changed = false;
-	for (const r of rows) {
-		// 0 is the not-yet-numbered value; writing it earns a "missing" that rolls the swipe back every pass.
-		if (r.plotNo == null || r.plotNo <= 0) continue;
-		if (!r.committed) continue;
-		const outcome = q704.updateActivePlot(r.id, {
-			planted: r.planted,
-			plantableSpotsOverride: r.plantableSpotsOverride,
-			plantableSpots: r.plantableSpots,
-			faults: [...r.faults],
-			comment: r.comment,
-			species: r.species?.map((s) => ({ ...s })),
+	// 0 is the not-yet-numbered value; writing it earns a "missing" that rolls the swipe back every pass.
+	const edits = rows
+		.filter((r) => r.plotNo != null && r.plotNo > 0 && r.committed)
+		.map((r) => ({
+			r,
+			fields: {
+				planted: r.planted,
+				plantableSpotsOverride: r.plantableSpotsOverride,
+				plantableSpots: r.plantableSpots,
+				faults: [...r.faults],
+				comment: r.comment,
+				species: r.species?.map((s) => ({ ...s })),
+			},
+		}));
+	void commitEdits(q704, edits);
+});
+
+async function commitEdits(
+	q: NonNullable<typeof q704>,
+	edits: { r: MapQ704PlotRow; fields: MapQ704PlotEdit }[],
+): Promise<void> {
+	for (const { r, fields } of edits) {
+		const outcome = await q.updateActivePlot(r.id, fields).catch((e) => {
+			ports.ui.reportSwallowed("PlotMapPopoverV2:commit", e, { plotNo: r.plotNo ?? 0, mapFeatureKey });
+			return "missing" as const;
 		});
-		if (outcome === "updated") changed = true;
 		if (outcome === "missing") {
 			// A refused write persisted nothing: roll the swipe back so the row never looks filed while it lives only in memory.
 			r.committed = false;
@@ -217,13 +226,14 @@ $effect(() => {
 			}
 		}
 	}
-	if (changed) plotVersion += 1;
-});
+}
 
 // Species must persist BEFORE the plot is filed, so this does not wait on r.committed.
 $effect(() => {
 	if (!hydrated || !q704) return;
-	q704.setActiveSpeciesChoices([...block.speciesChoices]);
+	void q704
+		.setActiveSpeciesChoices([...block.speciesChoices])
+		.catch((e) => ports.ui.reportSwallowed("PlotMapPopoverV2:species", e, {}));
 });
 
 // The unfinished-plot gate lives in the HOST so X and tap-outside share ONE gate.

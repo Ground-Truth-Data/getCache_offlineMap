@@ -257,8 +257,8 @@ export interface MapQ704Ports {
 	plotByGpsKey(gpsFeatureKey: string): MapQ704PlotPinData | null;
 	plotFullCodeByGpsKey(gpsFeatureKey: string): string;
 	/** `rowId` is `q`-prefixed or the bare store key. */
-	updateActivePlot(rowId: string, fields: MapQ704PlotEdit): MapQ704WriteOutcome;
-	setActiveSpeciesChoices(choices: string[]): void;
+	updateActivePlot(rowId: string, fields: MapQ704PlotEdit): Promise<MapQ704WriteOutcome>;
+	setActiveSpeciesChoices(choices: string[]): Promise<void>;
 	getPendingDrop(): MapQ704PendingDrop | null;
 	pendingDropPinData(): MapQ704PlotPinData | null;
 }
