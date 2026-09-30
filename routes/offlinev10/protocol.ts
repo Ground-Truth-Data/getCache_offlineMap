@@ -5,7 +5,7 @@
  * different cut.
  */
 
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import { clipTile, type Rect } from "./clip";
 import { getTile, PHOTO_PREFIX, regionsSnapshot } from "./store";
 import { ANCHOR_Z, rangeBox, rangeContains, toMerc } from "./tiles";

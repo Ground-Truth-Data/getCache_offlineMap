@@ -18,7 +18,7 @@
 		"@turf/area": "^7.3.2",
 		"@turf/length": "^7.3.2",
 		"mapbox-gl": "^3.24.0",
-		"maplibre-gl": "^5.24.0",
+		"maplibre-gl": "^6.11.0",
 		"pbf": "^4.0.1"
 	},
 	"peerDependencies": {

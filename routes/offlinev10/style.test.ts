@@ -25,7 +25,7 @@ function at(
 	const spec = (latest as unknown as Record<string, Record<string, unknown>>)[
 		`paint_${layerType}`
 	][key];
-	const r = createPropertyExpression(value, spec as never);
+	const r = createPropertyExpression(value, key, spec as never);
 	if (r.result !== "success")
 		throw new Error(r.value.map((e) => e.message).join());
 	return r.value.evaluate({ zoom }, {} as never) as number;

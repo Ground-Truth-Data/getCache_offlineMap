@@ -1,5 +1,5 @@
 /** The offline preview's fire renderer. Paints what the bake stored; never fetches. */
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import fireIconUrl from "../../assets/fire_icon.webp";
 import fireIntensity1 from "../../assets/fire_intensity/1-fire_intensity.webp";
 import fireIntensity2 from "../../assets/fire_intensity/2-fire_intensity.webp";
@@ -78,7 +78,7 @@ export interface FireLayerOptions {
     readonly origins?: () => readonly (readonly [number, number])[];
 }
 
-// Decoded before any layer can ask for it: MapLibre warns in the same tick as `styleimagemissing`; lazy because `Image` is absent in SSR
+// Decoded before any layer can ask for it, so every addImage is synchronous; lazy because `Image` is absent in SSR
 let flame: HTMLImageElement | null = null;
 let flameLoad: Promise<void> | null = null;
 function flameDecoded(): Promise<void> {
@@ -451,11 +451,9 @@ export function attachFireLayer(
 
     const onStyle = (): void => void paint();
     map.on("style.load", onStyle);
-    // MapLibre only accepts an image added synchronously inside this listener.
-    const onMissing = (e: { id: string }): void => {
-        if (e.id === FIRE_ICON) ensureFireIcon(map);
-    };
-    map.on("styleimagemissing", onMissing);
+    map.setMissingStyleImageResolver((id) => {
+        if (id === FIRE_ICON) ensureFireIcon(map);
+    });
     void paint();
 
     // Tapping a cluster opens its summary, never a zoom.
@@ -541,7 +539,7 @@ export function attachFireLayer(
         map.off("click", FIRE_LAYER_IDS.cluster, onCluster);
         map.off("click", FIRE_LAYER_IDS.clusterIcon, onCluster);
         map.off("style.load", onStyle);
-        map.off("styleimagemissing", onMissing);
+        map.setMissingStyleImageResolver(null);
     };
     handle.repaint = (): void => void paint();
     return handle as FireLayerHandle;

@@ -1,8 +1,6 @@
 /**
- * MapLibre fires `styleimagemissing` and warns in the SAME tick unless a
- * listener already called `addImage` — an async `loadImage` always loses that
- * race, so the flame must be decoded once before the layers exist, and every
- * registration after must be synchronous.
+ * The flame is decoded once before the layers exist, so every registration
+ * after — including the missing-image resolver's — is a synchronous addImage.
  *
  * Source-text scan: this module reaches bundler-only asset imports and cannot
  * be imported under vitest.
@@ -41,13 +39,14 @@ describe("the flame registers synchronously", () => {
 		expect(addAt).toBeGreaterThan(waitAt);
 	});
 
-	it("re-registers inside styleimagemissing, for its own id only", () => {
-		const at = raw.indexOf('"styleimagemissing"');
-		const handler = raw.slice(at - 200, at);
-		expect(handler).toMatch(/e\.id === FIRE_ICON\) ensureFireIcon\(map\)/);
+	it("re-registers through the missing-image resolver, for its own id only", () => {
+		const at = raw.indexOf("setMissingStyleImageResolver((id)");
+		const resolver = raw.slice(at, at + 200);
+		expect(at).toBeGreaterThan(-1);
+		expect(resolver).toMatch(/id === FIRE_ICON\) ensureFireIcon\(map\)/);
 	});
 
 	it("unbinds on dispose", () => {
-		expect(raw).toMatch(/map\.off\(\s*"styleimagemissing"/);
+		expect(raw).toContain("setMissingStyleImageResolver(null)");
 	});
 });

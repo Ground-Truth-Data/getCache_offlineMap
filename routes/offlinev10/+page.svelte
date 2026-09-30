@@ -19,8 +19,10 @@ import { soloFireOrigins, soloHostPorts, soloMapPorts } from "../../lib/shared/s
 import type { HostPorts } from "../../lib/shared/hostPorts";
 import type { MapDrawControlsExports, MapHostPorts } from "../../lib/shared/mapHostPorts";
 import type { Map as MapboxMap } from "mapbox-gl";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+// MapLibre finds its worker beside its own file, which pre-bundling moves; Vite bundles it whole here instead.
+import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { onMount } from "svelte";
 import BlobsDock from "./BlobsDock.svelte";
 import ConfigDock, { type LayerRow, type Light } from "./ConfigDock.svelte";
@@ -396,6 +398,7 @@ onMount(() => {
 	if (!host) return;
 	saveLastMapRoute(OFFLINE_PREVIEW_ROUTE);
 	installProtocol();
+	maplibregl.setWorkerUrl(maplibreWorkerUrl);
 	const { center, zoom } = readUrl();
 	const m = new maplibregl.Map({
 		container: host,

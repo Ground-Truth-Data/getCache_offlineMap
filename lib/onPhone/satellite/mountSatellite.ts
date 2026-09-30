@@ -1,6 +1,6 @@
 // Pure: map, blob and its own registries only. Area selection stays with the caller.
 import type * as mapboxgl from "maplibre-gl";
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 import {
     BAKE_RADIUS_KM,
     getSatImageByKey,

@@ -5,7 +5,7 @@
 // Prefer an explicit injection point where one exists (fireLayer's popupLib) — this file is only for helpers with no such seam.
 
 import type mapboxgl from "mapbox-gl";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 
 // Mapbox is never imported here: the offline route is MapLibre-only, and a static import would ship Mapbox's ~1.7 MB to it. A Mapbox map's creator hands the library over before its first marker.
 let mapbox: typeof mapboxgl | undefined;
