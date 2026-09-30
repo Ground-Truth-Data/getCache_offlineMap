@@ -2,13 +2,20 @@
 
 const browser = typeof window !== "undefined";
 
-// fires defaults ON and RE-ARMS ITSELF (FIRE_HIDE_TTL_MS) so hiding it can never become a silent standing preference
-export type OverlayKind = "pins" | "plots" | "shapes" | "pdf" | "fires";
+export type OverlayKind =
+	| "pins"
+	| "plots"
+	| "shapes"
+	| "pdf"
+	| "fires"
+	| "hospitals";
+
+// Safety layers RE-ARM THEMSELVES after REARM_TTL_MS, so hiding one can never become a silent standing preference.
+export const REARMING: readonly OverlayKind[] = ["fires", "hospitals"];
+export const REARM_TTL_MS = 12 * 60 * 60 * 1000;
 
 const STORAGE_KEY = "retreever-overlay-visibility";
-const FIRE_HIDDEN_AT_KEY = "retreever-fires-hidden-at";
-
-export const FIRE_HIDE_TTL_MS = 12 * 60 * 60 * 1000;
+const hiddenAtKey = (kind: OverlayKind): string => `retreever-${kind}-hidden-at`;
 
 type VisState = Record<OverlayKind, boolean>;
 
@@ -18,14 +25,15 @@ const DEFAULTS: VisState = {
 	shapes: true,
 	pdf: true,
 	fires: true,
+	hospitals: true,
 };
 
-// every failure path lands on SHOWING fires (fail open, not closed)
-function fireHideExpired(): boolean {
+// every failure path lands on SHOWING (fail open, not closed)
+function hideExpired(kind: OverlayKind): boolean {
 	try {
-		const at = Number(localStorage.getItem(FIRE_HIDDEN_AT_KEY));
+		const at = Number(localStorage.getItem(hiddenAtKey(kind)));
 		if (!Number.isFinite(at) || at <= 0) return true;
-		return Date.now() - at >= FIRE_HIDE_TTL_MS;
+		return Date.now() - at >= REARM_TTL_MS;
 	} catch {
 		return true;
 	}
@@ -37,30 +45,19 @@ function load(): VisState {
 		const raw = localStorage.getItem(STORAGE_KEY);
 		if (!raw) return { ...DEFAULTS };
 		const parsed = JSON.parse(raw) as Partial<VisState>;
-		return {
-			pins: parsed.pins ?? true,
-			plots: parsed.plots ?? true,
-			shapes: parsed.shapes ?? true,
-			pdf: parsed.pdf ?? true,
-			fires: (parsed.fires ?? true) || fireHideExpired(),
-		};
+		const loaded = { ...DEFAULTS };
+		for (const kind of Object.keys(DEFAULTS) as OverlayKind[]) {
+			loaded[kind] =
+				(parsed[kind] ?? true) ||
+				(REARMING.includes(kind) && hideExpired(kind));
+		}
+		return loaded;
 	} catch {
 		return { ...DEFAULTS };
 	}
 }
 
 const state = $state<VisState>(load());
-
-if (browser && state.fires) {
-	try {
-		if (localStorage.getItem(FIRE_HIDDEN_AT_KEY) !== null) {
-			localStorage.removeItem(FIRE_HIDDEN_AT_KEY);
-			localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-		}
-	} catch {
-		// codestyle-allow-swallow: a blocked localStorage must not break the map.
-	}
-}
 
 function persist(): void {
 	if (!browser) return;
@@ -87,6 +84,9 @@ export const overlayVisibility = {
 	get fires() {
 		return state.fires;
 	},
+	get hospitals() {
+		return state.hospitals;
+	},
 	isVisible(kind: OverlayKind): boolean {
 		return state[kind];
 	},
@@ -95,10 +95,10 @@ export const overlayVisibility = {
 	},
 	set(kind: OverlayKind, visible: boolean): void {
 		state[kind] = visible;
-		if (kind === "fires" && browser) {
+		if (REARMING.includes(kind) && browser) {
 			try {
-				if (visible) localStorage.removeItem(FIRE_HIDDEN_AT_KEY);
-				else localStorage.setItem(FIRE_HIDDEN_AT_KEY, String(Date.now()));
+				if (visible) localStorage.removeItem(hiddenAtKey(kind));
+				else localStorage.setItem(hiddenAtKey(kind), String(Date.now()));
 			} catch {
 				// codestyle-allow-swallow: a blocked localStorage must not break the map.
 			}

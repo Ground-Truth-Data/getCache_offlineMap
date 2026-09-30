@@ -34,6 +34,7 @@ import { nearestPlace } from "./places";
 import type { Progress } from "./download";
 import { onFires } from "../fires/fireService";
 import { HOSPITAL_LAYER_ID_LIST, type HospitalLayerHandle, attachHospitalLayer } from "../hospitals/hospitalLayer";
+import { overlayVisibility } from "../../lib/mapState/overlayVisibility.svelte";
 import { dropPhoto, onPhoto, type PhotoInfo, photoInfo, setPhotoNarration } from "./satellite";
 import { FOLLOW_MARGIN_KM, marginKm, moved } from "./follow";
 import { PHOTO_TILES, PLANET_TILES, installProtocol } from "./protocol";
@@ -70,6 +71,15 @@ let mapForTools = $state<MapboxMap | null>(null);
 let drawControlsRef: ReturnType<NonNullable<typeof MapDrawControls>> | undefined = $state();
 let mapOnly = $state(false);
 let legendOpen = $state(false);
+// The painters are plain TS with no runes; reading the store here is what subscribes them.
+$effect(() => {
+	overlayVisibility.fires;
+	fireHandle?.repaint();
+});
+$effect(() => {
+	overlayVisibility.hospitals;
+	hospitalHandle?.repaint();
+});
 let armKind = $state<"line" | "polygon" | "pin" | null>(null);
 let dropPinAt = $state<[number, number] | null>(null);
 let measureEvent = $state<{ lng: number; lat: number; n: number } | null>(null);

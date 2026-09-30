@@ -13,6 +13,7 @@ import {
     unionHotspots,
 } from "../../../routes/fires/fireCache";
 import { peekUrbanVerdict } from "../../../routes/fires/fireClassifyCache";
+import { overlayVisibility } from "../../mapState/overlayVisibility.svelte";
 import {
     buildClusterCard,
     buildHotspotCard,
@@ -430,6 +431,7 @@ export function attachFireLayer(
             origin,
             now: Date.now(),
             staticMask: peekStaticMask(),
+            hidden: !overlayVisibility.fires,
             toGeoJSON: hotspotsToGeoJSON,
             isStatic: isStaticSource,
             // Reads a cache, never classifies: unknown is shown.

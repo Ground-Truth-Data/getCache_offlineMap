@@ -6,6 +6,7 @@ import type { MapHostPorts, MapShareFormat } from "../shared/mapHostPorts";
 
 let {
     ports,
+    map,
     feature,
     bbox,
     containerWidth,
@@ -24,6 +25,8 @@ let {
     drawLive = false,
 }: {
     ports: MapHostPorts;
+    /** The map this floats over, handed to the host so it can capture it. */
+    map?: unknown;
     feature: Feature;
     bbox: { minX: number; minY: number; maxX: number; maxY: number };
     containerWidth: number;
@@ -51,6 +54,7 @@ const isPoint = $derived(feature.geometry?.type === "Point");
 <MapPopoverShell {bbox} {containerWidth} {containerHeight} {isPoint} {drawLive}>
     <!-- Pins/lines/polygons get an easy delete (garbage can beside Share); PLOT pins use their own popover and intentionally have no trash. -->
     <ports.ui.FeatureDetail
+        {map}
         {feature}
         {onShare}
         {onSave}

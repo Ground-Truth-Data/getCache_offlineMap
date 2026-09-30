@@ -2,6 +2,7 @@
 
 import type * as maplibregl from "maplibre-gl";
 import hospitalPinUrl from "./hospitalPin.webp";
+import { overlayVisibility } from "../../lib/mapState/overlayVisibility.svelte";
 import { isMaplibreMap, popupCtor } from "../../lib/shared/rendererOf";
 import { distKm } from "../fires/fireRelevance";
 import {
@@ -214,6 +215,15 @@ export function attachHospitalLayer(
 			| maplibregl.GeoJSONSource
 			| undefined;
 		src?.setData(fc);
+		applyVisibility();
+	};
+
+	// Outside paint's style-loaded gate: the eye must land even mid tile load.
+	const applyVisibility = (): void => {
+		const vis = overlayVisibility.hospitals ? "visible" : "none";
+		for (const id of HOSPITAL_LAYER_ID_LIST)
+			if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis);
+		if (!overlayVisibility.hospitals) popup?.remove();
 	};
 
 	const ready: Promise<void> = map.hasImage(PIN)
@@ -230,6 +240,7 @@ export function attachHospitalLayer(
 				},
 			);
 	const repaint = (): void => {
+		applyVisibility();
 		void ready.then(paint).catch((err) => {
 			console.warn("[hospitals] repaint failed", err);
 		});
