@@ -307,6 +307,19 @@ export async function putRegion(r: Region): Promise<void> {
 	regionsChanged();
 }
 
+/** Updates only a row still on disk — `put` is an upsert, so a late write from a copy would resurrect a deleted blob. */
+export async function patchRegion(id: string, patch: Partial<Omit<Region, "id">>): Promise<void> {
+	const db = await open();
+	const tx = db.transaction(REGIONS, "readwrite");
+	const st = tx.objectStore(REGIONS);
+	const req = st.get(id) as IDBRequest<Region | undefined>;
+	req.onsuccess = () => {
+		if (req.result) st.put({ ...req.result, ...patch });
+	};
+	await done(tx);
+	regionsChanged();
+}
+
 /** Per blob, its tiles not on disk (zero is whole) — an empty tile is a 0-byte row, so this is a set difference. */
 export async function checkRegions(): Promise<Record<string, number>> {
 	const [regions, have] = await Promise.all([listRegions(), allTileKeys()]);
@@ -348,7 +361,7 @@ async function healRegionBytes(regions: readonly Region[]): Promise<void> {
 	});
 	for (const r of stale) {
 		const n = sized.get(r.id) as number;
-		if (n > 0) await putRegion({ ...r, bytes: n });
+		if (n > 0) await patchRegion(r.id, { bytes: n });
 	}
 }
 

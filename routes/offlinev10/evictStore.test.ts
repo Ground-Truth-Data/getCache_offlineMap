@@ -5,6 +5,7 @@ import { setBudgetMb } from "./budget";
 import {
 	deleteRegion,
 	listRegions,
+	patchRegion,
 	putRegion,
 	putTiles,
 	type Region,
@@ -86,5 +87,22 @@ describe("eviction reaches the disk", () => {
 		await putTiles([["shared/0/0", new ArrayBuffer(1024)]]);
 		await deleteRegion("a");
 		expect((await listRegions()).map((r) => r.id)).toEqual(["b"]);
+	});
+});
+
+describe("a deleted blob stays deleted", () => {
+	it("a late update to a blob deleted meanwhile does not bring it back", async () => {
+		const [lng, lat] = SPOTS[0];
+		await putRegion(region("a", 1, lng, lat));
+		await deleteRegion("a");
+		await patchRegion("a", { msPaint: 12 });
+		expect(await listRegions()).toEqual([]);
+	});
+
+	it("patches a blob that is still there", async () => {
+		const [lng, lat] = SPOTS[0];
+		await putRegion(region("a", 1, lng, lat));
+		await patchRegion("a", { msPaint: 12 });
+		expect((await listRegions())[0].msPaint).toBe(12);
 	});
 });

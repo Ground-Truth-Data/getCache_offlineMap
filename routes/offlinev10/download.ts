@@ -14,6 +14,7 @@ import {
 	allTileKeys,
 	bytesOfTiles,
 	deleteTiles,
+	patchRegion,
 	putRegion,
 	putTiles,
 	type Region,
@@ -84,7 +85,7 @@ export async function downloadRegion(
 		place: await nearestPlace(range, lng, lat),
 	};
 	if (opts.photo === false) region.photo = false;
-	await putRegion(region);
+	await (opts.keep ? patchRegion(region.id, region) : putRegion(region));
 	return region;
 }
 

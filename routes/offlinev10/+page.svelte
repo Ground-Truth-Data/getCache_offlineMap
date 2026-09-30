@@ -37,7 +37,7 @@ import { HOSPITAL_LAYER_ID_LIST, type HospitalLayerHandle, attachHospitalLayer }
 import { dropPhoto, onPhoto, type PhotoInfo, photoInfo, setPhotoNarration } from "./satellite";
 import { FOLLOW_MARGIN_KM, marginKm, moved } from "./follow";
 import { PHOTO_TILES, PLANET_TILES, installProtocol } from "./protocol";
-import { type Kept, type Region, checkRegions, deleteRegion, keepStorage, listRegions, putRegion, stats, wipe } from "./store";
+import { type Kept, type Region, checkRegions, deleteRegion, keepStorage, listRegions, patchRegion, stats, wipe } from "./store";
 import { validLatLng } from "../../lib/shared/cameraFromUrl";
 import { LEGEND, PHOTO_INSERT_BEFORE, PLANET, REGIONS, buildStyle } from "./style";
 import { ANCHOR_Z, parseKey, rangeBox, tileBox, tileKey } from "./tiles";
@@ -151,7 +151,7 @@ async function nameOldBlobs(): Promise<void> {
 		let named = 0;
 		for (const r of await listRegions()) {
 			if (r.place !== undefined) continue;
-			await putRegion({ ...r, place: await nearestPlace(r.range, r.lng, r.lat) });
+			await patchRegion(r.id, { place: await nearestPlace(r.range, r.lng, r.lat) });
 			named++;
 		}
 		if (named > 0) regions = await listRegions();
@@ -240,7 +240,7 @@ async function landed(r: Region): Promise<void> {
 			last = { ...r };
 			light = "drawn";
 			regions = regions.map((x) => (x.id === r.id ? { ...x, paintMoved: true as const } : x));
-			void putRegion({ ...r });
+			void patchRegion(r.id, { paintMoved: true });
 			console.info(`[offlineV10] painted ${r.id} — camera moved, not timed`);
 			return;
 		}
@@ -249,7 +249,7 @@ async function landed(r: Region): Promise<void> {
 		light = "drawn";
 		dlMs = dlStart === null ? null : performance.now() - dlStart;
 		regions = regions.map((x) => (x.id === r.id ? { ...x, msPaint: r.msPaint } : x));
-		void putRegion({ ...r });
+		void patchRegion(r.id, { msPaint: r.msPaint });
 		console.info(`[offlineV10] painted ${r.id} in ${r.msPaint} ms`);
 	});
 }
