@@ -1,6 +1,6 @@
 <script lang="ts">
 /**
- * /app/offlinev10 — the offline map, served open-core.
+ * /app/offlinev10 — the offline preview, served open-core.
  *
  * The child needs a host; rapper has no app behind it, so it hands over the
  * solo ports (the child's own honest empties) and no tool drawer. The drawer

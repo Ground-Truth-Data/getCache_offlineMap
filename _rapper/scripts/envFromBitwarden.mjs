@@ -97,7 +97,9 @@ if (bws.error?.code === "ENOENT") {
 	// A pointer this machine account cannot read fails every `varlock run`, so it
 	// cannot stay; declared empty, the audit still holds and the code that needs
 	// the value fails at use. Chris's account sees everything and rewrites it back.
-	const unseen = [...schemaSrc.slice(begin, end).matchAll(/^(\w+)=bitwarden\(/gm)]
+	// The empty form counts too: a second run on a partial account sees only what
+	// the first one wrote, and dropping it fails the audit the first run passed.
+	const unseen = [...schemaSrc.slice(begin, end).matchAll(/^(\w+)=(?:bitwarden\(|$)/gm)]
 		.map((m) => m[1])
 		.filter((k) => !seen.has(k) && named(k));
 	for (const s of vault) {

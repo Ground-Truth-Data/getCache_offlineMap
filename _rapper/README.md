@@ -50,7 +50,7 @@ locally with no cloud account. The component bakes in no host (its
 else's bill. `PUBLIC_GC_RT_mapbox_token` has no default — a token is billed to
 whoever created it.
 
-> The offline map's ~50 MB basemap is not in git; `npm run dev` downloads it
+> The offline preview's ~50 MB basemap is not in git; `npm run dev` downloads it
 > on first run (`getCache_OfflineMap/fetchAssets.sh`). Without it the map
 > renders blank and the BUILD fails outright (SvelteKit walks `static/` and
 > dies on the dangling symlinks).

@@ -1,0 +1,570 @@
+/* ADMIN TABLE SYSTEM — the shared look for every admin table screen. ONE
+   STYLESHEET, EVERY PAGE: a page's own <style> holds only what is genuinely
+   unique to its row content, or the pages drift. Palette is Get Cache's —
+   src/app.css imports mobile.css globally, so every --rt-* token resolves
+   here free; new values below are the ones mobile has no equivalent for. */
+
+/* ON :root, NOT .admin-shell: that class is worn by only some admin pages, so scoping here leaves the rest resolving every --at-* to nothing. */
+:root {
+	/* Three depths, darkest at back, equal R/G/B — warmth comes from gold/rust ON the black, not the black itself. */
+	--at-bg: #0c0c0c;
+	--at-panel: #0d0d0d;
+	--at-inset: #111;
+	--at-hover: #161616;
+	/* Opaque, not translucent: a frozen cell must hide the columns passing under it. */
+	--at-selected: #211f16;
+
+	/* Neutral white-alpha, not --rt-border (gold at 18%, reads as a deliberate highlight — wrong for a divider repeating on a hundred rows). */
+	--at-line: rgba(255, 255, 255, 0.08);
+	--at-line-strong: rgba(255, 255, 255, 0.16);
+
+	/* Gold = "a control you act with"; rust (--at-accent) marks identifiers.
+	   NOT for a gold BUTTON's fill (that's `rt-gold-btn` in src/app.css) — this is a flat tint, e.g. a dropdown's hover highlight. */
+	--at-gold: #eab627;
+	--at-panel-2: #1c1c1c; /* raised surface inside a panel — search boxes, selects, page-size input */
+	--at-accent: var(--rt-rust);
+	--at-accent-bright: var(--rt-meta);
+
+	/* Headers: white at rest (serious, plain), gold on hover (a control — clicking sorts). NOT rust, which belongs on meta/counts. */
+	--at-th: var(--rt-fg);
+	--at-th-hover: var(--rt-gold-1);
+	--at-th-arrow: rgba(255, 255, 255, 0.4);
+
+	--at-fg: var(--rt-fg);
+	/* Not the phone palette's muted values — those are a short label at arm's length; this is whole columns a metre away, below the legibility floor. --at-muted-2 is an alias so both call sites move together if they ever diverge. */
+	--at-muted: #8f8a76;
+	--at-muted-2: var(--at-muted);
+
+	/* Sage is Get Cache's "nature" accent, not a status colour, so match-confidence green is genuinely new here. */
+	--at-match-hi: #8fbf6a;
+	--at-go: #4ade3a;
+	--at-danger: var(--rt-danger);
+
+	--at-radius: 14px;
+	--at-radius-sm: 8px;
+
+	/* DEPTH HAS TWO DIRECTIONS AND NO OTHERS: the light is overhead, so a plane
+	   lifted off the grid casts DOWNWARD and a frozen column's edge casts
+	   RIGHT, across the columns sliding beneath it. The three lifts are how far
+	   a thing has left the sheet — 1 is still pinned inside the grid (a frozen
+	   edge, a summary band), 2 is the head band every row passes under, 3 has
+	   left the grid entirely (a dialog, a dropdown, the filters panel). */
+	--at-lift-1: 6px 0 8px -6px rgb(0 0 0 / 90%);
+	--at-lift-2: 0 12px 16px -8px rgb(0 0 0 / 72%);
+	--at-lift-3: 0 24px 48px -12px rgb(0 0 0 / 80%);
+	/* A surface reads as LIT rather than merely paler once its top edge catches
+	   the light. Far quieter than the 45% a gold segment wears: this edge runs
+	   the width of every header cell on the page, and at that length a
+	   highlight people notice is a highlight they read as a border. */
+	--at-edge-hi: inset 0 1px 0 rgb(255 255 255 / 6%);
+
+	/* DENSITY: these are DATA screens — an admin scanning a thousand rows
+	   compares them to each other, so row count matters more than size. At
+	   38px a 900px viewport holds ~23 rows; at 65px, ~13. Tokens, not
+	   literals, since pages still differ in MARKUP (grid divs vs <table>). */
+	--at-font: 13.6px;
+	--at-cell-pad-y: 6.4px;
+	--at-cell-pad-x: 8px;
+	--at-th-font: 13.6px; /* same size as the data — authoritative because white and bold, not bigger */
+	--at-th-weight: 600;
+
+}
+
+/* Nothing else paints the page floor: admin layout has no style block, body/html are transparent, so the browser default would show through above the header. */
+:root:has(.admin-shell) body {
+	background: var(--at-bg);
+}
+
+.admin-shell {
+	background: var(--at-bg);
+	color: var(--at-fg);
+	font-size: var(--at-font); /* house size, inherited by rows and cells */
+	min-height: 100%;
+}
+
+.admin-wrap {
+	/* Keep in sync with .admin-hd's padding-inline in AdminHeader.svelte — the header's pills sit on this column. Bottom 100px is scroll room, not spacing. */
+	padding: 40px 24px 100px;
+}
+
+/* The page title band lives in AdminPageHead.svelte as SCOPED styles, so it ships with the component; tokens still come from :root above. */
+
+/* `justify-content` deliberately unset: some bands hold two groups (count left, controls right), some hold one — `space-between` would fling a lone row-count label right. `:only-child` below handles that case. */
+.admin-toolbar {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	padding: 9px 18px;
+	/* FLAT — a bordered, rounded card reads as "here is an object"; these screens are "here are the values". */
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+}
+/* Belongs to a toolbar WELDED to a panel, separating it from the header row. A free-standing toolbar (Get Cache's, floating with a gap) has nothing to separate from. */
+.admin-panel > .admin-toolbar,
+.admin-toolbar:has(+ .admin-panel) {
+	border-bottom: 1px solid var(--at-line);
+}
+.admin-count {
+	font-family: var(--rt-font-mono);
+	font-weight: 700;
+	font-size: 13px;
+	color: var(--at-accent);
+	white-space: nowrap;
+}
+/* Not mono, not accented: context for the number, not a second number. */
+.admin-count .of {
+	font-family: inherit;
+	font-weight: 500;
+	color: var(--at-muted);
+	margin-left: 8px;
+	font-size: 12.5px;
+}
+
+/* NO `overflow: hidden` — it makes this the sticky containing block, pinning the header INSIDE the panel instead of the viewport. Rounding moves to the rule below instead. */
+.admin-panel {
+	border: 0;
+	border-radius: 0;
+	background: var(--at-bg); /* opaque: rows scrolled up behind the frozen header must not show through */
+}
+/* Only the LAST row can overflow a corner — the header owns the top edge. */
+.admin-panel > *:last-child {
+	border-bottom-left-radius: var(--at-radius);
+	border-bottom-right-radius: var(--at-radius);
+}
+
+/* ── Inputs ──────────────────────────────────────────────────────────── */
+
+.admin-input {
+	background: var(--at-panel);
+	border: 1px solid var(--at-line-strong);
+	border-radius: var(--at-radius-sm);
+	color: var(--at-fg);
+	font: inherit;
+	font-size: 13px;
+	padding: 0 10px;
+	height: 32px;
+	outline: none;
+	transition: border-color 120ms ease;
+}
+.admin-input::placeholder {
+	color: var(--at-muted-2);
+}
+.admin-input:focus {
+	border-color: var(--at-accent);
+}
+/* Page-level search is the app's own SearchInput (own skin) — this just says how much room it gets. */
+.filter {
+	display: flex;
+	min-width: 12rem;
+	flex: 0 1 22rem;
+}
+.filter :global(.rt-search),
+.filter .rt-search {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.admin-input.wide {
+	width: 100%;
+	height: 38px;
+}
+.admin-input.filter {
+	width: 220px;
+}
+
+.admin-textbox {
+	/* A CELL, not a card: a border on every cell would mesh with the row hairline, so it shows edges only on hover/focus — at rest, just the value like a <td>. */
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: 4px;
+	/* The row-height FLOOR: a row is as tall as its tallest thing, which on these pages is this input — above the ~24px a text field needs to stay clickable. */
+	height: 26px;
+	padding: 0 var(--at-cell-pad-x);
+	display: flex;
+	align-items: center;
+	font-size: var(--at-font);
+	color: var(--at-fg);
+	font-family: var(--rt-font-mono);
+	overflow: hidden;
+	transition: border-color 120ms ease;
+}
+.admin-table tbody tr:hover .admin-textbox,
+.admin-table tbody tr:hover .admin-select {
+	border-color: var(--at-line);
+}
+.admin-textbox:focus-within {
+	background: var(--at-inset);
+	border-color: var(--at-th-hover);
+}
+.admin-textbox input {
+	background: none;
+	border: none;
+	color: inherit;
+	font: inherit;
+	width: 100%;
+	min-width: 0;
+	outline: none;
+	padding: 0;
+}
+.admin-textbox input::placeholder {
+	color: var(--at-muted-2);
+}
+
+/* ── Rows ────────────────────────────────────────────────────────────── */
+
+/* A real hit target, not a glyph — at 11px it was a decoration people aimed at and missed; the eye treats the triangle as THE control despite the row also toggling. */
+.admin-tri {
+	width: 22px;
+	height: 22px;
+	color: var(--at-accent);
+	font-size: 16px;
+	line-height: 1;
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	/* Pivot on the glyph's own centre — default 50% of a wider box drifts an open triangle sideways as it turns. */
+	transform-origin: 50% 50%;
+	transition:
+		transform 150ms ease,
+		color 120ms ease;
+	background: none;
+	border: 0;
+	padding: 0;
+	cursor: pointer;
+}
+.admin-table tbody tr:hover .admin-tri {
+	color: var(--at-accent-bright);
+}
+.admin-table tr.row-open .admin-tri {
+	transform: rotate(90deg);
+}
+
+/* FOCUS DIMMING: opacity, not a re-tint, keeps meaningful row colour (red
+   Delete, fire ratings, match pills) intact. The dim is a SCRIM and must stay
+   clickable — `pointer-events: none` goes on the row's CONTENTS, never the
+   row itself, since a click on a dimmed row closes the open one. */
+.admin-table tr.row-dim {
+	opacity: 0.22;
+	filter: saturate(0.6);
+}
+.admin-table tr.row-dim * {
+	pointer-events: none;
+}
+
+/* Dashed top border says "continuation of the row above", not a new record. Left inset aligns contents under the row's name column. */
+.admin-expand {
+	padding: 6px 18px 24px 46px;
+	background: rgba(0, 0, 0, 0.18);
+	border-top: 1px dashed var(--at-line-strong);
+}
+
+.admin-fieldlbl {
+	font-family: var(--rt-font-mono);
+	font-size: 11px;
+	font-weight: 800;
+	letter-spacing: 0.02em;
+	color: var(--at-muted);
+	margin: 16px 0 10px;
+}
+.admin-fieldlbl:first-child {
+	margin-top: 6px;
+}
+
+/* States the row is in, said in words rather than only in colour. */
+.admin-footnote {
+	font-size: 11.5px;
+	color: var(--at-muted-2);
+	font-style: italic;
+	margin-top: 16px;
+}
+.admin-empty {
+	color: var(--at-muted);
+	font-size: 13px;
+	font-style: italic;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────── */
+
+.admin-btn {
+	background: none;
+	border: 1px solid var(--at-line-strong);
+	color: var(--at-muted);
+	font: inherit;
+	font-size: 12.5px;
+	font-weight: 700;
+	padding: 7px 12px;
+	border-radius: var(--at-radius-sm);
+	cursor: pointer;
+	transition:
+		border-color 120ms ease,
+		color 120ms ease,
+		background-color 120ms ease;
+}
+.admin-btn:hover {
+	border-color: var(--at-accent);
+	color: var(--at-fg);
+}
+
+/* Get Cache's "commit" gold gradient. Exactly one action per expanded row may wear it, or "the obvious thing to click" stops meaning anything. */
+.admin-btn.primary {
+	background: linear-gradient(var(--rt-gold-1), var(--rt-gold-2));
+	color: var(--rt-gold-ink);
+	text-shadow: 0 1px 0 var(--rt-press-lo), 0 -1px 0 var(--rt-press-hi);
+	border: none;
+}
+.admin-btn.primary:hover {
+	filter: brightness(1.06);
+}
+
+/* Neutral at rest so a row of buttons isn't a row of alarms; red only once the pointer commits. */
+.admin-btn.danger:hover {
+	border-color: var(--at-danger);
+	color: var(--at-danger);
+}
+.admin-btn.ready,
+.admin-btn.ready:hover {
+	background: var(--at-go);
+	border-color: var(--at-go);
+	color: #0c0c0c;
+}
+/* Armed second-click state for Promote. */
+.admin-btn.armed {
+	border-color: var(--at-danger);
+	color: var(--at-fg);
+	background: rgba(212, 87, 74, 0.18);
+}
+
+.admin-btn-icon {
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 15px;
+}
+
+/* Bare text, not a button shape: Delete should be reachable but never compete with the row's real actions. */
+.admin-link-danger {
+	background: none;
+	border: none;
+	color: var(--at-danger);
+	font: inherit;
+	font-weight: 700;
+	font-size: 12.5px;
+	cursor: pointer;
+	padding: 0;
+}
+.admin-link-danger:hover {
+	text-decoration: underline;
+}
+
+/* ── Pills + dots ────────────────────────────────────────────────────── */
+
+/* Colour is a SECOND encoding of the percentage already written in the pill, never the only one. */
+.admin-pct {
+	font-family: var(--rt-font-mono);
+	font-weight: 700;
+	font-size: 11.5px;
+	padding: 2px 6px;
+	border-radius: 5px;
+	background: rgba(143, 191, 106, 0.15);
+	color: var(--at-match-hi);
+	white-space: nowrap;
+}
+.admin-pct.mid {
+	background: var(--rt-rust-soft);
+	color: var(--at-accent-bright);
+}
+
+/* Glanceable version of the same fact, for scanning a hundred rows: is there a good candidate here at all? */
+.admin-dot {
+	width: 9px;
+	height: 9px;
+	border-radius: 50%;
+	background: var(--at-muted);
+	opacity: 0.45;
+	flex: none;
+}
+.admin-dot.hi {
+	width: 13px;
+	height: 13px;
+	opacity: 1;
+	background: var(--at-go);
+	box-shadow: 0 0 8px var(--at-go);
+}
+.admin-dot.mid {
+	opacity: 1;
+	background: var(--at-accent-bright);
+}
+
+/* ── Save status ─────────────────────────────────────────────────────── */
+
+.admin-savestatus {
+	display: inline-flex;
+	align-items: center;
+	justify-content: flex-end;
+	min-width: 3.5rem;
+	height: 1.75rem;
+	font-size: 12px;
+}
+
+/* A toolbar may hold only right-hand controls; `space-between` would then pin them LEFT. */
+.admin-toolbar > :only-child {
+	margin-left: auto;
+}
+
+/* ── Pagination ──────────────────────────────────────────────────────── */
+
+.admin-pager {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 14px;
+	padding: 18px;
+	font-size: 13px;
+	color: var(--at-muted);
+}
+
+/* THE WRAPPER IS THE TABLE'S SCROLL BOX, both axes: the shared theme sets
+   `html, body { overflow-x: clip }`, so columns past the window edge need
+   this box to reach them, and header + Σ row must travel with the columns.
+   `max-height` IS LOAD-BEARING: any overflow but `visible` makes this the
+   sticky containing block, so if it grew taller than the viewport its top
+   (and the pinned header) would scroll away — capped at one viewport, the
+   top is on screen whenever the bottom is. Only the immediate table wrapper
+   takes this; a page-level wrapper holding the title/toolbar too would
+   scroll the chrome with the rows. */
+.admin-tablewrap {
+	overflow: auto;
+	max-height: 100dvh;
+	overscroll-behavior-x: contain; /* a sideways swipe stops at the table's edge instead of bubbling into the page's clipped (rubber-banding) x-axis */
+}
+/* Page-level wrappers stay open — a page-scoped overflow here outranks the shared rule and reads as "sticky is broken". */
+.wrap:has(.admin-table),
+main:has(.admin-table) {
+	overflow: visible;
+}
+
+/* Worn by a <table> or a <div>; both resolve identically. */
+.admin-table {
+	width: 100%;
+	/* AdminDataTable overrides the width to `auto` so wide tables have
+	   something to scroll sideways; the floor has to be restated separately or
+	   a six-column table sits in the left third of the monitor. */
+	min-width: 100%;
+	border-collapse: collapse;
+	font-size: var(--at-font);
+	color: var(--at-fg);
+	background: transparent; /* flat sheet, not the panel's inset card — a card reads as objects, not a grid of values */
+}
+
+.admin-table th {
+	font-size: var(--at-th-font);
+	font-weight: var(--at-th-weight);
+	color: var(--at-th);
+	text-align: left;
+	white-space: nowrap;
+	background: var(--at-inset);
+	transition: color 120ms ease;
+}
+/* THE HEADER FREEZES — exactly ONE frozen thing on the page. The `:not()` is
+   NOT decoration: the Σ row lives inside <thead> (so
+   it stays with the head band on re-sort), so a bare `thead th` would freeze
+   it too — permanently, since the pin was never in the Σ's own block to delete.
+   The band is a SURFACE, not a rule: a hairline can only clip the rows against
+   it, where a cast shadow puts them underneath it, which is what they do. A
+   frozen header cell declares its own box-shadow (an opaque floor and the seam
+   its edge casts) and box-shadow is one property with one winner, so the plane
+   reaches those cells only by being repeated in that list. */
+.admin-table thead tr:not(.subtotal) th {
+	position: sticky;
+	top: 0;
+	z-index: 5;
+	box-shadow: var(--at-lift-2), var(--at-edge-hi);
+}
+/* The head band's look reaches every cell in it, frozen or not. Stated here
+   because `.admin-table th` below would otherwise hand the band the same
+   hairline every row wears, and the band is what rows pass under. */
+.admin-table thead th {
+	padding: var(--at-cell-pad-y) var(--at-cell-pad-x);
+	border-bottom: none;
+	background: var(--at-inset);
+}
+.admin-table th[aria-sort]:hover {
+	color: var(--at-th-hover);
+}
+.admin-table th[aria-sort],
+.admin-table th.sorted {
+	color: var(--at-th-hover);
+}
+.admin-table th .arr,
+.admin-table th .arrow,
+.admin-table th .sort-ind {
+	color: var(--at-th-arrow);
+	font-size: 11px;
+	margin-left: 4px;
+}
+.admin-table th[aria-sort] .arr,
+.admin-table th.sorted .arrow,
+.admin-table th.sorted .sort-ind {
+	color: var(--at-th-hover);
+}
+
+/* The hairline between rows is the ONLY separator — a card or per-row background reads as noise; the point of the grid is that the eye travels down a column. */
+.admin-table td,
+.admin-table th {
+	padding: var(--at-cell-pad-y) var(--at-cell-pad-x);
+	border-bottom: 1px solid var(--at-line);
+	vertical-align: middle;
+}
+.admin-table tbody tr:hover {
+	background: var(--at-hover);
+}
+.admin-table tbody tr:last-child td {
+	border-bottom: none;
+}
+/* A RULER FOR A ROW 8000px WIDE: four screens right of the name column nothing
+   tells the eye which row it is on, and the separator above is the only mark
+   the grid allows — a zebra or a per-row background is the noise it exists to
+   avoid. So every fifth separator is simply drawn stronger. Colour only, never
+   the shorthand: the last row's `border-bottom: none` above must keep winning,
+   and hover and selection stay the only things that mark a row's STATE. */
+.admin-table tbody tr:nth-child(5n) td,
+.admin-table tbody tr:nth-child(5n) th {
+	border-bottom-color: var(--at-line-strong);
+}
+
+/* Tabular figures so digits line up and a long number is comparable to a short one at a glance. */
+.admin-table .num,
+.admin-table td.num,
+.admin-table th.num {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+
+/* Mono for values compared character by character — ids, keys, URLs — where a proportional font hides l/1/I and 0/O. */
+.admin-table .mono {
+	font-family: var(--rt-font-mono);
+}
+
+/* DELIBERATELY NOT STICKY, though it sits in <thead>: a second frozen band costs permanent vertical space and needs a hand-measured `top` that breaks the moment a density token changes. Raised a whole step instead of --at-panel's one hex off the floor — it is the page's only per-column summary and it was invisible. */
+.admin-table tr.subtotal th {
+	background: var(--at-panel-2);
+	color: var(--at-accent);
+	font-family: var(--rt-font-mono);
+	font-weight: 700;
+	border-top: 1px solid var(--at-line-strong);
+	border-bottom: 1px solid var(--at-line-strong);
+}
+
+/* Same token the frozen cells lay their floor with — the scrolling and frozen halves of one ticked row must be the same colour. */
+.admin-table tr.row-selected {
+	background: var(--at-selected);
+}
+.admin-table .adt-lead input[type="checkbox"] {
+	cursor: pointer;
+	accent-color: var(--at-th-hover);
+}

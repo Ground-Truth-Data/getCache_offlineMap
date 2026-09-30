@@ -66,7 +66,7 @@ export const CHILDREN: ChildRecord[] = [
 		repo: "getCache_OfflineMap",
 		app: true,
 		org: "Ground-Truth-Data",
-		name: "offline map",
+		name: "offline preview",
 		owner: "Get Cache",
 		logo: "GC_fly_logo_transparent.webp",
 		icon: "favicon.png",
