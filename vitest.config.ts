@@ -24,6 +24,7 @@ export default defineConfig({
 	},
 	// _rapper/ and _siblings/ carry other repos' tests; vitest reads this file, not vite.config.ts.
 	test: {
+		silent: "passed-only",
 		exclude: [...configDefaults.exclude, "_rapper/**", "_siblings/**"],
 		setupFiles: ["vitest.setup.ts"],
 	},
