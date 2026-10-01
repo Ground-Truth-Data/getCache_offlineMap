@@ -184,10 +184,10 @@ $effect(() => {
         {tool.label}{tool.external ? " ↗" : ""}
     </a>
 {/snippet}
-{#snippet tablePill(link: AdminLink)}
+{#snippet tablePill(link: AdminLink, lookup = false)}
     {@const n = tableCount(link.label)}
     <a
-        class="lnk table-lnk"
+        class="lnk {lookup ? 'lookup-lnk' : 'table-lnk'}"
         class:active={path === link.href}
         href={crudHref(withSiteParam(link.href, link.scopedToSite ? site || null : null))}
         title={n === undefined ? link.title : `${link.title} — ${n} rows`}
@@ -197,17 +197,19 @@ $effect(() => {
         {#if n === 0}<span class="empty-dot" aria-hidden="true"></span>{/if}
     </a>
 {/snippet}
-{#snippet lookupPill(link: AdminLink)}
-    {@const n = tableCount(link.label)}
-    <a
-        class="lnk lookup-lnk"
-        class:active={path === link.href}
-        href={crudHref(link.href)}
-        title={n === undefined ? link.title : `${link.title} — ${n} rows`}
-    >
-        {link.label}
-        {#if n === 0}<span class="empty-dot" aria-hidden="true"></span>{/if}
-    </a>
+{#snippet tableGroup(links: AdminLink[], lookup = false)}
+    <span class="grp">
+        {#each links as link, i (link.href)}
+            {#if i === 0}
+                <span class="lead">
+                    {#if lookup}<span class="grp-tag sage-tag">LOOKUP</span>{:else}<span class="grp-tag">CRUD</span>{/if}
+                    {@render tablePill(link, lookup)}
+                </span>
+            {:else}
+                {@render tablePill(link, lookup)}
+            {/if}
+        {/each}
+    </span>
 {/snippet}
 
 <header class="admin-hd">
@@ -331,30 +333,10 @@ $effect(() => {
                 {@render toolPill(tool)}
                 {#if ownTables.length}
                     <span class="rule" aria-hidden="true"></span>
-                    <span class="grp">
-                        {#each ownTables.slice(0, 1) as link}
-                            <span class="lead">
-                                <span class="grp-tag">CRUD</span>
-                                {@render tablePill(link)}
-                            </span>
-                        {/each}
-                        {#each ownTables.slice(1) as link}
-                            {@render tablePill(link)}
-                        {/each}
-                    </span>
+                    {@render tableGroup(ownTables)}
                 {/if}
                 {#if ownLookups.length}
-                    <span class="grp">
-                        {#each ownLookups.slice(0, 1) as link}
-                            <span class="lead">
-                                <span class="grp-tag sage-tag">LOOKUP</span>
-                                {@render lookupPill(link)}
-                            </span>
-                        {/each}
-                        {#each ownLookups.slice(1) as link}
-                            {@render lookupPill(link)}
-                        {/each}
-                    </span>
+                    {@render tableGroup(ownLookups, true)}
                 {/if}
             {/each}
             <!-- The active tool's own pages. No caption: not tables, so CRUD would be lying about them. -->
@@ -389,31 +371,10 @@ $effect(() => {
                 </span>
             {/if}
             {#if crudTables.length}
-                <span class="grp">
-                    {#each crudTables.slice(0, 1) as link}
-                        <span class="lead">
-                            <span class="grp-tag">CRUD</span>
-                            {@render tablePill(link)}
-                        </span>
-                    {/each}
-                    {#each crudTables.slice(1) as link}
-                        {@render tablePill(link)}
-                    {/each}
-                </span>
+                {@render tableGroup(crudTables)}
             {/if}
-            <!-- Sage pills under LOOKUP (see .lookup-lnk); uncaptioned, these'd read as more CRUD entities. -->
             {#if crudLookups.length}
-                <span class="grp">
-                    {#each crudLookups.slice(0, 1) as link}
-                        <span class="lead">
-                            <span class="grp-tag sage-tag">LOOKUP</span>
-                            {@render lookupPill(link)}
-                        </span>
-                    {/each}
-                    {#each crudLookups.slice(1) as link}
-                        {@render lookupPill(link)}
-                    {/each}
-                </span>
+                {@render tableGroup(crudLookups, true)}
             {/if}
         </nav>
     {/if}
@@ -422,7 +383,17 @@ $effect(() => {
 <style>
     /* Must clear the page tables' own sticky `thead` (z-10), or the table header parks ON TOP of the nav. */
     .admin-hd {
+        /* --rt-sage resolves to EMPTY STRING on the admin host (dropped between
+           mobile.css's :root and app.css's Tailwind-processed @import), so this
+           header hardcodes the literal rather than fail silently and look styled.
+           Keep it in step with --palette-sage (app.css) / --rt-sage (mobile.css). */
         --rt-sage: var(--palette-sage, #838963);
+        /* Every grey in this band is one of these three, mixed onto the band's
+           OWN floor rather than the sheet's, so moving the floor moves them with
+           it instead of leaving three hand-picked greys behind. */
+        --hd-txt: color-mix(in srgb, var(--at-fg) 66%, var(--at-panel));
+        --hd-dim: color-mix(in srgb, var(--at-fg) 52%, var(--at-panel));
+        --hd-edge: color-mix(in srgb, var(--at-fg) 26%, var(--at-panel));
         display: flex;
         flex-direction: column;
         gap: 0.6rem;
@@ -431,8 +402,12 @@ $effect(() => {
         padding-inline: 24px;
         /* NOT sticky — the header scrolls away with the page; only the table's own column-header row freezes. `relative` positions .account. */
         position: relative;
-        background: #0c0c0c;
-        border-bottom: 1px solid #222;
+        /* CHROME, not page: the band used to be --at-bg, the same black the grid
+           sits on, so it read as the top of the sheet rather than as a thing
+           above it — and it stayed put when the kit's blacks were re-stepped.
+           --at-panel is the kit's first step off the sheet. */
+        background: var(--at-panel);
+        border-bottom: 1px solid var(--at-line);
         z-index: 50;
         box-sizing: border-box;
     }
@@ -454,7 +429,7 @@ $effect(() => {
         white-space: nowrap;
         letter-spacing: 0.12em;
         color: var(--rt-rust); /* same rust as the CRUD group it introduces — see .table-lnk */
-        border: 1px solid color-mix(in srgb, var(--rt-rust), #0c0c0c 68%);
+        border: 1px solid color-mix(in srgb, var(--rt-rust), var(--at-panel) 68%);
         border-radius: 4px;
         padding: 0.1rem 0.35rem;
         margin-right: 0.35rem;
@@ -467,26 +442,26 @@ $effect(() => {
         white-space: nowrap;
         gap: 0.4rem;
         text-decoration: none;
-        color: #888;
-        font-size: 1.1rem;
+        color: var(--hd-dim);
+        font-size: 0.95rem;
         font-weight: 600;
         padding: 0.15rem 0.7rem;
-        /* Visible grey: #222 on #0c0c0c vanishes and an inactive hop doesn't read as clickable. */
-        border: 1px solid #4a4a4a;
+        /* Visible grey: --at-line on this floor vanishes and an inactive hop doesn't read as clickable. */
+        border: 1px solid var(--hd-edge);
         border-radius: 999px;
         background: transparent;
         transition: color 0.12s ease, border-color 0.12s ease;
     }
     .hop:hover {
-        color: #ffd700;
-        border-color: #888;
+        color: var(--at-gold);
+        border-color: var(--hd-dim);
     }
     .hop.active {
-        color: #ffd700;
-        border-color: #ffd700;
+        color: var(--at-gold);
+        border-color: var(--at-gold);
     }
     .hop-logo {
-        height: 2.2rem;
+        height: 1.5rem;
         width: auto;
         object-fit: contain;
     }
@@ -502,11 +477,14 @@ $effect(() => {
         font-size: 0.85rem;
         font-weight: 600;
         color: var(--rt-rust);
-        background-color: #0c0c0c;
+        /* The native popup is OS-drawn and unstyleable; `color-scheme` is the one
+           lever that keeps it dark instead of dropping a white menu on the band. */
+        color-scheme: dark;
+        background-color: var(--at-inset);
         background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23c97a4a' stroke-width='1.5'/></svg>");
         background-repeat: no-repeat;
         background-position: right 0.75rem center;
-        border: 1px solid color-mix(in srgb, var(--rt-rust), #0c0c0c 45%);
+        border: 1px solid color-mix(in srgb, var(--rt-rust), var(--at-panel) 45%);
         border-radius: 999px;
         padding: 0.4rem 2rem 0.4rem 0.9rem;
         text-overflow: ellipsis;
@@ -521,14 +499,14 @@ $effect(() => {
         font-size: 0.9rem;
         line-height: 1;
         text-decoration: none;
-        color: color-mix(in srgb, var(--rt-rust), #0c0c0c 30%);
+        color: color-mix(in srgb, var(--rt-rust), var(--at-panel) 30%);
         border-radius: 5px;
         transition: color 0.12s ease, background-color 0.12s ease;
     }
     .projgo:hover,
     .projgo:focus-visible {
         color: var(--rt-rust);
-        background-color: #161616;
+        background-color: var(--at-hover);
         outline: none;
     }
 
@@ -538,8 +516,8 @@ $effect(() => {
         outline: none;
     }
     .proj.unset {
-        color: color-mix(in srgb, var(--rt-rust), #0c0c0c 42%);
-        border-color: color-mix(in srgb, var(--rt-rust), #0c0c0c 68%);
+        color: color-mix(in srgb, var(--rt-rust), var(--at-panel) 42%);
+        border-color: color-mix(in srgb, var(--rt-rust), var(--at-panel) 68%);
     }
 
     /* Deliberately NOT hop-shaped: it doesn't switch hops, so shouldn't wear the "you are in this section" pill. */
@@ -549,12 +527,12 @@ $effect(() => {
         flex-shrink: 0;
         gap: 0.3rem;
         text-decoration: none;
-        color: #888;
+        color: var(--hd-dim);
         font-size: 0.8rem;
         font-weight: 600;
         letter-spacing: 0.02em;
         padding: 0.25rem 0.5rem;
-        border: 1px solid #4a4a4a;
+        border: 1px solid var(--hd-edge);
         border-radius: 6px;
         background: transparent;
         transition: color 0.12s ease, border-color 0.12s ease;
@@ -578,7 +556,7 @@ $effect(() => {
        black-background WebP; `mix-blend-mode: screen` drops black to
        transparent so the glyph floats on the bar. */
     .tool-logo {
-        height: 1.5rem;
+        height: 1.05rem;
         width: auto;
         object-fit: contain;
         mix-blend-mode: screen;
@@ -589,8 +567,8 @@ $effect(() => {
         opacity: 1;
     }
     .tool:hover {
-        color: #ffd700;
-        border-color: #888;
+        color: var(--at-gold);
+        border-color: var(--hd-dim);
     }
 
     /* One strip for tiers 2-4, deliberately no indent/left rule — those cue nesting, which only reads while each tier owns a whole row. Captions carry the grouping instead. */
@@ -625,7 +603,7 @@ $effect(() => {
         height: 1.15rem;
         flex-shrink: 0;
         margin: 0 0.35rem;
-        background: #3a3a3a;
+        background: var(--at-line-strong);
     }
     /* A forced line break — the one place a row boundary is meant, not incidental. */
     .break {
@@ -639,24 +617,26 @@ $effect(() => {
         line-height: 1;
         font-size: 0.78rem;
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        color: #aaa;
+        color: var(--hd-txt);
         text-decoration: none;
         padding: 0.32rem 0.75rem;
-        /* A step darker than the hops (subordinate to tier 1), never as dark as #222 (reads as no border). */
-        border: 1px solid #3a3a3a;
+        /* A step darker than the hops (subordinate to tier 1), never as dark as --at-line (reads as no border). */
+        border: 1px solid var(--at-line-strong);
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.02);
+        background: var(--at-inset);
         transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
     }
     .tool-lnk:hover {
-        color: #ffd700;
-        border-color: #888;
+        color: var(--at-gold);
+        border-color: var(--hd-dim);
     }
+    /* Where you are, in every row of this header: the kit's selected plane, gold
+       on it. OPAQUE, not rgba — the band would otherwise show through the one
+       pill that has to stand off it. */
     .tool-lnk.active {
-        color: #ffd700;
-        /* OPAQUE, not rgba, or the bar shows through the active pill. Mixed to look like gold-on-black regardless. */
-        background: #2a2000;
-        border-color: #ffd700;
+        color: var(--at-gold);
+        background: var(--at-selected);
+        border-color: var(--at-gold);
         font-weight: 600;
     }
 
@@ -665,17 +645,17 @@ $effect(() => {
         font-size: 0.72rem;
         padding: 0.27rem 0.66rem;
         color: var(--rt-rust);
-        border-color: color-mix(in srgb, var(--rt-rust), #0c0c0c 55%);
+        border-color: color-mix(in srgb, var(--rt-rust), var(--at-panel) 55%);
     }
     .scr-lnk:hover {
         color: var(--rt-rust);
         border-color: var(--rt-rust);
     }
-    /* Active is GOLD — see .table-lnk.active. */
+    /* Active is GOLD — see .tool-lnk.active. */
     .scr-lnk.active {
-        color: #ffd700;
-        background: #2a2000;
-        border-color: #ffd700;
+        color: var(--at-gold);
+        background: var(--at-selected);
+        border-color: var(--at-gold);
         font-weight: 600;
     }
 
@@ -685,16 +665,16 @@ $effect(() => {
         font-size: 0.72rem;
         padding: 0.27rem 0.66rem;
         color: var(--rt-rust);
-        border-color: color-mix(in srgb, var(--rt-rust), #0c0c0c 55%);
+        border-color: color-mix(in srgb, var(--rt-rust), var(--at-panel) 55%);
     }
     .view-lnk:hover {
         color: var(--rt-rust);
-        background: color-mix(in srgb, var(--rt-rust) 10%, #0c0c0c);
+        background: color-mix(in srgb, var(--rt-rust) 10%, var(--at-panel));
     }
     .view-lnk.active {
-        color: #ffd700;
-        background: #2a2000;
-        border-color: #ffd700;
+        color: var(--at-gold);
+        background: var(--at-selected);
+        border-color: var(--at-gold);
         font-weight: 600;
     }
     /* Drawn with `currentColor` so it tracks the label. */
@@ -702,20 +682,26 @@ $effect(() => {
         flex-shrink: 0;
     }
 
-    /* --rt-sage resolves to EMPTY STRING on the admin host (dropped between
-       mobile.css's :root and app.css's Tailwind-processed @import), so this
-       header hardcodes the literal rather than fail silently and look styled.
-       Keep it in step with --palette-sage (app.css) / --rt-sage (mobile.css). */
-    /* RUST, smaller — subordinate to the tools. Every shade below derives from the ONE --rt-rust token via color-mix, so a fifth hand-rolled orange can't creep in. */
+    /* RUST, smaller — subordinate to the tools. Every shade derives from the ONE --rt-rust token, so a fifth hand-rolled orange can't creep in. */
     .table-lnk {
         font-size: 0.7rem;
-        color: color-mix(in srgb, var(--rt-rust), #0c0c0c 42%); /* resting: rust muted, not a separate brown */
-        border-color: color-mix(in srgb, var(--rt-rust), #0c0c0c 68%);
         padding: 0.26rem 0.62rem;
+        color: color-mix(in srgb, var(--rt-rust), var(--at-panel) 12%);
+        border-color: color-mix(in srgb, var(--rt-rust), var(--at-panel) 68%);
     }
     .table-lnk:hover {
         color: var(--rt-rust);
-        border-color: color-mix(in srgb, var(--rt-rust), #0c0c0c 45%);
+        border-color: color-mix(in srgb, var(--rt-rust), var(--at-panel) 45%);
+    }
+    /* SAGE, the third accent (gold = commit, rust = context, sage = nature): the fixed vocabularies the rust tables point AT. Flat sage: any mix toward the floor drops it under 4.5:1. */
+    .lookup-lnk {
+        font-size: 0.7rem;
+        padding: 0.26rem 0.62rem;
+        color: var(--rt-sage);
+        border-color: color-mix(in srgb, var(--rt-sage), var(--at-panel) 68%);
+    }
+    .lookup-lnk:hover {
+        border-color: color-mix(in srgb, var(--rt-sage), var(--at-panel) 45%);
     }
     .empty-dot {
         display: inline-block;
@@ -727,30 +713,12 @@ $effect(() => {
         /* Nudged off the text baseline, or it reads as a full stop ending the table name. */
         vertical-align: 0.12em;
     }
-    /* Active is GOLD in every row: a 14% rust fill on #0c0c0c is the pill you can't find. Accent marks the group at rest; gold marks where you are. */
-    .table-lnk.active {
-        color: #ffd700;
-        background: #2a2000;
-        border-color: #ffd700;
-        font-weight: 600;
-    }
-
-    /* SAGE, the third accent (gold = commit, rust = context, sage = nature). These ARE the ecological vocabularies; rust above is the working data, sage the fixed vocabulary it points AT. */
-    .lookup-lnk {
-        font-size: 0.7rem;
-        padding: 0.26rem 0.62rem;
-        color: color-mix(in srgb, var(--rt-sage), #0c0c0c 42%); /* resting: sage muted, not a separate green */
-        border-color: color-mix(in srgb, var(--rt-sage), #0c0c0c 68%);
-    }
-    .lookup-lnk:hover {
-        color: var(--rt-sage);
-        border-color: color-mix(in srgb, var(--rt-sage), #0c0c0c 45%);
-    }
-    /* Active is GOLD — see .table-lnk.active. */
+    /* Active is GOLD in every row: accent marks the group at rest, gold marks where you are. */
+    .table-lnk.active,
     .lookup-lnk.active {
-        color: #ffd700;
-        background: #2a2000;
-        border-color: #ffd700;
+        color: var(--at-gold);
+        background: var(--at-selected);
+        border-color: var(--at-gold);
         font-weight: 600;
     }
 
@@ -761,7 +729,10 @@ $effect(() => {
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         font-weight: 700;
         letter-spacing: 0.12em;
-        color: color-mix(in srgb, var(--rt-rust), #0c0c0c 55%);
+        /* Retuned for this band's floor: a caption is 9px uppercase and the old
+           mixes left CRUD at 2.1:1. Still quieter than every pill it names —
+           what stops a caption reading as clickable is its shape, not its dimness. */
+        color: color-mix(in srgb, var(--rt-rust), var(--at-panel) 12%);
         /* Asymmetric on purpose: must sit further from the previous group's last pill than from the pill it names, or the boundary it marks is the tightest gap on the bar. */
         margin-left: 0.4rem;
         margin-right: 0.15rem;
@@ -769,17 +740,17 @@ $effect(() => {
     }
     /* Wears its own group's accent — default rust over sage/gold pills would name the group in a colour it doesn't wear. */
     .sage-tag {
-        color: color-mix(in srgb, var(--rt-sage), #0c0c0c 42%);
+        color: color-mix(in srgb, var(--rt-sage), var(--at-panel) 5%);
     }
     .gold-tag {
-        color: color-mix(in srgb, #ffd700, #0c0c0c 45%);
+        color: color-mix(in srgb, var(--at-gold), var(--at-panel) 35%);
     }
     /* Full-strength rust matching the dropdown — it IS the picked project. */
     .proj-tag {
         color: var(--rt-rust);
     }
     .proj-tag.unset {
-        color: color-mix(in srgb, var(--rt-rust), #0c0c0c 42%);
+        color: color-mix(in srgb, var(--rt-rust), var(--at-panel) 42%);
     }
     /* Follows the dropdown with nothing picked: still a link, visibly not yet meaningful. */
     .lnk.dim {
@@ -803,23 +774,23 @@ $effect(() => {
         gap: 0.35rem;
         font-size: 0.78rem;
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        color: #aaa;
+        color: var(--hd-txt);
         /* Deliberately NOT a pill: a status readout, only the button beside it should look pressable. */
         white-space: nowrap;
     }
     /* Same tent as the mobile app's Account, sized to this header's type rather than the mobile nav's, which would tower over the row. */
     .who-icon {
-        width: 20px;
-        height: 20px;
+        width: 16px;
+        height: 16px;
         object-fit: contain;
         display: block;
     }
     .signout {
         font-size: 0.72rem;
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        color: #888;
-        background: rgba(255, 255, 255, 0.02);
-        border: 1px solid #3a3a3a;
+        color: var(--hd-dim);
+        background: var(--at-inset);
+        border: 1px solid var(--at-line-strong);
         border-radius: 999px;
         padding: 0.3rem 0.7rem;
         cursor: pointer;
@@ -827,7 +798,7 @@ $effect(() => {
     }
     /* Grey, never red or gold: gold means "do this next", red means destructive. Signing out is plain and reversible. */
     .signout:hover {
-        color: #ddd;
-        border-color: #888;
+        color: var(--at-fg);
+        border-color: var(--hd-dim);
     }
 </style>

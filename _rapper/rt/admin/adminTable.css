@@ -6,13 +6,20 @@
 
 /* ON :root, NOT .admin-shell: that class is worn by only some admin pages, so scoping here leaves the rest resolving every --at-* to nothing. */
 :root {
-	/* Three depths, darkest at back, equal R/G/B — warmth comes from gold/rust ON the black, not the black itself. */
+	/* Depths, darkest at back, equal R/G/B — warmth comes from gold/rust ON the
+	   black, not the black itself. THE STEPS ARE WHAT MAKE IT A STACK: at one hex
+	   apart the sheet, the head band and a hovered row were the same surface to
+	   the eye, so nothing on the screen read as lifted and the grid looked
+	   printed rather than built. Each step below is visible at arm's length and
+	   they stay in this order — sheet, panel, band, hover, raised. */
 	--at-bg: #0c0c0c;
-	--at-panel: #0d0d0d;
-	--at-inset: #111;
-	--at-hover: #161616;
-	/* Opaque, not translucent: a frozen cell must hide the columns passing under it. */
-	--at-selected: #211f16;
+	--at-panel: #141414;
+	--at-inset: #181818;
+	--at-hover: #1f1f1f;
+	/* Opaque, not translucent: a frozen cell must hide the columns passing under
+	   it. Must also out-rank --at-hover, or a ticked row stops reading as ticked
+	   under the pointer — which is when it is most often read. */
+	--at-selected: #2d2a1e;
 
 	/* Neutral white-alpha, not --rt-border (gold at 18%, reads as a deliberate highlight — wrong for a divider repeating on a hundred rows). */
 	--at-line: rgba(255, 255, 255, 0.08);
@@ -21,14 +28,14 @@
 	/* Gold = "a control you act with"; rust (--at-accent) marks identifiers.
 	   NOT for a gold BUTTON's fill (that's `rt-gold-btn` in src/app.css) — this is a flat tint, e.g. a dropdown's hover highlight. */
 	--at-gold: #eab627;
-	--at-panel-2: #1c1c1c; /* raised surface inside a panel — search boxes, selects, page-size input */
+	--at-panel-2: #242424; /* raised surface inside a panel — search boxes, selects, page-size input, the Σ band */
 	--at-accent: var(--rt-rust);
 	--at-accent-bright: var(--rt-meta);
 
 	/* Headers: white at rest (serious, plain), gold on hover (a control — clicking sorts). NOT rust, which belongs on meta/counts. */
 	--at-th: var(--rt-fg);
 	--at-th-hover: var(--rt-gold-1);
-	--at-th-arrow: rgba(255, 255, 255, 0.4);
+	--at-th-arrow: rgba(255, 255, 255, 0.28); /* one per column, 35 of them at rest — an affordance, never a mark the eye has to skip */
 
 	--at-fg: var(--rt-fg);
 	/* Not the phone palette's muted values — those are a short label at arm's length; this is whole columns a metre away, below the legibility floor. --at-muted-2 is an alias so both call sites move together if they ever diverge. */
@@ -65,8 +72,12 @@
 	--at-font: 13.6px;
 	--at-cell-pad-y: 6.4px;
 	--at-cell-pad-x: 8px;
-	--at-th-font: 13.6px; /* same size as the data — authoritative because white and bold, not bigger */
-	--at-th-weight: 600;
+	/* STILL THE DATA'S SIZE — a bigger header would cost row height, which this
+	   batch spent four cards buying back. The authority comes from the three
+	   axes that are free: heavier, tracked, and sans against the data's mono. */
+	--at-th-font: 13.6px;
+	--at-th-weight: 700;
+	--at-th-track: 0.03em;
 
 }
 
@@ -464,6 +475,7 @@ main:has(.admin-table) {
 .admin-table th {
 	font-size: var(--at-th-font);
 	font-weight: var(--at-th-weight);
+	letter-spacing: var(--at-th-track);
 	color: var(--at-th);
 	text-align: left;
 	white-space: nowrap;
@@ -537,6 +549,18 @@ main:has(.admin-table) {
 	border-bottom-color: var(--at-line-strong);
 }
 
+/* ABSENCE RECEDES — the one treatment, for every column and every screen.
+   OrganizationTable renders 9,367 of its 17,000 cells as the server's "—", and
+   at --at-fg those dashes were the brightest thing on the page: the eye read
+   the holes and had to hunt for the data. --at-muted is the kit's existing
+   "present, not the point" voice and still clears the body-text contrast floor.
+   A ZERO IS NEVER THIS. `0` is a measured value, and dimming it would say
+   "nothing" where the row says "none" — a data lie, so the class is decided
+   from the cell's text, never from falsiness. */
+.admin-table .admin-nil {
+	color: var(--at-muted);
+}
+
 /* Tabular figures so digits line up and a long number is comparable to a short one at a glance. */
 .admin-table .num,
 .admin-table td.num,
@@ -567,4 +591,16 @@ main:has(.admin-table) {
 .admin-table .adt-lead input[type="checkbox"] {
 	cursor: pointer;
 	accent-color: var(--at-th-hover);
+}
+
+/* ── Browser surfaces ────────────────────────────────────────────────── */
+
+/* Unscoped on purpose: only (admin) routes import this sheet, and a selection
+   that changed colour between the grid and the panel beside it would read as
+   two apps. Warm, because the highlight is the kit's rust seen through the
+   sheet — the default is the one colour on an admin screen belonging to no
+   palette at all. */
+::selection {
+	background: color-mix(in srgb, var(--at-accent), var(--at-bg) 55%);
+	color: var(--at-fg);
 }

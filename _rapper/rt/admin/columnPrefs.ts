@@ -194,3 +194,105 @@ export function widthStyle(
 	const w = prefs.widths?.[col];
 	return w ? `width:${w}px;min-width:${w}px;max-width:${w}px` : undefined;
 }
+
+// Splitting on case as well as on `_`/`-`/space: these labels are column keys,
+// and the two conventions sit side by side in one schema.
+const wordsOf = (label: string) =>
+	label
+		.replace(/[_\-\s]+/g, " ")
+		.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+		.trim()
+		.split(/\s+/)
+		.filter(Boolean);
+
+const initialled = (words: string[], keep: number) => {
+	if (words.length < 2) return words[0] ?? "";
+	const last = words[words.length - 1];
+	return `${words
+		.slice(0, -1)
+		.map((w) => w.slice(0, keep))
+		.join("")}${last.charAt(0).toUpperCase()}${last.slice(1)}`;
+};
+
+/**
+ * Fit's header text: every word but the last collapsed to its initial.
+ *
+ * A header in Fit is an IDENTIFIER, not a title. Spelling OrganizationTable's
+ * 34 names needs 2.8 times the window Fit has to spend, so the names truncate
+ * — and a stem shared by eight columns truncates to eight identical `sc…`,
+ * which is a row nobody can map to its columns. Collapsing the stem puts the
+ * letters that DIFFER where the truncation cannot reach them. The full name
+ * stays one hover away, and the other two modes still spell it.
+ *
+ * The initials grow a letter at a time until no two collide, so a column set
+ * this has never seen cannot be reduced to a duplicate by this function.
+ */
+export function fitLabels(labels: readonly string[]): string[] {
+	const words = labels.map(wordsOf);
+	const longest = Math.max(1, ...words.flat().map((w) => w.length));
+	for (let keep = 1; keep < longest; keep++) {
+		const out = words.map((w) => initialled(w, keep));
+		if (new Set(out).size === out.length) return out;
+	}
+	return [...labels];
+}
+
+// Below this, a header is a letter and an ellipsis.
+const MIN_DISTINCT = 2;
+
+/**
+ * Characters of each label that have to render for no two to read the same.
+ *
+ * A truncated header renders a PREFIX and an ellipsis, so two columns are
+ * telling apart only as far as their prefixes differ.
+ */
+export function distinctChars(labels: readonly string[]): number[] {
+	return labels.map((label, i) => {
+		// A header down to one letter is unique and still unrecognisable, so the
+		// count starts where a reader has something to recognise.
+		for (let n = Math.min(MIN_DISTINCT, label.length); n < label.length; n++) {
+			const head = label.slice(0, n);
+			if (!labels.some((o, j) => j !== i && o.slice(0, n) === head)) return n;
+		}
+		return label.length;
+	});
+}
+
+// A table crowded enough that its floors alone exceed the window still gets a
+// tenth of it for content, and a table of two columns does not hand one column
+// the whole window.
+const MIN_CONTENT = 0.1;
+const MAX_CONTENT = 0.8;
+
+/**
+ * Fit's column shares: a guaranteed part that keeps every header distinct, plus
+ * a discretionary part that content bids for. Sums to 1.
+ *
+ * Fit is zero-sum — its shares are one window — so a weight here is what a
+ * column is WORTH, not what it wants. Weighting by the longer of name and
+ * content is right in Comfort, which has no fixed total, and wrong here: it
+ * bought `scoreOrgFlag` width on the strength of a name it then truncated.
+ *
+ * How much is left to bid for is set by how crowded the table is, because the
+ * floors come first: OrganizationTable's 34 headers need 85% of the window just
+ * to stay apart, where StakeholderCategoryTable's five need 17%. `window` is
+ * the width Fit ASSUMES, in the same unit as the floors — it decides the split
+ * and nothing else. A narrower real window scales every share down together,
+ * so the columns still sum to exactly one window, whatever it turns out to be.
+ */
+export function fitWeights(
+	floors: readonly number[],
+	bids: readonly number[],
+	window: number,
+): number[] {
+	const floorTotal = floors.reduce((a, b) => a + b, 0) || 1;
+	const bidTotal = bids.reduce((a, b) => a + b, 0);
+	if (bidTotal === 0) return floors.map((f) => f / floorTotal);
+	const content = Math.min(
+		Math.max(1 - floorTotal / window, MIN_CONTENT),
+		MAX_CONTENT,
+	);
+	return floors.map(
+		(f, i) => (1 - content) * (f / floorTotal) + content * (bids[i] / bidTotal),
+	);
+}

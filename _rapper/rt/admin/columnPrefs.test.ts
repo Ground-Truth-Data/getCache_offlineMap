@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	applyColumnOrder,
 	DEFAULT_FIT,
+	distinctChars,
+	fitLabels,
 	fitMode,
+	fitWeights,
 	hiddenFromParams,
 	hiddenToParams,
 	loadColumnPrefs,
@@ -251,5 +254,119 @@ describe("the mode is remembered per table", () => {
 			widths: { a: 90 },
 			fit: "fit",
 		});
+	});
+});
+
+// The eight columns that rendered eight identical `sc…` headers.
+const SCORES = [
+	"scoreRankOverall",
+	"scorePointsAvailable",
+	"scorePointsScored",
+	"scoreOrgPreClaim",
+	"scoreSumClaimed",
+	"scoreOrgFinal",
+	"scoreOrgFlag",
+	"scoreRankByCategory",
+];
+
+describe("fitLabels", () => {
+	it("collapses every word but the last to an initial", () => {
+		expect(fitLabels(["organizationKey", "scoreRankOverall"])).toEqual([
+			"oKey",
+			"sROverall",
+		]);
+	});
+
+	it("reads the same for snake_case as for camelCase", () => {
+		expect(fitLabels(["stakeholder_category_desc"])).toEqual(["scDesc"]);
+	});
+
+	it("leaves a single word alone", () => {
+		expect(fitLabels(["address", "website"])).toEqual(["address", "website"]);
+	});
+
+	it("puts the letters that differ within the first few characters", () => {
+		// The point of the whole function: a shared stem cannot survive truncation.
+		expect(fitLabels(SCORES).map((l) => l.slice(0, 3))).toEqual([
+			"sRO",
+			"sPA",
+			"sPS",
+			"sOP",
+			"sSC",
+			"sOF",
+			"sOF",
+			"sRB",
+		]);
+	});
+
+	it("grows the initials rather than returning a duplicate", () => {
+		// Both collapse to `pName` on one initial, so both take two.
+		expect(fitLabels(["projectName", "platformName"])).toEqual([
+			"prName",
+			"plName",
+		]);
+	});
+
+	it("never maps two columns onto one header", () => {
+		const out = fitLabels([...SCORES, "scoreHistoryLog", "scoreLastUpdatedAt"]);
+		expect(new Set(out).size).toBe(out.length);
+	});
+});
+
+describe("distinctChars", () => {
+	it("counts to where a label stops matching the others", () => {
+		expect(distinctChars(["sOFinal", "sOFlag"])).toEqual([4, 4]);
+	});
+
+	it("asks for two characters even where one would be unique", () => {
+		expect(distinctChars(["alpha", "beta"])).toEqual([2, 2]);
+	});
+
+	it("never asks for more than the label has", () => {
+		expect(distinctChars(["a", "b"])).toEqual([1, 1]);
+	});
+});
+
+describe("fitWeights", () => {
+	const sum = (n: number[]) => n.reduce((a, b) => a + b, 0);
+
+	it("spends exactly one window", () => {
+		expect(sum(fitWeights([3, 3, 9], [0, 4, 40], 112))).toBeCloseTo(1);
+	});
+
+	it("pays a column with nothing in it its floor and no more", () => {
+		// Two identical floors, one with content: the empty one must come out
+		// narrower, which is the whole defect this replaced.
+		const [empty, held] = fitWeights([3, 3], [0, 9], 112);
+		expect(empty).toBeLessThan(held);
+	});
+
+	it("divides the content share in proportion to the bids", () => {
+		// Straight proportion, so holding the outliers back is the caller's job —
+		// the component bids the square root of what a column holds.
+		const [even] = fitWeights([3, 3], [2, 2], 112);
+		const [lean, held] = fitWeights([3, 3], [1, 3], 112);
+		expect(even).toBeCloseTo(0.5);
+		expect(held - lean).toBeGreaterThan(0.4);
+	});
+
+	it("leaves the floors to split a window where nothing has content", () => {
+		expect(fitWeights([1, 3], [0, 0], 112)).toEqual([0.25, 0.75]);
+	});
+
+	it("keeps a crowded table's floors ahead of its content", () => {
+		// Floors already over-subscribing the window: content gets the tenth it is
+		// guaranteed, not the difference.
+		const floors = Array.from({ length: 34 }, () => 3);
+		const weights = fitWeights(floors, floors.map((_, i) => (i === 0 ? 40 : 0)), 112);
+		expect(weights[0]).toBeCloseTo((0.9 * 3) / 102 + 0.1, 5);
+	});
+
+	it("leaves an empty column its floor however little else is on the table", () => {
+		// Content is capped at four fifths, so the one column holding everything
+		// cannot squeeze its neighbour out of the window.
+		const [thin, fat] = fitWeights([3, 3], [0, 400], 10_000);
+		expect(thin).toBeCloseTo(0.1);
+		expect(fat).toBeCloseTo(0.9);
 	});
 });

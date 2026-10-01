@@ -81,7 +81,8 @@ const atStart = $derived(page === 0);
 		<span class="pg-meta">
 			{#if rowsOnPage === 0}
 				no rows on this page
-			{:else if onPageSize}
+			{:else if onPageSize && (hasMore || !atStart)}
+				<!-- Only once the table spills a page: on one page the box read "1–200 of 3". -->
 				<!-- Committed on blur/Enter, never per-keystroke. `&nbsp;`, not a plain space: Svelte trims whitespace at a block start, so a newline renders as "500of 11,400". -->
 				rows {first.toLocaleString()}–<input
 					class="pagesize"
