@@ -22,7 +22,6 @@ export interface MapHostFeature {
 	featureData: string | null;
 	contacts?: string[];
 	geometry: Feature | null;
-	lastEditedBy: string | null;
 	importedCount: number | null;
 	hectaresCalc: number | null;
 	overlayStorageKey: string | null;
@@ -56,7 +55,6 @@ export interface MapHostStore {
 	addFeature(
 		geojsonFeature: Feature,
 		featureType?: string,
-		lastEditedBy?: string,
 		abstraction?: string | null,
 		opts?: Record<string, unknown>,
 	): string;
@@ -72,7 +70,6 @@ export interface MapHostStore {
 			featureData?: string;
 			contacts?: string[];
 			geometry?: Feature | null;
-			lastEditedBy?: string;
 			/** The BLOCK this shape is the ground of, "" to release it. */
 			landName?: string;
 			/** Stored in the geometry's properties; `null`/`false`/`""` REMOVE the prop. */
