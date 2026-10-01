@@ -25,8 +25,6 @@ export interface MapHostFeature {
 	lastEditedBy: string | null;
 	importedCount: number | null;
 	hectaresCalc: number | null;
-	senderName: string | null;
-	senderId: string | null;
 	overlayStorageKey: string | null;
 	overlayBounds: [number, number, number, number] | null;
 	overlayCorners:
@@ -45,8 +43,6 @@ export interface MapHostSession {
 	landKey?: string | null;
 	createdAt: string;
 	lastTouched: string;
-	senderName: string | null;
-	senderId: string | null;
 	features: MapHostFeature[];
 }
 
