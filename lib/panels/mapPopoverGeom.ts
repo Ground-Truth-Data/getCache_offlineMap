@@ -46,7 +46,7 @@ export function placePopover(input: PlaceInput): Placement {
 		crow,
 	} = input;
 
-	const cap = wide ? containerWidth - 64 : 260;
+	const cap = wide ? containerWidth - 46 : 260;
 	let width = Math.max(MIN_WIDTH, Math.min(cap, containerWidth - PAD * 2));
 
 	const usableTop = topReserve;
