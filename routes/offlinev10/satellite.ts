@@ -17,37 +17,34 @@ import { noteSatelliteTiles } from "../../lib/onPhone/store/downloadGuard";
 import { noteBytes } from "../../lib/shared/dataMeter.svelte";
 import { passQueue } from "../../lib/shared/passQueue";
 import { sessionCap, spendBytes } from "../../lib/shared/sessionByteCap.svelte";
-import { satelliteBatchUrl } from "../../lib/worker/worker-local-dev/tilesHost";
+import { satelliteTileUrl } from "../../lib/worker/worker-local-dev/tilesHost";
 import { onBlob } from "./blobService";
-import { readPack } from "./pack";
+import { getEach } from "./download";
 import { getPhotoTiles, notePhotoBytes, photoTileBytes, putPhotoTiles, regionsSnapshot } from "./store";
 
-// Tiles per request; the Worker refuses more than 300.
-const SAT_PER_REQUEST = 300;
-
-/** A photo's tiles: disk first, the rest in as few requests as the Worker allows, written before they are drawn. */
+/** A photo's tiles: disk first, the rest one GET each, written before they are drawn. */
 export async function photoTiles(keys: string[]): Promise<Map<string, ArrayBuffer>> {
 	const have = await getPhotoTiles(keys);
 	const missing = keys.filter((k) => !have.has(k));
 	if (missing.length === 0 || (typeof navigator !== "undefined" && navigator.onLine === false)) return have;
-	const url = satelliteBatchUrl();
-	if (url === null) throw new Error("no tiles host configured — configureTilesHost() must run before a photo bakes.");
-	for (let i = 0; i < missing.length; i += SAT_PER_REQUEST) {
-		if (sessionCap.tripped) break;
-		const chunk = missing.slice(i, i + SAT_PER_REQUEST);
-		noteSatelliteTiles(chunk.length);
-		const res = await fetch(url, { method: "POST", body: JSON.stringify(chunk.map((k) => k.split("/").map(Number))) });
-		if (!res.ok) throw new Error(`satellite batch: HTTP ${res.status} ${await res.text().catch(() => "")}`.trim());
-		const got: Array<[string, ArrayBuffer]> = [];
-		for (const [k, b] of readPack(new Uint8Array(await res.arrayBuffer()))) {
-			if (!b) continue;
-			got.push([k, b]);
+	const urls = missing.map((k) => satelliteTileUrl(...(k.split("/").map(Number) as [number, number, number])));
+	if (urls.some((u) => u === null)) throw new Error("no tiles host configured — configureTilesHost() must run before a photo bakes.");
+	noteSatelliteTiles(missing.length);
+	const got: Array<[string, ArrayBuffer]> = [];
+	await getEach(
+		urls as string[],
+		(i, b) => {
+			if (!b) return;
+			got.push([missing[i], b]);
+			have.set(missing[i], b);
 			noteBytes("satellite", b.byteLength);
 			spendBytes(b.byteLength);
-		}
-		await putPhotoTiles(got);
-		for (const [k, b] of got) have.set(k, b);
-	}
+		},
+		() => sessionCap.tripped,
+		// MapTiler lacks some tiles; the bake already tolerates gaps.
+		true,
+	);
+	await putPhotoTiles(got);
 	return have;
 }
 

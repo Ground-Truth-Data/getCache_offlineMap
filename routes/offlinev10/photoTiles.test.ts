@@ -62,20 +62,9 @@ describe("photo close-up tiles", () => {
 	});
 });
 
-/** The Worker's POST /satellite answer for these keys: every tile 7 bytes. */
-function pack(keys: number[][]): ArrayBuffer {
-	const manifest = new TextEncoder().encode(JSON.stringify({ tiles: keys.map(([z, x, y]) => ({ k: `${z}/${x}/${y}`, n: 7 })) }));
-	const out = new Uint8Array(4 + manifest.length + keys.length * 7);
-	new DataView(out.buffer).setUint32(0, manifest.length, true);
-	out.set(manifest, 4);
-	return out.buffer;
-}
-
 describe("what a photo's tiles cost on the wire", () => {
-	const fetchMock = vi.fn(async (_url: string, init: { body: string }) => ({
-		ok: true,
-		arrayBuffer: async () => pack(JSON.parse(init.body)),
-	}));
+	// The Worker's /satellite/{z}/{x}/{y}.jpg: every tile 7 bytes.
+	const fetchMock = vi.fn(async (_url: string) => ({ ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(7) }));
 	beforeEach(() => {
 		fetchMock.mockClear();
 		vi.stubGlobal("fetch", fetchMock);
@@ -88,7 +77,7 @@ describe("what a photo's tiles cost on the wire", () => {
 		expect(got.size).toBe(keysOf(A).length);
 	});
 
-	it("an overlapping disc fetches only its missing tiles, in one request, and keeps them", async () => {
+	it("an overlapping disc fetches only its missing tiles, once each, and keeps them", async () => {
 		const C = region("c", -81.5076, 43.1226);
 		const onDisk = new Set([...keysOf(A), ...keysOf(B)]);
 		const missing = keysOf(C).filter((k) => !onDisk.has(k));
@@ -96,8 +85,8 @@ describe("what a photo's tiles cost on the wire", () => {
 		expect(missing.length).toBeLessThan(keysOf(C).length);
 
 		const got = await photoTiles(keysOf(C));
-		expect(fetchMock).toHaveBeenCalledTimes(1);
-		expect(JSON.parse(fetchMock.mock.calls[0][1].body).map((k: number[]) => k.join("/"))).toEqual(missing);
+		const asked = fetchMock.mock.calls.map((c) => /satellite\/(\d+\/\d+\/\d+)\.jpg/.exec(c[0])?.[1]);
+		expect(asked.sort()).toEqual([...missing].sort());
 		expect(got.size).toBe(keysOf(C).length);
 
 		fetchMock.mockClear();

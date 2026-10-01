@@ -77,6 +77,7 @@ const report = (r: Region) => {
 	return {
 		name: nameOf(r),
 		focused: r.id === focus?.id,
+		waited: r.msWait == null ? "not timed" : `${secs(r.msWait)} · tap → ${r.photo === false ? "map" : "photo"} on screen`,
 		health: health(r),
 		saved: `${new Date(r.at).toLocaleString()} (${ago(r.at)})`,
 		added: mb(rowBytes(r)),
@@ -232,6 +233,13 @@ onMount(() => {
 						<button class="x" onclick={() => onDelete(r.id)} disabled={busy} title="delete this blob">✕</button>
 					</div>
 					<div class="layers">
+						<div class="layer on wait">
+							<span class="dir">⏱</span>
+							<span class="ico"></span>
+							<span class="lname">waited</span>
+							<span class="ldetail">tap → {r.photo === false ? "map" : "photo"} on screen</span>
+							<span class="lbytes">{r.msWait == null ? "—" : secs(r.msWait)}</span>
+						</div>
 						<div class="layer on">
 							<span class="dir">in</span>
 							<span class="ico">🗺️</span>
@@ -331,7 +339,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .ico { text-align: center; }
 .lname { color: var(--text); }
 .ldetail { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
-.took { color: #ff5a4a; }
+.took, .wait .lbytes { color: #ff5a4a; }
 .lbytes { color: #eab627; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
 .layer:not(.on) > span { opacity: 0.5; }
 </style>

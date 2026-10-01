@@ -258,6 +258,7 @@ onMount(() => {
 	{#if last}
 		<table class="clock">
 			<tbody>
+				<tr><td class="name">tap → on screen</td><td class="num took">{last.msWait == null ? "…" : secs(last.msWait)}</td><td class="dim">what you waited</td></tr>
 				<tr><td class="name">ask → disk</td><td class="num">{secs(last.ms)}</td><td class="dim">{last.fetched} fetched</td></tr>
 				{#if lastPhoto}<tr><td class="name">photo ask → disk</td><td class="num">{lastPhoto.ms == null ? "…" : secs(lastPhoto.ms)}</td><td class="dim">download + bake</td></tr>{/if}
 				<tr><td class="name">disk → painted</td><td class="num">{last.msPaint == null ? "…" : secs(last.msPaint)}</td><td class="dim">map idle</td></tr>
@@ -328,4 +329,5 @@ onMount(() => {
 .reads .num { font-weight: 700; font-variant-numeric: tabular-nums; }
 .foot { display: flex; justify-content: space-between; gap: 10px; margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--border); }
 .foot button { background: none; border: 0; color: var(--muted); font: inherit; cursor: pointer; padding: 0; text-decoration: underline; }
+.took { color: #ff5a4a; font-weight: 700; }
 </style>

@@ -66,6 +66,16 @@ let failure = $state<string | null>(null);
 let light = $state<Light>("idle");
 let dlStart = $state<number | null>(null);
 let dlMs = $state<number | null>(null);
+// The blob whose photo is the end of the wait; set when its tiles land.
+let waitingPhoto: { id: string; t0: number } | null = null;
+
+function settleWait(id: string, ms: number): void {
+	const msWait = Math.round(ms);
+	dlMs = msWait;
+	regions = regions.map((x) => (x.id === id ? { ...x, msWait } : x));
+	if (last?.id === id) last = { ...last, msWait };
+	void patchRegion(id, { msWait });
+}
 let layerRows = $state<LayerRow[]>([]);
 let mapForTools = $state<MapboxMap | null>(null);
 let drawControlsRef: ReturnType<NonNullable<typeof MapDrawControls>> | undefined = $state();
@@ -171,6 +181,10 @@ async function nameOldBlobs(): Promise<void> {
 }
 
 function onPhotoLanded(): void {
+	if (waitingPhoto) {
+		settleWait(waitingPhoto.id, performance.now() - waitingPhoto.t0);
+		waitingPhoto = null;
+	}
 	photos?.closeUpChanged();
 	reconcilePhotos();
 	void photoInfo().then((p) => {
@@ -237,6 +251,8 @@ async function landed(r: Region): Promise<void> {
 	invalidatePlanet();
 	await refresh();
 	last = r;
+	const expectsPhoto = r.photo !== false && dlStart !== null;
+	if (expectsPhoto) waitingPhoto = { id: r.id, t0: dlStart as number };
 	// A camera move keeps `idle` from firing, so the reading is marked interrupted rather than reported.
 	let moved = false;
 	const onMove = (): void => {
@@ -257,7 +273,7 @@ async function landed(r: Region): Promise<void> {
 		r.msPaint = Math.round(performance.now() - t0);
 		last = { ...r };
 		light = "drawn";
-		dlMs = dlStart === null ? null : performance.now() - dlStart;
+		if (!expectsPhoto && dlStart !== null) settleWait(r.id, performance.now() - dlStart);
 		regions = regions.map((x) => (x.id === r.id ? { ...x, msPaint: r.msPaint } : x));
 		void patchRegion(r.id, { msPaint: r.msPaint });
 		console.info(`[offlineV10] painted ${r.id} in ${r.msPaint} ms`);
@@ -281,7 +297,11 @@ function followBlobs(): () => void {
 			dlMs = null;
 			progress = null;
 			failure = null;
-		} else if (e.kind === "progress") progress = e.progress;
+		} else if (e.kind === "progress") {
+			progress = e.progress;
+			// Each request that lands paints, so the blob fills in instead of arriving whole.
+			invalidatePlanet();
+		}
 		// Nothing awaits these, so a rejection must turn the light red itself.
 		else if (e.kind === "landed")
 			landed(e.region).catch((err) => {

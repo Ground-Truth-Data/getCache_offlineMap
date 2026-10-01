@@ -36,6 +36,8 @@ export interface Region {
 	newBytes?: number;
 	/** ask → all on disk */
 	ms: number;
+	/** tap → photo on screen (the map, for a blob without one): what the person waited */
+	msWait?: number;
 	/** on disk → painted (idle) */
 	msPaint?: number;
 	/** the camera moved before idle, so there is no honest paint time */
@@ -175,9 +177,16 @@ export async function makeRoom(adding: number): Promise<Region[]> {
 	return doomed;
 }
 
-export async function putTiles(
-	entries: Array<[string, ArrayBuffer]>,
-): Promise<void> {
+// One write at a time: each reads the running total and writes it back, so two at once lose a batch's bytes.
+let writing: Promise<void> = Promise.resolve();
+
+export function putTiles(entries: Array<[string, ArrayBuffer]>): Promise<void> {
+	const run = writing.then(() => putNow(entries));
+	writing = run.catch(() => undefined);
+	return run;
+}
+
+async function putNow(entries: Array<[string, ArrayBuffer]>): Promise<void> {
 	if (entries.length === 0) return;
 	const adding = entries.reduce((a, [, b]) => a + b.byteLength, 0);
 	let used = await usedBytes();
