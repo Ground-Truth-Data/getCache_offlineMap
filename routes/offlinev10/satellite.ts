@@ -76,6 +76,8 @@ export interface PhotoInfo {
 	source: string;
 	zoom: number;
 	canvasPx: number;
+	/** download + bake; absent on a photo baked before it was timed */
+	ms?: number;
 	/** The raw source tiles kept for the close-up; they live in the tile store, so its budget already counts them. */
 	closeUp: { tiles: number; bytes: number };
 }
@@ -96,6 +98,7 @@ export async function photoInfo(): Promise<Record<string, PhotoInfo>> {
 			source: m.source ?? WORLD.name,
 			zoom: m.zoom ?? WORLD.zoom,
 			canvasPx: m.canvasPx ?? WORLD.canvasPx,
+			ms: m.ms,
 			closeUp: closeByKey.get(m.key) ?? { tiles: 0, bytes: 0 },
 		};
 	}

@@ -93,6 +93,7 @@ const report = (r: Region) => {
 						...specOf(r),
 						radiusKm: PHOTO_SPEC.radiusKm,
 						size: p ? kb(p.bytes) : "not baked yet",
+						took: p?.ms == null ? "not timed" : secs(p.ms),
 						closeUp: p ? `${p.closeUp.tiles} raw z${p.zoom} tiles · ${kb(p.closeUp.bytes)}` : "not baked yet",
 					},
 		fetched: {
@@ -247,7 +248,7 @@ onMount(() => {
 								<span class="lbytes">—</span>
 							{:else}
 								<span class="ldetail">{PHOTO_SPEC.radiusKm} km · {specOf(r).canvasPx} px · {specOf(r).name} z{specOf(r).zoom}</span>
-								<span class="lbytes">{photoOf(r) == null ? "—" : kb((photoOf(r) as PhotoInfo).bytes)}</span>
+								<span class="lbytes">{#if photoOf(r)?.ms != null}<b class="took">{secs((photoOf(r) as PhotoInfo).ms as number)}</b>{" · "}{/if}{photoOf(r) == null ? "—" : kb((photoOf(r) as PhotoInfo).bytes)}</span>
 							{/if}
 						</div>
 						{#if r.photo !== false}
@@ -330,6 +331,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .ico { text-align: center; }
 .lname { color: var(--text); }
 .ldetail { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.took { color: #ff5a4a; }
 .lbytes { color: #eab627; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
 .layer:not(.on) > span { opacity: 0.5; }
 </style>

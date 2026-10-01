@@ -54,6 +54,8 @@ export interface SatImage {
 	/** At bake time; the registry can change under a stored photo. */
 	zoom?: number;
 	canvasPx?: number;
+	/** ask → on disk: the satellite download and the bake together */
+	ms?: number;
 }
 
 const idb = makeKeyedIdbStore<SatImage>({ dbName: DB_NAME, storeName: STORE });
@@ -92,6 +94,7 @@ export async function satImageMeta(): Promise<
 		source?: string;
 		zoom?: number;
 		canvasPx?: number;
+		ms?: number;
 	}[]
 > {
 	const [keys, meta] = await Promise.all([
@@ -102,6 +105,7 @@ export async function satImageMeta(): Promise<
 			source: v.source,
 			zoom: v.zoom,
 			canvasPx: v.canvasPx,
+			ms: v.ms,
 		})),
 	]);
 	return keys.map((k, i) => ({ key: k, ...meta[i] }));
@@ -255,9 +259,11 @@ export async function bakeSatelliteImage(
 	if (covering) return covering;
 	if (sessionCap.tripped) return existing ?? null;
 
+	const t0 = performance.now();
 	for (const src of PHOTO_SOURCES) {
 		const out = await bakeFrom(src, center, tiles);
 		if (out) {
+			out.ms = Math.round(performance.now() - t0);
 			await idb.put(key, out);
 			return out;
 		}
