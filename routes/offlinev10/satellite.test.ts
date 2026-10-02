@@ -21,10 +21,12 @@ vi.mock(
 				bytes: v.blob.size,
 				source: v.source,
 			})),
-		bakeSatelliteImage: async (c: [number, number]) => {
+		bakeSatelliteImage: async (c: [number, number], _tiles: unknown, beforeSave?: () => Promise<void>) => {
 			bakes.push(c);
 			const r = bakeResult?.() ?? null;
-			if (r) onDisk.set(`${c[0].toFixed(4)},${c[1].toFixed(4)}`, r);
+			if (!r) return r;
+			await beforeSave?.();
+			onDisk.set(`${c[0].toFixed(4)},${c[1].toFixed(4)}`, r);
 			return r;
 		},
 		deleteSatImage: async (k: string) => {
@@ -33,7 +35,13 @@ vi.mock(
 	}),
 );
 let photoBytesReported = -1;
+const { rowless, AreaGone } = vi.hoisted(() => ({ rowless: new Set<string>(), AreaGone: class AreaGone extends Error {} }));
 vi.mock("./store", () => ({
+	AreaGone,
+	regionId: (lng: number, lat: number) => `${lat.toFixed(5)},${lng.toFixed(5)}`,
+	claimArea: async (id: string) => {
+		if (rowless.has(id)) throw new AreaGone(id);
+	},
 	regionsSnapshot: () => ({ regions: Promise.resolve([]) }),
 	notePhotoBytes: (n: number) => {
 		photoBytesReported = n;
@@ -79,6 +87,15 @@ describe("the photo pass", () => {
 		const n = await bakePhotos([PENTICTON]);
 		expect(n).toBe(0);
 		expect(bakes).toEqual([]);
+	});
+
+	it("a photo whose area went mid-bake is never saved, and the pass goes on to the next", async () => {
+		const other: [number, number] = [-118, 49];
+		rowless.add(`${PENTICTON[1].toFixed(5)},${PENTICTON[0].toFixed(5)}`);
+		expect(await bakePhotos([PENTICTON, other])).toBe(1);
+		expect(bakes).toEqual([PENTICTON, other]);
+		expect(onDisk.has(photoKey(...PENTICTON))).toBe(false);
+		rowless.clear();
 	});
 
 	it("no imagery pauses the pass, and it runs again after PHOTO_RETRY_MS", async () => {

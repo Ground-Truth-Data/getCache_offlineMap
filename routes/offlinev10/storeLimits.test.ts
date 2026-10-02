@@ -6,7 +6,9 @@ import { configureTilesDevHost } from "../../lib/worker/worker-local-dev/tilesHo
 import { removeArea, removeStaleAreas, startBlobService } from "./blobService";
 import { BudgetError, isStale, OFFLINE_TILES_BYTES, setBudgetMb, STALE_AREA_MONTHS } from "./budget";
 import { downloadRegion, roomFor } from "./download";
+import { satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
 import {
+	AreaGone,
 	areaUsage,
 	deleteRegion,
 	listRegions,
@@ -25,6 +27,11 @@ import { rangeContains, rangeTiles, regionRange, tileKey } from "./tiles";
 
 vi.stubGlobal("window", new EventTarget());
 vi.mock("./places", () => ({ nearestPlace: async () => null }));
+const photosDropped = vi.hoisted(() => [] as string[]);
+vi.mock("../../lib/onPhone/satellite/satelliteImage", async (orig) => ({
+	...(await orig<typeof import("../../lib/onPhone/satellite/satelliteImage")>()),
+	deleteSatImage: async (k: string) => void photosDropped.push(k),
+}));
 
 const MB = 1048576;
 const DAY = 86_400_000;
@@ -48,7 +55,17 @@ function ownTile(r: Region): string {
 beforeEach(async () => {
 	await wipe();
 	setBudgetMb(1024);
+	photosDropped.length = 0;
 });
+
+/** Tiles on disk that no live row covers. */
+async function orphanTiles(): Promise<string[]> {
+	const rows = await listRegions();
+	return [...(await allTileKeys())].filter((k) => {
+		const [z, x, y] = k.split("/").map(Number);
+		return !rows.some((r) => rangeContains(r.range, { z, x, y }));
+	});
+}
 
 describe("the 1 GB wall refuses, it never evicts", () => {
 	it("is 1 GB and 12 months", () => {
@@ -180,6 +197,71 @@ describe("a removed area's row leaves with its pin", () => {
 	});
 });
 
+describe("an area lives and dies with its pin", () => {
+	it("a pin gone while nobody watched takes its area, its photo and its row once the map store is ready", async () => {
+		const [p, t, f] = SPOTS;
+		const now = Date.now();
+		const pinned = region(regionId(...p), now, ...p, { pin: true });
+		const tomb = region(regionId(...t), now, ...t, { pin: true, removed: now });
+		const follow = region(regionId(...f), now, ...f, { photo: false });
+		for (const r of [pinned, tomb, follow]) await putRegion(r);
+		await putTiles([[ownTile(pinned), new ArrayBuffer(1024)]], pinned.id);
+		await putTiles([[ownTile(follow), new ArrayBuffer(1024)]], follow.id);
+		let ready = false;
+		let changed = (): void => undefined;
+		const ports = {
+			places: () => [],
+			ready: () => ready,
+			onPlacesChanged: (fn: () => void) => {
+				changed = fn;
+				fn();
+				return () => undefined;
+			},
+		} as unknown as HostPorts;
+		const stop = startBlobService(ports);
+		await new Promise((r) => setTimeout(r, 20));
+		// Hydrating is not empty.
+		expect(await regionKnown(pinned.id)).toBe(true);
+		ready = true;
+		changed();
+		await vi.waitFor(async () => expect(await regionKnown(pinned.id)).toBe(false));
+		await vi.waitFor(async () => expect(await regionKnown(tomb.id)).toBe(false));
+		expect((await listRegions()).map((r) => r.id)).toEqual([follow.id]);
+		expect([...(await allTileKeys())]).toEqual([ownTile(follow)]);
+		expect(photosDropped).toContain(satImageKey(p));
+		stop();
+	});
+
+	it("an area removed mid-download stops the download and leaves no tile without a row", async () => {
+		configureTilesDevHost("https://tiles.test");
+		const at = SPOTS[1];
+		const id = regionId(...at);
+		let served = 0;
+		vi.stubGlobal("fetch", async () => {
+			if (++served === 300) await deleteRegion(id, true);
+			return new Response(new ArrayBuffer(10));
+		});
+		const err = await downloadRegion(...at).catch((e) => e);
+		expect(err).toBeInstanceOf(AreaGone);
+		expect(served).toBeLessThan(rangeTiles(regionRange(...at)).length);
+		expect(await orphanTiles()).toEqual([]);
+		// The removed row stays, so the pin is not fetched straight back.
+		expect(await regionKnown(id)).toBe(true);
+		vi.unstubAllGlobals();
+	});
+
+	it("a failed download takes its photo with its row", async () => {
+		configureTilesDevHost("https://tiles.test");
+		const at = SPOTS[0];
+		vi.stubGlobal("fetch", async () => new Response("no", { status: 500 }));
+		vi.spyOn(console, "error").mockImplementation(() => undefined);
+		await expect(downloadRegion(...at)).rejects.toThrow("HTTP 500");
+		expect(await regionKnown(regionId(...at))).toBe(false);
+		expect(photosDropped).toEqual([satImageKey(at)]);
+		vi.unstubAllGlobals();
+	});
+});
+
 // Last: the hung fetches below hold the download pool for the rest of this file.
 describe("a download that stops for any reason leaves no tile without a row", () => {
 	it("tiles written before the page went away are named by a row the engine fetches again", async () => {
@@ -192,12 +274,7 @@ describe("a download that stops for any reason leaves no tile without a row", ()
 		const at = SPOTS[2];
 		void downloadRegion(...at).catch(() => undefined);
 		await vi.waitFor(async () => expect((await allTileKeys()).size).toBeGreaterThanOrEqual(256));
-		const rows = await listRegions();
-		const orphans = [...(await allTileKeys())].filter((k) => {
-			const [z, x, y] = k.split("/").map(Number);
-			return !rows.some((r) => rangeContains(r.range, { z, x, y }));
-		});
-		expect(orphans).toEqual([]);
+		expect(await orphanTiles()).toEqual([]);
 		expect(await regionKnown(regionId(...at))).toBe(false);
 		vi.unstubAllGlobals();
 	});

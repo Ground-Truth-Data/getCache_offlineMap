@@ -6,7 +6,7 @@ import { PHOTO_SOURCES } from "../../lib/onPhone/satellite/photoSources";
 import { configureTilesDevHost } from "../../lib/worker/worker-local-dev/tilesHost";
 import { setBudgetMb } from "./budget";
 import { photoTiles } from "./satellite";
-import { allTileKeys, deleteRegion, PHOTO_PREFIX, photoTileBytes, putPhotoTiles, putRegion, type Region, wipe } from "./store";
+import { AreaGone, allTileKeys, deleteRegion, PHOTO_PREFIX, photoTileBytes, putPhotoTiles, putRegion, type Region, wipe } from "./store";
 import { regionRange } from "./tiles";
 
 vi.mock("./blobService", () => ({ onBlob: () => () => undefined }));
@@ -30,7 +30,7 @@ beforeEach(async () => {
 	setBudgetMb(1024);
 	for (const r of [A, B]) {
 		await putRegion(r);
-		await putPhotoTiles(keysOf(r).map((k) => [k, new ArrayBuffer(10)]));
+		await putPhotoTiles(keysOf(r).map((k) => [k, new ArrayBuffer(10)]), r.id);
 	}
 });
 
@@ -72,7 +72,7 @@ describe("what a photo's tiles cost on the wire", () => {
 	afterEach(() => vi.unstubAllGlobals());
 
 	it("a disc already on disk costs zero requests", async () => {
-		const got = await photoTiles(keysOf(A));
+		const got = await photoTiles(keysOf(A), A.id);
 		expect(fetchMock).not.toHaveBeenCalled();
 		expect(got.size).toBe(keysOf(A).length);
 	});
@@ -84,13 +84,21 @@ describe("what a photo's tiles cost on the wire", () => {
 		expect(missing.length).toBeGreaterThan(0);
 		expect(missing.length).toBeLessThan(keysOf(C).length);
 
-		const got = await photoTiles(keysOf(C));
+		await putRegion(C);
+		const got = await photoTiles(keysOf(C), C.id);
 		const asked = fetchMock.mock.calls.map((c) => /satellite\/(\d+\/\d+\/\d+)\.jpg/.exec(c[0])?.[1]);
 		expect(asked.sort()).toEqual([...missing].sort());
 		expect(got.size).toBe(keysOf(C).length);
 
 		fetchMock.mockClear();
-		await photoTiles(keysOf(C));
+		await photoTiles(keysOf(C), C.id);
 		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("a photo for an area whose row is gone fetches, but lands no tile", async () => {
+		const C = region("c", -81.5076, 43.1226);
+		const before = await photoKeysOnDisk();
+		await expect(photoTiles(keysOf(C), C.id)).rejects.toBeInstanceOf(AreaGone);
+		expect(await photoKeysOnDisk()).toEqual(before);
 	});
 });
