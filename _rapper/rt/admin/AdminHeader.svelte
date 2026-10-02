@@ -17,7 +17,7 @@ import { onMount } from "svelte";
 import { lastTool, rememberTool } from "./lastTool";
 import { tableCount } from "./tableCounts.svelte";
 import { page } from "$app/state";
-import Icon from "$parent/siblings/getCache_OnlineMap/lib/components/Icon.svelte";
+import Icon from "$gc/Icon.svelte";
 import { getcacheUrl, urlOnSite } from "../sites";
 import {
 	ADMIN_PARENTS,

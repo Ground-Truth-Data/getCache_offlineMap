@@ -27,7 +27,7 @@ import type { Row as ExportRow } from "./exportRows";
 import { recencyColumn } from "./recencyColumn";
 import { type SortState, sortRows } from "./sortRows";
 import { setTableCounts } from "./tableCounts.svelte";
-import SearchInput from "$parent/siblings/getCache_OnlineMap/lib/components/SearchInput.svelte";
+import SearchInput from "$gc/SearchInput.svelte";
 
 type Row = Record<string, unknown>;
 

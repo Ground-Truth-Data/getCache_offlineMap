@@ -1,4 +1,4 @@
-import type { IconName } from "$parent/siblings/getCache_OnlineMap/lib/components/iconPaths";
+import type { IconName } from "$gc/iconPaths";
 import rtLogo from "$rt/assets/ReTreever_logo_sm.webp";
 import foundrLogo from "$rt/assets/foundr_logo_sm2.webp";
 import GC_LOGO from "$gc/assets/GC_fly_logo_512px.webp";
