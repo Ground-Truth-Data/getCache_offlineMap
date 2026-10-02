@@ -3,6 +3,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 const stored: string[] = [];
 vi.mock("./store", () => ({
+	AreaGone: class AreaGone extends Error {},
 	allTileKeys: async () => new Set<string>(),
 	bytesOfTiles: async () => 0,
 	deleteRegion: async () => 0,

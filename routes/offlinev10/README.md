@@ -41,9 +41,14 @@ fetches only what is missing; deleting a blob drops only tiles under no
 surviving blob's anchor tiles. A blob is its pin's SPOT, not its ground: a
 pin dropped inside an older blob's tiles still earns its own row (0 fetched,
 all shared) and its own photo. Only a pin at the very same spot is skipped.
-A deleted pin takes its blob and photo with it (the engine diffs the pin
-spots it has seen while the host was ready). Blobs with no pin — map centre,
-follow-me — only the dock deletes.
+A deleted pin takes its blob and photo with it. A pin's blob is stored
+`pin: true`; on the host's first ready read the engine diffs the pin-born
+rows on disk against the pins, so a pin deleted while the app was closed
+(or on another phone) still takes its blob, and after that it diffs pin
+change against pin change. Blobs with no pin — map centre, follow-me —
+only the dock deletes. Every tile is written under its blob's live row,
+checked in the write's own transaction: a blob removed mid-download stops
+the download at its next write, and its photo is never saved.
 A follow-me blob is stored `photo: false` and never gets a photo: no pin,
 nothing to look at.
 
@@ -122,7 +127,7 @@ moved anywhere in the app — the online map above all — earns its blob the
 moment it lands, while there is still signal; people open the offline preview when
 they need it, and by then it is too late. The page only listens (`onBlob`) to
 light the dock and time the paint, and reflects a download that started on
-another page. Pins that existed before the service started are left alone.
+another page. Every pin earns its blob, however old.
 
 The gesture is the one both other maps use (`doubleTapToPin.ts`): double-tap
 or long-press plants the Snake Ruler's first node; Save drops a pin, which
@@ -130,13 +135,6 @@ lands in the app's map store like any other pin and opens the editor whose
 Edit button is the pin library. All of that is the ONLINE drawer's
 (`MapDrawControls`), which V10 mounts; the store's pins — every map's, the
 same ones the online map draws, clustered when they crowd — come with it.
-
-The blob follows the pin: `watchNewPins` watches the store and queues a blob
-for every pin dropped this session (one download at a time, deduped by
-anchor range, skipped when a blob already covers it). Pins that were there
-before this page opened get nothing — 440 pins is 2 GB. The blobs dock has
-"+ blobs for pins in view" for those: every on-screen pin without a blob.
-Deleting a pin does not delete its blob; that stays manual in the dock.
 
 The border is the OUTLINE of the anchor tiles on disk, not one rectangle
 per blob and not a grid: a tile's side is drawn only when the tile across it

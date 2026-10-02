@@ -78,9 +78,9 @@ describe("the 1 GB wall refuses, it never evicts", () => {
 		for (let i = 0; i < 3; i++) {
 			const r = region(`b${i}`, 1000 + i, ...SPOTS[i]);
 			await putRegion(r);
-			await putTiles([[ownTile(r), new ArrayBuffer(MB)]]);
+			await putTiles([[ownTile(r), new ArrayBuffer(MB)]], r.id);
 		}
-		const err = await putTiles([["3/0/0", new ArrayBuffer(2 * MB)]]).catch((e) => e);
+		const err = await putTiles([["3/0/0", new ArrayBuffer(2 * MB)]], "b0").catch((e) => e);
 		expect(err).toBeInstanceOf(BudgetError);
 		expect(err.message).toBe("Offline areas are limited to 4 MB. Remove an area to make room.");
 		expect((await listRegions()).map((r) => r.id).sort()).toEqual(["b0", "b1", "b2"]);
@@ -96,7 +96,7 @@ describe("the 1 GB wall refuses, it never evicts", () => {
 		// One byte a tile so far; SPOTS[1] is ~1,400 tiles nobody has fetched.
 		const r = region("a", 1, ...SPOTS[0], { fetched: 1000, newBytes: 1000 });
 		await putRegion(r);
-		await putTiles([[ownTile(r), new ArrayBuffer(4 * MB - 100)]]);
+		await putTiles([[ownTile(r), new ArrayBuffer(4 * MB - 100)]], r.id);
 		await expect(roomFor(...SPOTS[1])).rejects.toBeInstanceOf(BudgetError);
 		setBudgetMb(1024);
 		await expect(roomFor(...SPOTS[1])).resolves.toBeUndefined();
@@ -118,7 +118,7 @@ describe("an area unopened for 12 months removes itself", () => {
 		const young = region("young", now - 20 * DAY, ...SPOTS[2]);
 		for (const r of [old, opened, young]) {
 			await putRegion(r);
-			await putTiles([[ownTile(r), new ArrayBuffer(1024)]]);
+			await putTiles([[ownTile(r), new ArrayBuffer(1024)]], r.id);
 		}
 		const gone = await removeStaleAreas(now);
 		expect(gone.map((r) => r.id)).toEqual(["old"]);
@@ -142,10 +142,8 @@ describe("what each area costs", () => {
 		const b = region("b", 2, SPOTS[0][0] + 0.001, SPOTS[0][1]);
 		const c = region("c", 3, ...SPOTS[1]);
 		for (const r of [a, b, c]) await putRegion(r);
-		await putTiles([
-			[ownTile(a), new ArrayBuffer(5000)],
-			[ownTile(c), new ArrayBuffer(7000)],
-		]);
+		await putTiles([[ownTile(a), new ArrayBuffer(5000)]], a.id);
+		await putTiles([[ownTile(c), new ArrayBuffer(7000)]], c.id);
 		const before = await areaUsage();
 		const cost = Object.fromEntries(before.areas.map((u) => [u.region.id, u.bytes]));
 		// a and b stand on the same ground: neither alone frees it.
@@ -176,7 +174,7 @@ describe("a removed area's row leaves with its pin", () => {
 		const at = SPOTS[0];
 		const r = region(regionId(...at), 1, ...at);
 		await putRegion(r);
-		await putTiles([[ownTile(r), new ArrayBuffer(1024)]]);
+		await putTiles([[ownTile(r), new ArrayBuffer(1024)]], r.id);
 		await removeArea(r);
 		const pins = [{ anchors: [at], lastTouched: new Date().toISOString(), corridor: false }];
 		let changed = (): void => undefined;
@@ -239,6 +237,8 @@ describe("an area lives and dies with its pin", () => {
 		let served = 0;
 		vi.stubGlobal("fetch", async () => {
 			if (++served === 300) await deleteRegion(id, true);
+			// A network slower than the disk, as on a phone: writes land between fetches.
+			await new Promise((r) => setTimeout(r, 2));
 			return new Response(new ArrayBuffer(10));
 		});
 		const err = await downloadRegion(...at).catch((e) => e);

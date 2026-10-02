@@ -1,7 +1,7 @@
 /** The tile store: one IndexedDB store keyed `z/x/y`, one copy per tile
  * however many blobs cover it; a second store lists the blobs. */
 
-import { photoTilesFor, type RawTile, satImageKey, satImageMeta } from "../../lib/onPhone/satellite/satelliteImage";
+import { deleteSatImage, photoTilesFor, type RawTile, satImageKey, satImageMeta } from "../../lib/onPhone/satellite/satelliteImage";
 import { PHOTO_SOURCES } from "../../lib/onPhone/satellite/photoSources";
 import { BudgetError, budgetBytes } from "./budget";
 import type { Place } from "./places";
@@ -15,7 +15,7 @@ import {
 
 export const DB_NAME = "gc-offlineV10";
 /** Bump when what a blob IS changes; an older blob is then wiped, never half-drawn. */
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const TILES = "tiles";
 const REGIONS = "regions";
 
@@ -51,6 +51,16 @@ export interface Region {
 	removed?: number;
 	/** Born before its first tile so no tile is ever on disk unnamed; still set means the download stopped and the engine fetches the rest. */
 	filling?: true;
+	/** Born from a pin at this spot; once the host is ready, a pin-born area with no pin here goes. Absent on follow-me. */
+	pin?: true;
+}
+
+/** The area a write names has no live row: removed, or its pin deleted. */
+export class AreaGone extends Error {
+	constructor(id: string) {
+		super(`offline area ${id} is gone`);
+		this.name = "AreaGone";
+	}
 }
 
 /** A blob is its pin's spot — the same spot is the same blob, a pace away is another. */
@@ -171,13 +181,14 @@ export async function bytesOfTiles(keys: readonly string[]): Promise<number> {
 // One write at a time: each reads the running total and writes it back, so two at once lose bytes.
 let writing: Promise<void> = Promise.resolve();
 
-export function putTiles(entries: Array<[string, ArrayBuffer]>): Promise<void> {
-	const run = writing.then(() => putNow(entries));
+/** Every tile is written under its area's live row, checked in the same transaction, so a write can never outlive the area. */
+export function putTiles(entries: Array<[string, ArrayBuffer]>, owner: string): Promise<void> {
+	const run = writing.then(() => putNow(entries, owner));
 	writing = run.catch(() => undefined);
 	return run;
 }
 
-async function putNow(entries: Array<[string, ArrayBuffer]>): Promise<void> {
+async function putNow(entries: Array<[string, ArrayBuffer]>, owner: string): Promise<void> {
 	if (entries.length === 0) return;
 	const adding = entries.reduce((a, [, b]) => a + b.byteLength, 0);
 	const used = await usedBytes();
@@ -185,18 +196,28 @@ async function putNow(entries: Array<[string, ArrayBuffer]>): Promise<void> {
 	// Refuse, never evict: what is on disk is what someone chose to keep.
 	if (used + adding > budget) throw new BudgetError(used, budget, adding);
 	const db = await open();
-	const tx = db.transaction(TILES, "readwrite");
+	const tx = db.transaction([TILES, REGIONS], "readwrite");
 	const st = tx.objectStore(TILES);
-	for (const [k, b] of entries) st.put(b, k);
-	await done(tx);
+	const row = tx.objectStore(REGIONS).get(owner) as IDBRequest<Region | undefined>;
+	let gone = false;
+	row.onsuccess = () => {
+		if (row.result && !row.result.removed) for (const [k, b] of entries) st.put(b, k);
+		else {
+			gone = true;
+			tx.abort();
+		}
+	};
+	await done(tx).catch((e) => {
+		throw gone ? new AreaGone(owner) : e;
+	});
 	tileBytes = Promise.resolve(used - photoBytes + adding);
 }
 
 /** Photo tiles share the road tiles' store and budget; the prefix keeps a z13 photo tile off a z13 road tile. */
 export const PHOTO_PREFIX = "p/";
 
-export function putPhotoTiles(tiles: RawTile[]): Promise<void> {
-	return putTiles(tiles.map(([k, b]) => [PHOTO_PREFIX + k, b]));
+export function putPhotoTiles(tiles: RawTile[], owner: string): Promise<void> {
+	return putTiles(tiles.map(([k, b]) => [PHOTO_PREFIX + k, b]), owner);
 }
 
 /** The photo tiles on disk among `keys` (`z/x/y`), one transaction. */
@@ -280,6 +301,20 @@ export async function listRegions(): Promise<Region[]> {
 export async function regionKnown(id: string): Promise<boolean> {
 	const r = await regionRow(id);
 	return !!r && (!!r.removed || !r.filling);
+}
+
+/** Throws `AreaGone` unless the area has a live row; the photo's last word before it is saved. */
+export async function claimArea(id: string): Promise<void> {
+	const r = await regionRow(id);
+	if (!r || r.removed) throw new AreaGone(id);
+}
+
+/** Every pin-born row, removed ones included: what the engine judges against the pins once the host is ready. */
+export async function pinAreas(): Promise<Region[]> {
+	const db = await open();
+	const tx = db.transaction(REGIONS, "readonly");
+	const rows = await result(tx.objectStore(REGIONS).getAll() as IDBRequest<Region[]>);
+	return rows.filter((r) => r.pin);
 }
 
 async function regionRow(id: string): Promise<Region | undefined> {
@@ -391,7 +426,7 @@ export async function stats(): Promise<{ tiles: number; bytes: number }> {
 	return { tiles, bytes };
 }
 
-/** Delete a blob and only the tiles no other blob still covers — coverage is geometry, so no refcount to drift.
+/** Delete a blob, its photo, and only the tiles no other blob still covers — coverage is geometry, so no refcount to drift.
  * `keepRow` leaves a `removed` row behind so the pin's blob is not fetched straight back; without it a removed row goes too.
  * Null when the spot has no row. */
 export async function deleteRegion(id: string, keepRow = false): Promise<number | null> {
@@ -413,6 +448,7 @@ export async function deleteRegion(id: string, keepRow = false): Promise<number 
 	await done(tx);
 	tileBytes = null;
 	regionsChanged();
+	await deleteSatImage(satImageKey([gone.lng, gone.lat]));
 	return doomed.length;
 }
 

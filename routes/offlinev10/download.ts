@@ -11,6 +11,7 @@ import { tileUrl } from "../../lib/worker/worker-local-dev/tilesHost";
 import { BLOB_COUNT_CAP, BudgetError, budgetBytes, fullMessage } from "./budget";
 import { nearestPlace } from "./places";
 import {
+	AreaGone,
 	allTileKeys,
 	bytesOfTiles,
 	deleteRegion,
@@ -40,6 +41,7 @@ export interface Progress {
 
 export interface DownloadOpts {
 	photo?: boolean;
+	pin?: boolean;
 	/** a repair keeps the row's birth time */
 	keep?: Region;
 }
@@ -78,6 +80,7 @@ export async function downloadRegion(
 	const at = opts.keep?.at ?? Date.now();
 	const born: Region = { id, lng, lat, range, at, tiles: tiles.length, fetched: 0, bytes: 0, ms: 0, filling: true };
 	if (opts.photo === false) born.photo = false;
+	if (opts.pin) born.pin = true;
 	if (!opts.keep) await putRegion(born);
 	const have = await allTileKeys();
 	// Coarse first, then outward from the pin, so the blob fills in from the middle.
@@ -95,9 +98,10 @@ export async function downloadRegion(
 	onProgress?.(p);
 
 	try {
-		await fetchInto(todo, p, t0, onProgress);
+		await fetchInto(id, todo, p, t0, onProgress);
 	} catch (e) {
-		if (!opts.keep) await deleteRegion(id);
+		// A row already gone was removed by whoever took it, and a removed one must stay.
+		if (!opts.keep && !(e instanceof AreaGone)) await deleteRegion(id);
 		throw e;
 	}
 
@@ -116,6 +120,7 @@ export async function downloadRegion(
 }
 
 async function fetchInto(
+	id: string,
 	todo: Tile[],
 	p: Progress,
 	t0: number,
@@ -130,15 +135,23 @@ async function fetchInto(
 		);
 	let pending: Array<[string, ArrayBuffer]> = [];
 	const writes: Promise<void>[] = [];
+	// A refused write (the row went, or the wall) stops the fetching, not just the writing.
+	let refused: unknown = null;
 	const flush = (): void => {
 		const batch = pending;
 		pending = [];
 		writes.push(
-			putTiles(batch).then(() => {
-				p.done += batch.length;
-				p.ms = performance.now() - t0;
-				onProgress?.(p);
-			}),
+			putTiles(batch, id).then(
+				() => {
+					p.done += batch.length;
+					p.ms = performance.now() - t0;
+					onProgress?.(p);
+				},
+				(e) => {
+					refused ??= e;
+					throw e;
+				},
+			),
 		);
 	};
 	const fetched = getEach(
@@ -158,6 +171,7 @@ async function fetchInto(
 			if (pending.length >= FLUSH) flush();
 		},
 		() => {
+			if (refused) throw refused;
 			if (sessionCap.tripped) throw new Error("session byte cap reached");
 			if (p.bytes > room) throw new BudgetError(budgetBytes() - room, budgetBytes(), p.bytes);
 			return false;

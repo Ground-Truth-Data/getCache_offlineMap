@@ -324,6 +324,11 @@ function followBlobs(): () => void {
 				failure = `blob landed but the panel could not refresh: ${err instanceof Error ? err.message : String(err)}`;
 			});
 		} else if (e.kind === "removed") {
+			// A download whose area went mid-flight ends here, not in landed or failed.
+			if (!blobInFlight()) {
+				busy = false;
+				progress = null;
+			}
 			invalidatePlanet();
 			refresh().catch((err) => {
 				light = "err";
@@ -352,7 +357,7 @@ function blobsForPinsInView(): void {
 	const b = map.getBounds();
 	for (const p of places.places())
 		for (const [lng, lat] of p.anchors)
-			if (lng >= b.getWest() && lng <= b.getEast() && lat >= b.getSouth() && lat <= b.getNorth()) void queueBlob(lng, lat);
+			if (lng >= b.getWest() && lng <= b.getEast() && lat >= b.getSouth() && lat <= b.getNorth()) void queueBlob(lng, lat, { pin: true });
 }
 
 /** Follow me: queue the blob around the person when less than FOLLOW_MARGIN_KM

@@ -1,19 +1,17 @@
 /** The blob engine, app-wide: a pin dropped anywhere earns its blob while
  * there is signal, or the moment it comes back. One queue, one download at a time. A blob is its
  * pin's spot, not its ground — a pin over an older blob's tiles still earns
- * its own row and photo, fetching nothing. A deleted pin takes its blob. */
+ * its own row and photo, fetching nothing. A deleted pin takes its blob, even one deleted while the engine was not watching. */
 
-import {
-	deleteSatImage,
-	satImageKey,
-} from "../../lib/onPhone/satellite/satelliteImage";
 import type { HostPorts } from "../../lib/shared/hostPorts";
 import { BudgetError, isStale } from "./budget";
 import { downloadRegion, type Progress, roomFor } from "./download";
 import {
+	AreaGone,
 	deleteRegion,
 	keepStorage,
 	listRegions,
+	pinAreas,
 	type Region,
 	regionId,
 	regionKnown,
@@ -35,6 +33,7 @@ export interface InFlight {
 interface Ask {
 	at: [number, number];
 	photo: boolean;
+	pin?: boolean;
 	/** the row being repaired: its missing tiles are fetched and the row keeps its place */
 	keep?: Region;
 }
@@ -76,11 +75,11 @@ export function blobInFlight(): InFlight | null {
 // A removed area's row stays, so its pin is not fetched straight back.
 const onDisk = regionKnown;
 
-/** True when actually queued; false when disk or the queue already has this spot. `photo: false` for a blob with no pin. */
+/** True when actually queued; false when disk or the queue already has this spot. `photo: false` for a blob with no pin; `pin` for one that goes with its pin. */
 export async function queueBlob(
 	lng: number,
 	lat: number,
-	opts: { photo?: boolean } = {},
+	opts: { photo?: boolean; pin?: boolean } = {},
 ): Promise<boolean> {
 	const id = regionId(lng, lat);
 	if (queued.has(id)) return false;
@@ -88,7 +87,7 @@ export async function queueBlob(
 	// A second ask for the same spot can land during the await.
 	if (queued.has(id)) return false;
 	queued.add(id);
-	queue.push({ at: [lng, lat], photo: opts.photo !== false });
+	queue.push({ at: [lng, lat], photo: opts.photo !== false, pin: opts.pin });
 	void drain();
 	return true;
 }
@@ -97,7 +96,7 @@ export async function queueBlob(
 export async function repairBlob(r: Region): Promise<boolean> {
 	if (queued.has(r.id)) return false;
 	queued.add(r.id);
-	queue.push({ at: [r.lng, r.lat], photo: r.photo !== false, keep: r });
+	queue.push({ at: [r.lng, r.lat], photo: r.photo !== false, pin: r.pin, keep: r });
 	void drain();
 	return true;
 }
@@ -118,7 +117,7 @@ async function drain(): Promise<void> {
 	}
 }
 
-async function download({ at, photo, keep }: Ask): Promise<void> {
+async function download({ at, photo, pin, keep }: Ask): Promise<void> {
 	try {
 		// Before "start": a refused area must not get its photo baked either.
 		await roomFor(at[0], at[1], !!keep);
@@ -137,7 +136,7 @@ async function download({ at, photo, keep }: Ask): Promise<void> {
 				if (current) current.progress = progress;
 				emit({ kind: "progress", progress });
 			},
-			{ photo, keep },
+			{ photo, pin, keep },
 		);
 		say(
 			`[offlineV10] blob ${region.id}: ${region.fetched} new of ${region.tiles} tiles, ${((region.newBytes ?? 0) / 1048576).toFixed(1)} MB added (${(region.bytes / 1048576).toFixed(1)} MB on the ground), ${region.ms} ms to disk`,
@@ -146,18 +145,22 @@ async function download({ at, photo, keep }: Ask): Promise<void> {
 		await keepStorage();
 		emit({ kind: "landed", region });
 	} catch (error) {
-		// A full phone is an answer, not a fault: the host tells the person.
-		if (!(error instanceof BudgetError)) console.error("[offlineV10] download failed", error);
-		emit({ kind: "failed", at, error });
+		current = null;
+		// Its row went mid-download: whoever removed it already said so.
+		if (error instanceof AreaGone) emit({ kind: "removed", id: regionId(at[0], at[1]) });
+		else {
+			// A full phone is an answer, not a fault: the host tells the person.
+			if (!(error instanceof BudgetError)) console.error("[offlineV10] download failed", error);
+			emit({ kind: "failed", at, error });
+		}
 	} finally {
 		current = null;
 	}
 }
 
-async function removeBlob(id: string, at: [number, number]): Promise<void> {
+async function removeBlob(id: string): Promise<void> {
 	const tiles = await deleteRegion(id);
 	if (tiles === null) return;
-	await deleteSatImage(satImageKey(at));
 	say(
 		`[offlineV10] pin gone — blob ${id} removed, ${tiles} tiles freed`,
 	);
@@ -166,7 +169,6 @@ async function removeBlob(id: string, at: [number, number]): Promise<void> {
 
 /** Removes an area and its photo, keeping the row so the engine leaves the pin alone. */
 export async function removeArea(r: Region): Promise<void> {
-	await deleteSatImage(satImageKey([r.lng, r.lat]));
 	await deleteRegion(r.id, true);
 	emit({ kind: "removed", id: r.id });
 }
@@ -190,16 +192,17 @@ export function startBlobService(ports: HostPorts): () => void {
 		};
 	say("[offlineV10] blob engine on — every pin earns a blob");
 	void removeStaleAreas().catch((e) => console.error("[offlineV10] stale sweep failed", e));
-	// A spot that leaves this set was deleted or moved.
-	let seen: Map<string, [number, number]> | null = null;
+	// A spot that leaves this set was deleted or moved. Until the first ready read it is the pin-born rows on
+	// disk, so a pin deleted while the engine was not watching still takes its area.
+	let seen: Promise<Set<string>> | null = null;
 	// Diff the pins against disk rather than remember what failed: a pin that missed its signal is just a pin with no blob.
-	const reconcile = (): Map<string, [number, number]> | null => {
+	const reconcile = (): Set<string> | null => {
 		if (!ports.ready()) return null;
-		const now = new Map<string, [number, number]>();
+		const now = new Set<string>();
 		for (const p of ports.places()) {
 			for (const [lng, lat] of p.anchors) {
-				now.set(regionId(lng, lat), [lng, lat]);
-				void queueBlob(lng, lat, { photo: !p.corridor });
+				now.add(regionId(lng, lat));
+				void queueBlob(lng, lat, { photo: !p.corridor, pin: true });
 			}
 		}
 		return now;
@@ -208,9 +211,11 @@ export function startBlobService(ports: HostPorts): () => void {
 		const now = reconcile();
 		if (!now) return;
 		// Only a place change deletes; a reconnect never does.
-		if (seen)
-			for (const [id, at] of seen) if (!now.has(id)) void removeBlob(id, at);
-		seen = now;
+		const before = seen ?? pinAreas().then((rows) => new Set(rows.map((r) => r.id)));
+		seen = Promise.resolve(now);
+		void before.then((ids) => {
+			for (const id of ids) if (!now.has(id)) void removeBlob(id);
+		});
 	});
 	const online = (): void => void reconcile();
 	window.addEventListener("online", online);

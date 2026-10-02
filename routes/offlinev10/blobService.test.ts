@@ -12,6 +12,8 @@ vi.stubGlobal("window", new EventTarget());
 
 let keepAsked = 0;
 vi.mock("./store", () => ({
+	AreaGone: class AreaGone extends Error {},
+	pinAreas: async () => disk.filter((r) => r.pin),
 	regionsSnapshot: () => ({ version: 0, regions: Promise.resolve([...disk]) }),
 	regionKnown: async (id: string) => disk.some((r) => r.id === id),
 	listRegions: async () => [...disk],
@@ -22,27 +24,19 @@ vi.mock("./store", () => ({
 	regionId: (lng: number, lat: number) => `${lat.toFixed(5)},${lng.toFixed(5)}`,
 	deleteRegion: async (id: string) => {
 		const i = disk.findIndex((r) => r.id === id);
-		if (i >= 0) disk.splice(i, 1);
-		return i >= 0 ? 1 : null;
+		if (i < 0) return null;
+		const [r] = disk.splice(i, 1);
+		photosDropped.push(`${r.lng.toFixed(4)},${r.lat.toFixed(4)}`);
+		return 1;
 	},
 }));
-vi.mock(
-	"../../lib/onPhone/satellite/satelliteImage",
-	() => ({
-		satImageKey: (c: [number, number]) =>
-			`${c[0].toFixed(4)},${c[1].toFixed(4)}`,
-		deleteSatImage: async (k: string) => {
-			photosDropped.push(k);
-		},
-	}),
-);
 vi.mock("./download", () => ({
 	roomFor: async () => undefined,
 	downloadRegion: async (
 		lng: number,
 		lat: number,
 		_p?: unknown,
-		opts: { photo?: boolean } = {},
+		opts: { photo?: boolean; pin?: boolean } = {},
 	) => {
 		downloads.push([lng, lat]);
 		if (failNext) {
@@ -64,6 +58,7 @@ vi.mock("./download", () => ({
 			ms: 1,
 		};
 		if (opts.photo === false) region.photo = false;
+		if (opts.pin) region.pin = true;
 		disk.push(region);
 		return region;
 	},

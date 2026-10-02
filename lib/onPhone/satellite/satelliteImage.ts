@@ -246,10 +246,12 @@ function scheduleBakeWorkerTeardown(): void {
 	}, BAKE_WORKER_IDLE_MS);
 }
 
-/** Bake the masked photo for a centre from `tiles`; sources are tried in registry order. Null only if none drew. */
+/** Bake the masked photo for a centre from `tiles`; sources are tried in registry order. Null only if none drew.
+ * `beforeSave` throws to keep the photo off disk. */
 export async function bakeSatelliteImage(
 	center: [number, number],
 	tiles: PhotoTileSource,
+	beforeSave?: () => Promise<void>,
 ): Promise<SatImage | null> {
 	const key = satImageKey(center);
 	const existing = await idb.get(key);
@@ -264,6 +266,7 @@ export async function bakeSatelliteImage(
 		const out = await bakeFrom(src, center, tiles);
 		if (out) {
 			out.ms = Math.round(performance.now() - t0);
+			await beforeSave?.();
 			await idb.put(key, out);
 			return out;
 		}

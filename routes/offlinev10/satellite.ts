@@ -20,10 +20,19 @@ import { sessionCap, spendBytes } from "../../lib/shared/sessionByteCap.svelte";
 import { satelliteTileUrl } from "../../lib/worker/worker-local-dev/tilesHost";
 import { onBlob } from "./blobService";
 import { getEach } from "./download";
-import { getPhotoTiles, notePhotoBytes, photoTileBytes, putPhotoTiles, regionsSnapshot } from "./store";
+import {
+	AreaGone,
+	claimArea,
+	getPhotoTiles,
+	notePhotoBytes,
+	photoTileBytes,
+	putPhotoTiles,
+	regionId,
+	regionsSnapshot,
+} from "./store";
 
-/** A photo's tiles: disk first, the rest one GET each, written before they are drawn. */
-export async function photoTiles(keys: string[]): Promise<Map<string, ArrayBuffer>> {
+/** A photo's tiles: disk first, the rest one GET each, written under `owner`'s row before they are drawn. */
+export async function photoTiles(keys: string[], owner: string): Promise<Map<string, ArrayBuffer>> {
 	const have = await getPhotoTiles(keys);
 	const missing = keys.filter((k) => !have.has(k));
 	if (missing.length === 0 || (typeof navigator !== "undefined" && navigator.onLine === false)) return have;
@@ -44,7 +53,7 @@ export async function photoTiles(keys: string[]): Promise<Map<string, ArrayBuffe
 		// MapTiler lacks some tiles; the bake already tolerates gaps.
 		true,
 	);
-	await putPhotoTiles(got);
+	await putPhotoTiles(got, owner);
 	return have;
 }
 
@@ -137,9 +146,12 @@ async function pass(centres: readonly [number, number][]): Promise<number> {
 	for (const [lng, lat] of centres) {
 		if (isCurrentPhoto(await getSatImageByKey(photoKey(lng, lat)))) continue;
 		let img: Awaited<ReturnType<typeof bakeSatelliteImage>> = null;
+		const owner = regionId(lng, lat);
 		try {
-			img = await bakeSatelliteImage([lng, lat], photoTiles);
+			img = await bakeSatelliteImage([lng, lat], (keys) => photoTiles(keys, owner), () => claimArea(owner));
 		} catch (error) {
+			// The area went mid-bake (a failed download, a deleted pin): not the host's fault, so no pause.
+			if (error instanceof AreaGone) continue;
 			console.warn(
 				`[offlineV10] photo bake threw at ${lat.toFixed(4)},${lng.toFixed(4)}`,
 				error,
