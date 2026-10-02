@@ -2,7 +2,8 @@
  * ⚠️ Load failures must never be fatal — fall back to coordinates, never break the fire layer.
  * ⚠️ GeoNames tags suburbs plain PPL like towns, so the build drops any sub-MAJOR place within 12 km of a MAJOR city.
  * ⚠️ Lakes/mountains are NOT in this asset — they need a separate allCountries build.
- * ⚠️ The rebuild parses GeoNames cities1000 BY COLUMN INDEX (1=name,4=lat,5=lng,7=feature code,8=country,10=admin1,14=population) — verify against https://download.geonames.org/export/dump/ first.
+ * ⚠️ The cells in getCache/static/mobileAssets/places/ ARE the source: no script rebuilds them. A rebuild
+ *    must parse GeoNames cities1000 BY COLUMN INDEX (1=name,4=lat,5=lng,7=feature code,8=country,10=admin1,14=population) — verify against https://download.geonames.org/export/dump/ first.
  */
 
 import { type RegionBox, inRegion, regionAround, regionChanged } from "../shared/assetRegion";
