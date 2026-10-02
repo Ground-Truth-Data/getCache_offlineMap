@@ -17,7 +17,6 @@ import {
 	type Region,
 	regionId,
 	regionKnown,
-	regionsSnapshot,
 } from "./store";
 
 export type BlobEvent =
@@ -156,10 +155,9 @@ async function download({ at, photo, keep }: Ask): Promise<void> {
 }
 
 async function removeBlob(id: string, at: [number, number]): Promise<void> {
-	const regions = await regionsSnapshot().regions;
-	if (!regions.some((r) => r.id === id)) return;
-	await deleteSatImage(satImageKey(at));
 	const tiles = await deleteRegion(id);
+	if (tiles === null) return;
+	await deleteSatImage(satImageKey(at));
 	say(
 		`[offlineV10] pin gone — blob ${id} removed, ${tiles} tiles freed`,
 	);

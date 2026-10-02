@@ -23,7 +23,7 @@ vi.mock("./store", () => ({
 	deleteRegion: async (id: string) => {
 		const i = disk.findIndex((r) => r.id === id);
 		if (i >= 0) disk.splice(i, 1);
-		return i >= 0 ? 1 : 0;
+		return i >= 0 ? 1 : null;
 	},
 }));
 vi.mock(

@@ -49,6 +49,8 @@ export interface Region {
 	lastOpened?: number;
 	/** ms epoch it was removed. The row stays so the engine does not fetch the pin's blob straight back. */
 	removed?: number;
+	/** Born before its first tile so no tile is ever on disk unnamed; still set means the download stopped and the engine fetches the rest. */
+	filling?: true;
 }
 
 /** A blob is its pin's spot — the same spot is the same blob, a pace away is another. */
@@ -274,11 +276,16 @@ export async function listRegions(): Promise<Region[]> {
 	return rows.filter((r) => !r.removed).sort((a, b) => b.at - a.at);
 }
 
-/** Whether this spot has a row at all, removed included: the engine must not refetch a removed area. */
+/** Whether the engine leaves this spot alone: its area is whole, or removed. A row still filling is fetched again. */
 export async function regionKnown(id: string): Promise<boolean> {
+	const r = await regionRow(id);
+	return !!r && (!!r.removed || !r.filling);
+}
+
+async function regionRow(id: string): Promise<Region | undefined> {
 	const db = await open();
 	const tx = db.transaction(REGIONS, "readonly");
-	return (await result(tx.objectStore(REGIONS).count(id))) > 0;
+	return result(tx.objectStore(REGIONS).get(id) as IDBRequest<Region | undefined>);
 }
 
 // Cached so a parent-tile read never opens a transaction; `version` invalidates the protocol's clipped tiles.
@@ -385,12 +392,12 @@ export async function stats(): Promise<{ tiles: number; bytes: number }> {
 }
 
 /** Delete a blob and only the tiles no other blob still covers — coverage is geometry, so no refcount to drift.
- * `keepRow` leaves a `removed` row behind so the pin's blob is not fetched straight back. */
-export async function deleteRegion(id: string, keepRow = false): Promise<number> {
-	const regions = await listRegions();
-	const gone = regions.find((r) => r.id === id);
-	if (!gone) return 0;
-	const others = regions.filter((r) => r.id !== id);
+ * `keepRow` leaves a `removed` row behind so the pin's blob is not fetched straight back; without it a removed row goes too.
+ * Null when the spot has no row. */
+export async function deleteRegion(id: string, keepRow = false): Promise<number | null> {
+	const gone = await regionRow(id);
+	if (!gone) return null;
+	const others = (await listRegions()).filter((r) => r.id !== id);
 	const keep = others.map((r) => r.range);
 	const keepPhoto = new Set(others.flatMap(photoKeysOf));
 	const doomed = rangeTiles(gone.range)

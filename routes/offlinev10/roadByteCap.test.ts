@@ -5,7 +5,8 @@ const stored: string[] = [];
 vi.mock("./store", () => ({
 	allTileKeys: async () => new Set<string>(),
 	bytesOfTiles: async () => 0,
-	deleteTiles: async () => undefined,
+	deleteRegion: async () => 0,
+	patchRegion: async () => undefined,
 	putRegion: async () => undefined,
 	putTiles: async (b: Array<[string]>) => void stored.push(...b.map(([k]) => k)),
 	regionId: () => "r",

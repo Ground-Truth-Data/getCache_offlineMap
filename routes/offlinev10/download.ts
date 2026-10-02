@@ -1,7 +1,8 @@
 /**
  * Download one blob. Tiles already on disk are skipped: overlapping blobs share, never merge.
  * An empty tile (204) lands as a 0-byte row, so the store can tell a whole blob by looking.
- * A failed download takes back every tile it wrote, so nothing sits on disk without a blob.
+ * Its row is written before its first tile, so a download that stops for any reason leaves nothing
+ * unnamed; a failed one removes the row and every tile only it covered.
  */
 
 import { noteBytes } from "../../lib/shared/dataMeter.svelte";
@@ -12,7 +13,7 @@ import { nearestPlace } from "./places";
 import {
 	allTileKeys,
 	bytesOfTiles,
-	deleteTiles,
+	deleteRegion,
 	listRegions,
 	patchRegion,
 	putRegion,
@@ -71,8 +72,13 @@ export async function downloadRegion(
 	opts: DownloadOpts = {},
 ): Promise<Region> {
 	const t0 = performance.now();
+	const id = regionId(lng, lat);
 	const range = regionRange(lng, lat);
 	const tiles = rangeTiles(range);
+	const at = opts.keep?.at ?? Date.now();
+	const born: Region = { id, lng, lat, range, at, tiles: tiles.length, fetched: 0, bytes: 0, ms: 0, filling: true };
+	if (opts.photo === false) born.photo = false;
+	if (!opts.keep) await putRegion(born);
 	const have = await allTileKeys();
 	// Coarse first, then outward from the pin, so the blob fills in from the middle.
 	const [mx, my] = toMerc(lng, lat);
@@ -88,36 +94,30 @@ export async function downloadRegion(
 	};
 	onProgress?.(p);
 
-	const written: string[] = [];
 	try {
-		await fetchInto(todo, p, written, t0, onProgress);
+		await fetchInto(todo, p, t0, onProgress);
 	} catch (e) {
-		await deleteTiles(written);
+		if (!opts.keep) await deleteRegion(id);
 		throw e;
 	}
 
 	const region: Region = {
-		id: regionId(lng, lat),
-		lng,
-		lat,
-		range,
-		at: opts.keep?.at ?? Date.now(),
-		tiles: tiles.length,
+		...born,
+		filling: undefined,
 		fetched: p.fetched,
 		bytes: await bytesOfTiles(tiles.map(tileKey)),
 		newBytes: p.bytes,
 		ms: Math.round(performance.now() - t0),
 		place: await nearestPlace(range, lng, lat),
 	};
-	if (opts.photo === false) region.photo = false;
-	await (opts.keep ? patchRegion(region.id, region) : putRegion(region));
+	// A patch, so a row removed mid-download does not come back.
+	await patchRegion(id, region);
 	return region;
 }
 
 async function fetchInto(
 	todo: Tile[],
 	p: Progress,
-	written: string[],
 	t0: number,
 	onProgress?: (p: Progress) => void,
 ): Promise<void> {
@@ -135,7 +135,6 @@ async function fetchInto(
 		pending = [];
 		writes.push(
 			putTiles(batch).then(() => {
-				for (const [k] of batch) written.push(k);
 				p.done += batch.length;
 				p.ms = performance.now() - t0;
 				onProgress?.(p);
@@ -164,7 +163,7 @@ async function fetchInto(
 			return false;
 		},
 	);
-	// Every write settles before a throw: the rollback reads `written`.
+	// Every write settles before a throw, so the rollback sees every tile.
 	const [got] = await Promise.allSettled([fetched]);
 	if (got.status === "fulfilled") flush();
 	const landed = await Promise.allSettled(writes);
