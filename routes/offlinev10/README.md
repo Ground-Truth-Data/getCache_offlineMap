@@ -102,7 +102,7 @@ refresh.
 | `follow.ts` | follow-me: how much map is left toward the nearest blob edge, the 10 km line, the 1 km step (tested) |
 | `clip.ts` | cut a raw MVT tile to rectangles, byte-level, no GeoJSON (tested) |
 | `store.ts` | IndexedDB `gc-offlineV10`: `tiles` + `regions` (a region carries its range and its place); the budget wall in `putTiles`, `checkRegions`, `keepStorage` |
-| `download.ts` | one blob: pool of 32 fetches, batched writes, progress; empties as 0-byte rows; rollback on failure |
+| `download.ts` | one blob: pool of 48 fetches, batched writes, progress; empties as 0-byte rows; its row is written before its first tile (`filling` until whole), and a failure removes both |
 | `protocol.ts` | `v10://planet/{z}/{x}/{y}` → store; parents clipped to their blobs' borders; miss = 404; optional read-through |
 | `style.ts` | Protomaps DARK over the blobs; a gold line on the outline of the saved tiles, gone by z9, no fill; `LEGEND` rows for the drawer |
 | `blobService.ts` | THE blob engine, app-wide: one queue, one download at a time; started by the (getcache) layout, so a pin dropped on the ONLINE map earns its blob right away |
