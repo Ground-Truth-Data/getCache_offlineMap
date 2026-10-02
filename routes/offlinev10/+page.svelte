@@ -38,10 +38,10 @@ import { overlayVisibility } from "../../lib/mapState/overlayVisibility.svelte";
 import { dropPhoto, onPhoto, type PhotoInfo, photoInfo, photoKey, setPhotoNarration } from "./satellite";
 import { FOLLOW_MARGIN_KM, marginKm, moved } from "./follow";
 import { PHOTO_TILES, PLANET_TILES, installProtocol } from "./protocol";
-import { type Kept, type Region, checkRegions, deleteRegion, keepStorage, listRegions, patchRegion, stats, wipe } from "./store";
+import { type Kept, type Region, checkRegions, deleteRegion, keepStorage, listRegions, patchRegion, stats, touchRegions, wipe } from "./store";
 import { validLatLng } from "../../lib/shared/cameraFromUrl";
 import { LEGEND, PHOTO_INSERT_BEFORE, PLANET, REGIONS, buildStyle } from "./style";
-import { ANCHOR_Z, parseKey, rangeBox, tileBox, tileKey } from "./tiles";
+import { ANCHOR_Z, boxesIntersect, parseKey, rangeBox, tileBox, tileKey } from "./tiles";
 import { type WorkerTarget, getWorkerTarget, setWorkerTarget } from "../../lib/worker/worker-local-dev/tilesHost";
 
 let host = $state<HTMLDivElement>();
@@ -158,6 +158,7 @@ function writeUrl(): void {
 
 async function refresh(): Promise<void> {
 	regions = await listRegions();
+	touchInView();
 	const s = await stats();
 	tiles = s.tiles;
 	bytes = s.bytes;
@@ -337,6 +338,14 @@ function followBlobs(): () => void {
 	});
 }
 
+/** An area on screen close enough to read was opened, which keeps it off the stale sweep. */
+function touchInView(): void {
+	if (!map || map.getZoom() < ANCHOR_Z - 2) return;
+	const b = map.getBounds();
+	const view = { w: b.getWest(), e: b.getEast(), s: b.getSouth(), n: b.getNorth() };
+	void touchRegions(regions.filter((r) => boxesIntersect(rangeBox(r.range), view)).map((r) => r.id));
+}
+
 /** Every place whose pin is on screen and has no blob yet. */
 function blobsForPinsInView(): void {
 	if (!map) return;
@@ -470,6 +479,7 @@ onMount(() => {
 	const unfires = onFires(() => fireHandle?.repaint());
 	const unphoto = onPhoto(onPhotoLanded);
 	m.on("moveend", reconcilePhotos);
+	m.on("moveend", touchInView);
 	m.on("idle", () => markPainted(m));
 	m.addControl(
 		new NiceScaleBarControl({ width: 200, maxRangeMeters: 100_000_000, minStepWidth: 23, maxDepth: 4, height: 10, unit: "m" }) as maplibregl.IControl,

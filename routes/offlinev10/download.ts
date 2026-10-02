@@ -7,12 +7,13 @@
 import { noteBytes } from "../../lib/shared/dataMeter.svelte";
 import { sessionCap, spendBytes } from "../../lib/shared/sessionByteCap.svelte";
 import { tileUrl } from "../../lib/worker/worker-local-dev/tilesHost";
-import { BudgetError, budgetBytes } from "./budget";
+import { BLOB_COUNT_CAP, BudgetError, budgetBytes, fullMessage } from "./budget";
 import { nearestPlace } from "./places";
 import {
 	allTileKeys,
 	bytesOfTiles,
 	deleteTiles,
+	listRegions,
 	patchRegion,
 	putRegion,
 	putTiles,
@@ -40,6 +41,27 @@ export interface DownloadOpts {
 	photo?: boolean;
 	/** a repair keeps the row's birth time */
 	keep?: Region;
+}
+
+/** Refuses before a byte is fetched when the area would not fit: its missing tiles at the
+ * average size of the tiles already fetched. The store's wall still catches a bad guess, and
+ * the download then takes back what it wrote. A repair adds no area, so only bytes count. */
+export async function roomFor(lng: number, lat: number, repair = false): Promise<void> {
+	const regions = await listRegions();
+	if (!repair && regions.length >= BLOB_COUNT_CAP)
+		throw new BudgetError(0, 0, 0, fullMessage(`${BLOB_COUNT_CAP} areas`));
+	let tiles = 0;
+	let bytes = 0;
+	for (const r of regions)
+		if (r.newBytes !== undefined) {
+			tiles += r.fetched;
+			bytes += r.newBytes;
+		}
+	const have = await allTileKeys();
+	const missing = rangeTiles(regionRange(lng, lat)).filter((t) => !have.has(tileKey(t))).length;
+	const used = await usedBytes();
+	const guess = tiles > 0 ? Math.round((missing * bytes) / tiles) : 0;
+	if (used + guess > budgetBytes()) throw new BudgetError(used, budgetBytes(), guess);
 }
 
 export async function downloadRegion(

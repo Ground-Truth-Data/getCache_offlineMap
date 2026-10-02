@@ -8,12 +8,15 @@ import {
 	satImageKey,
 } from "../../lib/onPhone/satellite/satelliteImage";
 import type { HostPorts } from "../../lib/shared/hostPorts";
-import { downloadRegion, type Progress } from "./download";
+import { BudgetError, isStale } from "./budget";
+import { downloadRegion, type Progress, roomFor } from "./download";
 import {
 	deleteRegion,
 	keepStorage,
+	listRegions,
 	type Region,
 	regionId,
+	regionKnown,
 	regionsSnapshot,
 } from "./store";
 
@@ -71,10 +74,8 @@ export function blobInFlight(): InFlight | null {
 	return current;
 }
 
-async function onDisk(id: string): Promise<boolean> {
-	const regions = await regionsSnapshot().regions;
-	return regions.some((r) => r.id === id);
-}
+// A removed area's row stays, so its pin is not fetched straight back.
+const onDisk = regionKnown;
 
 /** True when actually queued; false when disk or the queue already has this spot. `photo: false` for a blob with no pin. */
 export async function queueBlob(
@@ -119,6 +120,13 @@ async function drain(): Promise<void> {
 }
 
 async function download({ at, photo, keep }: Ask): Promise<void> {
+	try {
+		// Before "start": a refused area must not get its photo baked either.
+		await roomFor(at[0], at[1], !!keep);
+	} catch (error) {
+		emit({ kind: "failed", at, error });
+		return;
+	}
 	current = { at, progress: null, startedAt: performance.now() };
 	emit({ kind: "start", at, photo });
 	try {
@@ -139,7 +147,8 @@ async function download({ at, photo, keep }: Ask): Promise<void> {
 		await keepStorage();
 		emit({ kind: "landed", region });
 	} catch (error) {
-		console.error("[offlineV10] download failed", error);
+		// A full phone is an answer, not a fault: the host tells the person.
+		if (!(error instanceof BudgetError)) console.error("[offlineV10] download failed", error);
 		emit({ kind: "failed", at, error });
 	} finally {
 		current = null;
@@ -157,6 +166,21 @@ async function removeBlob(id: string, at: [number, number]): Promise<void> {
 	emit({ kind: "removed", id });
 }
 
+/** Removes an area and its photo, keeping the row so the engine leaves the pin alone. */
+export async function removeArea(r: Region): Promise<void> {
+	await deleteSatImage(satImageKey([r.lng, r.lat]));
+	await deleteRegion(r.id, true);
+	emit({ kind: "removed", id: r.id });
+}
+
+/** Areas the map has not shown for STALE_AREA_MONTHS; no prompt, the tiles can be fetched again. */
+export async function removeStaleAreas(now = Date.now()): Promise<Region[]> {
+	const stale = (await listRegions()).filter((r) => isStale(r, now));
+	for (const r of stale) await removeArea(r);
+	if (stale.length) console.info(`[offlineV10] ${stale.length} offline area(s) unopened for a year removed`);
+	return stale;
+}
+
 let stop: (() => void) | null = null;
 
 /** Every pin earns its blob. A corridor bakes at each anchor with NO photo —
@@ -167,6 +191,7 @@ export function startBlobService(ports: HostPorts): () => void {
 			/* the first start's stop owns shutdown */
 		};
 	say("[offlineV10] blob engine on — every pin earns a blob");
+	void removeStaleAreas().catch((e) => console.error("[offlineV10] stale sweep failed", e));
 	// A spot that leaves this set was deleted or moved.
 	let seen: Map<string, [number, number]> | null = null;
 	// Diff the pins against disk rather than remember what failed: a pin that missed its signal is just a pin with no blob.

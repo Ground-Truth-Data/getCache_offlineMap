@@ -13,6 +13,8 @@ vi.stubGlobal("window", new EventTarget());
 let keepAsked = 0;
 vi.mock("./store", () => ({
 	regionsSnapshot: () => ({ version: 0, regions: Promise.resolve([...disk]) }),
+	regionKnown: async (id: string) => disk.some((r) => r.id === id),
+	listRegions: async () => [...disk],
 	keepStorage: async () => {
 		keepAsked++;
 		return "kept";
@@ -35,6 +37,7 @@ vi.mock(
 	}),
 );
 vi.mock("./download", () => ({
+	roomFor: async () => undefined,
 	downloadRegion: async (
 		lng: number,
 		lat: number,

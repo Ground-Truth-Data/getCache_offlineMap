@@ -1,10 +1,9 @@
 /** The tile store: one IndexedDB store keyed `z/x/y`, one copy per tile
  * however many blobs cover it; a second store lists the blobs. */
 
-import { photoTilesFor, type RawTile } from "../../lib/onPhone/satellite/satelliteImage";
+import { photoTilesFor, type RawTile, satImageKey, satImageMeta } from "../../lib/onPhone/satellite/satelliteImage";
 import { PHOTO_SOURCES } from "../../lib/onPhone/satellite/photoSources";
 import { BudgetError, budgetBytes } from "./budget";
-import { toEvict } from "./evict";
 import type { Place } from "./places";
 import {
 	missingKeys,
@@ -46,6 +45,10 @@ export interface Region {
 	photo?: false;
 	/** null when its tiles hold no town; absent before it was looked up */
 	place?: Place | null;
+	/** ms epoch the map last showed it; absent = never, so `at` stands in */
+	lastOpened?: number;
+	/** ms epoch it was removed. The row stays so the engine does not fetch the pin's blob straight back. */
+	removed?: number;
 }
 
 /** A blob is its pin's spot — the same spot is the same blob, a pace away is another. */
@@ -163,20 +166,6 @@ export async function bytesOfTiles(keys: readonly string[]): Promise<number> {
 	});
 }
 
-/** Evict oldest-first until `adding` fits, at the write boundary so no
- * download path can bypass it. Bigger than the whole budget evicts nothing. */
-export async function makeRoom(adding: number): Promise<Region[]> {
-	// Rows carry `bytes: 0` until sized; a policy fed zeroes evicts nothing.
-	await healRegionBytes(await listRegions());
-	const doomed = toEvict(await listRegions(), {
-		adding,
-		budget: budgetBytes(),
-		used: await usedBytes(),
-	});
-	for (const r of doomed) await deleteRegion(r.id);
-	return doomed;
-}
-
 // One write at a time: each reads the running total and writes it back, so two at once lose bytes.
 let writing: Promise<void> = Promise.resolve();
 
@@ -189,12 +178,9 @@ export function putTiles(entries: Array<[string, ArrayBuffer]>): Promise<void> {
 async function putNow(entries: Array<[string, ArrayBuffer]>): Promise<void> {
 	if (entries.length === 0) return;
 	const adding = entries.reduce((a, [, b]) => a + b.byteLength, 0);
-	let used = await usedBytes();
+	const used = await usedBytes();
 	const budget = budgetBytes();
-	if (used + adding > budget) {
-		await makeRoom(adding);
-		used = await usedBytes();
-	}
+	// Refuse, never evict: what is on disk is what someone chose to keep.
 	if (used + adding > budget) throw new BudgetError(used, budget, adding);
 	const db = await open();
 	const tx = db.transaction(TILES, "readwrite");
@@ -278,13 +264,21 @@ export async function allTileKeys(): Promise<Set<string>> {
 	return new Set(keys as string[]);
 }
 
+/** The areas on disk, newest first; removed rows are not areas. */
 export async function listRegions(): Promise<Region[]> {
 	const db = await open();
 	const tx = db.transaction(REGIONS, "readonly");
 	const rows = await result(
 		tx.objectStore(REGIONS).getAll() as IDBRequest<Region[]>,
 	);
-	return rows.sort((a, b) => b.at - a.at);
+	return rows.filter((r) => !r.removed).sort((a, b) => b.at - a.at);
+}
+
+/** Whether this spot has a row at all, removed included: the engine must not refetch a removed area. */
+export async function regionKnown(id: string): Promise<boolean> {
+	const db = await open();
+	const tx = db.transaction(REGIONS, "readonly");
+	return (await result(tx.objectStore(REGIONS).count(id))) > 0;
 }
 
 // Cached so a parent-tile read never opens a transaction; `version` invalidates the protocol's clipped tiles.
@@ -304,11 +298,7 @@ export function regionsSnapshot(): {
 	return { version: regionsVersion, regions: regionsCache };
 }
 
-/** The blob-count wall is here, not `putTiles` — over already-covered ground writes no tiles. */
 export async function putRegion(r: Region): Promise<void> {
-	const have = (await listRegions()).filter((x) => x.id !== r.id);
-	const room = { adding: 0, budget: budgetBytes(), used: await usedBytes() };
-	for (const gone of toEvict(have, room)) await deleteRegion(gone.id);
 	const db = await open();
 	const tx = db.transaction(REGIONS, "readwrite");
 	tx.objectStore(REGIONS).put(r);
@@ -394,8 +384,9 @@ export async function stats(): Promise<{ tiles: number; bytes: number }> {
 	return { tiles, bytes };
 }
 
-/** Delete a blob and only the tiles no other blob still covers — coverage is geometry, so no refcount to drift. */
-export async function deleteRegion(id: string): Promise<number> {
+/** Delete a blob and only the tiles no other blob still covers — coverage is geometry, so no refcount to drift.
+ * `keepRow` leaves a `removed` row behind so the pin's blob is not fetched straight back. */
+export async function deleteRegion(id: string, keepRow = false): Promise<number> {
 	const regions = await listRegions();
 	const gone = regions.find((r) => r.id === id);
 	if (!gone) return 0;
@@ -410,11 +401,71 @@ export async function deleteRegion(id: string): Promise<number> {
 	const tx = db.transaction([TILES, REGIONS], "readwrite");
 	const st = tx.objectStore(TILES);
 	for (const k of doomed) st.delete(k);
-	tx.objectStore(REGIONS).delete(id);
+	if (keepRow) tx.objectStore(REGIONS).put({ ...gone, removed: Date.now() });
+	else tx.objectStore(REGIONS).delete(id);
 	await done(tx);
 	tileBytes = null;
 	regionsChanged();
 	return doomed.length;
+}
+
+/** Marks the areas the map just showed; a write only when the mark is an hour old, so panning costs nothing. */
+export async function touchRegions(ids: readonly string[], now = Date.now()): Promise<void> {
+	if (ids.length === 0) return;
+	const want = new Set(ids);
+	const db = await open();
+	const tx = db.transaction(REGIONS, "readwrite");
+	const st = tx.objectStore(REGIONS);
+	const req = st.getAll() as IDBRequest<Region[]>;
+	let wrote = false;
+	req.onsuccess = () => {
+		for (const r of req.result)
+			if (want.has(r.id) && !r.removed && now - (r.lastOpened ?? 0) > 3_600_000) {
+				st.put({ ...r, lastOpened: now });
+				wrote = true;
+			}
+	};
+	await done(tx);
+	if (wrote) regionsChanged();
+}
+
+export interface AreaUsage {
+	region: Region;
+	/** what removing it frees: tiles no other area covers, its unshared photo tiles, its photo */
+	bytes: number;
+}
+
+/** Everything offline areas hold on this phone, and what each one alone would free. One cursor pass. */
+export async function areaUsage(): Promise<{ total: number; areas: AreaUsage[] }> {
+	const regions = await listRegions();
+	const owners = new Map<string, string | null>();
+	for (const r of regions)
+		for (const k of rangeTiles(r.range).map(tileKey).concat(photoKeysOf(r)))
+			owners.set(k, owners.has(k) && owners.get(k) !== r.id ? null : r.id);
+	const alone = new Map<string, number>(regions.map((r) => [r.id, 0]));
+	const db = await open();
+	const st = db.transaction(TILES, "readonly").objectStore(TILES);
+	let total = await new Promise<number>((resolve, reject) => {
+		let sum = 0;
+		const req = st.openCursor();
+		req.onsuccess = () => {
+			const cur = req.result;
+			if (!cur) return resolve(sum);
+			const n = (cur.value as ArrayBuffer).byteLength;
+			sum += n;
+			const id = owners.get(cur.key as string);
+			if (id) alone.set(id, (alone.get(id) as number) + n);
+			cur.continue();
+		};
+		req.onerror = () => reject(req.error);
+	});
+	const byPhoto = new Map(regions.map((r) => [satImageKey([r.lng, r.lat]), r.id]));
+	for (const m of await satImageMeta()) {
+		total += m.bytes;
+		const id = byPhoto.get(m.key);
+		if (id) alone.set(id, (alone.get(id) as number) + m.bytes);
+	}
+	return { total, areas: regions.map((region) => ({ region, bytes: alone.get(region.id) as number })) };
 }
 
 export async function wipe(): Promise<void> {
