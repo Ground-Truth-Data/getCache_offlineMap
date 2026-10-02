@@ -28,7 +28,7 @@ import BlobsDock from "./BlobsDock.svelte";
 import ConfigDock, { type LayerRow, type Light } from "./ConfigDock.svelte";
 import DataDock from "./DataDock.svelte";
 import SessionDock from "./SessionDock.svelte";
-import { blobBusy, blobInFlight, onBlob, queueBlob, repairBlob, setBlobNarration } from "./blobService";
+import { blobBusy, blobInFlight, onBlob, queueBlob, removeArea, repairBlob, setBlobNarration } from "./blobService";
 import { budgetMb as readBudgetMb, setBudgetMb } from "./budget";
 import { nearestPlace } from "./places";
 import type { Progress } from "./download";
@@ -38,7 +38,7 @@ import { overlayVisibility } from "../../lib/mapState/overlayVisibility.svelte";
 import { dropPhoto, onPhoto, type PhotoInfo, photoInfo, photoKey, setPhotoNarration } from "./satellite";
 import { FOLLOW_MARGIN_KM, marginKm, moved } from "./follow";
 import { PHOTO_TILES, PLANET_TILES, installProtocol } from "./protocol";
-import { type Kept, type Region, checkRegions, deleteRegion, keepStorage, listRegions, patchRegion, stats, touchRegions, wipe } from "./store";
+import { type Kept, type Region, checkRegions, keepStorage, listRegions, patchRegion, stats, touchRegions, wipe } from "./store";
 import { validLatLng } from "../../lib/shared/cameraFromUrl";
 import { LEGEND, PHOTO_INSERT_BEFORE, PLANET, REGIONS, buildStyle } from "./style";
 import { ANCHOR_Z, boxesIntersect, parseKey, rangeBox, tileBox, tileKey } from "./tiles";
@@ -374,8 +374,7 @@ async function removeBlob(id: string): Promise<void> {
 	busy = true;
 	try {
 		const r = regions.find((x) => x.id === id);
-		if (r) await dropPhoto(r.lng, r.lat);
-		await deleteRegion(id);
+		if (r) await removeArea(r);
 		invalidatePlanet();
 		await refresh();
 	} finally {
