@@ -14,7 +14,7 @@ vi.mock("./store", () => ({
 }));
 vi.mock("./places", () => ({ nearestPlace: async () => null }));
 
-const TILE_BYTES = 1_000_000;
+const TILE_BYTES = 1000;
 const fetchMock = vi.fn();
 let cap: { tripped: boolean } | null = null;
 let askedAfterTrip = 0;
@@ -36,7 +36,9 @@ it("stops fetching road tiles once the session cap trips", async () => {
 	const { configureTilesDevHost } = await import("../../lib/worker/worker-local-dev/tilesHost");
 	configureTilesDevHost("https://tiles.test");
 	const { downloadRegion } = await import("./download");
-	const { sessionCap } = await import("../../lib/shared/sessionByteCap.svelte");
+	const { SESSION_BYTE_CAP, sessionCap } = await import("../../lib/shared/sessionByteCap.svelte");
+	// A few tiles short of the cap: walking 500 MB of real buffers up to it is what timed out under load.
+	sessionCap.spent = SESSION_BYTE_CAP - 3 * TILE_BYTES;
 	cap = sessionCap;
 	vi.spyOn(console, "error").mockImplementation(() => undefined);
 
