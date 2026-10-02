@@ -1,9 +1,11 @@
 /** The 1 GB wall and the 12-month sweep, against the real store on a fake IndexedDB. */
 import "fake-indexeddb/auto";
-import { beforeEach, describe, expect, it } from "vitest";
-import { removeArea, removeStaleAreas } from "./blobService";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { HostPorts } from "../../lib/shared/hostPorts";
+import { configureTilesDevHost } from "../../lib/worker/worker-local-dev/tilesHost";
+import { removeArea, removeStaleAreas, startBlobService } from "./blobService";
 import { BudgetError, isStale, OFFLINE_TILES_BYTES, setBudgetMb, STALE_AREA_MONTHS } from "./budget";
-import { roomFor } from "./download";
+import { downloadRegion, roomFor } from "./download";
 import {
 	areaUsage,
 	deleteRegion,
@@ -12,12 +14,17 @@ import {
 	putRegion,
 	putTiles,
 	type Region,
+	regionId,
 	regionKnown,
 	touchRegions,
+	allTileKeys,
 	usedBytes,
 	wipe,
 } from "./store";
-import { rangeTiles, regionRange, tileKey } from "./tiles";
+import { rangeContains, rangeTiles, regionRange, tileKey } from "./tiles";
+
+vi.stubGlobal("window", new EventTarget());
+vi.mock("./places", () => ({ nearestPlace: async () => null }));
 
 const MB = 1048576;
 const DAY = 86_400_000;
@@ -144,5 +151,54 @@ describe("a deleted blob stays deleted", () => {
 		await putRegion(region("a", 1, ...SPOTS[0]));
 		await patchRegion("a", { msPaint: 12 });
 		expect((await listRegions())[0].msPaint).toBe(12);
+	});
+});
+
+describe("a removed area's row leaves with its pin", () => {
+	it("a pin deleted after its area was removed takes the row with it", async () => {
+		const at = SPOTS[0];
+		const r = region(regionId(...at), 1, ...at);
+		await putRegion(r);
+		await putTiles([[ownTile(r), new ArrayBuffer(1024)]]);
+		await removeArea(r);
+		const pins = [{ anchors: [at], lastTouched: new Date().toISOString(), corridor: false }];
+		let changed = (): void => undefined;
+		const ports = {
+			places: () => pins,
+			ready: () => true,
+			onPlacesChanged: (fn: () => void) => {
+				changed = fn;
+				fn();
+				return () => undefined;
+			},
+		} as unknown as HostPorts;
+		const stop = startBlobService(ports);
+		pins.length = 0;
+		changed();
+		await vi.waitFor(async () => expect(await regionKnown(r.id)).toBe(false));
+		stop();
+	});
+});
+
+// Last: the hung fetches below hold the download pool for the rest of this file.
+describe("a download that stops for any reason leaves no tile without a row", () => {
+	it("tiles written before the page went away are named by a row the engine fetches again", async () => {
+		configureTilesDevHost("https://tiles.test");
+		let served = 0;
+		vi.stubGlobal("fetch", async () => {
+			if (++served > 300) return new Promise<never>(() => undefined);
+			return new Response(new ArrayBuffer(10));
+		});
+		const at = SPOTS[2];
+		void downloadRegion(...at).catch(() => undefined);
+		await vi.waitFor(async () => expect((await allTileKeys()).size).toBeGreaterThanOrEqual(256));
+		const rows = await listRegions();
+		const orphans = [...(await allTileKeys())].filter((k) => {
+			const [z, x, y] = k.split("/").map(Number);
+			return !rows.some((r) => rangeContains(r.range, { z, x, y }));
+		});
+		expect(orphans).toEqual([]);
+		expect(await regionKnown(regionId(...at))).toBe(false);
+		vi.unstubAllGlobals();
 	});
 });
