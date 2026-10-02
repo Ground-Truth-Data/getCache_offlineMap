@@ -31,7 +31,6 @@ export interface MapHostFeature {
 		| null;
 	overlayLabels: MapHostOverlayLabel[] | null;
 	featureSource: string | null;
-	madeWith: string;
 	createdAt: string;
 	lastTouched: string;
 }
@@ -52,12 +51,7 @@ export interface MapHostStore {
 	readonly features: Feature[];
 	readonly ready: boolean;
 	onActiveMapChange(fn: () => void): () => void;
-	addFeature(
-		geojsonFeature: Feature,
-		featureType?: string,
-		abstraction?: string | null,
-		opts?: Record<string, unknown>,
-	): string;
+	addFeature(geojsonFeature: Feature, featureType?: string): string;
 	/** Every key is named, never `[extra: string]`: an unlisted key must be a
 	 *  build error, not a silent no-op in a host that drops it. Adding a key
 	 *  means routing it in every host. */
