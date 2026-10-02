@@ -149,7 +149,6 @@ async function fetchInto(
 				},
 				(e) => {
 					refused ??= e;
-					throw e;
 				},
 			),
 		);
@@ -180,10 +179,9 @@ async function fetchInto(
 	// Every write settles before a throw, so the rollback sees every tile.
 	const [got] = await Promise.allSettled([fetched]);
 	if (got.status === "fulfilled") flush();
-	const landed = await Promise.allSettled(writes);
+	await Promise.all(writes);
 	if (got.status === "rejected") throw got.reason;
-	const bad = landed.find((l) => l.status === "rejected");
-	if (bad) throw (bad as PromiseRejectedResult).reason;
+	if (refused) throw refused;
 }
 
 /** One GET per tile, at most IN_FLIGHT across all callers, in `urls` order; a 204 is null, and so is a failure when `skipFailed`. `stop` runs before each fetch and may throw. */
