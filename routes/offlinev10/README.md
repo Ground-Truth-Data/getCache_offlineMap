@@ -61,6 +61,15 @@ the blobs dock until the next download starts. In dev the CONFIG card cycles
 the budget through 1024 / 256 / 64 / 16 MB (sessionStorage) so the wall can be
 hit in minutes; a shipped build never reads the override.
 
+Nothing is ever evicted to make room: `roomFor` refuses an area before its
+first fetch when its missing tiles, at the average size fetched so far, would
+cross the line, and the app layout toasts "Offline areas are limited to 1 GB.
+Remove an area to make room." with a link to the account page's Storage list.
+The map marks each area it shows (`lastOpened`, from z8); at boot the engine
+removes areas unopened for `STALE_AREA_MONTHS` (12). A removed area keeps its
+row with `removed` set and its tiles freed, so its pin is not fetched straight
+back; `listRegions` never returns it.
+
 **The whole-blob check** (`checkRegions` in `store.ts`): every tile of a blob
 is a row, an empty tile (204 from the Worker) as a 0-byte row, so "whole" is a
 set difference against the keys on disk and never a guess about what the
