@@ -135,6 +135,8 @@ async function download({ at, photo, keep }: Ask): Promise<void> {
 		say(
 			`[offlineV10] blob ${region.id}: ${region.fetched} new of ${region.tiles} tiles, ${((region.newBytes ?? 0) / 1048576).toFixed(1)} MB added (${(region.bytes / 1048576).toFixed(1)} MB on the ground), ${region.ms} ms to disk`,
 		);
+		// Firefox asks with a popup — so ask once there is a map worth keeping, never on first open.
+		await keepStorage();
 		emit({ kind: "landed", region });
 	} catch (error) {
 		console.error("[offlineV10] download failed", error);
@@ -165,8 +167,6 @@ export function startBlobService(ports: HostPorts): () => void {
 			/* the first start's stop owns shutdown */
 		};
 	say("[offlineV10] blob engine on — every pin earns a blob");
-	// Ask while there is nothing to lose yet.
-	void keepStorage();
 	// A spot that leaves this set was deleted or moved.
 	let seen: Map<string, [number, number]> | null = null;
 	// Diff the pins against disk rather than remember what failed: a pin that missed its signal is just a pin with no blob.

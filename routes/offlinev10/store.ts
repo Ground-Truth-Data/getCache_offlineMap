@@ -427,7 +427,7 @@ export async function wipe(): Promise<void> {
 	regionsChanged();
 }
 
-// Storage is best-effort until asked (Safari evicts after seven days unvisited); the browser answers without a prompt.
+// Storage is best-effort until asked (Safari evicts after seven days unvisited). Chrome and Safari answer silently; Firefox prompts.
 export type Kept = "kept" | "evictable" | "unknown";
 let kept: Promise<Kept> | null = null;
 

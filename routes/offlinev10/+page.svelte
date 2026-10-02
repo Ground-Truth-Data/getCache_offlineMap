@@ -316,12 +316,13 @@ function followBlobs(): () => void {
 			invalidatePlanet();
 		}
 		// Nothing awaits these, so a rejection must turn the light red itself.
-		else if (e.kind === "landed")
+		else if (e.kind === "landed") {
+			void keepStorage().then((k) => (kept = k));
 			landed(e.region).catch((err) => {
 				light = "err";
 				failure = `blob landed but the panel could not refresh: ${err instanceof Error ? err.message : String(err)}`;
 			});
-		else if (e.kind === "removed") {
+		} else if (e.kind === "removed") {
 			invalidatePlanet();
 			refresh().catch((err) => {
 				light = "err";
@@ -483,9 +484,6 @@ onMount(() => {
 		},
 	});
 	const unfollowBlobs = followBlobs();
-	void keepStorage().then((k) => {
-		kept = k;
-	});
 	if (dev) (window as unknown as { __v10?: unknown }).__v10 = { map: m, addBlob: queueBlob, refresh, fix: onUserFix };
 
 	setBlobNarration(debug);

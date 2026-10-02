@@ -113,7 +113,7 @@ describe("blob service", () => {
 		];
 		const { ports, changed, listening } = fakePorts(() => list);
 		const stop = startBlobService(ports);
-		expect(keepAsked).toBe(1);
+		expect(keepAsked).toBe(0);
 		await tick();
 		expect(downloads).toEqual([PENTICTON]);
 		list.push({ anchors: [SPOKANE], lastTouched: soon(), corridor: false });
@@ -122,6 +122,7 @@ describe("blob service", () => {
 		await tick();
 		await tick();
 		expect(downloads).toEqual([PENTICTON, SPOKANE]);
+		expect(keepAsked).toBe(1);
 		release?.();
 		await tick();
 		stop();

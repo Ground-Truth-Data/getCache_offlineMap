@@ -72,8 +72,8 @@ export interface FocusedBlobReport {
 	meter: ReturnType<typeof meterSnapshot>;
 }
 
-// Pack rows are derived from contract/packLayers.ts, the table the Worker filters by, so they cannot disagree with what ships
-const PACK_WHERE = `inside the z${BLOB_TILE_Z} blob tile(s), keyed pin/<lng>,<lat>/${BLOB_TILE_Z}/x/y in gc-offlineTiles`;
+// Pack rows are derived from contract/packLayers.ts, so they cannot disagree with the layers the map reads
+const PACK_WHERE = "in the blob's z0–z13 tiles, keyed z/x/y in gc-offlineV10";
 const EXPECTS_FIXED: Record<string, string> = {
 	sat: "one satellite photo per pin, ~2 km around it, in IndexedDB gc-offlineSatellite (photoBytes)",
 	fires: "hotspots within FIRE_RADIUS_KM of the pin, in the fires store",
