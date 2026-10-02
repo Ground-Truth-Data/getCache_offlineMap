@@ -147,17 +147,14 @@ the online child (`_siblings/` in a clone).
 
 ## Known broken — pick any of these up
 
-1. **A BLOCKED WIPE IS AN UNHANDLED REJECTION.** `lib/onPhone/store/wipe.ts`
-   closes connections and waits out `onblocked`, but a genuinely blocked wipe
-   still `throw`s instead of surfacing as a toast.
-2. **THE WORKER TRUSTS EVERYONE.** Every request to `tiles-prod` is anonymous —
+1. **THE WORKER TRUSTS EVERYONE.** Every request to `tiles-prod` is anonymous —
    the app has no more standing than a stranger's `curl`, so a third party
    could build their own service on the tile Worker. Add a shared token: the
    client sends a header read from `.env` (beside `PUBLIC_GC_tiles_prod_worker`), the
    Worker rejects requests without it. The token ships in a public web bundle,
    so this is a fence, not a lock — the win is rotation. Build and test it
    against `worker-local-dev`; no Cloudflare account needed.
-3. **THE MAP UI HAS NO HOST IN RAPPER.** `lib/mapUi/` and `lib/mapState/` are
+2. **THE MAP UI HAS NO HOST IN RAPPER.** `lib/mapUi/` and `lib/mapState/` are
    mounted only by ReTreever, through `retreeverMapPorts.ts`. Five of them
    (`SnakeRuler`, `userLocation`, `vertexDrag`, `overlayManager`,
    `pinMarkers`) import `getCache_OnlineMap`, so they need that sibling beside
