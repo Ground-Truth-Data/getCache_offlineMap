@@ -12,7 +12,6 @@ describe("tiles host must be configured by the app", () => {
 		m.setWorkerTarget("worker-cloud-prod");
 		expect(m.isTilesHostConfigured()).toBe(false);
 		expect(m.tilesHost()).toBeNull();
-		expect(m.packUrl()).toBeNull();
 		expect(m.firesUrl()).toBeNull();
 	});
 
@@ -21,24 +20,23 @@ describe("tiles host must be configured by the app", () => {
 		m.setWorkerTarget("worker-cloud-prod");
 		m.configureTilesHost("https://tiles.example.test");
 		expect(m.isTilesHostConfigured()).toBe(true);
-		expect(m.packUrl()).toBe("https://tiles.example.test/pack");
 		expect(m.firesUrl()).toBe("https://tiles.example.test/fires");
 	});
 
-	it("trims trailing slashes so a configured origin cannot produce //pack", async () => {
+	it("trims trailing slashes so a configured origin cannot produce //fires", async () => {
 		const m = await freshModule();
 		m.setWorkerTarget("worker-cloud-prod");
 		m.configureTilesHost("https://tiles.example.test///");
-		expect(m.packUrl()).toBe("https://tiles.example.test/pack");
+		expect(m.firesUrl()).toBe("https://tiles.example.test/fires");
 	});
 
 	it("treats blank configuration as unconfigured, not as an empty origin", async () => {
 		const m = await freshModule();
 		m.setWorkerTarget("worker-cloud-prod");
 		m.configureTilesHost("   ");
-		// An empty origin would make packUrl() "/pack", a same-origin 404 that reads as a broken map.
+		// An empty origin would make firesUrl() "/fires", a same-origin 404 that reads as a broken map.
 		expect(m.isTilesHostConfigured()).toBe(false);
-		expect(m.packUrl()).toBeNull();
+		expect(m.firesUrl()).toBeNull();
 	});
 
 	it("still knows the local dev worker without any configuration", async () => {

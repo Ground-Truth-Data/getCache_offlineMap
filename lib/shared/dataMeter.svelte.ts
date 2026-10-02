@@ -14,7 +14,7 @@ const KEEP_DAYS = 60;
 const DB = "rt-data-meter";
 const STORE = "days";
 
-// FIRST MATCH WINS: every Worker route shares one origin, so `/satellite/` must precede `/pack`.
+// FIRST MATCH WINS.
 const KINDS: ReadonlyArray<readonly [kind: string, test: (u: string) => boolean]> = [
 	["fires", (u) => u.includes("/fires")],
 	["hospitals", (u) => u.includes("/hospitals")],
@@ -25,7 +25,7 @@ const KINDS: ReadonlyArray<readonly [kind: string, test: (u: string) => boolean]
 			u.includes("basemap.nationalmap.gov") ||
 			u.includes("tiles.maps.eox.at"),
 	],
-	["map tiles", (u) => u.includes("/pack") || /\/\d+\/\d+\/\d+\.pbf/.test(u)],
+	["map tiles", (u) => /\/\d+\/\d+\/\d+\.pbf/.test(u)],
 	["directions", (u) => u.includes("api.mapbox.com/directions")],
 	["mapbox", (u) => u.includes("api.mapbox.com") || u.includes("mapbox-gl")],
 	["app", (u) => u.includes("/_app/") || u.endsWith(".js") || u.endsWith(".css")],

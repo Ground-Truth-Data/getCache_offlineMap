@@ -22,9 +22,8 @@ import {
 } from "./store";
 import { rangeTiles, regionRange, type Tile, tileKey, toMerc } from "./tiles";
 
-// One GET per tile: a batch's reads queue inside one Worker isolate, single GETs spread across many. 48 at once
-// measured 1373 road tiles in 4.9 s against 16.6 s batched; 96 drew 500s.
-const IN_FLIGHT = 40;
+// One GET per tile spreads the reads over many Worker isolates; 96 at once drew 500s.
+const IN_FLIGHT = 48;
 // Tiles per store write; each write repaints the map.
 const FLUSH = 128;
 
@@ -152,7 +151,7 @@ async function fetchInto(
 	if (bad) throw (bad as PromiseRejectedResult).reason;
 }
 
-/** One GET per tile, IN_FLIGHT at once, in `urls` order; a 204 is null, and so is a failure when `skipFailed`. `stop` runs before each fetch and may throw. */
+/** One GET per tile, at most IN_FLIGHT across all callers, in `urls` order; a 204 is null, and so is a failure when `skipFailed`. `stop` runs before each fetch and may throw. */
 export async function getEach(
 	urls: readonly string[],
 	onTile: (i: number, body: ArrayBuffer | null) => void,
@@ -178,7 +177,26 @@ export async function getEach(
 	if (lanes.some((l) => l.status === "rejected")) throw failed;
 }
 
+// One pool for every caller: the map and its photo download together, and 96 at once drew 500s.
+let free = IN_FLIGHT;
+const queued: Array<() => void> = [];
+function release(): void {
+	const next = queued.shift();
+	if (next) next();
+	else free++;
+}
+
 async function getOne(url: string): Promise<ArrayBuffer | null> {
+	if (free > 0) free--;
+	else await new Promise<void>((r) => queued.push(r));
+	try {
+		return await getOnce(url);
+	} finally {
+		release();
+	}
+}
+
+async function getOnce(url: string): Promise<ArrayBuffer | null> {
 	for (let attempt = 0; ; attempt++) {
 		const res = await fetch(url);
 		if (res.status === 204) return null;

@@ -8,7 +8,6 @@ import {
 	firesUrl,
 	getWorkerTarget,
 	LOCAL_DEV_HOST,
-	packUrl,
 	setWorkerTarget,
 	tilesHost,
 } from "./tilesHost";
@@ -36,19 +35,17 @@ describe("worker target", () => {
 	it("switches every URL together — no split-brain", () => {
 		setWorkerTarget("worker-local-dev");
 		expect(tilesHost()).toBe(LOCAL_DEV_HOST);
-		expect(packUrl()).toBe(`${LOCAL_DEV_HOST}/pack`);
 		expect(firesUrl()).toBe(`${LOCAL_DEV_HOST}/fires`);
 
 		setWorkerTarget("worker-cloud-prod");
-		expect(packUrl()).toBe(`${TEST_HOST}/pack`);
 		expect(firesUrl()).toBe(`${TEST_HOST}/fires`);
 	});
 
 	it("URLs are read per call, so a switch takes effect without a reload", () => {
 		setWorkerTarget("worker-cloud-prod");
-		const before = packUrl();
+		const before = firesUrl();
 		setWorkerTarget("worker-local-dev");
-		expect(packUrl()).not.toBe(before);
+		expect(firesUrl()).not.toBe(before);
 	});
 
 	it("ignores a corrupt or hostile stored value", () => {

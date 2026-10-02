@@ -18,7 +18,7 @@ import {
 } from "./store";
 
 export type BlobEvent =
-	| { kind: "start"; at: [number, number] }
+	| { kind: "start"; at: [number, number]; photo: boolean }
 	| { kind: "progress"; progress: Progress }
 	| { kind: "landed"; region: Region }
 	| { kind: "failed"; at: [number, number]; error: unknown }
@@ -120,7 +120,7 @@ async function drain(): Promise<void> {
 
 async function download({ at, photo, keep }: Ask): Promise<void> {
 	current = { at, progress: null, startedAt: performance.now() };
-	emit({ kind: "start", at });
+	emit({ kind: "start", at, photo });
 	try {
 		const region = await downloadRegion(
 			at[0],

@@ -1,4 +1,4 @@
-/** The Worker filters BY this table and the phone's report reads FROM it, so the two cannot disagree. */
+/** The layers the debug report says a pack carries. */
 
 export interface PackLayerRule {
     /** Attribute the allowlist matches. Omitted = `kind`. */
@@ -28,17 +28,6 @@ export const PACK_LAYERS: Readonly<Record<string, PackLayerRule>> = {
 };
 
 export const PACK_LAYER_NAMES: readonly string[] = Object.keys(PACK_LAYERS);
-
-/** Shallow (z6) keep-set: small roads live only inside a pin's disc — a z6 tile
- *  spans ~600 km and minor_road in it is a province of driveways. */
-export const SHALLOW_LAYER_RULES: Readonly<Record<string, PackLayerRule>> = {
-    ...PACK_LAYERS,
-    roads: {
-        // The archive's vocabulary is `major_road`; a short "major" matches nothing.
-        kinds: ["highway", "major_road"],
-        why: "highways + major roads only, in the ARCHIVE vocabulary (*_road) — small roads ship only inside the z8 disc",
-    },
-};
 
 export interface PackRead {
     readonly layer: string;

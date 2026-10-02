@@ -33,7 +33,7 @@ describe("worker-cloud-dev tier is configurable", () => {
 	});
 
 	it("reads it from the environment rather than baking an origin in", () => {
-		// Baking a real origin here would bill whoever owns it — same rule that keeps packUrl() answering null until configured.
+		// Baking a real origin here would bill whoever owns it — same rule that keeps firesUrl() answering null until configured.
 		expect(TILES_FROM_ENV).toContain("PUBLIC_GC_tiles_dev_worker");
 		expect(TILES_FROM_ENV).not.toMatch(/configureTilesDevHost\(\s*["'`]https?:/);
 	});

@@ -63,26 +63,6 @@ export function tilesHost(): string | null {
 	return hostFor(getWorkerTarget());
 }
 
-/** null when unconfigured; callers must check or null interpolates into "null/pack". */
-export function packUrl(): string | null {
-	const h = tilesHost();
-	if (h !== lastAnnouncedPackHost) {
-		lastAnnouncedPackHost = h;
-		if (h === null) {
-			console.error(
-				`[tiles] ⛔ NO HOST for target "${getWorkerTarget()}" — no /pack request will be sent. ` +
-					"Nothing will appear in the Network tab. Set PUBLIC_GC_tiles_prod_worker (or pick a reachable target).",
-			);
-		} else {
-			console.info(`[tiles] ✅ /pack will be fetched from ${h}`);
-		}
-	}
-	return h === null ? null : `${h}/pack`;
-}
-
-/** undefined = never announced, null = announced as unconfigured. */
-let lastAnnouncedPackHost: string | null | undefined;
-
 export function firesUrl(): string | null {
 	const h = tilesHost();
 	return h === null ? null : `${h}/fires`;
@@ -97,18 +77,6 @@ export function tileUrl(z: number, x: number, y: number): string | null {
 export function satelliteTileUrl(z: number, x: number, y: number): string | null {
 	const h = tilesHost();
 	return h === null ? null : `${h}/satellite/${z}/${x}/${y}.jpg`;
-}
-
-/** POST [[z,x,y],…] here for many raw tiles in one gzipped response. */
-export function tilesBatchUrl(): string | null {
-	const h = tilesHost();
-	return h === null ? null : `${h}/tiles`;
-}
-
-/** POST [[z,x,y],…] here for many satellite tiles in one response. */
-export function satelliteBatchUrl(): string | null {
-	const h = tilesHost();
-	return h === null ? null : `${h}/satellite`;
 }
 
 export function hospitalsUrl(
@@ -133,8 +101,7 @@ export async function probeTarget(
 	const ctl = new AbortController();
 	const timer = setTimeout(() => ctl.abort(), timeoutMs);
 	try {
-		// OPTIONS, never /bench: that is 500 range reads.
-		await fetch(`${host}/pack`, {
+		await fetch(`${host}/`, {
 			method: "OPTIONS",
 			signal: ctl.signal,
 			mode: "cors",

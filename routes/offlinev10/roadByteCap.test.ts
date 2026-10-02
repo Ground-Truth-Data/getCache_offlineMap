@@ -1,4 +1,4 @@
-/** The session byte cap also stops the road-tile batches, whatever keeps them fetching. */
+/** The road download stops at the session cap, and every download together stays under the Worker's ceiling. */
 import { beforeEach, expect, it, vi } from "vitest";
 
 const stored: string[] = [];
@@ -45,4 +45,20 @@ it("stops fetching road tiles once the session cap trips", async () => {
 	expect(sessionCap.tripped).toBe(true);
 	expect(askedAfterTrip).toBe(0);
 	expect(fetchMock.mock.calls.length).toBeLessThan(rangeTiles(regionRange(7.2, 43.68)).length);
+});
+
+it("a map and its photo downloading together never have more than 48 requests out", async () => {
+	let open = 0;
+	let most = 0;
+	fetchMock.mockImplementation(async () => {
+		most = Math.max(most, ++open);
+		await new Promise((r) => setTimeout(r, 1));
+		open--;
+		return new Response(new ArrayBuffer(1));
+	});
+	const { getEach } = await import("./download");
+	const urls = Array.from({ length: 300 }, (_, i) => `https://tiles.test/${i}`);
+	await Promise.all([getEach(urls, () => undefined), getEach(urls, () => undefined)]);
+	expect(fetchMock).toHaveBeenCalledTimes(600);
+	expect(most).toBe(48);
 });

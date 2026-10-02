@@ -4,8 +4,7 @@ The Worker itself is `../../workers/` — one folder per tier, named exactly
 like the CONFIG panel rows: `worker-local-dev/` is the copy you edit and run,
 `worker-cloud-dev/` and `worker-cloud-prod/` are the record of what each cloud tier is running
 (their deploy scripts sync from worker-local-dev, then deploy). This folder is the
-**client half**: which host the app talks to, the `/pack` downloader, the
-fires fetch.
+**client half**: which host the app talks to and the fires fetch.
 
 ## Three tiers, one URL shape
 
@@ -15,7 +14,7 @@ fires fetch.
 | dev | `worker-cloud-dev` | `tiles-dev.getcache.org` | `./deployDev.sh` in `workers/worker-cloud-dev/` — same R2 bucket, so a prod/dev difference is always CODE, never data |
 | local | `worker-local-dev` | `tiles-local.getcache.org:8787` → 127.0.0.1 | `npm run dev` in `workers/worker-local-dev/` — no Cloudflare account needed |
 
-`GET /pack?lng=&lat=` returns a map pack; `GET /{z}/{x}/{y}.pbf` a tile.
+`GET /{z}/{x}/{y}.pbf` returns a tile.
 
 - ⛔ `tiles-local` is the one hand-made DNS record (A → 127.0.0.1, DNS-only);
   prod/dev records come from `wrangler deploy` — see the Worker README.

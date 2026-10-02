@@ -1,6 +1,4 @@
-// Keep ./packBuilder.ts + lib/contract/grid.ts in sync with the phone's probe (v4CloudflareTiles.ts `areaTilesPresent`).
-
-import { gunzipSync, gzipSync } from "fflate";
+import { gunzipSync } from "fflate";
 import {
   Compression,
   PMTiles,
@@ -13,8 +11,6 @@ import {
   fetchFires,
   MAX_RADIUS_KM,
 } from "../../../lib/worker/firesWorker";
-import { buildPack } from "./packBuilder";
-import { buildTileBatch, MAX_BATCH, MAX_SAT_BATCH } from "./tileBatch";
 import {
   cellKeysForDisc,
   HOSPITAL_MAX_KM,
@@ -29,9 +25,6 @@ import hospitalsPack from "./hospitalsWorld.v1.bin";
 
 /** Edge-cache key for /hospitals; bump on every re-bake (bakeHospitals.mjs prints it). */
 const HOSPITALS_BUILD = "v1-209173-20260907";
-
-/** Edge-cache key; bump whenever the pack contents change or the immutable edge entry masks the deploy. */
-const PACK_BUILD = "v35-shallow-z6-built";
 
 /** Edge-cache key for /satellite; bump when the upstream tileset id changes. */
 const SATELLITE_BUILD = "satellite-v2";
@@ -49,21 +42,15 @@ function satelliteUrl(key: string, z: number, x: number, y: number): string {
 interface Env {
   TILES: R2Bucket;
   PMTILES_KEY: string;
-  PACK_PMTILES_KEY: string;
   /** Worker SECRETs (`wrangler secret put`), never [vars] — they must not reach the app bundle. */
   GC_firms_map_key: string;
   GC_mapTiler_key: string;
 }
 
-interface ReadStats {
-  reads: number;
-  bytes: number;
-}
 class R2Source implements Source {
   constructor(
     private readonly bucket: R2Bucket,
     private readonly key: string,
-    private readonly stats?: ReadStats,
   ) {}
 
   getKey(): string {
@@ -77,29 +64,15 @@ class R2Source implements Source {
     if (object === null) {
       throw new Error(`PMTiles archive not found in R2: ${this.key}`);
     }
-    const data = await object.arrayBuffer();
-    if (this.stats) {
-      this.stats.reads++;
-      this.stats.bytes += data.byteLength;
-    }
-    return {
-      data,
-      etag: object.etag,
-    };
+    return { data: await object.arrayBuffer(), etag: object.etag };
   }
 }
 
-// fflate's sync calls, not DecompressionStream: /pack gunzips ~1000 tiles per
-// request and per-tile stream setup took the cold build from ~1 s to ~7 s.
 function gunzip(buf: ArrayBuffer): Promise<ArrayBuffer> {
   const out = gunzipSync(new Uint8Array(buf));
   return Promise.resolve(out.buffer as ArrayBuffer);
 }
 
-function gzipBuf(buf: ArrayBuffer): Promise<ArrayBuffer> {
-  const out = gzipSync(new Uint8Array(buf));
-  return Promise.resolve(out.buffer as ArrayBuffer);
-}
 const decompress = (buf: ArrayBuffer, compression: Compression): Promise<ArrayBuffer> => {
   if (compression === Compression.None || compression === Compression.Unknown) {
     return Promise.resolve(buf);
@@ -129,10 +102,6 @@ const FIRE_ANSWER_VERSION = 3;
 // Every X-* response header must be listed here: cross-origin JS reads an
 // unexposed header as null, silently. Add new ones at the same time.
 const EXPOSED_HEADERS = [
-  "X-Pack-Build",
-  "X-Pack-Cache",
-  "X-Pack-Encoding",
-  "X-Diag",
   "X-Fetched-At",
   "X-Sources-Ok",
   "X-Radius-Km",
@@ -141,7 +110,7 @@ const EXPOSED_HEADERS = [
 
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, HEAD, POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
   "Access-Control-Allow-Headers": "*",
   "Access-Control-Expose-Headers": EXPOSED_HEADERS,
   "Access-Control-Max-Age": "86400",
@@ -154,7 +123,7 @@ const SAT_HEADERS: Record<string, string> = {
   "Cache-Control": "public, max-age=31536000, immutable",
 };
 
-/** One MapTiler tile through the edge cache; the single route and the batch share the key, so either warms the other. */
+/** One MapTiler tile through the edge cache. */
 async function satelliteTile(env: Env, ctx: ExecutionContext, origin: string, z: number, x: number, y: number): Promise<ArrayBuffer> {
   const key = new Request(`${origin}/satellite/${z}/${x}/${y}.jpg?build=${SATELLITE_BUILD}`, { method: "GET" });
   const hit = await caches.default.match(key);
@@ -174,38 +143,11 @@ export default {
 
     const url = new URL(request.url);
 
-    if (request.method !== "GET" && request.method !== "HEAD" && !(request.method === "POST" && (url.pathname === "/tiles" || url.pathname === "/satellite"))) {
+    if (request.method !== "GET" && request.method !== "HEAD") {
       return new Response("Method Not Allowed", {
         status: 405,
         headers: { ...CORS_HEADERS, Allow: "GET, HEAD, OPTIONS" },
       });
-    }
-
-    // /bench: TEMP diagnostic — does the R2 binding parallelise reads?
-    if (url.pathname === "/bench") {
-      const n = Math.min(2000, Number(url.searchParams.get("n")) || 500);
-      const conc = Math.min(256, Number(url.searchParams.get("conc")) || 100);
-      const t0 = Date.now();
-      let i = 0;
-      let done = 0;
-      const run = async (): Promise<void> => {
-        while (i < n) {
-          const k = i++;
-          const obj = await env.TILES.get(env.PACK_PMTILES_KEY, {
-            range: { offset: (k * 131072) % 2_000_000_000, length: 32768 },
-          });
-          if (obj) {
-            await obj.arrayBuffer();
-            done++;
-          }
-        }
-      };
-      await Promise.all(Array.from({ length: conc }, () => run()));
-      const ms = Date.now() - t0;
-      return new Response(
-        `n=${n} conc=${conc} done=${done} totalMs=${ms} perRead=${(ms / n).toFixed(2)}ms`,
-        { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "text/plain" } },
-      );
     }
 
     // /fires: NASA FIRMS hotspots, cached 1 h (worthless at ~6 h) with X-Fetched-At.
@@ -280,114 +222,6 @@ export default {
       });
     }
 
-    // /pack: the downloader's one-shot endpoint.
-    if (url.pathname === "/pack") {
-      const lng = Number(url.searchParams.get("lng"));
-      const lat = Number(url.searchParams.get("lat"));
-      const corridor = url.searchParams.get("ring") === "corridor";
-      if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
-        return new Response("Bad Request — expected ?lng=<num>&lat=<num>", {
-          status: 400,
-          headers: CORS_HEADERS,
-        });
-      }
-
-      // `*.workers.dev` does not auto-cache, so the Cache API is driven by hand.
-      // The build is in the key: entries are immutable for a year, so without it a
-      // deploy that changes the pack replays the old bytes and looks like a no-op.
-      const keyUrl = new URL(url.toString());
-      keyUrl.searchParams.set("build", PACK_BUILD);
-      const cacheKey = new Request(keyUrl.toString(), { method: "GET" });
-      const edge = caches.default;
-      const cached = await edge.match(cacheKey);
-      if (cached) {
-        const hitHeaders = new Headers(cached.headers);
-        hitHeaders.set("X-Pack-Cache", "HIT");
-        return new Response(request.method === "HEAD" ? null : cached.body, {
-          status: 200,
-          headers: hitHeaders,
-        });
-      }
-
-      const diag: Record<string, number> = {};
-      let pack: ArrayBuffer;
-      try {
-        const stats: ReadStats = { reads: 0, bytes: 0 };
-        const tH = Date.now();
-        const archive = new PMTiles(
-          new R2Source(env.TILES, env.PACK_PMTILES_KEY, stats),
-          cache,
-          decompress,
-        );
-        await archive.getHeader();
-        const tLoop = Date.now();
-        pack = await buildPack(archive, lng, lat, corridor, diag);
-        diag.r2Reads = stats.reads;
-        diag.r2Bytes = stats.bytes;
-        diag.headerMs = tLoop - tH;
-        diag.loopMs = Date.now() - tLoop;
-
-        // Gzipped by hand with NO Content-Encoding: advertising it makes Cloudflare's
-        // edge compress on top and the browser inflates only one layer.
-        pack = await gzipBuf(pack);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return new Response(`Pack build failed: ${message}`, {
-          status: 502,
-          headers: CORS_HEADERS,
-        });
-      }
-      const headers = {
-        ...CORS_HEADERS,
-        "Content-Type": "application/octet-stream",
-        "X-Pack-Encoding": "gzip",
-        "X-Pack-Build": PACK_BUILD,
-        "X-Diag": `disc=${diag.discTiles} reads=${diag.r2Reads} rbytes=${diag.r2Bytes} headerMs=${diag.headerMs} loopMs=${diag.loopMs} outerKm=${diag.outerKm} cells=${diag.cells} features=${diag.blobFeatures} bytes=${diag.blobBytes} shallowTiles=${diag.shallowTiles} shallowBytes=${diag.shallowBytes}`,
-        "X-Pack-Cache": "MISS",
-        "Cache-Control": "public, max-age=31536000, immutable",
-      };
-      ctx.waitUntil(edge.put(cacheKey, new Response(pack, { status: 200, headers })));
-      return new Response(request.method === "HEAD" ? null : pack, {
-        status: 200,
-        headers,
-      });
-    }
-
-    // POST /tiles: [[z,x,y],…] from the planet archive in one gzipped response, so a blob is a few requests instead of one per tile.
-    if (url.pathname === "/tiles") {
-      let keys: unknown;
-      try {
-        keys = await request.json();
-      } catch {
-        return new Response("Bad Request — expected a JSON body [[z,x,y],…]", { status: 400, headers: CORS_HEADERS });
-      }
-      const valid =
-        Array.isArray(keys) &&
-        keys.length > 0 &&
-        keys.length <= MAX_BATCH &&
-        keys.every((k) => Array.isArray(k) && k.length === 3 && k.every((n) => Number.isInteger(n) && n >= 0) && k[0] <= 20);
-      if (!valid) {
-        return new Response(`Bad Request — 1..${MAX_BATCH} tiles, each [z,x,y] with z ≤ 20`, { status: 400, headers: CORS_HEADERS });
-      }
-      const archive = new PMTiles(new R2Source(env.TILES, env.PMTILES_KEY), cache, decompress);
-      let batch: ArrayBuffer;
-      try {
-        await archive.getHeader();
-        const wanted = keys as Array<[number, number, number]>;
-        // The first read of a cold isolate can hit a PMTiles directory race; the retry runs on the warm directory.
-        const get = async (z: number, x: number, y: number) => (await archive.getZxy(z, x, y))?.data;
-        batch = await buildTileBatch(get, wanted).catch(() => buildTileBatch(get, wanted));
-        batch = await gzipBuf(batch);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return new Response(`Tile batch failed: ${message}`, { status: 502, headers: CORS_HEADERS });
-      }
-      return new Response(batch, {
-        status: 200,
-        headers: { ...CORS_HEADERS, "Content-Type": "application/octet-stream", "X-Pack-Encoding": "gzip" },
-      });
-    }
-
     // /hospitals: world hospitals within km (default 200, max 500), filtered here so the phone never downloads the world's.
     if (url.pathname === "/hospitals") {
       const lng = Number(url.searchParams.get("lng"));
@@ -457,43 +291,6 @@ export default {
       });
     }
 
-    // POST /satellite: [[z,x,y],…] of MapTiler imagery in one response, so a photo is one request instead of one per tile.
-    if (url.pathname === "/satellite") {
-      let keys: unknown;
-      try {
-        keys = await request.json();
-      } catch {
-        return new Response("Bad Request — expected a JSON body [[z,x,y],…]", { status: 400, headers: CORS_HEADERS });
-      }
-      const valid =
-        Array.isArray(keys) &&
-        keys.length > 0 &&
-        keys.length <= MAX_SAT_BATCH &&
-        keys.every(
-          (k) =>
-            Array.isArray(k) &&
-            k.length === 3 &&
-            k.every((n) => Number.isInteger(n) && n >= 0) &&
-            k[0] <= SATELLITE_MAX_Z &&
-            k[1] < 2 ** k[0] &&
-            k[2] < 2 ** k[0],
-        );
-      if (!valid) {
-        return new Response(`Bad Request — 1..${MAX_SAT_BATCH} tiles, each [z,x,y] with z ≤ ${SATELLITE_MAX_Z}`, { status: 400, headers: CORS_HEADERS });
-      }
-      if (!env.GC_mapTiler_key) {
-        return new Response("GC_mapTiler_key is not configured on this Worker (wrangler secret put GC_mapTiler_key)", { status: 500, headers: CORS_HEADERS });
-      }
-      try {
-        const batch = await buildTileBatch((z, x, y) => satelliteTile(env, ctx, url.origin, z, x, y), keys as Array<[number, number, number]>);
-        // JPEG does not compress, so unlike /tiles this is sent as is.
-        return new Response(batch, { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/octet-stream" } });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return new Response(`Satellite batch failed: ${message}`, { status: 502, headers: CORS_HEADERS });
-      }
-    }
-
     // /satellite/{z}/{x}/{y}.jpg: MapTiler imagery, key held here.
     const sat = SATELLITE_PATH.exec(url.pathname);
     if (sat !== null) {
@@ -539,7 +336,7 @@ export default {
 
     const match = TILE_PATH.exec(url.pathname);
     if (match === null) {
-      return new Response("Not Found — expected /{z}/{x}/{y}.pbf, POST /tiles, POST /satellite, /satellite/{z}/{x}/{y}.jpg, /pack?lng=&lat=, /fires?lng=&lat=, or /hospitals?lng=&lat=&km=", {
+      return new Response("Not Found — expected /{z}/{x}/{y}.pbf, /satellite/{z}/{x}/{y}.jpg, /fires?lng=&lat=, or /hospitals?lng=&lat=&km=", {
         status: 404,
         headers: CORS_HEADERS,
       });
@@ -585,7 +382,6 @@ export default {
     const responseHeaders: Record<string, string> = {
       ...CORS_HEADERS,
       "Content-Type": "application/x-protobuf",
-      "X-Pack-Cache": "MISS",
         "Cache-Control": "public, max-age=31536000, immutable",
     };
 

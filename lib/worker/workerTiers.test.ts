@@ -22,7 +22,7 @@ describe("worker tiers", () => {
 		m.configureTilesHost("https://prod.example.test");
 		m.setWorkerTarget("worker-cloud-dev");
 		expect(m.tilesHost()).toBeNull();
-		expect(m.packUrl()).toBeNull();
+		expect(m.firesUrl()).toBeNull();
 	});
 
 	it("defaults to worker-cloud-dev in a dev build — a shipped phone is locked to production by the !DEV early return, not by this constant", async () => {

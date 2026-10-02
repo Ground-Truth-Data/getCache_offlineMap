@@ -35,7 +35,7 @@ import type { Progress } from "./download";
 import { onFires } from "../fires/fireService";
 import { HOSPITAL_LAYER_ID_LIST, type HospitalLayerHandle, attachHospitalLayer } from "../hospitals/hospitalLayer";
 import { overlayVisibility } from "../../lib/mapState/overlayVisibility.svelte";
-import { dropPhoto, onPhoto, type PhotoInfo, photoInfo, setPhotoNarration } from "./satellite";
+import { dropPhoto, onPhoto, type PhotoInfo, photoInfo, photoKey, setPhotoNarration } from "./satellite";
 import { FOLLOW_MARGIN_KM, marginKm, moved } from "./follow";
 import { PHOTO_TILES, PLANET_TILES, installProtocol } from "./protocol";
 import { type Kept, type Region, checkRegions, deleteRegion, keepStorage, listRegions, patchRegion, stats, wipe } from "./store";
@@ -66,8 +66,14 @@ let failure = $state<string | null>(null);
 let light = $state<Light>("idle");
 let dlStart = $state<number | null>(null);
 let dlMs = $state<number | null>(null);
-// The blob whose photo is the end of the wait; set when its tiles land.
-let waitingPhoto: { id: string; t0: number } | null = null;
+// The wait ends when the map has painted and the photo has landed, in either order.
+let wait: { t0: number; id: string | null; map: boolean; photo: boolean } | null = null;
+function endWait(): void {
+	if (wait?.id && wait.map && wait.photo) {
+		settleWait(wait.id, performance.now() - wait.t0);
+		wait = null;
+	}
+}
 
 function settleWait(id: string, ms: number): void {
 	const msWait = Math.round(ms);
@@ -181,9 +187,9 @@ async function nameOldBlobs(): Promise<void> {
 }
 
 function onPhotoLanded(): void {
-	if (waitingPhoto) {
-		settleWait(waitingPhoto.id, performance.now() - waitingPhoto.t0);
-		waitingPhoto = null;
+	if (wait) {
+		wait.photo = true;
+		endWait();
 	}
 	photos?.closeUpChanged();
 	reconcilePhotos();
@@ -251,8 +257,11 @@ async function landed(r: Region): Promise<void> {
 	invalidatePlanet();
 	await refresh();
 	last = r;
-	const expectsPhoto = r.photo !== false && dlStart !== null;
-	if (expectsPhoto) waitingPhoto = { id: r.id, t0: dlStart as number };
+	if (wait) {
+		wait.id = r.id;
+		// A photo already on disk sends no landing, so it is done already.
+		if (photoMeta[photoKey(r.lng, r.lat)]) wait.photo = true;
+	}
 	// A camera move keeps `idle` from firing, so the reading is marked interrupted rather than reported.
 	let moved = false;
 	const onMove = (): void => {
@@ -261,6 +270,10 @@ async function landed(r: Region): Promise<void> {
 	map?.on("movestart", onMove);
 	map?.once("idle", () => {
 		map?.off("movestart", onMove);
+		if (wait) {
+			wait.map = true;
+			endWait();
+		}
 		if (moved) {
 			r.paintMoved = true;
 			last = { ...r };
@@ -273,7 +286,6 @@ async function landed(r: Region): Promise<void> {
 		r.msPaint = Math.round(performance.now() - t0);
 		last = { ...r };
 		light = "drawn";
-		if (!expectsPhoto && dlStart !== null) settleWait(r.id, performance.now() - dlStart);
 		regions = regions.map((x) => (x.id === r.id ? { ...x, msPaint: r.msPaint } : x));
 		void patchRegion(r.id, { msPaint: r.msPaint });
 		console.info(`[offlineV10] painted ${r.id} in ${r.msPaint} ms`);
@@ -295,6 +307,7 @@ function followBlobs(): () => void {
 			light = "transit";
 			dlStart = performance.now();
 			dlMs = null;
+			wait = { t0: dlStart, id: null, map: false, photo: !e.photo };
 			progress = null;
 			failure = null;
 		} else if (e.kind === "progress") {

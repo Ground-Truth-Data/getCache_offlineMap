@@ -22,7 +22,6 @@ describe("dataMeter buckets", () => {
 		expect(
 			kindOf("https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2020_3857/default/g/14/5672/2836.jpg"),
 		).toBe("satellite");
-		expect(kindOf(`${HOST}/pack?lng=-120.8&lat=48.3&pv=4`)).toBe("map tiles");
 		expect(kindOf(`${HOST}/13/1345/2836.pbf`)).toBe("map tiles");
 	});
 

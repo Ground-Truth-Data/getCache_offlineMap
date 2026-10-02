@@ -26,13 +26,9 @@ Overlap between anchors is expected and free — they dedup downstream by
 ## The corridor: roads only, no photo
 
 A line sets `corridor: true` purely from its geometry type, at the host port
-boundary (`retreeverPorts.ts`). That flag does three things:
+boundary (`retreeverPorts.ts`). That flag does two things:
 
 - **No satellite.** `blobService.ts` queues the blob with `photo: !p.corridor`.
-- **Roads-only pack.** The request carries `&ring=corridor`; the Worker filters
-  the pack to the `roads` layer alone — no water, no labels, no POIs
-  (`packBuilder.ts`, `keepSet`). `&ring=corridor` is also a distinct edge-cache
-  key, so it needs no format-version bump.
 - **Free against the photo budget.** A corridor carries no photo, so it costs 0,
   and counts complete with tiles alone.
 

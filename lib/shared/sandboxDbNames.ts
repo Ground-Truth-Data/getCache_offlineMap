@@ -41,7 +41,3 @@ export function isSandboxStorageActive(): boolean {
 export function currentDbName(realName: string): string {
 	return realName + bornSuffix;
 }
-
-// TODO: nothing resets or latches handles any more; delete these with packDownload's calls (lib/worker).
-export function registerOfflineDbReset(_fn: () => void): void {}
-export function registerWipeLatch(_l: { latch: () => void; unlatch: () => void }): void {}

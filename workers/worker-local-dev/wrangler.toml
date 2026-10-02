@@ -22,11 +22,10 @@ binding = "TILES"
 bucket_name = "offline-tiles"
 remote = true
 
-# ⚠️ PMTILES_KEY / PACK_PMTILES_KEY must match the uploaded object key in the
+# ⚠️ PMTILES_KEY must match the uploaded object key in the
 # bucket — a mismatch silently reads as "no tiles".
 [vars]
 PMTILES_KEY = "planet.pmtiles"
-PACK_PMTILES_KEY = "planet.pmtiles"
 
 [env.dev]
 name = "offline-tiles-dev"
@@ -40,6 +39,5 @@ bucket_name = "offline-tiles"
 
 [env.dev.vars]
 PMTILES_KEY = "planet.pmtiles"
-PACK_PMTILES_KEY = "planet.pmtiles"
 
 # ⚠️ a staging Worker (offline-tiles-staging) may still exist in Cloudflare — deleting config never tears down a live Worker.

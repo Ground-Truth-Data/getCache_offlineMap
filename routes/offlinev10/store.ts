@@ -177,7 +177,7 @@ export async function makeRoom(adding: number): Promise<Region[]> {
 	return doomed;
 }
 
-// One write at a time: each reads the running total and writes it back, so two at once lose a batch's bytes.
+// One write at a time: each reads the running total and writes it back, so two at once lose bytes.
 let writing: Promise<void> = Promise.resolve();
 
 export function putTiles(entries: Array<[string, ArrayBuffer]>): Promise<void> {

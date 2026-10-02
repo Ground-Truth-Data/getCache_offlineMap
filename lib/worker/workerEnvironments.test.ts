@@ -8,7 +8,7 @@ const R2_WORKER = fileURLToPath(new URL(".", import.meta.url));
 
 const ENVIRONMENTS = ["worker-local-dev", "worker-cloud-dev", "worker-cloud-prod"] as const;
 
-const REQUIRED = ["tilesHost.ts", "roads/packDownload.ts", "fires/fireFetch.ts"];
+const REQUIRED = ["tilesHost.ts", "fires/fireFetch.ts"];
 
 /** Lines that must differ per tier, matched as a prefix. Never exempt a whole file: the rest of it then rots unseen. */
 const EXPECTED_DRIFT_LINES = [

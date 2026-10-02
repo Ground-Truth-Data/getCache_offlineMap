@@ -7,7 +7,7 @@ export function configureTilesFromEnv(): void {
 	} else if (import.meta.env.DEV) {
 		console.warn(
 			"[tiles] ⛔ PUBLIC_GC_tiles_prod_worker is not set — NOTHING will download " +
-				"(no /pack request is sent at all; the satellite layer still draws, " +
+				"(no road request is sent at all; the satellite layer still draws, " +
 				"so this looks like 'roads are broken'). Put it in the .env beside " +
 				"vite's root — the wrapper folder, not the project root:\n" +
 				// Placeholder only: noParentNames.test.ts forbids a real origin here.

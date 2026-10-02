@@ -188,8 +188,9 @@ export function startPhotoService(): () => void {
 		});
 	};
 	const offBlob = onBlob((e) => {
-		if (e.kind === "landed" && e.region.photo !== false)
-			bakePhotos([[e.region.lng, e.region.lat]]).catch((err) => {
+		// Beside the tiles, not after them: neither needs the other.
+		if (e.kind === "start" && e.photo)
+			bakePhotos([e.at]).catch((err) => {
 				console.warn("[photos] bake failed", err);
 			});
 	});
