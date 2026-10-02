@@ -30,7 +30,6 @@ export interface MapHostFeature {
 		| [[number, number], [number, number], [number, number], [number, number]]
 		| null;
 	overlayLabels: MapHostOverlayLabel[] | null;
-	featureSource: string | null;
 	createdAt: string;
 	lastTouched: string;
 }
