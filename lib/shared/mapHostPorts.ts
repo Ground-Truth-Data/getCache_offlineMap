@@ -43,6 +43,9 @@ export interface MapHostSession {
 	features: MapHostFeature[];
 }
 
+/** The block drawer's answer: a tapped row's key, or typed text. */
+export type BlockPick = { landKey: string } | { landName: string };
+
 export interface MapHostStore {
 	readonly activeMapKey: string | null;
 	readonly activeMap: MapHostSession | null;
@@ -63,8 +66,9 @@ export interface MapHostStore {
 			featureData?: string;
 			contacts?: string[];
 			geometry?: Feature | null;
-			/** The BLOCK this shape is the ground of, "" to release it. */
+			/** Typed text names this shape's block, "" releases it; a key picks one. */
 			landName?: string;
+			landKey?: string;
 			/** Stored in the geometry's properties; `null`/`false`/`""` REMOVE the prop. */
 			fillOpacity?: number | null;
 			titleShown?: boolean;

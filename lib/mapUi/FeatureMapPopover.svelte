@@ -2,7 +2,7 @@
 <script lang="ts">
 import type { Feature } from "geojson";
 import MapPopoverShell from "../panels/MapPopoverShell.svelte";
-import type { MapHostPorts, MapShareFormat } from "../shared/mapHostPorts";
+import type { BlockPick, MapHostPorts, MapShareFormat } from "../shared/mapHostPorts";
 
 let {
     ports,
@@ -40,7 +40,7 @@ let {
     onTitleShown?: (v: boolean) => void;
     onDelete?: () => void;
     onContacts?: (keys: string[]) => void;
-    onBlock?: (block: string) => void;
+    onBlock?: (pick: BlockPick) => void;
     /** True while this feature's corners are in drag mode on the map. */
     cornerEditing?: boolean;
     onEditCorners?: (on: boolean) => void;
