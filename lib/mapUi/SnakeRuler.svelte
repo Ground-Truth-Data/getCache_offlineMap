@@ -12,6 +12,7 @@ import area from "@turf/area";
 import turfLength from "@turf/length";
 import { markerCtor } from "../shared/rendererOf";
 import type { Lnglat } from "$parent/siblings/getCache_OnlineMap/lib/draw/mapDraw";
+import { mayAddVertex } from "$parent/siblings/getCache_OnlineMap/lib/draw/drawLimit";
 import { formatHectares, formatMeasureDist } from "../panels/measureFormat";
 import { legLabelsReadable } from "./legLabelCrowding";
 import { type Rect, mapKeepOutRects, shiftClear } from "../shared/mapKeepOut";
@@ -494,6 +495,11 @@ function commitAt(lng: number, lat: number) {
             return;
         }
     }
+    if (!mayAddVertex(verts.length)) {
+        cursor = null;
+        render();
+        return;
+    }
     verts = dragFromHead ? [[lng, lat], ...verts] : [...verts, [lng, lat]];
     seedAtSelf = false;
     cursor = null;
@@ -604,7 +610,7 @@ $effect(() => {
                 render();
             }
         } else if (armed === "polygon") {
-            if (nearIdx !== -1) return;
+            if (nearIdx !== -1 || !mayAddVertex(verts.length)) return;
             verts = [...verts, pt];
             isPolygon = verts.length >= 3;
             render();
@@ -621,7 +627,7 @@ $effect(() => {
                 render();
                 return;
             }
-            if (nearIdx !== -1) return;
+            if (nearIdx !== -1 || !mayAddVertex(verts.length)) return;
             verts = [...verts, pt];
             seedAtSelf = false;
             cursor = null;
