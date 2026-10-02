@@ -221,7 +221,7 @@ async function commitEdits(
 					new Error(
 						`updateActivePlot: no ACTIVE row ${r.id} (plot #${r.plotNo}) — the committed count was NOT persisted`,
 					),
-					{ plotNo: r.plotNo, mapFeatureKey, gpsFeatureKey: r.gpsFeatureKey ?? "" },
+					{ plotNo: r.plotNo, mapFeatureKey },
 				);
 			}
 		}
@@ -323,7 +323,7 @@ function requestClose() {
 					showHeader
 					singlePlot
 					mapNumberFor={(r) =>
-						(r.gpsFeatureKey && q704.activeMapNumbering().get(r.gpsFeatureKey)) || 0}
+						(r.mapFeatureKey && q704.activeMapNumbering().get(r.mapFeatureKey)) || 0}
 					onFocusingChange={onDeckFocusingChange}
 					onReward={() => q704.celebrate.onInputComplete()}
 					autoRestoreMissed={false}

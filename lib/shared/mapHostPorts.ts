@@ -69,7 +69,6 @@ export interface MapHostStore {
 			/** Stored in the geometry's properties; `null`/`false`/`""` REMOVE the prop. */
 			fillOpacity?: number | null;
 			titleShown?: boolean;
-			displayName?: string;
 		},
 	): void;
 	deleteFeature(mapFeatureKey: string): void;
@@ -152,7 +151,7 @@ export interface MapQ704PlotRow {
 	faults: string[];
 	comment: string;
 	species?: MapQ704Species[];
-	gpsFeatureKey?: string;
+	mapFeatureKey?: string;
 	openLocode?: string;
 	committed: boolean;
 }
@@ -239,10 +238,10 @@ export interface MapQ704Ports {
 		opts?: { exit?: "left" | "right" | "auto" },
 	): { update?(next?: { exit?: "left" | "right" | "auto" }): void; destroy(): void } | void;
 	loadInspection(): Promise<{ block: MapQ704BlockHeader; rows: MapQ704PlotRow[] } | null>;
-	/** gpsFeatureKey → the per-map plot number the user sees. */
+	/** mapFeatureKey → the per-map plot number the user sees. */
 	activeMapNumbering(): Map<string, number>;
-	plotByGpsKey(gpsFeatureKey: string): MapQ704PlotPinData | null;
-	plotFullCodeByGpsKey(gpsFeatureKey: string): string;
+	plotByGpsKey(mapFeatureKey: string): MapQ704PlotPinData | null;
+	plotFullCodeByGpsKey(mapFeatureKey: string): string;
 	/** `rowId` is `q`-prefixed or the bare store key. */
 	updateActivePlot(rowId: string, fields: MapQ704PlotEdit): Promise<MapQ704WriteOutcome>;
 	setActiveSpeciesChoices(choices: string[]): Promise<void>;
