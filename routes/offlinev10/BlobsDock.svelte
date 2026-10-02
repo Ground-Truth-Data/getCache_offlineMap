@@ -1,6 +1,6 @@
 <script lang="ts">
 /** What is on disk, newest pin blob focused; every row a ledger of tiles in, bytes fetched, paint. */
-import { onDestroy, onMount } from "svelte";
+import { onDestroy, onMount, untrack } from "svelte";
 import type { MapUiPorts } from "../../lib/shared/mapHostPorts";
 import { FOLLOW_MARGIN_KM } from "./follow";
 import { blobBytes, BUDGET_MB } from "./budget";
@@ -117,7 +117,8 @@ async function copyJson(r: Region): Promise<void> {
 	}
 	setTimeout(() => (copied = null), 1500);
 }
-const eyeBlink = ui.createEyeBlink();
+// One eye per mount, destroyed with it.
+const eyeBlink = untrack(() => ui.createEyeBlink());
 onDestroy(() => eyeBlink.destroy());
 const photoTotal = $derived(Object.values(photos).reduce((a, b) => a + b.bytes, 0));
 

@@ -1,5 +1,6 @@
 <!-- ⚠️ Must render via overlayPortal — .mobile-content's z:0 stacking context otherwise traps the drawer under the nav. -->
 <script lang="ts">
+import { untrack } from "svelte";
 import { cubicOut } from "svelte/easing";
 import { fly } from "svelte/transition";
 import {
@@ -29,9 +30,10 @@ let {
 	basemapRows?: readonly LegendRow[];
 } = $props();
 // `use:` wants a plain identifier, so the host's action is bound locally.
-const overlayPortal = ports.ui.overlayPortal;
+const overlayPortal = $derived(ports.ui.overlayPortal);
 
-const eyeToggle = ports.ui.createEyeToggle();
+// One eye per mount, destroyed with it.
+const eyeToggle = untrack(() => ports.ui.createEyeToggle());
 $effect(() => () => eyeToggle.destroy());
 
 function toggleKind(kind: OverlayKind) {

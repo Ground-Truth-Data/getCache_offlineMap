@@ -15,10 +15,10 @@ let {
 } = $props();
 
 // frame counts/rate come from THE REGISTRY (eyeBlink.svelte.ts) — must not duplicate these numbers here
-const scenes = ports.scenes;
-const EYE_OPEN_FRAMES = scenes ? scenes.assetFacts("eye_OPEN_20fps").frameCount : 1;
-const EYE_CLOSE_FRAMES = scenes ? scenes.assetFacts("eye_CLOSE_20fps").frameCount : 1;
-const EYE_FRAME_MS = scenes ? 1000 / scenes.assetFacts("eye_OPEN_20fps").fps : 50;
+const scenes = $derived(ports.scenes);
+const EYE_OPEN_FRAMES = $derived(scenes ? scenes.assetFacts("eye_OPEN_20fps").frameCount : 1);
+const EYE_CLOSE_FRAMES = $derived(scenes ? scenes.assetFacts("eye_CLOSE_20fps").frameCount : 1);
+const EYE_FRAME_MS = $derived(scenes ? 1000 / scenes.assetFacts("eye_OPEN_20fps").fps : 50);
 let eyePlaying = $state<"open" | "close" | null>(null);
 let eyeFrame = $state(1);
 let eyeTimer: ReturnType<typeof setInterval> | null = null;
