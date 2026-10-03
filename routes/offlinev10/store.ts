@@ -1,7 +1,7 @@
 /** The tile store: one IndexedDB store keyed `z/x/y`, one copy per tile
  * however many blobs cover it; a second store lists the blobs. */
 
-import { deleteSatImage, photoTilesFor, type RawTile, satImageKey, satImageMeta } from "../../lib/onPhone/satellite/satelliteImage";
+import { deleteSatImage, photoTilesFor, type RawTile, satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
 import { PHOTO_SOURCES } from "../../lib/onPhone/satellite/photoSources";
 import { BudgetError, budgetBytes } from "./budget";
 import type { Place } from "./places";
@@ -472,44 +472,6 @@ export async function touchRegions(ids: readonly string[], now = Date.now()): Pr
 	if (wrote) regionsChanged();
 }
 
-export interface AreaUsage {
-	region: Region;
-	/** what removing it frees: tiles no other area covers, its unshared photo tiles, its photo */
-	bytes: number;
-}
-
-/** Everything offline areas hold on this phone, and what each one alone would free. One cursor pass. */
-export async function areaUsage(): Promise<{ total: number; areas: AreaUsage[] }> {
-	const regions = await listRegions();
-	const owners = new Map<string, string | null>();
-	for (const r of regions)
-		for (const k of rangeTiles(r.range).map(tileKey).concat(photoKeysOf(r)))
-			owners.set(k, owners.has(k) && owners.get(k) !== r.id ? null : r.id);
-	const alone = new Map<string, number>(regions.map((r) => [r.id, 0]));
-	const db = await open();
-	const st = db.transaction(TILES, "readonly").objectStore(TILES);
-	let total = await new Promise<number>((resolve, reject) => {
-		let sum = 0;
-		const req = st.openCursor();
-		req.onsuccess = () => {
-			const cur = req.result;
-			if (!cur) return resolve(sum);
-			const n = (cur.value as ArrayBuffer).byteLength;
-			sum += n;
-			const id = owners.get(cur.key as string);
-			if (id) alone.set(id, (alone.get(id) as number) + n);
-			cur.continue();
-		};
-		req.onerror = () => reject(req.error);
-	});
-	const byPhoto = new Map(regions.map((r) => [satImageKey([r.lng, r.lat]), r.id]));
-	for (const m of await satImageMeta()) {
-		total += m.bytes;
-		const id = byPhoto.get(m.key);
-		if (id) alone.set(id, (alone.get(id) as number) + m.bytes);
-	}
-	return { total, areas: regions.map((region) => ({ region, bytes: alone.get(region.id) as number })) };
-}
 
 export async function wipe(): Promise<void> {
 	const db = await open();

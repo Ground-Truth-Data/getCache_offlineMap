@@ -9,7 +9,6 @@ import { downloadRegion, roomFor } from "./download";
 import { satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
 import {
 	AreaGone,
-	areaUsage,
 	deleteRegion,
 	listRegions,
 	patchRegion,
@@ -82,13 +81,13 @@ describe("the 1 GB wall refuses, it never evicts", () => {
 		}
 		const err = await putTiles([["3/0/0", new ArrayBuffer(2 * MB)]], "b0").catch((e) => e);
 		expect(err).toBeInstanceOf(BudgetError);
-		expect(err.message).toBe("Offline areas are limited to 4 MB. Remove an area to make room.");
+		expect(err.message).toBe("Offline areas are limited to 4 MB. Delete a pin you no longer need to make room.");
 		expect((await listRegions()).map((r) => r.id).sort()).toEqual(["b0", "b1", "b2"]);
 		expect(await usedBytes()).toBe(3 * MB);
 	});
 
 	it("says 1 GB at the shipped budget", () => {
-		expect(new BudgetError(0, 0, 0).message).toBe("Offline areas are limited to 1 GB. Remove an area to make room.");
+		expect(new BudgetError(0, 0, 0).message).toBe("Offline areas are limited to 1 GB. Delete a pin you no longer need to make room.");
 	});
 
 	it("refuses an area before a byte is fetched when the guess does not fit", async () => {
@@ -133,24 +132,6 @@ describe("an area unopened for 12 months removes itself", () => {
 		expect((await listRegions())[0].lastOpened).toBe(now);
 		await touchRegions(["a"], now + 60_000);
 		expect((await listRegions())[0].lastOpened).toBe(now);
-	});
-});
-
-describe("what each area costs", () => {
-	it("counts only what removing it would free, and the total drops by exactly that", async () => {
-		const a = region("a", 1, ...SPOTS[0]);
-		const b = region("b", 2, SPOTS[0][0] + 0.001, SPOTS[0][1]);
-		const c = region("c", 3, ...SPOTS[1]);
-		for (const r of [a, b, c]) await putRegion(r);
-		await putTiles([[ownTile(a), new ArrayBuffer(5000)]], a.id);
-		await putTiles([[ownTile(c), new ArrayBuffer(7000)]], c.id);
-		const before = await areaUsage();
-		const cost = Object.fromEntries(before.areas.map((u) => [u.region.id, u.bytes]));
-		// a and b stand on the same ground: neither alone frees it.
-		expect(cost).toEqual({ a: 0, b: 0, c: 7000 });
-		expect(before.total).toBe(12000);
-		await removeArea(c);
-		expect((await areaUsage()).total).toBe(before.total - cost.c);
 	});
 });
 

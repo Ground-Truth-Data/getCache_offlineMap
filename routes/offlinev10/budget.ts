@@ -51,7 +51,7 @@ export function setBudgetMb(mb: number): void {
 
 /** The words a person sees when a download is refused. */
 export function fullMessage(limit = `${budgetMb() >= 1024 ? `${budgetMb() / 1024} GB` : `${budgetMb()} MB`}`): string {
-	return `Offline areas are limited to ${limit}. Remove an area to make room.`;
+	return `Offline areas are limited to ${limit}. Delete a pin you no longer need to make room.`;
 }
 
 export class BudgetError extends Error {
