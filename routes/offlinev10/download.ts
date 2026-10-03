@@ -15,6 +15,7 @@ import {
 	allTileKeys,
 	bytesOfTiles,
 	deleteRegion,
+	isRemoving,
 	listRegions,
 	patchRegion,
 	putRegion,
@@ -171,6 +172,7 @@ async function fetchInto(
 		},
 		() => {
 			if (refused) throw refused;
+			if (isRemoving(id)) throw new AreaGone(id);
 			if (sessionCap.tripped) throw new Error("session byte cap reached");
 			if (p.bytes > room) throw new BudgetError(budgetBytes() - room, budgetBytes(), p.bytes);
 			return false;

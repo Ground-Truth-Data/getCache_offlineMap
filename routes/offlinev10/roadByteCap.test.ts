@@ -7,6 +7,7 @@ vi.mock("./store", () => ({
 	allTileKeys: async () => new Set<string>(),
 	bytesOfTiles: async () => 0,
 	deleteRegion: async () => 0,
+	isRemoving: () => false,
 	patchRegion: async () => undefined,
 	putRegion: async () => undefined,
 	putTiles: async (b: Array<[string]>) => void stored.push(...b.map(([k]) => k)),

@@ -341,6 +341,7 @@ export function regionsSnapshot(): {
 }
 
 export async function putRegion(r: Region): Promise<void> {
+	removing.delete(r.id);
 	const db = await open();
 	const tx = db.transaction(REGIONS, "readwrite");
 	tx.objectStore(REGIONS).put(r);
@@ -429,7 +430,12 @@ export async function stats(): Promise<{ tiles: number; bytes: number }> {
 /** Delete a blob, its photo, and only the tiles no other blob still covers — coverage is geometry, so no refcount to drift.
  * `keepRow` leaves a `removed` row behind so the pin's blob is not fetched straight back; without it a removed row goes too.
  * Null when the spot has no row. */
+// Marked before the first await, so a download in flight stops at its next fetch, not its next write.
+const removing = new Set<string>();
+export const isRemoving = (id: string): boolean => removing.has(id);
+
 export async function deleteRegion(id: string, keepRow = false): Promise<number | null> {
+	removing.add(id);
 	const gone = await regionRow(id);
 	if (!gone) return null;
 	const others = (await listRegions()).filter((r) => r.id !== id);
