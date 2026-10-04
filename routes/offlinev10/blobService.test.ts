@@ -10,6 +10,7 @@ let release: (() => void) | null = null;
 let failNext = false;
 vi.stubGlobal("window", new EventTarget());
 
+const chosenAgainst: string[][] = [];
 let keepAsked = 0;
 vi.mock("./store", () => ({
 	AreaGone: class AreaGone extends Error {},
@@ -22,10 +23,10 @@ vi.mock("./store", () => ({
 		return "kept";
 	},
 	regionId: (lng: number, lat: number) => `${lat.toFixed(5)},${lng.toFixed(5)}`,
-	blobIdentity: (lng: number, lat: number, photo: boolean) => ({
-		id: `${lat.toFixed(5)},${lng.toFixed(5)}`,
-		photoKey: photo ? `${lng.toFixed(4)},${lat.toFixed(4)}` : undefined,
-	}),
+	choosePhoto: (at: [number, number], regions: Region[]) => {
+		chosenAgainst.push(regions.map((r) => r.id));
+		return { photoKey: `${at[0].toFixed(4)},${at[1].toFixed(4)}`, photoCenter: at };
+	},
 	deleteRegion: async (id: string) => {
 		const i = disk.findIndex((r) => r.id === id);
 		if (i < 0) return null;
@@ -40,7 +41,7 @@ vi.mock("./download", () => ({
 		lng: number,
 		lat: number,
 		_p: unknown,
-		opts: { id: string; photoKey?: string; pin?: boolean },
+		opts: { id: string; photoKey?: string; photoCenter?: [number, number]; pin?: boolean },
 	) => {
 		downloads.push([lng, lat]);
 		if (failNext) {
@@ -61,7 +62,10 @@ vi.mock("./download", () => ({
 			bytes: 1,
 			ms: 1,
 		};
-		if (opts.photoKey) region.photoKey = opts.photoKey;
+		if (opts.photoKey) {
+			region.photoKey = opts.photoKey;
+			region.photoCenter = opts.photoCenter;
+		}
 		if (opts.pin) region.pin = true;
 		disk.push(region);
 		return region;
@@ -105,6 +109,7 @@ beforeEach(async () => {
 	disk.length = 0;
 	downloads.length = 0;
 	photosDropped.length = 0;
+	chosenAgainst.length = 0;
 	release = null;
 });
 
@@ -248,6 +253,18 @@ describe("blob service", () => {
 		await tick();
 		await tick();
 		expect(disk.map((r) => r.photoKey)).toEqual([undefined, `${SPOKANE[0].toFixed(4)},${SPOKANE[1].toFixed(4)}`]);
+	});
+
+	it("a blob chooses its photo when its download starts, against the rows on disk then — the one before it included", async () => {
+		await queueBlob(...PENTICTON);
+		await queueBlob(...SPOKANE);
+		await tick();
+		release?.();
+		await tick();
+		await tick();
+		release?.();
+		await tick();
+		expect(chosenAgainst).toEqual([[], [`${PENTICTON[1].toFixed(5)},${PENTICTON[0].toFixed(5)}`]]);
 	});
 
 	it("a pin dropped with no signal earns its blob when signal returns; a reconnect deletes nothing", async () => {

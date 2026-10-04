@@ -5,7 +5,7 @@
 
 import { PHOTO_SOURCES } from "../../lib/onPhone/satellite/photoSources";
 import {
-	BAKE_RADIUS_KM,
+	PHOTO_COVERAGE_RADIUS_KM,
 	bakeSatelliteImage,
 	deleteSatImage,
 	getSatImageByKey,
@@ -65,9 +65,8 @@ function say(...args: unknown[]): void {
 }
 
 export const PHOTO_RETRY_MS = 60_000;
-export { BAKE_RADIUS_KM as PHOTO_RADIUS_KM };
 export const PHOTO_SPEC = {
-	radiusKm: BAKE_RADIUS_KM,
+	radiusKm: PHOTO_COVERAGE_RADIUS_KM,
 	sources: PHOTO_SOURCES.map(({ name, zoom, canvasPx }) => ({
 		name,
 		zoom,
@@ -172,7 +171,7 @@ async function pass(asks: readonly PhotoAsk[]): Promise<number> {
 			break;
 		}
 		landed++;
-		say(`[offlineV10] photo: ${BAKE_RADIUS_KM} km around ${id} (${(img.blob.size / 1024).toFixed(0)} KB)`);
+		say(`[offlineV10] photo: ${PHOTO_COVERAGE_RADIUS_KM} km around ${id} (${(img.blob.size / 1024).toFixed(0)} KB)`);
 		for (const fn of listeners) fn();
 	}
 	return landed;
@@ -180,7 +179,7 @@ async function pass(asks: readonly PhotoAsk[]): Promise<number> {
 
 export async function bakeAllPhotos(): Promise<number> {
 	const regions = await regionsSnapshot().regions;
-	return bakePhotos(regions.flatMap((r) => (r.photoKey ? [{ id: r.id, photoKey: r.photoKey, at: [r.lng, r.lat] as [number, number] }] : [])));
+	return bakePhotos(regions.flatMap((r) => (r.photoKey && r.photoCenter ? [{ id: r.id, photoKey: r.photoKey, at: r.photoCenter }] : [])));
 }
 
 export async function dropPhoto(photoKey: string): Promise<void> {
@@ -201,8 +200,8 @@ export function startPhotoService(): () => void {
 	};
 	const offBlob = onBlob((e) => {
 		// Beside the tiles, not after them: neither needs the other.
-		if (e.kind === "start" && e.photoKey)
-			bakePhotos([{ id: e.id, photoKey: e.photoKey, at: e.at }]).catch((err) => {
+		if (e.kind === "start" && e.photoKey && e.photoCenter)
+			bakePhotos([{ id: e.id, photoKey: e.photoKey, at: e.photoCenter }]).catch((err) => {
 				console.warn("[photos] bake failed", err);
 			});
 	});

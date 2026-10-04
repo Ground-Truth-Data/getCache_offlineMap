@@ -1,7 +1,8 @@
 /** The tile store: one IndexedDB store keyed `z/x/y`, one copy per tile
  * however many blobs cover it; a second store lists the blobs. */
 
-import { deleteSatImage, photoTilesFor, type RawTile, satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
+import { deleteSatImage, PHOTO_REUSE_KM, photoTilesFor, type RawTile, satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
+import { kmBetween } from "../../lib/shared/kmGeo";
 import { PHOTO_SOURCES } from "../../lib/onPhone/satellite/photoSources";
 import { BudgetError, budgetBytes } from "./budget";
 import type { Place } from "./places";
@@ -15,7 +16,7 @@ import {
 
 export const DB_NAME = "gc-offlineV10";
 /** Bump when what a blob IS changes; an older blob is then wiped, never half-drawn. */
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 const TILES = "tiles";
 const REGIONS = "regions";
 
@@ -41,8 +42,10 @@ export interface Region {
 	msPaint?: number;
 	/** the camera moved before idle, so there is no honest paint time */
 	paintMoved?: true;
-	/** Where this blob's photo lives in the photo store, computed once from its pin at birth and never re-derived. Absent on a follow-me blob: no pin, no photo. */
+	/** Where this blob's photo lives in the photo store, chosen once at birth and never re-derived; a neighbour's when its photo already covers this pin. Absent on a follow-me blob: no photo. */
 	photoKey?: string;
+	/** The point that photo is centred on: the pin's own, or the neighbour's it reuses. Set with `photoKey`. */
+	photoCenter?: [number, number];
 	/** null when its tiles hold no town; absent before it was looked up */
 	place?: Place | null;
 	/** ms epoch the map last showed it; absent = never, so `at` stands in */
@@ -71,9 +74,19 @@ export function regionId(lng: number, lat: number): string {
 	return `${lat.toFixed(5)},${lng.toFixed(5)}`;
 }
 
-/** The one place a pin becomes a blob's identity. The id and photo key are carried by value from here; nothing downstream rounds or parses a coordinate to rebuild them. */
-export function blobIdentity(lng: number, lat: number, photo: boolean): { id: string; photoKey?: string } {
-	return { id: regionId(lng, lat), photoKey: photo ? satImageKey([lng, lat]) : undefined };
+/** The one place a pin gets its photo: the nearest existing photo CENTRE within PHOTO_REUSE_KM, else a new one centred on the pin. Judged against centres, never pins, so a chain of nearby pins cannot drift off the ground a photo holds. Carried by value from here; nothing downstream rounds or parses a coordinate to rebuild it. */
+export function choosePhoto(at: [number, number], regions: readonly Region[]): { photoKey: string; photoCenter: [number, number] } {
+	let best: { photoKey: string; photoCenter: [number, number] } | null = null;
+	let bestKm = PHOTO_REUSE_KM;
+	for (const r of regions) {
+		if (r.removed || !r.photoKey || !r.photoCenter) continue;
+		const km = kmBetween(at, r.photoCenter);
+		if (km <= bestKm) {
+			bestKm = km;
+			best = { photoKey: r.photoKey, photoCenter: r.photoCenter };
+		}
+	}
+	return best ?? { photoKey: satImageKey(at), photoCenter: at };
 }
 
 let dbp: Promise<IDBDatabase> | null = null;
@@ -244,11 +257,11 @@ export async function getPhotoTiles(keys: readonly string[]): Promise<Map<string
 	return out;
 }
 
-/** The photo tiles under a blob's pin; none for a follow-me blob. */
+/** The photo tiles under a blob's photo, wherever it is centred; none for a follow-me blob. */
 function photoKeysOf(r: Region): string[] {
-	if (!r.photoKey) return [];
+	if (!r.photoCenter) return [];
 	const z = PHOTO_SOURCES[0].zoom;
-	return photoTilesFor([r.lng, r.lat], z).map((t) => `${PHOTO_PREFIX}${z}/${t.x}/${t.y}`);
+	return photoTilesFor(r.photoCenter, z).map((t) => `${PHOTO_PREFIX}${z}/${t.x}/${t.y}`);
 }
 
 /** Bytes of each blob's photo tiles, one cursor pass; shared tiles count for every blob covering them. */
@@ -462,7 +475,8 @@ export async function deleteRegion(id: string, keepRow = false): Promise<number 
 	await done(tx);
 	tileBytes = null;
 	regionsChanged();
-	if (gone.photoKey) await deleteSatImage(gone.photoKey);
+	// Another blob may use this photo: it goes with the last of them.
+	if (gone.photoKey && !others.some((r) => r.photoKey === gone.photoKey)) await deleteSatImage(gone.photoKey);
 	return doomed.length;
 }
 

@@ -12,14 +12,14 @@ import {
 	keepStorage,
 	listRegions,
 	pinAreas,
-	blobIdentity,
+	choosePhoto,
 	type Region,
 	regionId,
 	regionKnown,
 } from "./store";
 
 export type BlobEvent =
-	| { kind: "start"; at: [number, number]; id: string; photoKey?: string }
+	| { kind: "start"; at: [number, number]; id: string; photoKey?: string; photoCenter?: [number, number] }
 	| { kind: "progress"; progress: Progress }
 	| { kind: "landed"; region: Region }
 	| { kind: "failed"; at: [number, number]; error: unknown }
@@ -35,7 +35,8 @@ interface Ask {
 	at: [number, number];
 	/** born once in queueBlob; nothing downstream re-derives it from `at` */
 	id: string;
-	photoKey?: string;
+	/** a blob with no pin (follow-me) wants no photo; which photo is chosen when its download starts, against the rows then on disk */
+	photo: boolean;
 	pin?: boolean;
 	/** the row being repaired: its missing tiles are fetched and the row keeps its place */
 	keep?: Region;
@@ -84,13 +85,13 @@ export async function queueBlob(
 	lat: number,
 	opts: { photo?: boolean; pin?: boolean } = {},
 ): Promise<boolean> {
-	const { id, photoKey } = blobIdentity(lng, lat, opts.photo !== false);
+	const id = regionId(lng, lat);
 	if (queued.has(id)) return false;
 	if (await onDisk(id)) return false;
 	// A second ask for the same spot can land during the await.
 	if (queued.has(id)) return false;
 	queued.add(id);
-	queue.push({ at: [lng, lat], id, photoKey, pin: opts.pin });
+	queue.push({ at: [lng, lat], id, photo: opts.photo !== false, pin: opts.pin });
 	void drain();
 	return true;
 }
@@ -99,7 +100,7 @@ export async function queueBlob(
 export async function repairBlob(r: Region): Promise<boolean> {
 	if (queued.has(r.id)) return false;
 	queued.add(r.id);
-	queue.push({ at: [r.lng, r.lat], id: r.id, photoKey: r.photoKey, pin: r.pin, keep: r });
+	queue.push({ at: [r.lng, r.lat], id: r.id, photo: !!r.photoKey, pin: r.pin, keep: r });
 	void drain();
 	return true;
 }
@@ -119,7 +120,7 @@ async function drain(): Promise<void> {
 	}
 }
 
-async function download({ at, id, photoKey, pin, keep }: Ask): Promise<void> {
+async function download({ at, id, photo, pin, keep }: Ask): Promise<void> {
 	try {
 		// Before "start": a refused area must not get its photo baked either.
 		await roomFor(at[0], at[1], !!keep);
@@ -127,8 +128,10 @@ async function download({ at, id, photoKey, pin, keep }: Ask): Promise<void> {
 		emit({ kind: "failed", at, error });
 		return;
 	}
+	// A repair keeps the photo its row was born with; a new blob chooses against the rows on disk now, the one before it included.
+	const chosen = keep ? (keep.photoKey && keep.photoCenter ? { photoKey: keep.photoKey, photoCenter: keep.photoCenter } : undefined) : photo ? choosePhoto(at, await listRegions()) : undefined;
 	current = { at, progress: null, startedAt: performance.now() };
-	emit({ kind: "start", at, id, photoKey });
+	emit({ kind: "start", at, id, ...chosen });
 	try {
 		const region = await downloadRegion(
 			at[0],
@@ -138,7 +141,7 @@ async function download({ at, id, photoKey, pin, keep }: Ask): Promise<void> {
 				if (current) current.progress = progress;
 				emit({ kind: "progress", progress });
 			},
-			{ id, photoKey, pin, keep },
+			{ id, ...chosen, pin, keep },
 		);
 		say(
 			`[offlineV10] blob ${region.id}: ${region.fetched} new of ${region.tiles} tiles, ${((region.newBytes ?? 0) / 1048576).toFixed(1)} MB added (${(region.bytes / 1048576).toFixed(1)} MB on the ground), ${region.ms} ms to disk`,

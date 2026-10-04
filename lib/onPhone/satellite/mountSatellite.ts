@@ -2,7 +2,7 @@
 import type * as mapboxgl from "maplibre-gl";
 import type * as maplibregl from "maplibre-gl";
 import {
-    BAKE_RADIUS_KM,
+    PHOTO_COVERAGE_RADIUS_KM,
     getSatImageByKey,
     type Bounds,
 } from "./satelliteImage";
@@ -60,7 +60,7 @@ function expanded(camera: Bounds, n: number): Bounds {
 }
 
 function discIntersects(center: [number, number], b: Bounds): boolean {
-    const { dLat, dLng } = kmToDegSpan(BAKE_RADIUS_KM, center[1]);
+    const { dLat, dLng } = kmToDegSpan(PHOTO_COVERAGE_RADIUS_KM, center[1]);
     return (
         center[0] + dLng >= b[0] &&
         center[0] - dLng <= b[2] &&

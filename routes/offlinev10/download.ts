@@ -39,11 +39,12 @@ export interface Progress {
 	ms: number;
 }
 
-/** `id` and `photoKey` are born once, where the pin becomes a blob, and carried by value from there. */
+/** `id` is born once, where the pin becomes a blob; the photo is chosen once, when its download starts. Both are carried by value from there. */
 export interface DownloadOpts {
 	id: string;
 	/** absent on a follow-me blob: no photo */
 	photoKey?: string;
+	photoCenter?: [number, number];
 	pin?: boolean;
 	/** a repair keeps the row's birth time */
 	keep?: Region;
@@ -82,7 +83,10 @@ export async function downloadRegion(
 	const tiles = rangeTiles(range);
 	const at = opts.keep?.at ?? Date.now();
 	const born: Region = { id, lng, lat, range, at, tiles: tiles.length, fetched: 0, bytes: 0, ms: 0, filling: true };
-	if (opts.photoKey) born.photoKey = opts.photoKey;
+	if (opts.photoKey && opts.photoCenter) {
+		born.photoKey = opts.photoKey;
+		born.photoCenter = opts.photoCenter;
+	}
 	if (opts.pin) born.pin = true;
 	if (!opts.keep) await putRegion(born);
 	const have = await allTileKeys();

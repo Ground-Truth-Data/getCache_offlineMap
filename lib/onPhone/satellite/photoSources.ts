@@ -4,7 +4,7 @@ export interface PhotoSource {
     name: string;
     /** the sharpest zoom worth fetching; above it tiles only upsample */
     zoom: number;
-    /** canvas width in px across 2 × BAKE_RADIUS_KM */
+    /** canvas width in px across 2 × PHOTO_COVERAGE_RADIUS_KM */
     canvasPx: number;
     /** WebP quality 0–1 */
     quality: number;

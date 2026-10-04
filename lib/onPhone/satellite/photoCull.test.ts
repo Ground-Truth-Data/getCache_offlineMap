@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 // Same disc as the real module, without its IndexedDB store chain.
 vi.mock("./satelliteImage", () => ({
-    BAKE_RADIUS_KM: 2,
+    PHOTO_COVERAGE_RADIUS_KM: 2,
     getSatImageByKey: vi.fn(),
 }));
 

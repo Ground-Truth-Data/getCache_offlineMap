@@ -9,7 +9,7 @@ import { downloadRegion, roomFor } from "./download";
 import { satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
 import {
 	AreaGone,
-	blobIdentity,
+	choosePhoto,
 	deleteRegion,
 	listRegions,
 	patchRegion,
@@ -37,11 +37,11 @@ const MB = 1048576;
 const DAY = 86_400_000;
 
 function region(id: string, at: number, lng: number, lat: number, more: Partial<Region> = {}): Region {
-	return { id, lng, lat, range: regionRange(lng, lat), at, tiles: 1, fetched: 1, bytes: 0, ms: 1, photoKey: satImageKey([lng, lat]), ...more };
+	return { id, lng, lat, range: regionRange(lng, lat), at, tiles: 1, fetched: 1, bytes: 0, ms: 1, photoKey: satImageKey([lng, lat]), photoCenter: [lng, lat], ...more };
 }
 
 /** A pin's blob as the engine births it: id and photo key, once. */
-const born = (at: [number, number]) => blobIdentity(at[0], at[1], true);
+const born = (at: [number, number]) => ({ id: regionId(...at), ...choosePhoto(at, []) });
 const download = (at: [number, number]) => downloadRegion(at[0], at[1], undefined, born(at));
 
 // Far enough apart that no two blobs share tiles.
@@ -187,7 +187,7 @@ describe("an area lives and dies with its pin", () => {
 		const now = Date.now();
 		const pinned = region(regionId(...p), now, ...p, { pin: true });
 		const tomb = region(regionId(...t), now, ...t, { pin: true, removed: now });
-		const follow = region(regionId(...f), now, ...f, { photoKey: undefined });
+		const follow = region(regionId(...f), now, ...f, { photoKey: undefined, photoCenter: undefined });
 		for (const r of [pinned, tomb, follow]) await putRegion(r);
 		await putTiles([[ownTile(pinned), new ArrayBuffer(1024)]], pinned.id);
 		await putTiles([[ownTile(follow), new ArrayBuffer(1024)]], follow.id);

@@ -15,7 +15,7 @@ configureTilesDevHost("https://tiles.test");
 const Z = PHOTO_SOURCES[0].zoom;
 
 function region(id: string, lng: number, lat: number): Region {
-	return { id, lng, lat, range: regionRange(lng, lat), at: 1, tiles: 1, fetched: 1, bytes: 0, ms: 1, photoKey: satImageKey([lng, lat]) };
+	return { id, lng, lat, range: regionRange(lng, lat), at: 1, tiles: 1, fetched: 1, bytes: 0, ms: 1, photoKey: satImageKey([lng, lat]), photoCenter: [lng, lat] };
 }
 
 const keysOf = (r: Region) => photoTilesFor([r.lng, r.lat], Z).map((t) => `${Z}/${t.x}/${t.y}`);
@@ -55,7 +55,7 @@ describe("photo close-up tiles", () => {
 	});
 
 	it("a follow-me blob has no photo, so deleting it touches none", async () => {
-		const follow = { ...region("f", -81.5076, 43.1136), photoKey: undefined };
+		const follow = { ...region("f", -81.5076, 43.1136), photoKey: undefined, photoCenter: undefined };
 		await putRegion(follow);
 		await deleteRegion("f");
 		expect((await photoKeysOnDisk()).length).toBe(new Set([...keysOf(A), ...keysOf(B)]).size);

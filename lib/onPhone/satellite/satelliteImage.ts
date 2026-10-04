@@ -5,10 +5,14 @@ import { latToTileY, lngToTileX, tileToLat, tileToLng } from "../../contract/geo
 import { makeKeyedIdbStore } from "../store/keyedIdbStore";
 import { isBestPhotoSource, PHOTO_SOURCES, type PhotoSource } from "./photoSources";
 
-/** Satellite-photo radius (km); the page spaces line samples by it so discs overlap. */
-export const BAKE_RADIUS_KM = 2;
+/** What one photo physically holds around its centre. */
+export const PHOTO_COVERAGE_RADIUS_KM = 2;
+/** How close to a photo's edge a pin may sit and still use that photo: the mask fades there. */
+export const PHOTO_EDGE_MARGIN_KM = 1;
+/** A pin within this of an existing photo's centre uses that photo; beyond it, it bakes its own. */
+export const PHOTO_REUSE_KM = PHOTO_COVERAGE_RADIUS_KM - PHOTO_EDGE_MARGIN_KM;
 const DB_NAME = "gc-offlineSatellite";
-const STORE = "photos";
+const STORE = "photoDiscs";
 
 export type Bounds = [number, number, number, number]; // [w,s,e,n]
 
@@ -27,10 +31,10 @@ export interface DiscTile {
 	s: number;
 }
 
-/** The zoom-z tiles whose ground reaches within BAKE_RADIUS_KM of the centre — the bake's and the eviction's one answer. */
+/** The zoom-z tiles whose ground reaches within PHOTO_COVERAGE_RADIUS_KM of the centre — the bake's and the eviction's one answer. */
 export function photoTilesFor(center: [number, number], z: number): DiscTile[] {
 	const [clng, clat] = center;
-	const { dLat, dLng } = kmToDegSpan(BAKE_RADIUS_KM, clat);
+	const { dLat, dLng } = kmToDegSpan(PHOTO_COVERAGE_RADIUS_KM, clat);
 	const out: DiscTile[] = [];
 	for (let x = lngToTileX(clng - dLng, z); x <= lngToTileX(clng + dLng, z); x++) {
 		for (let y = latToTileY(clat + dLat, z); y <= latToTileY(clat - dLat, z); y++) {
@@ -40,7 +44,7 @@ export function photoTilesFor(center: [number, number], z: number): DiscTile[] {
 			const s = tileToLat(y + 1, z);
 			const cx = Math.min(Math.max(clng, w), e);
 			const cy = Math.min(Math.max(clat, s), n);
-			if (kmBetween([clng, clat], [cx, cy]) <= BAKE_RADIUS_KM) out.push({ x, y, w, e, n, s });
+			if (kmBetween([clng, clat], [cx, cy]) <= PHOTO_COVERAGE_RADIUS_KM) out.push({ x, y, w, e, n, s });
 		}
 	}
 	return out;
@@ -49,8 +53,6 @@ export function photoTilesFor(center: [number, number], z: number): DiscTile[] {
 export interface SatImage {
 	blob: Blob;
 	bounds: Bounds;
-	/** The exact point it was baked around; reuse is judged by this, never by parsing the key. */
-	center: [number, number];
 	bakeVersion?: number;
 	source?: string;
 	/** At bake time; the registry can change under a stored photo. */
@@ -119,44 +121,6 @@ export async function getSatKeys(): Promise<string[]> {
 /** A stable key for an area centre. */
 export function satImageKey(c: [number, number]): string {
 	return `${c[0].toFixed(4)},${c[1].toFixed(4)}`;
-}
-
-/** Well inside BAKE_RADIUS_KM: a centre near the disc's edge sits where the mask fades. */
-export const PHOTO_REUSE_KM = 1;
-
-/** Both halves live here so the bake and the dedup sweep answer identically. */
-export function photoReusableFor(
-	haveSource: string | undefined,
-	haveCenter: [number, number],
-	wantCenter: [number, number],
-): boolean {
-	return (
-		kmBetween(haveCenter, wantCenter) <= PHOTO_REUSE_KM &&
-		isBestPhotoSource(haveSource)
-	);
-}
-
-/** The key dedups at ~11 m but a photo covers 2 km; this asks about the ground, by each photo's stored centre. Reads one blob: the one it returns. */
-export async function photoCovering(
-	ownKey: string,
-	center: [number, number],
-): Promise<SatImage | undefined> {
-	// The pin's own key is the caller's to judge: stale there must re-bake, not be "reused".
-	const [keys, have] = await Promise.all([
-		idb.keys(),
-		idb.getAllProjected((v) => ({ center: v.center, source: v.source })),
-	]);
-	let bestKey: string | null = null;
-	let bestKm = PHOTO_REUSE_KM;
-	keys.forEach((key, i) => {
-		if (key === ownKey || !photoReusableFor(have[i].source, have[i].center, center)) return;
-		const km = kmBetween(center, have[i].center);
-		if (km <= bestKm) {
-			bestKm = km;
-			bestKey = key;
-		}
-	});
-	return bestKey ? getSatImageByKey(bestKey) : undefined;
 }
 
 /** The bake's only way to tiles: `z/x/y` → bytes, from disk or the network. A key it cannot supply is simply absent. */
@@ -252,8 +216,6 @@ export async function bakeSatelliteImage(
 	const existing = await idb.get(key);
 	// A stale stamp or a since-beaten source is a miss, so a sharper source reaches ground already saved
 	if (isCurrentPhoto(existing)) return existing;
-	const covering = await photoCovering(key, center);
-	if (covering) return covering;
 	if (sessionCap.tripped) return existing ?? null;
 
 	const t0 = performance.now();
@@ -280,7 +242,7 @@ async function bakeFrom(
 	const tileGeo = photoTilesFor(center, z);
 	if (!tileGeo.length) return null;
 
-	guardBakeGrid(tileGeo.length, { center, z, radiusKm: BAKE_RADIUS_KM });
+	guardBakeGrid(tileGeo.length, { center, z, radiusKm: PHOTO_COVERAGE_RADIUS_KM });
 
 	// A loop, not Math.min(...spread): the spread trips the arg-spread guard.
 	let bw = Infinity;
@@ -294,7 +256,7 @@ async function bakeFrom(
 		if (t.s < bs) bs = t.s;
 	}
 	// Crop to the pin's own box: the raw tile union snaps the pin off-centre; bounds and pixels both derive from cw/cs/ce/cn
-	const span = kmToDegSpan(BAKE_RADIUS_KM, clat);
+	const span = kmToDegSpan(PHOTO_COVERAGE_RADIUS_KM, clat);
 	const cw = Math.max(bw, clng - span.dLng);
 	const ce = Math.min(be, clng + span.dLng);
 	const cs = Math.max(bs, clat - span.dLat);
@@ -355,7 +317,6 @@ async function bakeFrom(
 	return {
 		blob,
 		bounds: [cw, cs, ce, cn],
-		center,
 		bakeVersion: BAKE_VERSION,
 		source: src.name,
 		zoom: src.zoom,

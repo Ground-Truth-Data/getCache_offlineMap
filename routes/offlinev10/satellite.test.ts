@@ -10,7 +10,7 @@ let bakeResult: (() => { blob: Blob; bounds: number[] } | null) | null = null;
 vi.mock(
 	"../../lib/onPhone/satellite/satelliteImage",
 	() => ({
-		BAKE_RADIUS_KM: 2,
+		PHOTO_COVERAGE_RADIUS_KM: 2,
 		getSatImageByKey: async (k: string) => onDisk.get(k),
 		isCurrentPhoto: (img?: { source?: string }) => !!img && img.source !== "USGS",
 		satImageMeta: async () =>

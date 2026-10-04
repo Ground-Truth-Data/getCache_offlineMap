@@ -212,7 +212,7 @@ function reconcilePhotos(): void {
 	void photos
 		.reconcile(
 			[b.getWest(), b.getSouth(), b.getEast(), b.getNorth()],
-			regions.flatMap((r) => (r.photoKey ? [{ key: r.photoKey, center: [r.lng, r.lat] as [number, number] }] : [])),
+			[...new Map(regions.flatMap((r) => (r.photoKey && r.photoCenter ? [[r.photoKey, { key: r.photoKey, center: r.photoCenter }] as const] : []))).values()],
 			m.getZoom(),
 		)
 		.then(() => {
