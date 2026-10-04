@@ -106,6 +106,7 @@ const EXPOSED_HEADERS = [
   "X-Sources-Ok",
   "X-Radius-Km",
   "X-Tile-Source",
+  "Server-Timing",
 ].join(", ");
 
 const CORS_HEADERS: Record<string, string> = {
@@ -319,6 +320,7 @@ export default {
       }
 
       let body: ArrayBuffer;
+      const satStart = performance.now();
       try {
         body = await satelliteTile(env, ctx, url.origin, z, x, y);
       } catch (err) {
@@ -330,7 +332,7 @@ export default {
       }
       return new Response(request.method === "HEAD" ? null : body, {
         status: 200,
-        headers: SAT_HEADERS,
+        headers: { ...SAT_HEADERS, "Server-Timing": `sat;dur=${(performance.now() - satStart).toFixed(1)}` },
       });
     }
 
@@ -353,6 +355,7 @@ export default {
     );
 
     // A bad archive must be a 502, not a 204.
+    const t0 = performance.now();
     try {
       await archive.getHeader();
     } catch (err) {
@@ -363,6 +366,7 @@ export default {
       );
     }
 
+    const t1 = performance.now();
     let tile: RangeResponse | undefined;
     try {
       tile = await archive.getZxy(z, x, y);
@@ -383,6 +387,7 @@ export default {
       ...CORS_HEADERS,
       "Content-Type": "application/x-protobuf",
         "Cache-Control": "public, max-age=31536000, immutable",
+      "Server-Timing": `hdr;dur=${(t1 - t0).toFixed(1)}, tile;dur=${(performance.now() - t1).toFixed(1)}`,
     };
 
     const body = request.method === "HEAD" ? null : tile.data;

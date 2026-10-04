@@ -237,9 +237,23 @@ async function getOne(url: string): Promise<ArrayBuffer | null> {
 	}
 }
 
+const wire = { n: 0, rtt: 0, worker: 0 };
+
+/** Tile GETs since the last reset: round-trip ms and the Worker's own ms (its Server-Timing), summed. */
+export const wireStats = () => ({ ...wire });
+export const resetWireStats = () => {
+	wire.n = wire.rtt = wire.worker = 0;
+};
+
 async function getOnce(url: string): Promise<ArrayBuffer | null> {
 	for (let attempt = 0; ; attempt++) {
+		const t0 = performance.now();
 		const res = await fetch(url);
+		if (res.ok) {
+			wire.n++;
+			wire.rtt += performance.now() - t0;
+			for (const d of (res.headers.get("Server-Timing") ?? "").matchAll(/dur=([\d.]+)/g)) wire.worker += Number(d[1]);
+		}
 		if (res.status === 204) return null;
 		if (res.ok) return res.arrayBuffer();
 		// A cold isolate's first archive read can race; the retry lands warm.

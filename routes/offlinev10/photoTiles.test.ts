@@ -64,7 +64,7 @@ describe("photo close-up tiles", () => {
 
 describe("what a photo's tiles cost on the wire", () => {
 	// The Worker's /satellite/{z}/{x}/{y}.jpg: every tile 7 bytes.
-	const fetchMock = vi.fn(async (_url: string) => ({ ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(7) }));
+	const fetchMock = vi.fn(async (_url: string) => ({ ok: true, status: 200, headers: new Headers(), arrayBuffer: async () => new ArrayBuffer(7) }));
 	beforeEach(() => {
 		fetchMock.mockClear();
 		vi.stubGlobal("fetch", fetchMock);

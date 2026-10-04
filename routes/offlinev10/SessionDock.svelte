@@ -1,7 +1,7 @@
 <script lang="ts">
 /** Main-thread memory, freezes over 50 ms, the live download, the last blob's clock, and tile reads. */
 import { onMount } from "svelte";
-import type { Progress } from "./download";
+import { type Progress, resetWireStats, wireStats } from "./download";
 import { readCounts, resetReadCounts } from "./protocol";
 import { PHOTO_SPEC, type PhotoInfo } from "./satellite";
 import type { Kept, Region } from "./store";
@@ -50,6 +50,7 @@ let trace = $state<number[]>([]);
 let hit = $state(0);
 let miss = $state(0);
 let net = $state(0);
+let wire = $state({ n: 0, rtt: 0, worker: 0 });
 let exportState = $state<"idle" | "busy" | "ok" | "err">("idle");
 
 interface Freeze {
@@ -138,6 +139,11 @@ onMount(() => {
 			miss = c.miss;
 			net = c.net;
 			resetReadCounts();
+		}
+		const w = wireStats();
+		if (w.n > 0) {
+			wire = w;
+			resetWireStats();
 		}
 	}, 1000);
 	let stalls: PerformanceObserver | null = null;
@@ -269,6 +275,12 @@ onMount(() => {
 		<span class="dim">READS last burst</span>
 		<span class="num">{hit} disk · {miss} miss · {net} net</span>
 	</div>
+	{#if wire.n > 0}
+		<div class="reads" title="per tile, last second with downloads: round trip = worker + network/queue">
+			<span class="dim">WIRE avg of {wire.n}</span>
+			<span class="num">{Math.round(wire.rtt / wire.n)} ms trip · {Math.round(wire.worker / wire.n)} ms worker · {Math.round((wire.rtt - wire.worker) / wire.n)} ms network</span>
+		</div>
+	{/if}
 
 	<div class="foot">
 		<span class="dim">DROP PIN TO START · LONG PRESS ON MAP</span>
