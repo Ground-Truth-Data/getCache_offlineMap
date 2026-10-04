@@ -8,12 +8,12 @@ import { isBestPhotoSource, PHOTO_SOURCES, type PhotoSource } from "./photoSourc
 /** Satellite-photo radius (km); the page spaces line samples by it so discs overlap. */
 export const BAKE_RADIUS_KM = 2;
 const DB_NAME = "gc-offlineSatellite";
-const STORE = "images";
+const STORE = "photos";
 
 export type Bounds = [number, number, number, number]; // [w,s,e,n]
 
 /** Bump whenever bake geometry changes, or a mis-bounded photo stays pinned forever. */
-export const BAKE_VERSION = 9;
+export const BAKE_VERSION = 10;
 
 /** A source tile as fetched, keyed `z/x/y`: the close-up the shrunk photo cannot hold. */
 export type RawTile = [string, ArrayBuffer];
@@ -49,6 +49,8 @@ export function photoTilesFor(center: [number, number], z: number): DiscTile[] {
 export interface SatImage {
 	blob: Blob;
 	bounds: Bounds;
+	/** The exact point it was baked around; reuse is judged by this, never by parsing the key. */
+	center: [number, number];
 	bakeVersion?: number;
 	source?: string;
 	/** At bake time; the registry can change under a stored photo. */
@@ -134,34 +136,27 @@ export function photoReusableFor(
 	);
 }
 
-function centerOfKey(key: string): [number, number] | null {
-	const [lng, lat] = key.split(",").map(Number);
-	return Number.isFinite(lng) && Number.isFinite(lat) ? [lng, lat] : null;
-}
-
-/** The key dedups at ~11 m but a photo covers 2 km; this asks about the ground. Keys only, never blobs. */
+/** The key dedups at ~11 m but a photo covers 2 km; this asks about the ground, by each photo's stored centre. Reads one blob: the one it returns. */
 export async function photoCovering(
+	ownKey: string,
 	center: [number, number],
 ): Promise<SatImage | undefined> {
 	// The pin's own key is the caller's to judge: stale there must re-bake, not be "reused".
-	const own = satImageKey(center);
+	const [keys, have] = await Promise.all([
+		idb.keys(),
+		idb.getAllProjected((v) => ({ center: v.center, source: v.source })),
+	]);
 	let bestKey: string | null = null;
 	let bestKm = PHOTO_REUSE_KM;
-	for (const key of await idb.keys()) {
-		if (key === own) continue;
-		const c = centerOfKey(key);
-		if (!c) continue;
-		const km = kmBetween(center, c);
+	keys.forEach((key, i) => {
+		if (key === ownKey || !photoReusableFor(have[i].source, have[i].center, center)) return;
+		const km = kmBetween(center, have[i].center);
 		if (km <= bestKm) {
 			bestKm = km;
 			bestKey = key;
 		}
-	}
-	if (!bestKey) return undefined;
-	const near = await getSatImageByKey(bestKey);
-	if (!near) return undefined;
-	const c = centerOfKey(bestKey);
-	return c && photoReusableFor(near.source, c, center) ? near : undefined;
+	});
+	return bestKey ? getSatImageByKey(bestKey) : undefined;
 }
 
 /** The bake's only way to tiles: `z/x/y` → bytes, from disk or the network. A key it cannot supply is simply absent. */
@@ -249,15 +244,15 @@ function scheduleBakeWorkerTeardown(): void {
 /** Bake the masked photo for a centre from `tiles`; sources are tried in registry order. Null only if none drew.
  * `beforeSave` throws to keep the photo off disk. */
 export async function bakeSatelliteImage(
+	key: string,
 	center: [number, number],
 	tiles: PhotoTileSource,
 	beforeSave?: () => Promise<void>,
 ): Promise<SatImage | null> {
-	const key = satImageKey(center);
 	const existing = await idb.get(key);
 	// A stale stamp or a since-beaten source is a miss, so a sharper source reaches ground already saved
 	if (isCurrentPhoto(existing)) return existing;
-	const covering = await photoCovering(center);
+	const covering = await photoCovering(key, center);
 	if (covering) return covering;
 	if (sessionCap.tripped) return existing ?? null;
 
@@ -360,6 +355,7 @@ async function bakeFrom(
 	return {
 		blob,
 		bounds: [cw, cs, ce, cn],
+		center,
 		bakeVersion: BAKE_VERSION,
 		source: src.name,
 		zoom: src.zoom,

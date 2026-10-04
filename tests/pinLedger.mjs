@@ -60,7 +60,7 @@ const photoCount = () =>
 				const r = indexedDB.open("gc-offlineSatellite");
 				r.onsuccess = () => {
 					const db = r.result;
-					const q = db.transaction("images").objectStore("images").count();
+					const q = db.transaction("photos").objectStore("photos").count();
 					q.onsuccess = () => res(q.result);
 				};
 				r.onerror = () => res(-1);
@@ -92,7 +92,7 @@ async function drop(lng, lat, label) {
 				const r = indexedDB.open("gc-offlineSatellite");
 				r.onsuccess = () => {
 					const out = [];
-					const c = r.result.transaction("images").objectStore("images").openCursor();
+					const c = r.result.transaction("photos").objectStore("photos").openCursor();
 					c.onsuccess = () => {
 						const cur = c.result;
 						if (!cur) return res(out);

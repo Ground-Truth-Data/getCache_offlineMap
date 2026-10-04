@@ -22,11 +22,15 @@ vi.mock("./store", () => ({
 		return "kept";
 	},
 	regionId: (lng: number, lat: number) => `${lat.toFixed(5)},${lng.toFixed(5)}`,
+	blobIdentity: (lng: number, lat: number, photo: boolean) => ({
+		id: `${lat.toFixed(5)},${lng.toFixed(5)}`,
+		photoKey: photo ? `${lng.toFixed(4)},${lat.toFixed(4)}` : undefined,
+	}),
 	deleteRegion: async (id: string) => {
 		const i = disk.findIndex((r) => r.id === id);
 		if (i < 0) return null;
 		const [r] = disk.splice(i, 1);
-		photosDropped.push(`${r.lng.toFixed(4)},${r.lat.toFixed(4)}`);
+		if (r.photoKey) photosDropped.push(r.photoKey);
 		return 1;
 	},
 }));
@@ -35,8 +39,8 @@ vi.mock("./download", () => ({
 	downloadRegion: async (
 		lng: number,
 		lat: number,
-		_p?: unknown,
-		opts: { photo?: boolean; pin?: boolean } = {},
+		_p: unknown,
+		opts: { id: string; photoKey?: string; pin?: boolean },
 	) => {
 		downloads.push([lng, lat]);
 		if (failNext) {
@@ -47,7 +51,7 @@ vi.mock("./download", () => ({
 			release = r;
 		});
 		const region: Region = {
-			id: `${lat.toFixed(5)},${lng.toFixed(5)}`,
+			id: opts.id,
 			lng,
 			lat,
 			range: regionRange(lng, lat),
@@ -57,7 +61,7 @@ vi.mock("./download", () => ({
 			bytes: 1,
 			ms: 1,
 		};
-		if (opts.photo === false) region.photo = false;
+		if (opts.photoKey) region.photoKey = opts.photoKey;
 		if (opts.pin) region.pin = true;
 		disk.push(region);
 		return region;
@@ -146,7 +150,7 @@ describe("blob service", () => {
 		release?.();
 		await tick();
 		await tick();
-		expect(disk.map((r) => r.photo)).toEqual([false, false]);
+		expect(disk.map((r) => r.photoKey)).toEqual([undefined, undefined]);
 		stop();
 	});
 
@@ -160,7 +164,7 @@ describe("blob service", () => {
 		release?.();
 		await tick();
 		await tick();
-		expect(disk.map((r) => r.photo)).toEqual([false]);
+		expect(disk.map((r) => r.photoKey)).toEqual([undefined]);
 		stop();
 	});
 
@@ -174,7 +178,7 @@ describe("blob service", () => {
 		release?.();
 		await tick();
 		await tick();
-		expect(disk.map((r) => r.photo)).toEqual([undefined]);
+		expect(disk.map((r) => r.photoKey)).toEqual([`${PENTICTON[0].toFixed(4)},${PENTICTON[1].toFixed(4)}`]);
 		stop();
 	});
 
@@ -226,9 +230,7 @@ describe("blob service", () => {
 		await tick();
 		await tick();
 		expect(disk).toEqual([]);
-		expect(photosDropped).toEqual([
-			`${PENTICTON[0].toFixed(4)},${PENTICTON[1].toFixed(4)}`,
-		]);
+		expect(photosDropped).toEqual([`${PENTICTON[0].toFixed(4)},${PENTICTON[1].toFixed(4)}`]);
 		expect(events.at(-1)).toBe("removed");
 		stop();
 		off();
@@ -245,7 +247,7 @@ describe("blob service", () => {
 		release?.();
 		await tick();
 		await tick();
-		expect(disk.map((r) => r.photo)).toEqual([false, undefined]);
+		expect(disk.map((r) => r.photoKey)).toEqual([undefined, `${SPOKANE[0].toFixed(4)},${SPOKANE[1].toFixed(4)}`]);
 	});
 
 	it("a pin dropped with no signal earns its blob when signal returns; a reconnect deletes nothing", async () => {

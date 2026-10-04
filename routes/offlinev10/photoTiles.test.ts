@@ -1,7 +1,7 @@
 /** The close-up's raw tiles live in the road store: a deleted blob takes the ones no other pin's disc still covers. */
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { photoTilesFor } from "../../lib/onPhone/satellite/satelliteImage";
+import { photoTilesFor, satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
 import { PHOTO_SOURCES } from "../../lib/onPhone/satellite/photoSources";
 import { configureTilesDevHost } from "../../lib/worker/worker-local-dev/tilesHost";
 import { setBudgetMb } from "./budget";
@@ -15,7 +15,7 @@ configureTilesDevHost("https://tiles.test");
 const Z = PHOTO_SOURCES[0].zoom;
 
 function region(id: string, lng: number, lat: number): Region {
-	return { id, lng, lat, range: regionRange(lng, lat), at: 1, tiles: 1, fetched: 1, bytes: 0, ms: 1 };
+	return { id, lng, lat, range: regionRange(lng, lat), at: 1, tiles: 1, fetched: 1, bytes: 0, ms: 1, photoKey: satImageKey([lng, lat]) };
 }
 
 const keysOf = (r: Region) => photoTilesFor([r.lng, r.lat], Z).map((t) => `${Z}/${t.x}/${t.y}`);
@@ -55,7 +55,7 @@ describe("photo close-up tiles", () => {
 	});
 
 	it("a follow-me blob has no photo, so deleting it touches none", async () => {
-		const follow = { ...region("f", -81.5076, 43.1136), photo: false as const };
+		const follow = { ...region("f", -81.5076, 43.1136), photoKey: undefined };
 		await putRegion(follow);
 		await deleteRegion("f");
 		expect((await photoKeysOnDisk()).length).toBe(new Set([...keysOf(A), ...keysOf(B)]).size);

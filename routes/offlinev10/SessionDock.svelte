@@ -3,7 +3,7 @@
 import { onMount } from "svelte";
 import type { Progress } from "./download";
 import { readCounts, resetReadCounts } from "./protocol";
-import { PHOTO_SPEC, type PhotoInfo, photoKey } from "./satellite";
+import { PHOTO_SPEC, type PhotoInfo } from "./satellite";
 import type { Kept, Region } from "./store";
 import type { WorkerTarget } from "../../lib/worker/worker-local-dev/tilesHost";
 
@@ -27,9 +27,9 @@ let {
 	bytes?: number;
 } = $props();
 
-const lastPhoto = $derived(last ? photos[photoKey(last.lng, last.lat)] : undefined);
+const lastPhoto = $derived(last?.photoKey ? photos[last.photoKey] : undefined);
 const withPhoto = (r: Region) => {
-	const p = photos[photoKey(r.lng, r.lat)];
+	const p = r.photoKey ? photos[r.photoKey] : undefined;
 	return {
 		...r,
 		photoBytes: p?.bytes ?? null,

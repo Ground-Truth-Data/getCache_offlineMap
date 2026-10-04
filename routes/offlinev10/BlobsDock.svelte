@@ -6,11 +6,7 @@ import { FOLLOW_MARGIN_KM } from "./follow";
 import { blobBytes, BUDGET_MB } from "./budget";
 import { placeLabel } from "./places";
 import { ANCHOR_Z, MAX_Z, MIN_Z, RADIUS_KM } from "./tiles";
-import {
-	planPhotoDedup,
-	runPhotoDedup,
-} from "../../lib/onPhone/satellite/photoDedup";
-import { PHOTO_SPEC, type PhotoInfo, photoKey } from "./satellite";
+import { PHOTO_SPEC, type PhotoInfo } from "./satellite";
 import type { Kept, Region } from "./store";
 
 let {
@@ -62,7 +58,7 @@ let quota = $state<number | null>(null);
 
 const mb = (b: number) => `${(b / 1048576).toFixed(1)} MB`;
 const kb = (b: number) => (b < 1048576 ? `${Math.round(b / 1024)} KB` : mb(b));
-const photoOf = (r: Region): PhotoInfo | undefined => photos[photoKey(r.lng, r.lat)];
+const photoOf = (r: Region): PhotoInfo | undefined => (r.photoKey ? photos[r.photoKey] : undefined);
 /** From the photo itself; before it lands, the source a bake will use. */
 const specOf = (r: Region): { name: string; zoom: number; canvasPx: number } => {
 	const p = photoOf(r);
@@ -77,7 +73,7 @@ const report = (r: Region) => {
 	return {
 		name: nameOf(r),
 		focused: r.id === focus?.id,
-		waited: r.msWait == null ? "not timed" : `${secs(r.msWait)} · tap → ${r.photo === false ? "map" : "photo"} on screen`,
+		waited: r.msWait == null ? "not timed" : `${secs(r.msWait)} · tap → ${r.photoKey ? "photo" : "map"} on screen`,
 		health: health(r),
 		saved: `${new Date(r.at).toLocaleString()} (${ago(r.at)})`,
 		added: mb(rowBytes(r)),
@@ -87,16 +83,15 @@ const report = (r: Region) => {
 			added: r.newBytes == null ? "unknown" : mb(r.newBytes),
 			ground: `${RADIUS_KM} km radius on whole z${ANCHOR_Z} tiles · z${MIN_Z}–z${MAX_Z}`,
 		},
-		photo:
-			r.photo === false
-				? "follow-me · no pin, no photo"
-				: {
-						...specOf(r),
-						radiusKm: PHOTO_SPEC.radiusKm,
-						size: p ? kb(p.bytes) : "not baked yet",
-						took: p?.ms == null ? "not timed" : secs(p.ms),
-						closeUp: p ? `${p.closeUp.tiles} raw z${p.zoom} tiles · ${kb(p.closeUp.bytes)}` : "not baked yet",
-					},
+		photo: r.photoKey
+			? {
+					...specOf(r),
+					radiusKm: PHOTO_SPEC.radiusKm,
+					size: p ? kb(p.bytes) : "not baked yet",
+					took: p?.ms == null ? "not timed" : secs(p.ms),
+					closeUp: p ? `${p.closeUp.tiles} raw z${p.zoom} tiles · ${kb(p.closeUp.bytes)}` : "not baked yet",
+				}
+			: "follow-me · no pin, no photo",
 		fetched: {
 			new: r.fetched,
 			shared: r.tiles - r.fetched,
@@ -122,20 +117,6 @@ const eyeBlink = untrack(() => ui.createEyeBlink());
 onDestroy(() => eyeBlink.destroy());
 const photoTotal = $derived(Object.values(photos).reduce((a, b) => a + b.bytes, 0));
 
-let dupes = $state(0);
-let tidying = $state(false);
-async function countDupes(): Promise<void> {
-	dupes = (await planPhotoDedup()).drop.length;
-}
-async function tidyPhotos(): Promise<void> {
-	tidying = true;
-	try {
-		await runPhotoDedup();
-		await countDupes();
-	} finally {
-		tidying = false;
-	}
-}
 const used = $derived(bytes + photoTotal);
 // What the blob ADDED, not what it covers.
 const rowBytes = (r: Region): number => {
@@ -152,8 +133,8 @@ const ago = (t: number) => {
 // A pin blob wins over a follow-me blob, which keeps writing wherever the walker is; within a bucket, newest first.
 const ordered = $derived(
 	[...regions].sort((a, b) => {
-		const ap = a.photo === false ? 1 : 0;
-		const bp = b.photo === false ? 1 : 0;
+		const ap = a.photoKey ? 0 : 1;
+		const bp = b.photoKey ? 0 : 1;
 		return ap !== bp ? ap - bp : b.at - a.at;
 	}),
 );
@@ -164,7 +145,6 @@ onMount(() => {
 	navigator.storage?.estimate?.().then((e) => {
 		quota = e.quota ?? null;
 	});
-	void countDupes();
 });
 </script>
 
@@ -173,7 +153,7 @@ onMount(() => {
 		<span class="dev-card__title">offline blobs</span>
 		<span class="sum">
 			{regions.length} areas · {#if broken > 0}<span class="red">{broken} not whole</span><button class="repair" onclick={onRepairAll} disabled={busy} title="fetch every missing tile of every blob, one blob at a time">repair all</button><span>&nbsp;·&nbsp;</span>{/if}{tiles} tiles
-			<span class="dim">· {Object.keys(photos).length} photos · {kb(photoTotal)}</span>{#if dupes > 0}<button class="repair" onclick={tidyPhotos} disabled={busy || tidying} title="delete {dupes} photos of ground another photo already covers — roads are untouched">{tidying ? "tidying…" : `tidy ${dupes} dupes`}</button>{/if}
+			<span class="dim">· {Object.keys(photos).length} photos · {kb(photoTotal)}</span>
 		</span>
 		<button class="wipe" onclick={onWipe} disabled={busy}>WIPE</button>
 	</div>
@@ -238,7 +218,7 @@ onMount(() => {
 							<span class="dir">⏱</span>
 							<span class="ico"></span>
 							<span class="lname">waited</span>
-							<span class="ldetail">tap → {r.photo === false ? "map" : "photo"} on screen</span>
+							<span class="ldetail">tap → {r.photoKey ? "photo" : "map"} on screen</span>
 							<span class="lbytes">{r.msWait == null ? "—" : secs(r.msWait)}</span>
 						</div>
 						<div class="layer on">
@@ -252,15 +232,15 @@ onMount(() => {
 							<span class="dir">in</span>
 							<span class="ico">🛰️</span>
 							<span class="lname">photo</span>
-							{#if r.photo === false}
-								<span class="ldetail">follow-me · no pin, no photo</span>
-								<span class="lbytes">—</span>
-							{:else}
+							{#if r.photoKey}
 								<span class="ldetail">{PHOTO_SPEC.radiusKm} km · {specOf(r).canvasPx} px · {specOf(r).name} z{specOf(r).zoom}</span>
 								<span class="lbytes">{#if photoOf(r)?.ms != null}<b class="took">{secs((photoOf(r) as PhotoInfo).ms as number)}</b>{" · "}{/if}{photoOf(r) == null ? "—" : kb((photoOf(r) as PhotoInfo).bytes)}</span>
+							{:else}
+								<span class="ldetail">follow-me · no pin, no photo</span>
+								<span class="lbytes">—</span>
 							{/if}
 						</div>
-						{#if r.photo !== false}
+						{#if r.photoKey}
 							<div class="layer" class:on={(photoOf(r)?.closeUp.tiles ?? 0) > 0}>
 								<span class="dir">in</span>
 								<span class="ico">🔍</span>

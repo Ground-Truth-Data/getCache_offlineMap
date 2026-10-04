@@ -4,21 +4,26 @@ import type * as maplibregl from "maplibre-gl";
 import {
     BAKE_RADIUS_KM,
     getSatImageByKey,
-    satImageKey,
     type Bounds,
 } from "./satelliteImage";
 import { kmToDegSpan } from "../../shared/kmGeo";
 import { PHOTO_SOURCES } from "./photoSources";
 
+/** A blob's photo as its record names it: the stored key and the exact centre, never rebuilt from each other. */
+export interface PhotoSite {
+    key: string;
+    center: [number, number];
+}
+
 export interface SatelliteMount {
-    /** Mount the already-baked photo for this centre, if one is on disk. */
-    display(center: [number, number]): Promise<void>;
+    /** Mount the already-baked photo for this site, if one is on disk. */
+    display(site: PhotoSite): Promise<void>;
     /** New close-up tiles are on disk; MapLibre remembers the 404s until told. */
     closeUpChanged(): void;
     /** Mount the photos near this camera, unmount the far ones; returns how many are on the map. */
     reconcile(
         camera: Bounds,
-        anchors: readonly [number, number][],
+        sites: readonly PhotoSite[],
         zoom?: number,
     ): Promise<number>;
     unmount(key: string): void;
@@ -65,7 +70,7 @@ function discIntersects(center: [number, number], b: Bounds): boolean {
 }
 
 export interface PhotoCullPlan {
-    mount: [number, number][];
+    mount: PhotoSite[];
     /** A mounted photo outside this set gets unmounted. */
     keep: Set<string>;
 }
@@ -73,18 +78,18 @@ export interface PhotoCullPlan {
 /** Pure: which photos belong on the map for this camera. Antimeridian cameras span the world and mount everything, which is correct. */
 export function photoCullPlan(
     camera: Bounds,
-    anchors: readonly [number, number][],
+    sites: readonly PhotoSite[],
     zoom: number = SAT_MIN_Z,
 ): PhotoCullPlan {
     // Empty on both sides below the floor, so the sweep unmounts everything.
     if (zoom < SAT_MIN_Z) return { mount: [], keep: new Set() };
     const mountRing = expanded(camera, SAT_MOUNT_VIEWPORTS);
     const keepRing = expanded(camera, SAT_UNMOUNT_VIEWPORTS);
-    const mount: [number, number][] = [];
+    const mount: PhotoSite[] = [];
     const keep = new Set<string>();
-    for (const c of anchors) {
-        if (discIntersects(c, keepRing)) keep.add(satImageKey(c));
-        if (discIntersects(c, mountRing)) mount.push(c);
+    for (const s of sites) {
+        if (discIntersects(s.center, keepRing)) keep.add(s.key);
+        if (discIntersects(s.center, mountRing)) mount.push(s);
     }
     return { mount, keep };
 }
@@ -186,8 +191,7 @@ export function createSatelliteMount(
     };
 
     return {
-        async display(center: [number, number]): Promise<void> {
-            const key = satImageKey(center);
+        async display({ key }: PhotoSite): Promise<void> {
             if (disposed || mountedSat.has(key)) return;
             const img = await getSatImageByKey(key);
             if (img && !disposed) mountSat(key, img.blob, img.bounds);
@@ -197,16 +201,16 @@ export function createSatelliteMount(
         },
         async reconcile(
             camera: Bounds,
-            anchors: readonly [number, number][],
+            sites: readonly PhotoSite[],
             zoom: number = SAT_MIN_Z,
         ): Promise<number> {
-            const { mount, keep } = photoCullPlan(camera, anchors, zoom);
+            const { mount, keep } = photoCullPlan(camera, sites, zoom);
             for (const key of [...mountedSat]) if (!keep.has(key)) unmount(key);
             let shown = 0;
-            for (const c of mount) {
+            for (const s of mount) {
                 if (disposed) break;
-                await this.display(c);
-                if (mountedSat.has(satImageKey(c))) shown++;
+                await this.display(s);
+                if (mountedSat.has(s.key)) shown++;
             }
             return shown;
         },

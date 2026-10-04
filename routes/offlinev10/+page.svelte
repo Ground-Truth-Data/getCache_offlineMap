@@ -35,7 +35,7 @@ import type { Progress } from "./download";
 import { onFires } from "../fires/fireService";
 import { HOSPITAL_LAYER_ID_LIST, type HospitalLayerHandle, attachHospitalLayer } from "../hospitals/hospitalLayer";
 import { overlayVisibility } from "../../lib/mapState/overlayVisibility.svelte";
-import { dropPhoto, onPhoto, type PhotoInfo, photoInfo, photoKey, setPhotoNarration } from "./satellite";
+import { dropPhoto, onPhoto, type PhotoInfo, photoInfo, setPhotoNarration } from "./satellite";
 import { FOLLOW_MARGIN_KM, marginKm, moved } from "./follow";
 import { PHOTO_TILES, PLANET_TILES, installProtocol } from "./protocol";
 import { type Kept, type Region, checkRegions, keepStorage, listRegions, patchRegion, stats, touchRegions, wipe } from "./store";
@@ -210,7 +210,11 @@ function reconcilePhotos(): void {
 	if (!m || !photos) return;
 	const b = m.getBounds();
 	void photos
-		.reconcile([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], regions.map((r) => [r.lng, r.lat]), m.getZoom())
+		.reconcile(
+			[b.getWest(), b.getSouth(), b.getEast(), b.getNorth()],
+			regions.flatMap((r) => (r.photoKey ? [{ key: r.photoKey, center: [r.lng, r.lat] as [number, number] }] : [])),
+			m.getZoom(),
+		)
 		.then(() => {
 			if (map === m) enforceOff(m);
 		});
@@ -261,7 +265,7 @@ async function landed(r: Region): Promise<void> {
 	if (wait) {
 		wait.id = r.id;
 		// A photo already on disk sends no landing, so it is done already.
-		if (photoMeta[photoKey(r.lng, r.lat)]) wait.photo = true;
+		if (r.photoKey && photoMeta[r.photoKey]) wait.photo = true;
 	}
 	// A camera move keeps `idle` from firing, so the reading is marked interrupted rather than reported.
 	let moved = false;
@@ -308,7 +312,7 @@ function followBlobs(): () => void {
 			light = "transit";
 			dlStart = performance.now();
 			dlMs = null;
-			wait = { t0: dlStart, id: null, map: false, photo: !e.photo };
+			wait = { t0: dlStart, id: null, map: false, photo: !e.photoKey };
 			progress = null;
 			failure = null;
 		} else if (e.kind === "progress") {
@@ -390,7 +394,7 @@ async function removeBlob(id: string): Promise<void> {
 async function wipeAll(): Promise<void> {
 	busy = true;
 	try {
-		for (const r of regions) await dropPhoto(r.lng, r.lat);
+		for (const r of regions) if (r.photoKey) await dropPhoto(r.photoKey);
 		await wipe();
 		invalidatePlanet();
 		await refresh();

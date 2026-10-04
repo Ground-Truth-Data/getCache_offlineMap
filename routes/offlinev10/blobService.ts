@@ -12,13 +12,14 @@ import {
 	keepStorage,
 	listRegions,
 	pinAreas,
+	blobIdentity,
 	type Region,
 	regionId,
 	regionKnown,
 } from "./store";
 
 export type BlobEvent =
-	| { kind: "start"; at: [number, number]; photo: boolean }
+	| { kind: "start"; at: [number, number]; id: string; photoKey?: string }
 	| { kind: "progress"; progress: Progress }
 	| { kind: "landed"; region: Region }
 	| { kind: "failed"; at: [number, number]; error: unknown }
@@ -32,7 +33,9 @@ export interface InFlight {
 
 interface Ask {
 	at: [number, number];
-	photo: boolean;
+	/** born once in queueBlob; nothing downstream re-derives it from `at` */
+	id: string;
+	photoKey?: string;
 	pin?: boolean;
 	/** the row being repaired: its missing tiles are fetched and the row keeps its place */
 	keep?: Region;
@@ -81,13 +84,13 @@ export async function queueBlob(
 	lat: number,
 	opts: { photo?: boolean; pin?: boolean } = {},
 ): Promise<boolean> {
-	const id = regionId(lng, lat);
+	const { id, photoKey } = blobIdentity(lng, lat, opts.photo !== false);
 	if (queued.has(id)) return false;
 	if (await onDisk(id)) return false;
 	// A second ask for the same spot can land during the await.
 	if (queued.has(id)) return false;
 	queued.add(id);
-	queue.push({ at: [lng, lat], photo: opts.photo !== false, pin: opts.pin });
+	queue.push({ at: [lng, lat], id, photoKey, pin: opts.pin });
 	void drain();
 	return true;
 }
@@ -96,7 +99,7 @@ export async function queueBlob(
 export async function repairBlob(r: Region): Promise<boolean> {
 	if (queued.has(r.id)) return false;
 	queued.add(r.id);
-	queue.push({ at: [r.lng, r.lat], photo: r.photo !== false, pin: r.pin, keep: r });
+	queue.push({ at: [r.lng, r.lat], id: r.id, photoKey: r.photoKey, pin: r.pin, keep: r });
 	void drain();
 	return true;
 }
@@ -108,16 +111,15 @@ async function drain(): Promise<void> {
 	try {
 		while (queue.length) {
 			const ask = queue.shift() as Ask;
-			const id = regionId(ask.at[0], ask.at[1]);
-			if (ask.keep || !(await onDisk(id))) await download(ask);
-			queued.delete(id);
+			if (ask.keep || !(await onDisk(ask.id))) await download(ask);
+			queued.delete(ask.id);
 		}
 	} finally {
 		draining = false;
 	}
 }
 
-async function download({ at, photo, pin, keep }: Ask): Promise<void> {
+async function download({ at, id, photoKey, pin, keep }: Ask): Promise<void> {
 	try {
 		// Before "start": a refused area must not get its photo baked either.
 		await roomFor(at[0], at[1], !!keep);
@@ -126,7 +128,7 @@ async function download({ at, photo, pin, keep }: Ask): Promise<void> {
 		return;
 	}
 	current = { at, progress: null, startedAt: performance.now() };
-	emit({ kind: "start", at, photo });
+	emit({ kind: "start", at, id, photoKey });
 	try {
 		const region = await downloadRegion(
 			at[0],
@@ -136,7 +138,7 @@ async function download({ at, photo, pin, keep }: Ask): Promise<void> {
 				if (current) current.progress = progress;
 				emit({ kind: "progress", progress });
 			},
-			{ photo, pin, keep },
+			{ id, photoKey, pin, keep },
 		);
 		say(
 			`[offlineV10] blob ${region.id}: ${region.fetched} new of ${region.tiles} tiles, ${((region.newBytes ?? 0) / 1048576).toFixed(1)} MB added (${(region.bytes / 1048576).toFixed(1)} MB on the ground), ${region.ms} ms to disk`,
@@ -147,7 +149,7 @@ async function download({ at, photo, pin, keep }: Ask): Promise<void> {
 	} catch (error) {
 		current = null;
 		// Its row went mid-download: whoever removed it already said so.
-		if (error instanceof AreaGone) emit({ kind: "removed", id: regionId(at[0], at[1]) });
+		if (error instanceof AreaGone) emit({ kind: "removed", id });
 		else {
 			// A full phone is an answer, not a fault: the host tells the person.
 			if (!(error instanceof BudgetError)) console.error("[offlineV10] download failed", error);

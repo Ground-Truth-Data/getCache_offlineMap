@@ -9,6 +9,7 @@ import { downloadRegion, roomFor } from "./download";
 import { satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
 import {
 	AreaGone,
+	blobIdentity,
 	deleteRegion,
 	listRegions,
 	patchRegion,
@@ -36,8 +37,12 @@ const MB = 1048576;
 const DAY = 86_400_000;
 
 function region(id: string, at: number, lng: number, lat: number, more: Partial<Region> = {}): Region {
-	return { id, lng, lat, range: regionRange(lng, lat), at, tiles: 1, fetched: 1, bytes: 0, ms: 1, ...more };
+	return { id, lng, lat, range: regionRange(lng, lat), at, tiles: 1, fetched: 1, bytes: 0, ms: 1, photoKey: satImageKey([lng, lat]), ...more };
 }
+
+/** A pin's blob as the engine births it: id and photo key, once. */
+const born = (at: [number, number]) => blobIdentity(at[0], at[1], true);
+const download = (at: [number, number]) => downloadRegion(at[0], at[1], undefined, born(at));
 
 // Far enough apart that no two blobs share tiles.
 const SPOTS: Array<[number, number]> = [
@@ -182,7 +187,7 @@ describe("an area lives and dies with its pin", () => {
 		const now = Date.now();
 		const pinned = region(regionId(...p), now, ...p, { pin: true });
 		const tomb = region(regionId(...t), now, ...t, { pin: true, removed: now });
-		const follow = region(regionId(...f), now, ...f, { photo: false });
+		const follow = region(regionId(...f), now, ...f, { photoKey: undefined });
 		for (const r of [pinned, tomb, follow]) await putRegion(r);
 		await putTiles([[ownTile(pinned), new ArrayBuffer(1024)]], pinned.id);
 		await putTiles([[ownTile(follow), new ArrayBuffer(1024)]], follow.id);
@@ -222,7 +227,7 @@ describe("an area lives and dies with its pin", () => {
 			await new Promise((r) => setTimeout(r, 2));
 			return new Response(new ArrayBuffer(10));
 		});
-		const err = await downloadRegion(...at).catch((e) => e);
+		const err = await download(at).catch((e) => e);
 		expect(err).toBeInstanceOf(AreaGone);
 		expect(served).toBeLessThan(rangeTiles(regionRange(...at)).length);
 		expect(await orphanTiles()).toEqual([]);
@@ -236,7 +241,7 @@ describe("an area lives and dies with its pin", () => {
 		const at = SPOTS[0];
 		vi.stubGlobal("fetch", async () => new Response("no", { status: 500 }));
 		vi.spyOn(console, "error").mockImplementation(() => undefined);
-		await expect(downloadRegion(...at)).rejects.toThrow("HTTP 500");
+		await expect(download(at)).rejects.toThrow("HTTP 500");
 		expect(await regionKnown(regionId(...at))).toBe(false);
 		expect(photosDropped).toEqual([satImageKey(at)]);
 		vi.unstubAllGlobals();
@@ -253,7 +258,7 @@ describe("a download that stops for any reason leaves no tile without a row", ()
 			return new Response(new ArrayBuffer(10));
 		});
 		const at = SPOTS[2];
-		void downloadRegion(...at).catch(() => undefined);
+		void download(at).catch(() => undefined);
 		await vi.waitFor(async () => expect((await allTileKeys()).size).toBeGreaterThanOrEqual(256));
 		expect(await orphanTiles()).toEqual([]);
 		expect(await regionKnown(regionId(...at))).toBe(false);

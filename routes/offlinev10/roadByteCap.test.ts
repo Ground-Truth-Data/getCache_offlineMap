@@ -11,7 +11,6 @@ vi.mock("./store", () => ({
 	patchRegion: async () => undefined,
 	putRegion: async () => undefined,
 	putTiles: async (b: Array<[string]>) => void stored.push(...b.map(([k]) => k)),
-	regionId: () => "r",
 	usedBytes: async () => 0,
 }));
 vi.mock("./places", () => ({ nearestPlace: async () => null }));
@@ -44,7 +43,7 @@ it("stops fetching road tiles once the session cap trips", async () => {
 	cap = sessionCap;
 	vi.spyOn(console, "error").mockImplementation(() => undefined);
 
-	await expect(downloadRegion(7.2, 43.68)).rejects.toThrow("session byte cap");
+	await expect(downloadRegion(7.2, 43.68, undefined, { id: "r" })).rejects.toThrow("session byte cap");
 
 	const { rangeTiles, regionRange } = await import("./tiles");
 	expect(sessionCap.tripped).toBe(true);

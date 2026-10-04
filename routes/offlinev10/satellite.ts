@@ -10,7 +10,6 @@ import {
 	deleteSatImage,
 	getSatImageByKey,
 	isCurrentPhoto,
-	satImageKey,
 	satImageMeta,
 } from "../../lib/onPhone/satellite/satelliteImage";
 import { noteSatelliteTiles } from "../../lib/onPhone/store/downloadGuard";
@@ -27,7 +26,6 @@ import {
 	notePhotoBytes,
 	photoTileBytes,
 	putPhotoTiles,
-	regionId,
 	regionsSnapshot,
 } from "./store";
 
@@ -94,7 +92,7 @@ const WORLD = PHOTO_SOURCES[0];
 export async function photoInfo(): Promise<Record<string, PhotoInfo>> {
 	const regions = await regionsSnapshot().regions;
 	const [meta, close] = await Promise.all([satImageMeta(), photoTileBytes(regions)]);
-	const closeByKey = new Map(regions.map((r) => [photoKey(r.lng, r.lat), close.get(r.id)]));
+	const closeByKey = new Map(regions.flatMap((r) => (r.photoKey ? [[r.photoKey, close.get(r.id)] as const] : [])));
 	const out: Record<string, PhotoInfo> = {};
 	let total = 0;
 	for (const m of meta) {
@@ -121,54 +119,60 @@ export function onPhoto(fn: () => void): () => void {
 	};
 }
 
-export function photoKey(lng: number, lat: number): string {
-	return satImageKey([lng, lat]);
-}
-
 let pausedUntil = 0;
 
-// Centres ride the queue as their photo keys: primitives, so a re-ask dedupes.
-const askQueue = passQueue<string>((keys) =>
-	pass(keys.map((k) => k.split(",").map(Number) as [number, number])),
-);
-
-/** Bake a photo for every centre without one; returns how many landed. */
-export function bakePhotos(
-	centres: readonly [number, number][],
-): Promise<number> {
-	return askQueue(centres.map(([lng, lat]) => photoKey(lng, lat)));
+/** A photo to bake as its blob's record names it: the row id that owns the tiles, the key it is stored under, the exact centre. */
+export interface PhotoAsk {
+	id: string;
+	photoKey: string;
+	at: [number, number];
 }
 
-async function pass(centres: readonly [number, number][]): Promise<number> {
-	if (typeof navigator !== "undefined" && navigator.onLine === false) return 0;
-	if (Date.now() < pausedUntil) return 0;
+// Asks ride the queue as their row ids: primitives, so a re-ask dedupes. The asks themselves wait here, so no coordinate is ever turned into a key and back.
+const asked = new Map<string, PhotoAsk>();
+const askQueue = passQueue<string>((ids) => pass(ids.map((id) => asked.get(id) as PhotoAsk)));
+
+/** Bake a photo for every ask without one; returns how many landed. */
+export function bakePhotos(asks: readonly PhotoAsk[]): Promise<number> {
+	for (const a of asks) asked.set(a.id, a);
+	return askQueue(asks.map((a) => a.id));
+}
+
+async function pass(asks: readonly PhotoAsk[]): Promise<number> {
+	if (typeof navigator !== "undefined" && navigator.onLine === false) {
+		say("[offlineV10] photo: offline, pass skipped");
+		return 0;
+	}
+	if (Date.now() < pausedUntil) {
+		say(`[offlineV10] photo: paused ${Math.ceil((pausedUntil - Date.now()) / 1000)}s more, pass skipped`);
+		return 0;
+	}
 	let landed = 0;
-	for (const [lng, lat] of centres) {
-		if (isCurrentPhoto(await getSatImageByKey(photoKey(lng, lat)))) continue;
+	for (const { id, photoKey, at } of asks) {
+		if (isCurrentPhoto(await getSatImageByKey(photoKey))) {
+			say(`[offlineV10] photo: ${id} already has its photo`);
+			continue;
+		}
 		let img: Awaited<ReturnType<typeof bakeSatelliteImage>> = null;
-		const owner = regionId(lng, lat);
 		try {
-			img = await bakeSatelliteImage([lng, lat], (keys) => photoTiles(keys, owner), () => claimArea(owner));
+			img = await bakeSatelliteImage(photoKey, at, (keys) => photoTiles(keys, id), () => claimArea(id));
 		} catch (error) {
-			// The area went mid-bake (a failed download, a deleted pin): not the host's fault, so no pause.
-			if (error instanceof AreaGone) continue;
-			console.warn(
-				`[offlineV10] photo bake threw at ${lat.toFixed(4)},${lng.toFixed(4)}`,
-				error,
-			);
+			if (error instanceof AreaGone) {
+				// `missing` is a bug: the ask names a row no blob was born with. `removed` is the area going mid-bake, not the host's fault, so no pause.
+				if (error.why === "missing") console.warn(`[offlineV10] photo: ${error.message} — the ask holds an id no blob was born with`);
+				else console.info(`[offlineV10] photo: ${error.message}, photo not saved`);
+				continue;
+			}
+			console.warn(`[offlineV10] photo bake threw for ${id}`, error);
 		}
 		if (!img) {
-			// The remaining centres would only fail against the same host.
+			// The remaining asks would only fail against the same host.
 			pausedUntil = Date.now() + PHOTO_RETRY_MS;
-			console.warn(
-				`[offlineV10] photo: no imagery for ${lat.toFixed(4)},${lng.toFixed(4)} — pass paused ${PHOTO_RETRY_MS / 1000}s`,
-			);
+			console.warn(`[offlineV10] photo: no imagery for ${id} — pass paused ${PHOTO_RETRY_MS / 1000}s`);
 			break;
 		}
 		landed++;
-		say(
-			`[offlineV10] photo: ${BAKE_RADIUS_KM} km around ${lat.toFixed(4)},${lng.toFixed(4)} (${(img.blob.size / 1024).toFixed(0)} KB)`,
-		);
+		say(`[offlineV10] photo: ${BAKE_RADIUS_KM} km around ${id} (${(img.blob.size / 1024).toFixed(0)} KB)`);
 		for (const fn of listeners) fn();
 	}
 	return landed;
@@ -176,15 +180,11 @@ async function pass(centres: readonly [number, number][]): Promise<number> {
 
 export async function bakeAllPhotos(): Promise<number> {
 	const regions = await regionsSnapshot().regions;
-	return bakePhotos(
-		regions
-			.filter((r) => r.photo !== false)
-			.map((r) => [r.lng, r.lat] as [number, number]),
-	);
+	return bakePhotos(regions.flatMap((r) => (r.photoKey ? [{ id: r.id, photoKey: r.photoKey, at: [r.lng, r.lat] as [number, number] }] : [])));
 }
 
-export async function dropPhoto(lng: number, lat: number): Promise<void> {
-	await deleteSatImage(photoKey(lng, lat));
+export async function dropPhoto(photoKey: string): Promise<void> {
+	await deleteSatImage(photoKey);
 }
 
 let stop: (() => void) | null = null;
@@ -201,8 +201,8 @@ export function startPhotoService(): () => void {
 	};
 	const offBlob = onBlob((e) => {
 		// Beside the tiles, not after them: neither needs the other.
-		if (e.kind === "start" && e.photo)
-			bakePhotos([e.at]).catch((err) => {
+		if (e.kind === "start" && e.photoKey)
+			bakePhotos([{ id: e.id, photoKey: e.photoKey, at: e.at }]).catch((err) => {
 				console.warn("[photos] bake failed", err);
 			});
 	});

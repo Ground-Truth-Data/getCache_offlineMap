@@ -15,7 +15,7 @@ import {
 
 export const DB_NAME = "gc-offlineV10";
 /** Bump when what a blob IS changes; an older blob is then wiped, never half-drawn. */
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const TILES = "tiles";
 const REGIONS = "regions";
 
@@ -41,8 +41,8 @@ export interface Region {
 	msPaint?: number;
 	/** the camera moved before idle, so there is no honest paint time */
 	paintMoved?: true;
-	/** false on a follow-me blob: no pin, no photo. Absent means a photo. */
-	photo?: false;
+	/** Where this blob's photo lives in the photo store, computed once from its pin at birth and never re-derived. Absent on a follow-me blob: no pin, no photo. */
+	photoKey?: string;
 	/** null when its tiles hold no town; absent before it was looked up */
 	place?: Place | null;
 	/** ms epoch the map last showed it; absent = never, so `at` stands in */
@@ -55,10 +55,13 @@ export interface Region {
 	pin?: true;
 }
 
-/** The area a write names has no live row: removed, or its pin deleted. */
+/** The area a write names has no live row. `removed`: the row says so, a pin was deleted or a download failed. `missing`: no row at all, so whoever named it holds an id no blob was born with. */
 export class AreaGone extends Error {
-	constructor(id: string) {
-		super(`offline area ${id} is gone`);
+	constructor(
+		readonly id: string,
+		readonly why: "removed" | "missing",
+	) {
+		super(`offline area ${id} is ${why === "removed" ? "removed" : "missing (no row has this id)"}`);
 		this.name = "AreaGone";
 	}
 }
@@ -66,6 +69,11 @@ export class AreaGone extends Error {
 /** A blob is its pin's spot — the same spot is the same blob, a pace away is another. */
 export function regionId(lng: number, lat: number): string {
 	return `${lat.toFixed(5)},${lng.toFixed(5)}`;
+}
+
+/** The one place a pin becomes a blob's identity. The id and photo key are carried by value from here; nothing downstream rounds or parses a coordinate to rebuild them. */
+export function blobIdentity(lng: number, lat: number, photo: boolean): { id: string; photoKey?: string } {
+	return { id: regionId(lng, lat), photoKey: photo ? satImageKey([lng, lat]) : undefined };
 }
 
 let dbp: Promise<IDBDatabase> | null = null;
@@ -199,16 +207,16 @@ async function putNow(entries: Array<[string, ArrayBuffer]>, owner: string): Pro
 	const tx = db.transaction([TILES, REGIONS], "readwrite");
 	const st = tx.objectStore(TILES);
 	const row = tx.objectStore(REGIONS).get(owner) as IDBRequest<Region | undefined>;
-	let gone = false;
+	let gone: AreaGone | null = null;
 	row.onsuccess = () => {
 		if (row.result && !row.result.removed) for (const [k, b] of entries) st.put(b, k);
 		else {
-			gone = true;
+			gone = new AreaGone(owner, row.result ? "removed" : "missing");
 			tx.abort();
 		}
 	};
 	await done(tx).catch((e) => {
-		throw gone ? new AreaGone(owner) : e;
+		throw gone ?? e;
 	});
 	tileBytes = Promise.resolve(used - photoBytes + adding);
 }
@@ -238,7 +246,7 @@ export async function getPhotoTiles(keys: readonly string[]): Promise<Map<string
 
 /** The photo tiles under a blob's pin; none for a follow-me blob. */
 function photoKeysOf(r: Region): string[] {
-	if (r.photo === false) return [];
+	if (!r.photoKey) return [];
 	const z = PHOTO_SOURCES[0].zoom;
 	return photoTilesFor([r.lng, r.lat], z).map((t) => `${PHOTO_PREFIX}${z}/${t.x}/${t.y}`);
 }
@@ -306,7 +314,7 @@ export async function regionKnown(id: string): Promise<boolean> {
 /** Throws `AreaGone` unless the area has a live row; the photo's last word before it is saved. */
 export async function claimArea(id: string): Promise<void> {
 	const r = await regionRow(id);
-	if (!r || r.removed) throw new AreaGone(id);
+	if (!r || r.removed) throw new AreaGone(id, r ? "removed" : "missing");
 }
 
 /** Every pin-born row, removed ones included: what the engine judges against the pins once the host is ready. */
@@ -317,7 +325,7 @@ export async function pinAreas(): Promise<Region[]> {
 	return rows.filter((r) => r.pin);
 }
 
-async function regionRow(id: string): Promise<Region | undefined> {
+export async function regionRow(id: string): Promise<Region | undefined> {
 	const db = await open();
 	const tx = db.transaction(REGIONS, "readonly");
 	return result(tx.objectStore(REGIONS).get(id) as IDBRequest<Region | undefined>);
@@ -454,7 +462,7 @@ export async function deleteRegion(id: string, keepRow = false): Promise<number 
 	await done(tx);
 	tileBytes = null;
 	regionsChanged();
-	await deleteSatImage(satImageKey([gone.lng, gone.lat]));
+	if (gone.photoKey) await deleteSatImage(gone.photoKey);
 	return doomed.length;
 }
 

@@ -31,7 +31,7 @@ describe("the session byte cap", () => {
 		expect(sessionCap.tripped).toBe(true);
 
 		const source = vi.fn(async () => new Map<string, ArrayBuffer>());
-		expect(await bakeSatelliteImage(PIN, source)).toBeNull();
+		expect(await bakeSatelliteImage("7.2000,43.6800", PIN, source)).toBeNull();
 		expect(source).not.toHaveBeenCalled();
 	});
 });

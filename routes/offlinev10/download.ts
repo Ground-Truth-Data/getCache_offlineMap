@@ -21,7 +21,6 @@ import {
 	putRegion,
 	putTiles,
 	type Region,
-	regionId,
 	usedBytes,
 } from "./store";
 import { rangeTiles, regionRange, type Tile, tileKey, toMerc } from "./tiles";
@@ -40,8 +39,11 @@ export interface Progress {
 	ms: number;
 }
 
+/** `id` and `photoKey` are born once, where the pin becomes a blob, and carried by value from there. */
 export interface DownloadOpts {
-	photo?: boolean;
+	id: string;
+	/** absent on a follow-me blob: no photo */
+	photoKey?: string;
 	pin?: boolean;
 	/** a repair keeps the row's birth time */
 	keep?: Region;
@@ -71,16 +73,16 @@ export async function roomFor(lng: number, lat: number, repair = false): Promise
 export async function downloadRegion(
 	lng: number,
 	lat: number,
-	onProgress?: (p: Progress) => void,
-	opts: DownloadOpts = {},
+	onProgress: ((p: Progress) => void) | undefined,
+	opts: DownloadOpts,
 ): Promise<Region> {
 	const t0 = performance.now();
-	const id = regionId(lng, lat);
+	const { id } = opts;
 	const range = regionRange(lng, lat);
 	const tiles = rangeTiles(range);
 	const at = opts.keep?.at ?? Date.now();
 	const born: Region = { id, lng, lat, range, at, tiles: tiles.length, fetched: 0, bytes: 0, ms: 0, filling: true };
-	if (opts.photo === false) born.photo = false;
+	if (opts.photoKey) born.photoKey = opts.photoKey;
 	if (opts.pin) born.pin = true;
 	if (!opts.keep) await putRegion(born);
 	const have = await allTileKeys();
@@ -172,7 +174,7 @@ async function fetchInto(
 		},
 		() => {
 			if (refused) throw refused;
-			if (isRemoving(id)) throw new AreaGone(id);
+			if (isRemoving(id)) throw new AreaGone(id, "removed");
 			if (sessionCap.tripped) throw new Error("session byte cap reached");
 			if (p.bytes > room) throw new BudgetError(budgetBytes() - room, budgetBytes(), p.bytes);
 			return false;
