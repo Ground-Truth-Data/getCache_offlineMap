@@ -165,9 +165,13 @@ function startResize(col: string, e: PointerEvent) {
 		const w = Math.max(48, Math.round(startW + ev.clientX - startX));
 		colPrefs = { ...colPrefs, widths: { ...colPrefs.widths, [col]: w } };
 	};
+	// The click that ends a resize lands on the <th>, whose click sorts.
+	const swallowClick = (ev: MouseEvent) => ev.stopPropagation();
 	const up = () => {
 		window.removeEventListener("pointermove", move);
 		window.removeEventListener("pointerup", up);
+		window.addEventListener("click", swallowClick, { capture: true, once: true });
+		setTimeout(() => window.removeEventListener("click", swallowClick, { capture: true }));
 		resizingCol = null;
 		commitPrefs(colPrefs);
 	};
@@ -774,35 +778,28 @@ const barShare = (c: string, row: Record<string, unknown>) => {
 	   slides under them. THE INSET SHADOW IS AN OPAQUE FLOOR, not decoration —
 	   the scrolling columns pass UNDERNEATH, so a plain `background` per state
 	   would leave a hole for any state nobody enumerated; every rule below
-	   repeats the shadow rather than replacing it. Z stack: sliding body 0,
-	   sliding header 5, frozen body 7 (must beat the sliding HEADER), frozen
-	   header 8 — frozen always beats sliding on both axes, or a column name
-	   could travel across the frozen edge. */
+	   repeats the shadow rather than replacing it. Z is the PLANE: every body
+	   cell (Σ included) 4, the head band 5 — header beats body, frozen or not.
+	   The one exception is a single step, frozen header 6, because sliding
+	   header cells pass sideways under it and a tie goes to the later column. */
 	.adt :global(td.adt-frozen),
 	.adt :global(th.adt-frozen) {
 		position: sticky;
-		z-index: 7;
+		z-index: 4;
 
 		background: var(--at-bg);
 		box-shadow: inset 0 0 0 100vmax var(--at-bg);
-	}
-	/* `!important` is the point: the shared sheet pins headers at z-index 5 with
-	   a more specific selector, so without it the frozen header ties with the
-	   sliding ones and a later column paints over it. */
-	.adt :global(thead th.adt-frozen) {
-		z-index: 8 !important;
-		background: var(--at-inset);
-		box-shadow: inset 0 0 0 100vmax var(--at-inset);
 	}
 	/* THE HEAD BAND IS ONE PLANE, and a frozen header cell has to carry it too.
 	   The shared sheet gives the band `--at-lift-2` + `--at-edge-hi`, but a frozen
 	   cell declares its own `box-shadow` and that is ONE property with one winner
 	   — so without restating them the band's shadow visibly breaks over the frozen
-	   columns, and no sliding cell can cast across them either (frozen outranks
-	   sliding on both axes, by design). The floor stays LAST: earlier layers paint
-	   on top, so the lit top edge has to sit above the opaque backing to be seen
-	   at all. The Σ row is excluded because it is not part of the band. */
+	   columns. The floor stays LAST: earlier layers paint on top, so the lit top
+	   edge has to sit above the opaque backing to be seen at all. The Σ row is
+	   excluded because it is not part of the band. */
 	.adt :global(thead tr:not(.subtotal) th.adt-frozen) {
+		z-index: 6;
+		background: var(--at-inset);
 		box-shadow: var(--at-lift-2), var(--at-edge-hi),
 			inset 0 0 0 100vmax var(--at-inset);
 	}
@@ -931,10 +928,10 @@ const barShare = (c: string, row: Record<string, unknown>) => {
 		top: 0;
 		left: 0;
 		height: 0;
-		z-index: 9;
+		z-index: 7;
 		pointer-events: none;
 	}
-	/* Above the frozen header's 8: an edge that columns disappeared under has to
+	/* Above the frozen header's 6: an edge that columns disappeared under has to
 	   be the last thing painted, or the thing it marks paints over it. */
 	.adt-edge {
 		position: absolute;

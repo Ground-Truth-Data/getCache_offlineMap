@@ -8,7 +8,8 @@ export type OverlayKind =
 	| "shapes"
 	| "pdf"
 	| "fires"
-	| "hospitals";
+	| "hospitals"
+	| "labels";
 
 // Safety layers RE-ARM THEMSELVES after REARM_TTL_MS, so hiding one can never become a silent standing preference.
 export const REARMING: readonly OverlayKind[] = ["fires", "hospitals"];
@@ -26,6 +27,7 @@ const DEFAULTS: VisState = {
 	pdf: true,
 	fires: true,
 	hospitals: true,
+	labels: true,
 };
 
 // every failure path lands on SHOWING (fail open, not closed)

@@ -33,20 +33,36 @@ export function fitMode(prefs: ColumnPrefs): FitMode {
 const storageKey = (table: string) => `rtAdminCols:${table}`;
 
 export function loadColumnPrefs(table: string): ColumnPrefs {
-	if (!hasStorage()) return {};
+	let stored: unknown;
 	try {
-		return JSON.parse(
-			localStorage.getItem(storageKey(table)) ?? "{}",
-		) as ColumnPrefs;
+		if (!hasStorage()) return {};
+		stored = JSON.parse(localStorage.getItem(storageKey(table)) ?? "{}");
 	} catch {
 		return {};
 	}
+	if (!stored || typeof stored !== "object" || Array.isArray(stored)) return {};
+	const { order, widths, fit } = stored as Record<string, unknown>;
+	const prefs: ColumnPrefs = {};
+	if (Array.isArray(order))
+		prefs.order = order.filter((c): c is string => typeof c === "string");
+	if (widths && typeof widths === "object" && !Array.isArray(widths))
+		prefs.widths = Object.fromEntries(
+			Object.entries(widths).filter(
+				(e): e is [string, number] => typeof e[1] === "number" && Number.isFinite(e[1]) && e[1] > 0,
+			),
+		);
+	if (fit !== undefined) prefs.fit = fit as FitMode;
+	return prefs;
 }
 
 export function saveColumnPrefs(table: string, prefs: ColumnPrefs): void {
-	if (!hasStorage()) return;
-	if (!hasPrefs(prefs)) localStorage.removeItem(storageKey(table));
-	else localStorage.setItem(storageKey(table), JSON.stringify(prefs));
+	try {
+		if (!hasStorage()) return;
+		if (!hasPrefs(prefs)) localStorage.removeItem(storageKey(table));
+		else localStorage.setItem(storageKey(table), JSON.stringify(prefs));
+	} catch {
+		// Quota or a blocked origin: the arrangement just isn't remembered.
+	}
 }
 
 function hasPrefs(prefs: ColumnPrefs): boolean {

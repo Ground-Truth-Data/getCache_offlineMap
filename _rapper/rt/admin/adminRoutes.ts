@@ -74,67 +74,83 @@ export type AdminParent = {
 	tools: AdminTool[];
 };
 
-// The table vocabulary is declared THREE times, deliberately: the phone
-// (getCache, schemaV2.ts), superCrud (a Deno function) and this dashboard
-// cannot share a module. A table renamed there is renamed here by hand.
+// Hand copies of getCache's schemaV2.ts and superCrud's MIRRORED_TABLES —
+// rapper cannot import either. getCache's adminTablesMatchTheSchema.test.ts
+// fails the moment these drift.
 
 // Central's getCacheMobile tables — superCrud's MIRRORED_TABLES.
 export const MIRRORED_TABLES = [
+	"authorEntity",
+	"authorTable",
 	"mapEntity",
-	"featureEntity",
-	"surveyEntity",
-	"plotEntity",
+	"mapFeatureEntity",
+	"qaSurveyEntity",
+	"qaPlotEntity",
 	"landEntity",
+	"cropEntity",
 	"cacheEntity",
 	"bagUpEntity",
 	"tallyEntity",
 	"packageEntity",
 	"mapTable",
-	"featureTable",
-	"surveyTable",
-	"plotTable",
+	"mapFeatureTable",
+	"crewTable",
+	"qaSurveyTable",
+	"qaPlotTable",
 	"landTable",
+	"cropTable",
 	"cacheTable",
 	"bagUpTable",
 	"tallyTable",
 	"packageTable",
 	"appStateTable",
-	"contactTable",
-	"cropTable",
-	"offlineCoverageTable",
 	"organizationTable",
 	"userProfileTable",
 ] as const;
 
-// Every table on the phone — the mirrored ones plus the local-only ones (eventLogTable, selfIdTable, touchRegister).
+// Every table on the phone — the mirrored ones plus the local-only ones (authorIdTable, touchTable).
 export const DEVICE_TABLES = [
 	"appStateTable",
+	"authorEntity",
+	"authorIdTable",
+	"authorTable",
 	"bagUpEntity",
 	"bagUpTable",
 	"cacheEntity",
 	"cacheTable",
-	"contactTable",
+	"crewTable",
+	"cropEntity",
 	"cropTable",
-	"eventLogTable",
-	"featureEntity",
-	"featureTable",
+	"mapFeatureEntity",
+	"mapFeatureTable",
 	"landEntity",
 	"landTable",
 	"mapEntity",
 	"mapTable",
-	"offlineCoverageTable",
 	"organizationTable",
 	"packageEntity",
 	"packageTable",
-	"plotEntity",
-	"plotTable",
-	"selfIdTable",
-	"surveyEntity",
-	"surveyTable",
+	"qaPlotEntity",
+	"qaPlotTable",
+	"qaSurveyEntity",
+	"qaSurveyTable",
 	"tallyEntity",
 	"tallyTable",
-	"touchRegister",
+	"touchTable",
 	"userProfileTable",
+] as const;
+
+// Where each table sits on the Get Cache schema maps, four to a row, each
+// version table beside its entity — so the phone's map and Central's line up.
+// A table left out still draws, after these.
+export const GC_SCHEMA_SEATS = [
+	"mapTable", "mapEntity", "mapFeatureTable", "mapFeatureEntity",
+	"landTable", "landEntity", "qaSurveyTable", "qaSurveyEntity",
+	"qaPlotTable", "qaPlotEntity", "cacheTable", "cacheEntity",
+	"bagUpTable", "bagUpEntity", "tallyTable", "tallyEntity",
+	"packageTable", "packageEntity", "cropTable", "cropEntity",
+	"crewTable", "authorEntity", "authorTable", "authorIdTable",
+	"appStateTable", "userProfileTable", "organizationTable", "touchTable", "snapshot",
 ] as const;
 
 // The pill caption IS the SQL identifier, casing included.
@@ -354,6 +370,12 @@ export const ADMIN_PARENTS: AdminParent[] = [
 				tables: [
 					// Cloud-only screens, not tables: head of the CRUD row rather
 					// than four tools out of one.
+					{
+						label: "Supa schema",
+						href: "/getcache_dash/supa_schema",
+						kind: "tool",
+						title: "Every table and column in Central, coloured by how much of it holds a value",
+					},
 					{ label: "Snapshots", href: "/getcache_dash", kind: "tool" },
 					{
 						label: "Users",
@@ -418,7 +440,15 @@ export const ADMIN_PARENTS: AdminParent[] = [
 				href: "/app/sqlite/cacheTable",
 				match: "/app/sqlite",
 				title: "This browser's live Get Cache database — every table",
-				tables: deviceTablePills("/app/sqlite"),
+				tables: [
+					{
+						label: "SQL schema",
+						href: "/app/sqlite/SQL_schema",
+						kind: "tool",
+						title: "Every table and column, coloured by how much of it holds a value",
+					},
+					...deviceTablePills("/app/sqlite"),
+				],
 			},
 			{
 				key: "file",

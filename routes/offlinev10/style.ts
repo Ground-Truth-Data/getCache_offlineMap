@@ -115,6 +115,21 @@ function fadeIn(layer: LayerSpecification): LayerSpecification {
 	return layer;
 }
 
+const PARK_KINDS = ["park", "forest", "garden"];
+const PARK_TEXT_FACTOR = 0.4;
+
+/** Park names are the loudest label on a dark map: dim them at every stop of the (already folded) zoom curve. */
+function fadeParkNames(layer: LayerSpecification): LayerSpecification {
+	if (layer.id !== "pois") return layer;
+	const paint = (layer as { paint?: Record<string, unknown> }).paint;
+	const expr = paint?.["text-opacity"];
+	if (!Array.isArray(expr)) return layer;
+	const isPark = ["in", ["get", "kind"], ["literal", PARK_KINDS]];
+	for (let i = 4; i < expr.length; i += 2)
+		expr[i] = ["case", isPark, (expr[i] as number) * PARK_TEXT_FACTOR, expr[i]];
+	return layer;
+}
+
 /** Override flavor colours, never patch layers per kind — stock DARK hides
  * the ground. Keep each `_a`/`_b` pair EQUAL: the stock style cross-fades
  * between them across a zoom. GROUND_LIFT: 0 = stock DARK, 1 = below. */
@@ -176,7 +191,8 @@ export function buildStyle(origin: string): StyleSpecification {
 			return l;
 		})
 		.map(oneFont)
-		.map(fadeIn);
+		.map(fadeIn)
+		.map(fadeParkNames);
 
 	const base: LayerSpecification[] = [
 		{

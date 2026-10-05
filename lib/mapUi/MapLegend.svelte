@@ -11,6 +11,7 @@ import {
 } from "../mapState/overlayVisibility.svelte";
 import {
 	overlayOpacity,
+	labelDensity,
 	polygonOpacity,
 } from "../mapState/overlayOpacity.svelte";
 import type { MapHostPorts } from "../shared/mapHostPorts";
@@ -54,6 +55,7 @@ type Swatch =
 	| "cluster"
 	| "plaque"
 	| "dots"
+	| "text"
 	| "hospital";
 export type LegendRow = {
 	label: string;
@@ -62,6 +64,8 @@ export type LegendRow = {
 	/** An eye toggle; absent → the row only explains. */
 	kind?: OverlayKind;
 	slider?: { percent: number; setPercent: (p: number) => void };
+	/** Where the slider's default tick sits, in percent; 50 when absent. */
+	rest?: number;
 	note?: string;
 };
 type Section = { title: string; rows: readonly LegendRow[] };
@@ -76,47 +80,33 @@ const SWATCH_IMG: Partial<Record<Swatch, string>> = {
 
 // Colours mirror the map paints: drawStyle.ts (BLOCK_GOLD, POLYGON_FILL, --color-draw), the plaque and dots in pinMarkers.ts.
 // ⚠️ Wildfire is terracotta, never red — red means a destructive action in this app.
-const SECTIONS: readonly Section[] = [
+ const SECTIONS: readonly Section[] = [
 	{
-		title: "Your marks · tap to show / hide",
+		title: "Your features · tap {eye} to show / hide",
 		rows: [
-			{ label: "Pin", swatch: "pin", kind: "pins" },
+			{ label: "Labels", swatch: "text", kind: "labels", slider: labelDensity, rest: 30 },
 			{ label: "Polygon", swatch: "fill", color: "#e8a06a", kind: "shapes", slider: polygonOpacity },
 			{ label: "PDF map", swatch: "pdf", kind: "pdf", slider: overlayOpacity },
+			{ label: "Pin", swatch: "pin", kind: "pins" },
+			{ label: "Block", swatch: "block" },
+			{ label: "Line / polygon", swatch: "line", color: "#b36940" },
+			{ label: "Track", swatch: "rail", color: "#ffd700", note: "Your recorded GPS trail." },
+			{ label: "Several pins", swatch: "cluster" },
 		],
 	},
 	{
 		title: "Survey plots",
 		rows: [
 			{ label: "Quality plot", swatch: "plot", color: "#f5d565", kind: "plots" },
-			{ label: "Several plots", swatch: "plaque", note: "How many, and their quality. Tap to fan them out." },
-			{ label: "Plot status", swatch: "dots", note: "− short of its spots · + planted extra · ● has a fault" },
+			{ label: "Several plots", swatch: "plaque" },
+			{ label: "Plot status", swatch: "dots" },
 		],
 	},
 	{
-		title: "Get Cache features · always shown",
+		title: "Not your features · tap {eye} to show / hide",
 		rows: [
-			{ label: "Block", swatch: "block", note: "Too small to see, it huddles into a gold egg with a count." },
-			{ label: "Line / polygon", swatch: "line", color: "#b36940" },
-			{ label: "Track", swatch: "rail", color: "#ffd700", note: "Your recorded GPS trail." },
-			{ label: "Several pins", swatch: "cluster", note: "Tap to fan them out." },
-		],
-	},
-	{
-		title: "Not your marks · tap to show / hide",
-		rows: [
-			{
-				label: "Wildfire",
-				swatch: "fire",
-				kind: "fires",
-				note: "Satellite heat detections, refreshed hourly. A ring means several detections grouped together; fainter means older.",
-			},
-			{
-				label: "Hospitals",
-				swatch: "hospital",
-				kind: "hospitals",
-				note: "The nearest hospitals around you. Tap one for its phone number.",
-			},
+			{ label: "Wildfire", swatch: "fire", kind: "fires" },
+			{ label: "Hospitals", swatch: "hospital", kind: "hospitals" },
 		],
 	},
 ];
@@ -139,6 +129,7 @@ function noteFor(row: LegendRow, on: boolean): string | undefined {
 			<img class="legend-swatch-img" src={SWATCH_IMG[row.swatch]} alt="" />
 		{/if}
 		{#if row.swatch === "plot"}<span class="legend-plot-n">1</span>
+		{:else if row.swatch === "text"}<span class="legend-plot-n">Aa</span>
 		{:else if row.swatch === "cluster"}<span class="legend-cluster-n">3</span>
 		{:else if row.swatch === "plaque"}<span class="legend-plot-n">3</span><span class="legend-plaque-pct">92%</span>
 		{:else if row.swatch === "dots"}
@@ -148,6 +139,12 @@ function noteFor(row: LegendRow, on: boolean): string | undefined {
 		{/if}
 	</span>
 {/snippet}
+
+<svelte:window
+	onpointerdown={(e) => {
+		if (!(e.target instanceof Element && e.target.closest(".legend-card"))) onClose();
+	}}
+/>
 
 <!-- |global — parents mount/unmount this via {#if legendOpen}, so the transition needs the global modifier. -->
 <div
@@ -164,7 +161,10 @@ function noteFor(row: LegendRow, on: boolean): string | undefined {
 	</div>
 
 	{#each sections as section (section.title)}
-		<p class="legend-group-label">{section.title}</p>
+		{@const [before, after] = section.title.split(" {eye} ")}
+		<p class="legend-group-label">
+			{before}{#if after !== undefined}<span class="legend-nowrap">&nbsp;<img class="legend-title-eye" src={eyeToggle.srcFor(true, "title")} alt="eye" /></span> {after}{/if}
+		</p>
 		<ul class="legend-list">
 			{#each section.rows as row (row.label)}
 				{@const on = row.kind ? overlayVisibility.isVisible(row.kind) : true}
@@ -182,7 +182,7 @@ function noteFor(row: LegendRow, on: boolean): string | undefined {
 							<span class="legend-label">{row.label}</span>
 							{#if row.slider}
 								{@const slider = row.slider}
-								<span class="legend-slider-wrap">
+								<span class="legend-slider-wrap" style:--rest="{row.rest ?? 50}%">
 									<input
 										class="legend-slider"
 										type="range"
@@ -312,6 +312,9 @@ function noteFor(row: LegendRow, on: boolean): string | undefined {
 		text-transform: uppercase;
 		color: var(--color-accent-sage, #9bb07a);
 	}
+	.legend-nowrap { white-space: nowrap; }
+	.legend-group-label:has(.legend-title-eye) { white-space: nowrap; letter-spacing: 0.04em; }
+	.legend-title-eye { display: inline-block; width: 1.6em; height: auto; vertical-align: middle; margin: -0.5em 0; }
 	.legend-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
 	/* Sage, never grey — read outdoors. */
 	.legend-note {
@@ -367,7 +370,7 @@ function noteFor(row: LegendRow, on: boolean): string | undefined {
 	.legend-slider-wrap::before {
 		content: "";
 		position: absolute;
-		left: 50%;
+		left: var(--rest, 50%);
 		top: -0.18rem;
 		transform: translateX(-50%);
 		width: 2px;
@@ -470,6 +473,7 @@ function noteFor(row: LegendRow, on: boolean): string | undefined {
 		text-shadow: 0 0 2px #000, 0 1px 2px #000;
 	}
 	.legend-swatch--plot,
+	.legend-swatch--text,
 	.legend-swatch--plaque {
 		align-self: center;
 		display: inline-flex;

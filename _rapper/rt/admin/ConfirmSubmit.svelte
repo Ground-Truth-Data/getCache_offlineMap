@@ -136,9 +136,14 @@ const hinge = (_node: Element) => ({
 	</div>
 {/if}
 
+<!-- Capture, and stopped: an Escape that closes this popover must not also
+     reach the window handlers that close the drawer or collapse the row. -->
 <svelte:window
-	onkeydown={(e) => {
-		if (shown && e.key === "Escape") close();
+	onkeydowncapture={(e) => {
+		if (shown && e.key === "Escape") {
+			e.stopPropagation();
+			close();
+		}
 	}}
 	onresize={() => shown && place()}
 	onscrollcapture={() => shown && place()}

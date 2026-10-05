@@ -35,7 +35,7 @@
 	--rt-cream-dim: rgba(244, 232, 208, 0.65);
 	--rt-meta: #e88a5a;
 
-	--rt-row-sender: #c3c8ac; /* sender name — the tint IS the "from" */
+	--rt-row-sender: #c3c8ac; /* a contact pill with no colour */
 	--rt-row-sep: #5c6046; /* " • " separator — divides without being read */
 	--rt-row-size: var(--rt-meta); /* rust size stat — keeps the row striped; grey here reads as one undifferentiated blob */
 	--rt-row-when: #8c9170; /* date at rest — glance target, not read target */

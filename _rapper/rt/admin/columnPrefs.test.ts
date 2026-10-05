@@ -242,6 +242,29 @@ describe("the mode is remembered per table", () => {
 		expect(loadColumnPrefs("ClaimTable")).toEqual({ fit: "comfort" });
 	});
 
+	// A stored value outlives the code that wrote it and any hand in devtools,
+	// and a throw here takes the whole table down until storage is cleared.
+	it("reads a stored value of the wrong shape as no prefs", () => {
+		stub();
+		store.set("rtAdminCols:A", "null");
+		store.set("rtAdminCols:B", '{"order":5,"widths":{"a":"wide","b":90}}');
+		store.set("rtAdminCols:C", '{"order":{},"widths":[3]}');
+		expect(fitMode(loadColumnPrefs("A"))).toBe("comfort");
+		expect(loadColumnPrefs("B")).toEqual({ widths: { b: 90 } });
+		expect(() => applyColumnOrder(["a", "b"], loadColumnPrefs("C").order)).not.toThrow();
+	});
+
+	it("drops a save the browser refuses rather than throwing mid-drag", () => {
+		vi.stubGlobal("localStorage", {
+			getItem: () => null,
+			setItem: () => {
+				throw new DOMException("full", "QuotaExceededError");
+			},
+			removeItem: () => {},
+		});
+		expect(() => saveColumnPrefs("ClaimTable", { fit: "fit" })).not.toThrow();
+	});
+
 	it("keeps order and widths alongside it", () => {
 		stub();
 		saveColumnPrefs("ClaimTable", { order: ["b", "a"], widths: { a: 90 } });

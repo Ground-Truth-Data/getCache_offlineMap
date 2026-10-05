@@ -95,7 +95,7 @@ export interface MapShareRow {
 }
 
 /** THE definition; the host's kmzExport re-exports it. */
-export type MapShareFormat = "getcache" | "kmz" | "kml";
+export type MapShareFormat = "getcache" | "kmz";
 
 export interface MapUiPorts {
 	Icon: Component<IconProps>;

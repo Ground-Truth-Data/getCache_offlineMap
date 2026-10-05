@@ -109,7 +109,7 @@ The build-time guards live in ReTreever — the only tier that can see both
 sides — so a contributor cloning rapper does not receive them:
 
 ```bash
-npx vitest run src/lib/core/harnessGuards/   # from the ReTreever repo
+npx vitest run src/lib/core/rapperGuards/   # from the ReTreever repo
 ```
 
 Each child also carries its own `lib/noParentNames.test.ts`, which runs in a

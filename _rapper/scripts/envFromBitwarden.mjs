@@ -10,7 +10,7 @@
 // any process can inject them, so those keys, and only those, land in .env.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -20,7 +20,8 @@ const BROWSER_PREFIX = "PUBLIC_";
 const BEGIN = "# --- Bitwarden block: written from `bws secret list` by rapper/scripts/envFromBitwarden.mjs. Hand edits here are overwritten. ---";
 const END = "# --- end Bitwarden block ---";
 const KEY_LINE = /^([A-Za-z_][A-Za-z0-9_]*)=/gm;
-const SOURCE = /\.(m?[jt]s|cjs|svelte|prisma|py|sh|json|toml|ya?ml)$/;
+// .env.<env> overlays (APP_ENV's .env.dev) name the twins they point at.
+const SOURCE = /\.(m?[jt]s|cjs|svelte|prisma|py|sh|json|toml|ya?ml)$|^\.env\.(?!schema$)\w+$/;
 const SKIP_DIRS = new Set([
 	".git", "node_modules", ".svelte-kit", ".svelte-kit-cap", ".vercel", "build", "build-cap",
 	"dist", "ios", "android", "_rapper", "_siblings", ".wt", ".test", ".playwright-mcp",
@@ -129,9 +130,11 @@ const schemaKeys = [...schemaSrc.matchAll(KEY_LINE)].map((m) => m[1]);
 const bitwardenKeys = [...schemaSrc.matchAll(/^(\w+)=bitwarden\(/gm)].map((m) => m[1]);
 if (schemaKeys.length === 0) fail(`${SCHEMA} declares no keys — this proves nothing.`);
 
-// -p resolves from the schema ALONE. A value already sitting in .env would
-// otherwise win over Bitwarden, and a rotated secret would never arrive.
-const load = varlock(["load", "--format", "json", "-p", SCHEMA]);
+// Resolved as `varlock run` resolves (schema, then the APP_ENV overlay), minus
+// the old .env: a value left in it would beat Bitwarden, so a rotated secret
+// would never arrive and a dev URL would ride into a prod build.
+rmSync(ENV, { force: true });
+const load = varlock(["load", "--format", "json"]);
 if (load.status !== 0) fail(`varlock could not resolve ${SCHEMA}:\n${load.stderr || load.stdout}`);
 const resolved = JSON.parse(load.stdout);
 

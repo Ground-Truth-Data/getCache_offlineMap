@@ -4,82 +4,7 @@
    src/app.css imports mobile.css globally, so every --rt-* token resolves
    here free; new values below are the ones mobile has no equivalent for. */
 
-/* ON :root, NOT .admin-shell: that class is worn by only some admin pages, so scoping here leaves the rest resolving every --at-* to nothing. */
-:root {
-	/* Depths, darkest at back, equal R/G/B — warmth comes from gold/rust ON the
-	   black, not the black itself. THE STEPS ARE WHAT MAKE IT A STACK: at one hex
-	   apart the sheet, the head band and a hovered row were the same surface to
-	   the eye, so nothing on the screen read as lifted and the grid looked
-	   printed rather than built. Each step below is visible at arm's length and
-	   they stay in this order — sheet, panel, band, hover, raised. */
-	--at-bg: #0c0c0c;
-	--at-panel: #141414;
-	--at-inset: #181818;
-	--at-hover: #1f1f1f;
-	/* Opaque, not translucent: a frozen cell must hide the columns passing under
-	   it. Must also out-rank --at-hover, or a ticked row stops reading as ticked
-	   under the pointer — which is when it is most often read. */
-	--at-selected: #2d2a1e;
-
-	/* Neutral white-alpha, not --rt-border (gold at 18%, reads as a deliberate highlight — wrong for a divider repeating on a hundred rows). */
-	--at-line: rgba(255, 255, 255, 0.08);
-	--at-line-strong: rgba(255, 255, 255, 0.16);
-
-	/* Gold = "a control you act with"; rust (--at-accent) marks identifiers.
-	   NOT for a gold BUTTON's fill (that's `rt-gold-btn` in src/app.css) — this is a flat tint, e.g. a dropdown's hover highlight. */
-	--at-gold: #eab627;
-	--at-panel-2: #242424; /* raised surface inside a panel — search boxes, selects, page-size input, the Σ band */
-	--at-accent: var(--rt-rust);
-	--at-accent-bright: var(--rt-meta);
-
-	/* Headers: white at rest (serious, plain), gold on hover (a control — clicking sorts). NOT rust, which belongs on meta/counts. */
-	--at-th: var(--rt-fg);
-	--at-th-hover: var(--rt-gold-1);
-	--at-th-arrow: rgba(255, 255, 255, 0.28); /* one per column, 35 of them at rest — an affordance, never a mark the eye has to skip */
-
-	--at-fg: var(--rt-fg);
-	/* Not the phone palette's muted values — those are a short label at arm's length; this is whole columns a metre away, below the legibility floor. --at-muted-2 is an alias so both call sites move together if they ever diverge. */
-	--at-muted: #8f8a76;
-	--at-muted-2: var(--at-muted);
-
-	/* Sage is Get Cache's "nature" accent, not a status colour, so match-confidence green is genuinely new here. */
-	--at-match-hi: #8fbf6a;
-	--at-go: #4ade3a;
-	--at-danger: var(--rt-danger);
-
-	--at-radius: 14px;
-	--at-radius-sm: 8px;
-
-	/* DEPTH HAS TWO DIRECTIONS AND NO OTHERS: the light is overhead, so a plane
-	   lifted off the grid casts DOWNWARD and a frozen column's edge casts
-	   RIGHT, across the columns sliding beneath it. The three lifts are how far
-	   a thing has left the sheet — 1 is still pinned inside the grid (a frozen
-	   edge, a summary band), 2 is the head band every row passes under, 3 has
-	   left the grid entirely (a dialog, a dropdown, the filters panel). */
-	--at-lift-1: 6px 0 8px -6px rgb(0 0 0 / 90%);
-	--at-lift-2: 0 12px 16px -8px rgb(0 0 0 / 72%);
-	--at-lift-3: 0 24px 48px -12px rgb(0 0 0 / 80%);
-	/* A surface reads as LIT rather than merely paler once its top edge catches
-	   the light. Far quieter than the 45% a gold segment wears: this edge runs
-	   the width of every header cell on the page, and at that length a
-	   highlight people notice is a highlight they read as a border. */
-	--at-edge-hi: inset 0 1px 0 rgb(255 255 255 / 6%);
-
-	/* DENSITY: these are DATA screens — an admin scanning a thousand rows
-	   compares them to each other, so row count matters more than size. At
-	   38px a 900px viewport holds ~23 rows; at 65px, ~13. Tokens, not
-	   literals, since pages still differ in MARKUP (grid divs vs <table>). */
-	--at-font: 13.6px;
-	--at-cell-pad-y: 6.4px;
-	--at-cell-pad-x: 8px;
-	/* STILL THE DATA'S SIZE — a bigger header would cost row height, which this
-	   batch spent four cards buying back. The authority comes from the three
-	   axes that are free: heavier, tracked, and sans against the data's mono. */
-	--at-th-font: 13.6px;
-	--at-th-weight: 700;
-	--at-th-track: 0.03em;
-
-}
+@import "./adminTokens.css";
 
 /* Nothing else paints the page floor: admin layout has no style block, body/html are transparent, so the browser default would show through above the header. */
 :root:has(.admin-shell) body {
@@ -439,19 +364,16 @@
 	color: var(--at-muted);
 }
 
-/* THE WRAPPER IS THE TABLE'S SCROLL BOX, both axes: the shared theme sets
-   `html, body { overflow-x: clip }`, so columns past the window edge need
-   this box to reach them, and header + Σ row must travel with the columns.
-   `max-height` IS LOAD-BEARING: any overflow but `visible` makes this the
-   sticky containing block, so if it grew taller than the viewport its top
-   (and the pinned header) would scroll away — capped at one viewport, the
-   top is on screen whenever the bottom is. Only the immediate table wrapper
-   takes this; a page-level wrapper holding the title/toolbar too would
-   scroll the chrome with the rows. */
+/* THE WRAPPER SCROLLS SIDEWAYS ONLY; the page owns vertical scroll. The theme
+   clips `html, body` on x, so wide columns need this box — but a box that also
+   scrolled vertically was a second scroller: the header pinned to the BOX's
+   top, mid-screen, and every swipe had to drain one scroller before the other.
+   Any overflow here makes this the sticky containing block, so `top: 0` cannot
+   reach the viewport; the head band rides the page's scroll instead (below). */
 .admin-tablewrap {
-	overflow: auto;
-	max-height: 100dvh;
+	overflow: auto hidden;
 	overscroll-behavior-x: contain; /* a sideways swipe stops at the table's edge instead of bubbling into the page's clipped (rubber-banding) x-axis */
+	view-timeline: --admin-head block;
 }
 /* Page-level wrappers stay open — a page-scoped overflow here outranks the shared rule and reads as "sticky is broken". */
 .wrap:has(.admin-table),
@@ -491,11 +413,23 @@ main:has(.admin-table) {
    frozen header cell declares its own box-shadow (an opaque floor and the seam
    its edge casts) and box-shadow is one property with one winner, so the plane
    reaches those cells only by being repeated in that list. */
+/* Scroll-driven, so it moves on the compositor with the page — a script
+   copying scrollY lags a frame and jitters. From the wrapper's top crossing the
+   viewport top to its bottom crossing it, the band slides down exactly as far
+   as the page scrolls; `--adt-vh` is the wrapper's height, set by script. */
 .admin-table thead tr:not(.subtotal) th {
 	position: sticky;
 	top: 0;
 	z-index: 5;
 	box-shadow: var(--at-lift-2), var(--at-edge-hi);
+	animation: admin-head-pin linear both;
+	animation-timeline: --admin-head;
+	animation-range: exit-crossing 0% exit-crossing 100%;
+}
+@keyframes admin-head-pin {
+	to {
+		translate: 0 var(--adt-vh, 0px);
+	}
 }
 /* The head band's look reaches every cell in it, frozen or not. Stated here
    because `.admin-table th` below would otherwise hand the band the same

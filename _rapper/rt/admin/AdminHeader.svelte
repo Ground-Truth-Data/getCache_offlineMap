@@ -15,6 +15,7 @@ import { dev } from "$app/environment";
 import { goto } from "$app/navigation";
 import { onMount } from "svelte";
 import { lastTool, rememberTool } from "./lastTool";
+import "./adminTokens.css";
 import { tableCount } from "./tableCounts.svelte";
 import { page } from "$app/state";
 import Icon from "$gc/Icon.svelte";
