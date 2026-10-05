@@ -166,7 +166,7 @@ export const RETREEVER_HOME = `${RETREEVER_TOOL}/orgs`;
 export const FOUNDR_DASH = "/foundr_dash";
 export const FOUNDR_TOOL = `${FOUNDR_DASH}/tool`;
 export const FOUNDR_TABLE = `${FOUNDR_DASH}/table`;
-export const FOUNDR_HOME = `${FOUNDR_TOOL}/mlfindr`;
+export const FOUNDR_HOME = `${FOUNDR_TOOL}/modelpicks`;
 const FOUNDR_REPORT = `${FOUNDR_DASH}/report`;
 
 /** Get Cache's namespace, and where a login that states no destination lands. */
@@ -499,11 +499,12 @@ export const ADMIN_PARENTS: AdminParent[] = [
 					"The focused site's mapping decisions — the form that writes {s}3MissMeta.json",
 			},
 			{
-				key: "mlfindr",
+				key: "modelpicks",
 				scopedToSite: true,
-				label: "MLFindr",
-				href: `${FOUNDR_TOOL}/mlfindr`,
-				title: "Foundr's ranked candidate worklist — reads Foundr/mlFindr/data",
+				label: "Model picks",
+				href: `${FOUNDR_TOOL}/modelpicks`,
+				title:
+					"mlFindr's and Jev's suggestions for the same unmapped paths, side by side",
 			},
 			// Chris's benchmark: a person against mlFindr and Jev on decided paths.
 			{
