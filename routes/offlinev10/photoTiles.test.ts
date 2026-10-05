@@ -37,7 +37,7 @@ beforeEach(async () => {
 describe("photo close-up tiles", () => {
 	it("counts each blob's tiles, shared ones for both", async () => {
 		const sized = await photoTileBytes([A, B]);
-		expect(sized.get("a")).toEqual({ tiles: keysOf(A).length, bytes: keysOf(A).length * 10 });
+		expect(sized.get("a")).toMatchObject({ tiles: keysOf(A).length, bytes: keysOf(A).length * 10 });
 		expect(sized.get("b")?.tiles).toBe(keysOf(B).length);
 	});
 

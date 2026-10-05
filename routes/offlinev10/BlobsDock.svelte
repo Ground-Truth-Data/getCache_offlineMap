@@ -88,8 +88,11 @@ const report = (r: Region) => {
 					...specOf(r),
 					radiusKm: PHOTO_SPEC.radiusKm,
 					size: p ? kb(p.bytes) : "not baked yet",
+					addedByThisBlob: ownsPhoto(r) ? "its own photo" : "reuses an earlier blob's photo, added none",
 					took: p?.ms == null ? "not timed" : secs(p.ms),
-					closeUp: p ? `${p.closeUp.tiles} raw z${p.zoom} tiles · ${kb(p.closeUp.bytes)}` : "not baked yet",
+					closeUp: p
+						? `${p.closeUp.tiles} raw z${p.zoom} tiles (${kb(p.closeUp.bytes)}) covered · ${closeAddedTiles(r)} added (${kb(closeAddedBytes(r))})`
+						: "not baked yet",
 				}
 			: "follow-me · no pin, no photo",
 		fetched: {
@@ -118,11 +121,14 @@ onDestroy(() => eyeBlink.destroy());
 const photoTotal = $derived(Object.values(photos).reduce((a, b) => a + b.bytes, 0));
 
 const used = $derived(bytes + photoTotal);
-// What the blob ADDED, not what it covers.
-const rowBytes = (r: Region): number => {
-	const p = photoOf(r);
-	return blobBytes(r.newBytes ?? r.bytes, p && p.bytes + p.closeUp.bytes);
-};
+/** The earliest blob on a photo put it on the phone; a later one on the same photo reuses it and added nothing. */
+const ownsPhoto = (r: Region): boolean =>
+	!!r.photoKey && !regions.some((o) => o.id !== r.id && o.photoKey === r.photoKey && (o.at < r.at || (o.at === r.at && o.id < r.id)));
+const photoAdded = (r: Region): number => (ownsPhoto(r) ? (photoOf(r)?.bytes ?? 0) : 0);
+const closeAddedTiles = (r: Region): number => (ownsPhoto(r) ? (photoOf(r)?.closeUp.addedTiles ?? 0) : 0);
+const closeAddedBytes = (r: Region): number => (ownsPhoto(r) ? (photoOf(r)?.closeUp.addedBytes ?? 0) : 0);
+// What the blob ADDED to the phone, not what it covers.
+const rowBytes = (r: Region): number => blobBytes(r.newBytes ?? r.bytes, photoAdded(r) + closeAddedBytes(r));
 const broken = $derived(regions.filter((r) => (missing[r.id] ?? 0) > 0).length);
 const nameOf = (r: Region): string => (r.place ? placeLabel(r.place) : r.id);
 const secs = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
@@ -233,8 +239,13 @@ onMount(() => {
 							<span class="ico">🛰️</span>
 							<span class="lname">photo</span>
 							{#if r.photoKey}
-								<span class="ldetail">{PHOTO_SPEC.radiusKm} km · {specOf(r).canvasPx} px · {specOf(r).name} z{specOf(r).zoom}</span>
-								<span class="lbytes">{#if photoOf(r)?.ms != null}<b class="took">{secs((photoOf(r) as PhotoInfo).ms as number)}</b>{" · "}{/if}{photoOf(r) == null ? "—" : kb((photoOf(r) as PhotoInfo).bytes)}</span>
+								{#if ownsPhoto(r)}
+									<span class="ldetail">{PHOTO_SPEC.radiusKm} km · {specOf(r).canvasPx} px · {specOf(r).name} z{specOf(r).zoom}</span>
+									<span class="lbytes">{#if photoOf(r)?.ms != null}<b class="took">{secs((photoOf(r) as PhotoInfo).ms as number)}</b>{" · "}{/if}{photoOf(r) == null ? "—" : kb((photoOf(r) as PhotoInfo).bytes)}</span>
+								{:else}
+									<span class="ldetail">reuses an earlier blob's photo</span>
+									<span class="lbytes">+0 KB</span>
+								{/if}
 							{:else}
 								<span class="ldetail">follow-me · no pin, no photo</span>
 								<span class="lbytes">—</span>
@@ -245,8 +256,8 @@ onMount(() => {
 								<span class="dir">in</span>
 								<span class="ico">🔍</span>
 								<span class="lname">close-up</span>
-								<span class="ldetail">{photoOf(r)?.closeUp.tiles ?? 0} raw z{specOf(r).zoom} tiles · from z{specOf(r).zoom - 0.5}</span>
-								<span class="lbytes">{photoOf(r) == null ? "—" : kb((photoOf(r) as PhotoInfo).closeUp.bytes)}</span>
+								<span class="ldetail">{closeAddedTiles(r)} new of {photoOf(r)?.closeUp.tiles ?? 0} raw z{specOf(r).zoom} tiles</span>
+								<span class="lbytes">{photoOf(r) == null ? "—" : `+${kb(closeAddedBytes(r))}`}</span>
 							</div>
 						{/if}
 						<div class="layer on">

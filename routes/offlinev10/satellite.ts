@@ -22,6 +22,7 @@ import { getEach } from "./download";
 import {
 	AreaGone,
 	claimArea,
+	type CloseUp,
 	getPhotoTiles,
 	notePhotoBytes,
 	photoTileBytes,
@@ -82,7 +83,7 @@ export interface PhotoInfo {
 	/** download + bake; absent on a photo baked before it was timed */
 	ms?: number;
 	/** The raw source tiles kept for the close-up; they live in the tile store, so its budget already counts them. */
-	closeUp: { tiles: number; bytes: number };
+	closeUp: CloseUp;
 }
 
 const WORLD = PHOTO_SOURCES[0];
@@ -91,7 +92,14 @@ const WORLD = PHOTO_SOURCES[0];
 export async function photoInfo(): Promise<Record<string, PhotoInfo>> {
 	const regions = await regionsSnapshot().regions;
 	const [meta, close] = await Promise.all([satImageMeta(), photoTileBytes(regions)]);
-	const closeByKey = new Map(regions.flatMap((r) => (r.photoKey ? [[r.photoKey, close.get(r.id)] as const] : [])));
+	// Blobs sharing a photo share its tiles: the covered totals agree, and what was added is the sum of what each credited.
+	const closeByKey = new Map<string, CloseUp>();
+	for (const r of regions) {
+		const c = r.photoKey ? close.get(r.id) : undefined;
+		if (!r.photoKey || !c) continue;
+		const have = closeByKey.get(r.photoKey);
+		closeByKey.set(r.photoKey, have ? { ...c, addedTiles: have.addedTiles + c.addedTiles, addedBytes: have.addedBytes + c.addedBytes } : c);
+	}
 	const out: Record<string, PhotoInfo> = {};
 	let total = 0;
 	for (const m of meta) {
@@ -102,7 +110,7 @@ export async function photoInfo(): Promise<Record<string, PhotoInfo>> {
 			zoom: m.zoom ?? WORLD.zoom,
 			canvasPx: m.canvasPx ?? WORLD.canvasPx,
 			ms: m.ms,
-			closeUp: closeByKey.get(m.key) ?? { tiles: 0, bytes: 0 },
+			closeUp: closeByKey.get(m.key) ?? { tiles: 0, bytes: 0, addedTiles: 0, addedBytes: 0 },
 		};
 	}
 	notePhotoBytes(total);

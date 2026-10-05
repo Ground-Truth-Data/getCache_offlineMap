@@ -1,7 +1,7 @@
 /** Which photo a new blob uses: the nearest existing photo CENTRE within the reuse radius, else its own. */
 import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { PHOTO_COVERAGE_RADIUS_KM, PHOTO_EDGE_MARGIN_KM, PHOTO_REUSE_KM, satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
+import { PHOTO_COVERAGE_RADIUS_KM, PHOTO_EDGE_MARGIN_KM, PHOTO_REUSE_KM, photoTilesFor, satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
 import { kmToDegSpan } from "../../lib/shared/kmGeo";
 const dropped: string[] = [];
 vi.mock("../../lib/onPhone/satellite/satelliteImage", async (orig) => ({
@@ -11,8 +11,9 @@ vi.mock("../../lib/onPhone/satellite/satelliteImage", async (orig) => ({
 	},
 }));
 
+import { PHOTO_SOURCES } from "../../lib/onPhone/satellite/photoSources";
 import { setBudgetMb } from "./budget";
-import { choosePhoto, deleteRegion, putRegion, type Region, regionId, wipe } from "./store";
+import { allTileKeys, choosePhoto, deleteRegion, PHOTO_PREFIX, photoTileBytes, putPhotoTiles, putRegion, type Region, regionId, wipe } from "./store";
 import { regionRange } from "./tiles";
 
 const LAT = 49.4991;
@@ -87,5 +88,47 @@ describe("deleting a blob whose photo another still uses", () => {
 		expect(dropped).toEqual([]);
 		await deleteRegion(b.id);
 		expect(dropped).toEqual([b.photoKey]);
+	});
+});
+
+describe("what a blob's close-up put on the phone", () => {
+	const Z = PHOTO_SOURCES[0].zoom;
+	const tilesOf = (c: [number, number]) => photoTilesFor(c, Z).map((t) => `${Z}/${t.x}/${t.y}`);
+
+	beforeEach(async () => {
+		await wipe();
+		setBudgetMb(1024);
+	});
+
+	async function store(r: Region): Promise<void> {
+		await putRegion(r);
+		const have = new Set((await allTileKeys()).values());
+		const fresh = tilesOf(r.photoCenter as [number, number]).filter((k) => !have.has(PHOTO_PREFIX + k));
+		await putPhotoTiles(fresh.map((k) => [k, new ArrayBuffer(10)]), r.id);
+	}
+
+	it("a blob reusing an earlier photo added nothing; the one that fetched it added every tile", async () => {
+		const a = { ...born(kmEast(0), []), at: 1 };
+		const b = { ...born(kmEast(0.5), [a]), at: 2 };
+		await store(a);
+		await store(b);
+		const sized = await photoTileBytes([b, a]);
+		const n = tilesOf(a.photoCenter as [number, number]).length;
+		expect(sized.get(a.id)).toEqual({ tiles: n, bytes: n * 10, addedTiles: n, addedBytes: n * 10 });
+		expect(sized.get(b.id)).toEqual({ tiles: n, bytes: n * 10, addedTiles: 0, addedBytes: 0 });
+	});
+
+	it("a photo over partly shared ground adds only the tiles the earlier one lacked", async () => {
+		const a = { ...born(kmEast(0), []), at: 1 };
+		const c = { ...born(kmEast(1.5), [a]), at: 2 };
+		expect(c.photoKey).not.toBe(a.photoKey);
+		await store(a);
+		await store(c);
+		const sized = await photoTileBytes([a, c]);
+		const cTiles = tilesOf(c.photoCenter as [number, number]);
+		const shared = cTiles.filter((k) => tilesOf(a.photoCenter as [number, number]).includes(k)).length;
+		expect(shared).toBeGreaterThan(0);
+		expect(sized.get(c.id)?.tiles).toBe(cTiles.length);
+		expect(sized.get(c.id)?.addedTiles).toBe(cTiles.length - shared);
 	});
 });

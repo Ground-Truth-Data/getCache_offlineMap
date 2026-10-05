@@ -264,13 +264,25 @@ function photoKeysOf(r: Region): string[] {
 	return photoTilesFor(r.photoCenter, z).map((t) => `${PHOTO_PREFIX}${z}/${t.x}/${t.y}`);
 }
 
-/** Bytes of each blob's photo tiles, one cursor pass; shared tiles count for every blob covering them. */
-export async function photoTileBytes(regions: readonly Region[]): Promise<Map<string, { tiles: number; bytes: number }>> {
+/** What a blob's photo tiles are: `tiles`/`bytes` all it covers, `addedTiles`/`addedBytes` only those no earlier blob already covers — what it put on the phone. One cursor pass. */
+export interface CloseUp {
+	tiles: number;
+	bytes: number;
+	addedTiles: number;
+	addedBytes: number;
+}
+
+export async function photoTileBytes(regions: readonly Region[]): Promise<Map<string, CloseUp>> {
 	const owners = new Map<string, string[]>();
-	const out = new Map<string, { tiles: number; bytes: number }>();
-	for (const r of regions) {
-		out.set(r.id, { tiles: 0, bytes: 0 });
-		for (const k of photoKeysOf(r)) owners.set(k, [...(owners.get(k) ?? []), r.id]);
+	const firstToCover = new Map<string, string>();
+	const out = new Map<string, CloseUp>();
+	// Earliest first: the blob that came first fetched the tile, the later one found it on disk.
+	for (const r of [...regions].sort((a, b) => a.at - b.at || a.id.localeCompare(b.id))) {
+		out.set(r.id, { tiles: 0, bytes: 0, addedTiles: 0, addedBytes: 0 });
+		for (const k of photoKeysOf(r)) {
+			owners.set(k, [...(owners.get(k) ?? []), r.id]);
+			if (!firstToCover.has(k)) firstToCover.set(k, r.id);
+		}
 	}
 	const db = await open();
 	const st = db.transaction(TILES, "readonly").objectStore(TILES);
@@ -279,10 +291,16 @@ export async function photoTileBytes(regions: readonly Region[]): Promise<Map<st
 		req.onsuccess = () => {
 			const cur = req.result;
 			if (!cur) return resolve();
+			const size = (cur.value as ArrayBuffer).byteLength;
 			for (const id of owners.get(cur.key as string) ?? []) {
-				const o = out.get(id) as { tiles: number; bytes: number };
+				const o = out.get(id) as CloseUp;
 				o.tiles += 1;
-				o.bytes += (cur.value as ArrayBuffer).byteLength;
+				o.bytes += size;
+			}
+			const first = out.get(firstToCover.get(cur.key as string) ?? "");
+			if (first) {
+				first.addedTiles += 1;
+				first.addedBytes += size;
 			}
 			cur.continue();
 		};
