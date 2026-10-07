@@ -239,14 +239,14 @@ $effect(() => {
 							<span class="ldetail">tap → {r.photoKey ? "photo" : "map"} on screen</span>
 							<span class="lbytes">{r.msWait == null ? "—" : secs(r.msWait)}</span>
 						</div>
-						<div class="layer on">
+						<div class="layer on" title="map tiles: {r.fetched} new files fetched and stored{r.newBytes == null ? '' : ` (${mb(r.newBytes)})`}; {r.tiles - r.fetched} of this blob's {r.tiles} tiles were already on the phone from earlier blobs and cost nothing">
 							<span class="dir">in</span>
 							<span class="ico">🗺️</span>
 							<span class="lname">tiles</span>
 							<span class="ldetail">{r.fetched} new files · {r.tiles - r.fetched} already there</span>
 							<span class="lbytes">{r.newBytes == null ? "—" : `+${mb(r.newBytes)}`}</span>
 						</div>
-						<div class="layer" class:on={photoOf(r) != null}>
+						<div class="layer" class:on={photoOf(r) != null} title={!r.photoKey ? "follow-me blob: no pin, no photo" : ownsPhoto(r) ? "its own satellite photo, baked once and stored as one file" : "a pin within 1 km of an earlier blob's photo centre reuses that photo, so this blob stored no photo of its own"}>
 							<span class="dir">in</span>
 							<span class="ico">🛰️</span>
 							<span class="lname">photo</span>
@@ -264,7 +264,7 @@ $effect(() => {
 							{/if}
 						</div>
 						{#if r.photoKey}
-							<div class="layer" class:on={(photoOf(r)?.closeUp.tiles ?? 0) > 0}>
+							<div class="layer" class:on={(photoOf(r)?.closeUp.tiles ?? 0) > 0} title="raw satellite tiles kept for the close-up: {closeAddedTiles(r)} new files stored ({kb(closeAddedBytes(r))}); {(photoOf(r)?.closeUp.tiles ?? 0) - closeAddedTiles(r)} of the {photoOf(r)?.closeUp.tiles ?? 0} under this photo were already on the phone">
 								<span class="dir">in</span>
 								<span class="ico">🔍</span>
 								<span class="lname">close-up</span>
