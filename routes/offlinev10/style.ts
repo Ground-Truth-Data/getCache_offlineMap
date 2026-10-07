@@ -259,17 +259,7 @@ export function buildStyle(origin: string): StyleSpecification {
 		},
 	];
 
-	// The border is gone before the blob's own roads fill the screen.
-	const BORDER_GONE_Z = 9;
-	const fade = (hi: number): ExpressionSpecification => [
-		"interpolate",
-		["linear"],
-		["zoom"],
-		BORDER_GONE_Z - 1,
-		hi,
-		BORDER_GONE_Z,
-		0,
-	];
+	// At every zoom: inside a blob the data ends at a cliff, and the line is the only thing that says so.
 	const regions: LayerSpecification[] = [
 		{
 			id: "regions-line",
@@ -277,7 +267,7 @@ export function buildStyle(origin: string): StyleSpecification {
 			source: REGIONS,
 			paint: {
 				"line-color": GOLD,
-				"line-opacity": fade(0.85),
+				"line-opacity": 0.85,
 				"line-width": 0.5,
 			},
 		},

@@ -145,8 +145,8 @@ const ago = (t: number) => {
 // A pin blob wins over a follow-me blob, which keeps writing wherever the walker is; within a bucket, newest first.
 const ordered = $derived(
 	[...regions].sort((a, b) => {
-		const ap = a.photoKey ? 0 : 1;
-		const bp = b.photoKey ? 0 : 1;
+		const ap = a.pin ? 0 : 1;
+		const bp = b.pin ? 0 : 1;
 		return ap !== bp ? ap - bp : b.at - a.at;
 	}),
 );
@@ -215,7 +215,7 @@ $effect(() => {
 				{@const focused = i === 0}
 				<div class="row" class:focused class:other={!focused}>
 					{#if focused}
-						<span class="focustag">● FOCUSED — LAST PIN BLOB</span>
+						<span class="focustag">● FOCUSED — {r.pin ? "LAST PIN BLOB" : "NEWEST BLOB · NO PIN"}</span>
 					{/if}
 					<div class="row-top">
 						<span class="dot {(missing[r.id] ?? 0) > 0 ? 'evictable' : missing[r.id] === 0 ? 'kept' : 'unknown'}" title={health(r)}></span>
