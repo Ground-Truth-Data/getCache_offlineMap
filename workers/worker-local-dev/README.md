@@ -6,7 +6,7 @@ and `node_modules`, touches nothing above this folder.
 
 ```
 GET /{z}/{x}/{y}.pbf      one MVT tile (range reads into planet.pmtiles)
-GET /pack?lng=&lat=       every tile for one pin's area, packed into ONE response
+GET /satellite/{z}/{x}/{y}.jpg  one MapTiler satellite-v2 tile — proxied so the key stays server-side
 GET /fires?lng=&lat=&km=  NASA FIRMS hotspots for one disc — proxied so MAP_KEY stays server-side
 GET /hospitals?lng=&lat=&km=  WORLD hospitals within km (default 200, max 500) of a point, from the pack bundled in the Worker; X-Radius-Km says what was served
 ```
@@ -49,8 +49,8 @@ the dev Worker; Cloudflare then enforces the prod/dev split.
    ```bash
    rclone copy 20260601.pmtiles r2:offline-tiles/planet.pmtiles --progress
    ```
-4. ⚠️ The object key must equal `PMTILES_KEY` / `PACK_PMTILES_KEY` in
-   `wrangler.toml` — a mismatch reads as "no tiles", no error.
+4. ⚠️ The object key must equal `PMTILES_KEY` in `wrangler.toml` — a mismatch
+   reads as "no tiles", no error.
 
 ## The three folders
 

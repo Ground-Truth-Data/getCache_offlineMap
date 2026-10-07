@@ -9,7 +9,7 @@ can never disagree about where a feature's blobs go.
 
 🗜️ A line saves roads only — no satellite photo, ever, however long the line is.
 🗜️ Anchors along a line must sit close enough that consecutive discs overlap.
-🗜️ One point anywhere in a feature set cancels the corridor and restores photos.
+🗜️ At most `MAX_ANCHORS_PER_FEATURE` (10) anchors per feature; a longer one is saved in patches.
 
 ## Where the blobs go, per geometry
 
@@ -18,25 +18,18 @@ can never disagree about where a feature's blobs go.
 | Point | one, at the point | it is its own answer |
 | Line | sampled ALONG it, every `LINE_STEP_KM` | one midpoint leaves the ends uncovered |
 | Polygon | ONE, at the area-weighted centroid | deters drawing a giant polygon to vacuum a huge area |
-| PDF / overlay | four, at the `overlayBounds` corners | 30 km discs from the corners fill the middle in |
+| PDF / overlay | four, at the `overlayBounds` corners | blobs from the corners fill the middle in |
 
 Overlap between anchors is expected and free — they dedup downstream by
 `satImageKey`, and tile discs share one global deduped pile. Nothing bakes twice.
 
 ## The corridor: roads only, no photo
 
-A line sets `corridor: true` purely from its geometry type, at the host port
-boundary (`retreeverPorts.ts`). That flag does two things:
-
-- **No satellite.** `blobService.ts` queues the blob with `photo: !p.corridor`.
-- **Free against the photo budget.** A corridor carries no photo, so it costs 0,
-  and counts complete with tiles alone.
-
-**One point wins.** If several features reference the same area, `corridor` stays
-true only while EVERY one of them is a line — a single point forces the full
-photo pack. The live-GPS anchor is always `corridor: false`: a point earns its photo.
-
-A corridor draws as a blob-grid footprint, never a pin marker.
+A line (or a plot pin) sets `corridor: true` at the host port boundary
+(`retreeverPorts.ts`), and `blobService.ts` queues its blobs with
+`photo: !p.corridor`. A corridor carries no photo, so it costs only its tiles
+against the 1 GB budget. A spot already on disk or in the queue is not queued
+again, so the first feature to claim a spot decides whether it has a photo.
 
 ## The step: 1.6× the radius of the disc that must stay continuous
 
@@ -47,12 +40,11 @@ LINE_STEP_KM = GRID_RADIUS_KM * 1.6   // 30 km road disc → 48 km
 The 1.6 factor is the ribbon rule: consecutive discs overlap rather than leaving
 a gap between them. **Which radius feeds it must match what the line actually
 bakes** — the road disc, never the 2 km satellite disc a line does not fetch
-(that spacing put 28 anchors on an 86 km line where 3 cover the ground). If a
-line ever earns photos, the step becomes a per-disc choice again.
+(that spacing puts 28 anchors on an 86 km line where 3 cover the ground).
 
 ## Drawing a line
 
-From the `STROKE` dial board in `mapDraw.ts` — the weights are a FAMILY, judged
+From the `STROKE` dial board in `getCache_OnlineMap/lib/draw/drawStyle.ts` — the weights are a FAMILY, judged
 by ratio, not absolute value:
 
 | | line | casing |

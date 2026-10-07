@@ -93,7 +93,7 @@ cache, painted by the page, never fetched by it.
 ```
   the tiles BUCKET            the tiles WORKER                    the PHONE
   ───────────────             ────────────────                    ─────────
-  R2 bucket "offline-tiles"   Cloudflare Worker "offline-tiles"    MapLibre GL 5
+  R2 bucket "offline-tiles"   Cloudflare Worker "offline-tiles"    MapLibre GL 6
   one object:                 pmtiles 4.4 + fflate                @protomaps/basemaps 5.7 DARK style
   planet.pmtiles              GET /{z}/{x}/{y}.pbf                IndexedDB, one store keyed "z/x/y"
   (Protomaps v4 planet build) 200 = tile · 204 = empty ocean       custom protocol v10://planet/{z}/{x}/{y}
@@ -107,18 +107,18 @@ There is ONE bucket and three deployments of the same Worker:
 |---|---|---|
 | `worker-cloud-prod` | https://tiles-prod.getcache.org | the Worker on Cloudflare, prod route |
 | `worker-cloud-dev` | https://tiles-dev.getcache.org | same Worker, dev route (the default) |
-| `worker-local-dev` | http://localhost:8787 | `wrangler dev` on your Mac, real bucket behind it |
+| `worker-local-dev` | http://tiles-local.getcache.org:8787 | `wrangler dev` on your Mac, real bucket behind it |
 
-Worker source: `workers/worker-cloud-dev/src/index.ts` (the prod and local
-folders are its twins — never delete one); bucket binding and routes in
-`wrangler.toml` beside it.
+Worker source: `workers/worker-local-dev/src/index.ts` — edit only there; the
+two cloud folders are what each tier is running (never delete one). Bucket
+binding and routes in `wrangler.toml` beside it.
 
 | package | version | where | what it is |
 |---|---|---|---|
-| [maplibre-gl](https://github.com/maplibre/maplibre-gl-js) | 5.24.0 | phone, offline preview | the renderer |
+| [maplibre-gl](https://github.com/maplibre/maplibre-gl-js) | 6.11 | phone, offline preview | the renderer |
 | [@protomaps/basemaps](https://github.com/protomaps/basemaps) | 5.7.2 | phone | the DARK style and the planet's tile schema |
 | [pmtiles](https://github.com/protomaps/pmtiles) | 4.4.1 | Worker | reads one tile out of `planet.pmtiles` by ranged read |
-| [fflate](https://github.com/101arrowz/fflate) | 0.8.2 | Worker | gunzip for tiny tiles |
+| [fflate](https://github.com/101arrowz/fflate) | 0.8.3 | Worker | gunzip for tiny tiles |
 | [mapbox-gl](https://github.com/mapbox/mapbox-gl-js) | 3.24.0 | phone, online map only | the online renderer |
 
 `planet.pmtiles` is a Protomaps build from https://maps.protomaps.com/builds/,
@@ -151,8 +151,9 @@ made from OpenStreetMap. The world base under the blobs is Natural Earth.
   features (the outline, a highlight) is fine.
 - **The satellite is ONE image per blob, never a raster tile pyramid** — a
   pyramid swaps tiles and vanishes below its min zoom.
-- **No provider satellite cached for offline.** Esri/Mapbox/Google ToS forbid
-  it. Only owned or openly-licensed imagery (USGS, EOX Sentinel-2, OSM).
+- **Only imagery licensed for offline storage is cached.** Esri/Mapbox/Google
+  ToS forbid it. The source is MapTiler satellite-v2 on a paid account
+  (`lib/onPhone/satellite/photoSources.ts`).
 
 ## Worker rules
 

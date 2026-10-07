@@ -17,9 +17,9 @@ and polygons added to the map. Repos:
 ```bash
 git clone https://github.com/Ground-Truth-Data/getCache_offlineMap
 cd getCache_offlineMap
-npm run build             # prebuild writes .env from .env.schema — ask me for a Bitwarden token
+cp .env.schema .env       # fill the two PUBLIC_GC_tiles_*_worker hosts — ask me for them
 npm install
-npm run dev
+npm run dev               # predev runs fetchAssets.sh for the basemap
 ```
 
 Then open <http://localhost:5173/offlinev10>.
@@ -49,8 +49,7 @@ render as fast as possible.
 [What blobs are meant to look like](https://drive.google.com/file/d/1oriasZR-0QLkTWlDmD74hvC07HX9tGMt/view?usp=sharing):
 a jagged disc of satellite photo and vector roads around a pin. Vector tiles
 come from a Cloudflare R2 bucket through a Cloudflare Worker (you run a local
-Worker to test); satellite photos come from whichever imagery source is
-sharpest where the pin sits; fires from the
+Worker to test); satellite photos from MapTiler through the same Worker; fires from the
 [NASA FIRMS API](https://firms.modaps.eosdis.nasa.gov/api). Everything lands in
 IndexedDB and renders with no network.
 
@@ -62,8 +61,8 @@ tier in the map's CONFIG card (`lib/worker/README.md`).
 
 **No keys are needed to work on this.** The default tier is `worker-cloud-dev`,
 already deployed and already holding every key. A local Worker without a
-`.dev.vars` still serves roads; only `/satellite` and `/fires` 500 there, and
-photos fall through to EOX automatically — blurrier, never blank. If you want
+`.dev.vars` still serves roads; only `/satellite` and `/fires` 500 there, so
+blobs bake with no photo and no fires. If you want
 those two routes locally, put a gitignored `workers/worker-local-dev/.dev.vars`
 with `GC_mapTiler_key=` and `GC_firms_map_key=` (ask Chris for the MapTiler one — the
 licence is per-account; FIRMS is free at firms.modaps.eosdis.nasa.gov).
@@ -84,7 +83,7 @@ attached to a stand-in produce confident wrong answers.
 | Layer | Source | Always on? | Radius per pin |
 |---|---|---|---|
 | Vector roads — plus water, town labels, hospital/campsite POIs, all in the same blob | One Cloudflare R2 bucket (`offline-tiles`) holding a full-planet OpenStreetMap extract (`planet.pmtiles`); the Worker range-reads it and serves one tile per request | highways and major roads yes; small roads and water only inside a disc from z11 / z10 | `RADIUS_KM` (`routes/offlinev10`) |
-| Satellite photo | The first row in `lib/onPhone/satellite/photoSources.ts` whose box holds the pin, baked on the phone: **USGS** NAIP aerial (~1 m/px, US only, no key) → **MapTiler** satellite-v2 (~1–2 m/px worldwide, paid, proxied through the Worker's `/satellite` route so the key stays a Worker secret) → **EOX** Sentinel-2 cloudless (~10 m/px, public, no key). A row that yields nothing hands over to the next, so a pin is never left blank | yes | 2 km per photo; photos along a line overlap into a ribbon (`lib/onPhone/satellite/satelliteImage.ts`) |
+| Satellite photo | **MapTiler** satellite-v2 at z17 (`lib/onPhone/satellite/photoSources.ts`), baked on the phone, proxied through the Worker's `/satellite` route so the key stays a Worker secret | yes | 2 km per photo; photos along a line overlap into a ribbon (`lib/onPhone/satellite/satelliteImage.ts`) |
 | Fires | NASA FIRMS — VIIRS on NOAA-20, NOAA-21 and Suomi-NPP, last 48 h, proxied through the Worker's `/fires` route so the API key stays a Worker secret | yes — `attachFireLayer` (`lib/onPhone/render/fireLayer.ts`) | 500 km (`lib/shared/fireContract.ts`) |
 | Hospitals | the Worker's `/hospitals` route, from the world list bundled in the Worker | yes | 500 km |
 
@@ -92,7 +91,7 @@ A phone holds at most 1 GB of offline preview data (`routes/offlinev10/budget.ts
 
 ## THE ONE RULE
 
-All map code belongs in THIS repo. Not in ReTreever, not split across both.
+All map code belongs in THIS repo. Not in a parent, not split across both.
 `getCache_OfflineMap` is a narrow name for a folder that also holds fires, hospitals
 and places — deliberate: this repo has the debugger, so code here can be
 watched while it runs. Do not propose renaming it or a second "shared map" repo.
@@ -124,16 +123,16 @@ import { attachFireLayer } from "$parent/siblings/getCache_OfflineMap/lib/onPhon
 | Map-UI door — `MapHostPorts { store, ui, gps, scenes?, q704? }` | `lib/shared/mapHostPorts.ts` — Get Cache's implementation: `getCache/src/lib/offline/host/retreeverMapPorts.ts` |
 
 Every `lib/mapUi` component takes a required `ports: MapHostPorts` prop; every
-store factory that needs the host takes it as a parameter. ReTreever's real
+store factory that needs the host takes it as a parameter. Get Cache's real
 store (`v2MapStore.svelte.ts`) is ASSIGNED to `MapHostStore` in
 `retreeverMapPorts.ts` — that assignment is the type-check at the boundary.
-The store stays in ReTreever on purpose — it IS the database. It comes in as
+The store stays in Get Cache on purpose — it IS the database. It comes in as
 `ports.store`.
 
 **Declared pair:** this child imports `getCache_OnlineMap` (mapDraw, areaLabels,
 safeMap, coord, safeMarker, …), declared in ReTreever's
 `childBoundary.test.ts` `DECLARED_CHILD_DEPS`, so the offline child ships WITH
-the online child (`_siblings/` in a clone).
+the online child (`_siblings/` in a published clone).
 
 ## Standing rules
 
@@ -153,12 +152,11 @@ the online child (`_siblings/` in a clone).
    client sends a header read from `.env` (beside `PUBLIC_GC_tiles_prod_worker`), the
    Worker rejects requests without it. The token ships in a public web bundle,
    so this is a fence, not a lock — the win is rotation. Build and test it
-   against `worker-local-dev`; no Cloudflare account needed.
+   against `worker-local-dev`.
 2. **THE MAP UI HAS NO HOST IN RAPPER.** `lib/mapUi/` and `lib/mapState/` are
-   mounted only by ReTreever, through `retreeverMapPorts.ts`. Five of them
-   (`SnakeRuler`, `userLocation`, `vertexDrag`, `overlayManager`,
-   `pinMarkers`) import `getCache_OnlineMap`, so they need that sibling beside
-   this one.
+   mounted only by Get Cache, through `retreeverMapPorts.ts`. `SnakeRuler` and
+   `TrackingStrip` import `getCache_OnlineMap`, so they need that sibling
+   beside this one.
 
 ## Test baseline — what red is NORMAL
 

@@ -17,7 +17,7 @@ in signal the cache is topped up, and the UI must say how old it is.
 | The pass | `routes/fires/fireService.ts`, started by the host's `(getcache)` layout with the blob centres |
 | Render layer | offline: `lib/onPhone/render/fireLayer.ts` (`attachFireLayer`), the Fires row in `lib/onPhone/render/wallLegend.ts` carries its ids; online: `getCache_OnlineMap/lib/fire/fireLayer.ts`, mounted by `MobMapPage.svelte` |
 
-ReTreever mounts the phone half through `retreeverPorts.ts`; this repo's
+Get Cache mounts the phone half through `retreeverPorts.ts`; this repo's
 rapper demo omits the `fires` port and never reaches for hotspots.
 
 **The phone must not re-derive geometry from raw detections on every pan.**
@@ -63,7 +63,7 @@ Footguns, all handled in `firesWorker.ts` and pinned by its tests:
 - The bbox is trimmed to a disc server-side; corners carry fires 40% past the
   stated radius.
 
-**Why no Postgres/PostGIS/cron** (the original spec): a province on fire is
+**Why no Postgres/PostGIS/cron**: a province on fire is
 ~18,000 hotspots, 2.2 MB raw, **~180 KB gzipped** — one photo. Data worthless
 at ~6 h does not justify a table and a second data path. The edge cache does
 the whole job. Revisit only if agency incident feeds (perimeter polygons)
@@ -86,14 +86,13 @@ ever land — CWFIS / NIFC WFIGS / EFFIS were specced and never built.
   3600; the response says 14400. The single largest staleness source we
   control, and it is a **dashboard** change, not code: Caching → Configuration
   → Browser Cache TTL → *Respect Existing Headers*. Still open.
-- **Two caches compound, they do not overlap.** The phone TTL was 1 h to
-  match the edge and produced `Last checked — 5h ago` with the app open. The
-  edge protects NASA; a phone re-asking costs a cache hit. Keep the phone TTL
-  short.
+- **Two caches compound, they do not overlap.** A phone TTL equal to the
+  edge's hour shows `Last checked — 5h ago` with the app open. The edge
+  protects NASA; a phone re-asking costs a cache hit. Keep the phone TTL short.
 - **A TTL fixes STALE data, never WRONG data.** When a change alters what a
   correct answer looks like, bump **both** `FIRE_ANSWER_VERSION` (Worker
-  cache key) and `FIRE_CACHE_VERSION` (phone). The
-  `DAY_RANGE=1` empties took four hours per cell to clear because nobody did.
+  cache key) and `FIRE_CACHE_VERSION` (phone), or wrong answers live out
+  every cached cell's TTL.
 - **Never lie about zero fires.** Network error, bad key, HTML body → the
   Worker returns 502 and the phone **throws** and keeps its last good cache
   with an honest age. An empty collection reads as "no fires near you".
@@ -118,7 +117,7 @@ bought with a field report; the paint-side helpers live in
   with zero errors reported.
 - `fireFeatureCollection()` (`fireRelevance.ts`) is the one hotspots →
   features builder. Never stamp a property at a call site.
-- **The 500 km wall** (`HARD_CUTOFF_KM` = `FIRE_RADIUS_KM`) is measured from
+- **The 500 km wall** (`HARD_CUTOFF_KM`, equal to `FIRE_RADIUS_KM`) is measured from
   an **anchor set** — live fix + features touched in 30 days, capped at 3 —
   never from the camera or the body alone. Both wrong answers shipped: dots
   over Winnipeg with the user on the BC coast; no dots around a Manitoba
@@ -134,8 +133,8 @@ bought with a field report; the paint-side helpers live in
 - **City rule** (`masks/urbanExclusion.ts`, `URBAN_BUFFER_KM` 5, measured):
   detections within 5 km of a Natural Earth urban polygon are **excluded**
   worldwide. Fails toward showing; repaint once the polygons load.
-- **Industrial rule** (`masks/staticHeatSources.ts`, mask from
-  `ReTreever/scripts/buildStaticHeatMask.py`): a cell seen ≥12 distinct days
+- **Industrial rule** (`masks/staticHeatSources.ts`, mask from the host's
+  `scripts/buildStaticHeatMask.py`): a cell seen ≥12 distinct days
   in a year is **flagged, never deleted** — the refinery may really be on
   fire. Flagged FRP is excluded from cluster severity. Coverage is regional
   (BC/AB/PNW); outside it nothing is flagged.
@@ -151,7 +150,7 @@ bought with a field report; the paint-side helpers live in
   margin, groups ≥5 cells, thin unfilled line, no tap target. A reading aid,
   **not a perimeter** — a hull's area is the "area between the dots" error.
 - **Hidden expires** (`lib/mapState/overlayVisibility.svelte.ts`,
-  `FIRE_HIDE_TTL_MS` 12 h): hiding fire is momentary, never a preference; every
+  `REARM_TTL_MS` 12 h): hiding fire is momentary, never a preference; every
   failure path lands on showing.
 - **Tap card** (`fireHotspotCopy.ts`, `fireSeverity.ts`): labelled rows, not
   prose; **hectares**; two time rows `First detected` / `Last checked` (two

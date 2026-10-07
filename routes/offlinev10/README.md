@@ -19,8 +19,8 @@ What it stands on (bucket, Worker, phone, libraries) and the laws it obeys:
 
 ## ⛓️ CONSTRAINTS
 
-🗜️ **`RADIUS_KM` radius blobs (42 km).** Still the product rule — a blob is a superset of that box.
-🗜️ **The gold border is the real border.** It is the edge of the tiles on disk, identical at every zoom.
+🗜️ **`RADIUS_KM` radius blobs (42 km, `tiles.ts`).** A blob is a superset of that box.
+🗜️ **The gold border is where the detail ends.** Inside it every zoom to z13 is on disk; outside it only the wider parent tiles are.
 🗜️ Airplane mode changes nothing above z8 inside a blob.
 🗜️ Stock parts only: MapLibre, the Protomaps dark style, IndexedDB keyed by tile address.
 🗜️ A phone holds at most 1 GB of offline preview data, tiles and photos together (`budget.ts`).
@@ -29,12 +29,12 @@ What it stands on (bucket, Worker, phone, libraries) and the laws it obeys:
 ## What a blob is
 
 The z`ANCHOR_Z` tiles the pin's `RADIUS_KM` box touches, and under each the
-whole pyramid down to `MAX_Z`. Below the anchor the bundled world base shows;
-the pyramid is silent there, which is the price of a small square. Every zoom
-therefore covers the same rectangle, so the gold border drawn from the anchor
-tile edges is where the data ends at every zoom. It fades out by
-`BORDER_GONE_Z`, once the blob's own roads are on screen, the way the old
-ghost grid did.
+whole pyramid down to `MAX_Z`, plus every parent tile above the anchors up to
+`MIN_Z`, stored and served whole. So the saved map is a pyramid: at z12 it is
+the pin's square, at z8 the z8 tiles that square touches (a few hundred km),
+at z5 a region, and the bundled world base fills in around it. From the
+anchor zoom down the planet stops at the square's edge, and the gold border,
+drawn at every zoom, is what says so.
 
 Tiles are stored once, keyed `z/x/y`; a second blob over the same ground
 fetches only what is missing; deleting a blob drops only tiles under no
@@ -66,9 +66,10 @@ the blobs dock until the next download starts. In dev the CONFIG card cycles
 the budget through 1024 / 256 / 64 / 16 MB (sessionStorage) so the wall can be
 hit in minutes; a shipped build never reads the override.
 
-Nothing is ever evicted to make room: `roomFor` refuses an area before its
-first fetch when its missing tiles, at the average size fetched so far, would
-cross the line, and the app layout toasts "Offline areas are limited to 1 GB.
+Nothing is ever evicted to make room: `roomFor` (`download.ts`) refuses an
+area before its first fetch when its missing tiles, at the average size
+fetched so far, would cross the line, or when there are already
+`BLOB_COUNT_CAP` (1000) areas, and the app layout toasts "Offline areas are limited to 1 GB.
 Delete a pin you no longer need to make room."
 The map marks each area it shows (`lastOpened`, from z8); at boot the engine
 removes areas unopened for `STALE_AREA_MONTHS` (12). A removed area keeps its
@@ -94,8 +95,7 @@ the native shell keeps its own sandbox.
 **Names**: a blob is labelled with the nearest town in its own z10 tiles
 (`places.ts`, the `places` layer's localities, read once from disk when the
 blob lands, stored on the row as `place`), "Oliver · 12 km" when the pin is
-not in it. Blobs from before names existed get theirs on the page's next
-refresh.
+not in it. A row with no `place` gets one on the page's next refresh.
 
 ## Files
 
@@ -105,18 +105,18 @@ refresh.
 | `budget.ts` | the 1 GB line, the dev override, `BudgetError` |
 | `places.ts` | the nearest town in a blob's own tiles, for its row (tested) |
 | `follow.ts` | follow-me: how much map is left toward the nearest blob edge, the 10 km line, the 1 km step (tested) |
-| `clip.ts` | cut a raw MVT tile to rectangles, byte-level, no GeoJSON (tested) |
 | `store.ts` | IndexedDB `gc-offlineV10`: `tiles` + `regions` (a region carries its range and its place); the budget wall in `putTiles`, `checkRegions`, `keepStorage` |
 | `download.ts` | one blob: pool of 48 fetches, batched writes, progress; empties as 0-byte rows; its row is written before its first tile (`filling` until whole), and a failure removes both |
-| `protocol.ts` | `v10://planet/{z}/{x}/{y}` → store; parents clipped to their blobs' borders; miss = 404; optional read-through |
-| `style.ts` | Protomaps DARK over the blobs; a gold line on the outline of the saved tiles, gone by z9, no fill; `LEGEND` rows for the drawer |
+| `protocol.ts` | `v10://planet/{z}/{x}/{y}` → store, every tile served whole; miss = 404 |
+| `style.ts` | Protomaps DARK over the blobs; a gold line on the outline of the saved tiles at every zoom, no fill; `LEGEND` rows for the drawer |
 | `blobService.ts` | THE blob engine, app-wide: one queue, one download at a time; started by the (getcache) layout, so a pin dropped on the ONLINE map earns its blob right away |
 | fires | not here — the pass is the child's `getCache_OfflineMap/routes/fires/fireService.ts`, started by the `(getcache)` layout with every blob centre and the blob-landed signal, into the shared `rt-fire-cache`; the page paints it with the child's `attachFireLayer`, a `fires` row in the LAYERS card switches it |
-| `satellite.ts` | the photo pass: one 2 km satellite photo per blob, baked by the old map's `bakeSatelliteImage` into the shared photo store — the pixels come from the first row of `photoSources.ts` whose box holds the pin (USGS 1 m aerial at z16 inside the US, EOX Sentinel-2 z14 everywhere else; a row that draws nothing hands over to the next), and the photo remembers its source for the dock — (`gc-offlineSatellite`), once per blob and again only when its geometry stamp changes; the page mounts it with the old map's `createSatelliteMount` under the planet's `water` layer, so the earth and landuse fills sit under the photo and the water, roads and labels over it; a `photo` row in the LAYERS card switches it; a blob's photo goes when the blob goes |
+| `satellite.ts` | the photo pass: one 2 km satellite photo per blob, baked by `bakeSatelliteImage` (`lib/onPhone/satellite/`) into the shared photo store (`gc-offlineSatellite`) — MapTiler satellite-v2 at z17 through the Worker's `/satellite` route (`photoSources.ts`), and the photo remembers its source for the dock — once per blob and again only when its geometry stamp changes; the page mounts it with `createSatelliteMount` under the planet's `water` layer, so the earth and landuse fills sit under the photo and the water, roads and labels over it; a `photo` row in the LAYERS card switches it; a blob's photo goes when the blob goes |
 | hospitals | not here — the pass, cache, layer and card are the child's `getCache_OfflineMap/routes/hospitals/`; the `(getcache)` layout starts the pass with the anchors and the blob-landed signal; a `hospitals` row in the LAYERS card switches the layer |
 | which Worker | the child's tiles-host seam (`getCache_OfflineMap/lib/worker/worker-local-dev/tilesHost.ts`): tiles, fires and hospitals all read one target; the CONFIG card switches it (dev only, sessionStorage); shipped builds are locked to prod |
 | `SessionDock.svelte` | CURRENT SESSION: memory now/avg/peak + sparkline, live download, reads, json export |
 | `ConfigDock.svelte` | CONFIG: worker switches with the grey/yellow/green/red circle and the ask→seen stopwatch, read-through, the budget presets, one switch per pyramid layer |
+| `DataDock.svelte` | bytes off the network by feature, per day, kept across reloads |
 | `BlobsDock.svelte` | OFFLINE BLOBS: the kept light and MB of budget, the not-whole count with repair all, WIPE, "+ blobs for pins in view", the FOCUSED row, a whole/missing dot and a ledger per blob |
 
 ## Pins, the ruler and the library
@@ -140,8 +140,8 @@ The border is the OUTLINE of the anchor tiles on disk, not one rectangle
 per blob and not a grid: a tile's side is drawn only when the tile across it
 is not on disk (`outline` in the page — four neighbour lookups per tile, no
 geometry library). Blobs that touch therefore read as one shape with no
-seams. The line fades from z8 and is gone by z9 (`BORDER_GONE_Z` in
-style.ts), before the blob's own roads fill the screen.
+seams. The line never fades: zoomed in, it is the only mark where the
+planet tiles stop and the coarse world base begins.
 
 Zoomed out, the planet's own low tiles carry a highway or two and nothing
 else, while the world base underneath still draws its roads. So every planet
@@ -183,7 +183,7 @@ Inside the phone V10 mounts the ONLINE map's tools: eye and crow (`MapTopControl
 map-name pills (`MapDrawControls`, `offline`, with the pyramid layer switches
 in its BASEMAP card), and the scale bar. The camera is the shared saved one
 (`mapViewport`), and the crow hops to `/app/map?at=lat,lng&z=`, which the
-online map now reads and writes beside its `#z/lat/lng` hash. So the two
+online map reads and writes beside its `#z/lat/lng` hash. So the two
 maps open on the same spot from either side.
 
 `OFFLINE_PREVIEW_ROUTE` (`lastMapRoute.svelte.ts`) is `/app/offlinev10`: the
@@ -198,4 +198,4 @@ watcher). Sizes are MB everywhere.
 
 Sprites: the host's `static/mobileAssets/offlineV10/dark*` — under `mobileAssets/` so the phone
 build keeps them and the browser's service worker precaches them.
-Route folder is lowercase because the getcache host 301s every path to lowercase.
+Route folder is lowercase because the getcache host redirects every path to lowercase.

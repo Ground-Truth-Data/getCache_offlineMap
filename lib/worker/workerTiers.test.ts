@@ -5,7 +5,7 @@ beforeEach(() => {
 });
 
 describe("worker tiers", () => {
-	it("offers exactly worker-cloud-prod and worker-cloud-dev — worker-local-dev is gone from the switch", async () => {
+	it("routes worker-cloud-prod and worker-cloud-dev to their configured hosts", async () => {
 		const m = await import("./worker-local-dev/tilesHost");
 		m.configureTilesHost("https://prod.example.test");
 		m.configureTilesDevHost("https://dev.example.test");

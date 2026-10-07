@@ -12,20 +12,20 @@ like the CONFIG panel rows: `worker-local-dev/` is the copy you edit and run,
 |---|---|---|---|
 | prod | `worker-cloud-prod` | `tiles-prod.getcache.org` | `./deployProduction.sh` in `workers/worker-cloud-prod/` (asks to confirm) |
 | dev | `worker-cloud-dev` | `tiles-dev.getcache.org` | `./deployDev.sh` in `workers/worker-cloud-dev/` — same R2 bucket, so a prod/dev difference is always CODE, never data |
-| local | `worker-local-dev` | `tiles-local.getcache.org:8787` → 127.0.0.1 | `npm run dev` in `workers/worker-local-dev/` — no Cloudflare account needed |
+| local | `worker-local-dev` | `tiles-local.getcache.org:8787` → 127.0.0.1 | `npm run dev` in `workers/worker-local-dev/` — needs a wrangler login with R2 read, since it reads the real bucket |
 
 `GET /{z}/{x}/{y}.pbf` returns a tile.
 
 - ⛔ `tiles-local` is the one hand-made DNS record (A → 127.0.0.1, DNS-only);
   prod/dev records come from `wrangler deploy` — see the Worker README.
-- ⛔ No prod/dev host is baked into this child — the parent's `(gc)` layout calls
-  `configureTilesFromEnv()` (`worker-local-dev/tilesFromEnv.ts`), which reads
+- ⛔ No prod/dev host is baked into this child — the host app calls
+  `configureTilesFromEnv()` at boot (`worker-local-dev/tilesFromEnv.ts`), which reads
   `PUBLIC_GC_tiles_prod_worker` / `PUBLIC_GC_tiles_dev_worker` from the `.env` beside
   vite's root (generated from `.env.schema`). Unset → `null` → the row greys out, and
   the console warns on the first line. A hardcoded default bills the
   maintainer's R2 account for every stranger who clones the repo.
-- A dev build defaults to `worker-local-dev` — the developer starts pointed at their
-  own machine and fixes what's in front of them. A shipped phone is locked to
+- A dev build defaults to `worker-cloud-dev` (`DEFAULT_TARGET`), which needs no
+  local Worker running. A shipped phone is locked to
   prod by `getWorkerTarget()`'s `!import.meta.env.DEV` early return (compile-time
   dead code on a device), so it can never be left on a sandbox.
 - `tierNaming.test.ts` fails the build on any other tile hostname spelling.
