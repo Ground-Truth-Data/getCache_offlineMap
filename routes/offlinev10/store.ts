@@ -16,7 +16,7 @@ import {
 
 export const DB_NAME = "gc-offlineV10";
 /** Bump when what a blob IS changes; an older blob is then wiped, never half-drawn. */
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 const TILES = "tiles";
 const REGIONS = "regions";
 
