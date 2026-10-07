@@ -66,10 +66,8 @@ export function unionBox(boxes: (LngLatBox | null)[]): LngLatBox | null {
 export async function resolveFeatureBounds(
     f: MapHostFeature,
 ): Promise<LngLatBox | null> {
-    if (f.geometry) {
-        const gb = geometryBounds(f.geometry.geometry);
-        return gb;
-    }
+    // An overlay's Feature carries its fields in properties and a null geometry.
+    if (f.geometry?.geometry) return geometryBounds(f.geometry.geometry);
     if (f.featureType !== "overlay" || !f.overlayStorageKey) return null;
     // overlays carry their extent on the feature row at import time (set by importPdf from GDAL) — anything pre-rewrite has no bounds and won’t frame; user re-imports.
     return f.overlayBounds ? boxFromTuple(f.overlayBounds) : null;
