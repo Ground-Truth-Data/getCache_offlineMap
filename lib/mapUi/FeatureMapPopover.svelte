@@ -15,7 +15,6 @@ let {
     onSave,
     onClose,
     onChangeIcon,
-    onFillOpacity,
     onTitleShown,
     onDelete,
     onContacts,
@@ -35,7 +34,6 @@ let {
     onSave: (name: string, featureDesc: string, featureData: string) => void;
     onClose: () => void;
     onChangeIcon?: (key: string) => void;
-    onFillOpacity?: (v: number) => void;
     /** Show or hide this polygon's name on the map. */
     onTitleShown?: (v: boolean) => void;
     onDelete?: () => void;
@@ -60,7 +58,6 @@ const isPoint = $derived(feature.geometry?.type === "Point");
         {onSave}
         {onClose}
         {onChangeIcon}
-        {onFillOpacity}
         {onTitleShown}
         {onDelete}
         {onContacts}

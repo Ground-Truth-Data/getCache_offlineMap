@@ -1,4 +1,4 @@
-<!-- The breaker panel for BOTH maps; debug routes only, renders nothing outside dev. -->
+<!-- The breaker panel for the online map; renders nothing outside dev. -->
 <script lang="ts">
 import "$rig/dev/devCard.css";
 import { dev } from "$app/environment";
