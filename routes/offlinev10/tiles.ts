@@ -1,7 +1,7 @@
 /**
  * Slippy-tile math for a blob: every ANCHOR_Z tile the pin's box touches, the whole pyramid under
- * each down to MAX_Z, and the parents above up to MIN_Z. A parent is wider than the blob and is
- * served whole, so the saved map widens as you zoom out.
+ * each down to MAX_Z, and the parents above up to MIN_Z. A parent is wider than the blob, so it
+ * is stored raw and clipped to the border when read.
  */
 
 export const RADIUS_KM = 42;
