@@ -119,6 +119,9 @@ async function copyJson(r: Region): Promise<void> {
 const eyeBlink = untrack(() => ui.createEyeBlink());
 onDestroy(() => eyeBlink.destroy());
 const photoTotal = $derived(Object.values(photos).reduce((a, b) => a + b.bytes, 0));
+/** Stored photos no live blob names: space the phone spends on nothing. */
+const unusedPhotos = $derived(Object.keys(photos).filter((k) => !regions.some((r) => r.photoKey === k)));
+const unusedBytes = $derived(unusedPhotos.reduce((a, k) => a + photos[k].bytes, 0));
 
 const used = $derived(bytes + photoTotal);
 /** The earliest blob on a photo put it on the phone; a later one on the same photo reuses it and added nothing. */
@@ -159,7 +162,7 @@ onMount(() => {
 		<span class="dev-card__title">offline blobs</span>
 		<span class="sum">
 			{regions.length} areas · {#if broken > 0}<span class="red">{broken} not whole</span><button class="repair" onclick={onRepairAll} disabled={busy} title="fetch every missing tile of every blob, one blob at a time">repair all</button><span>&nbsp;·&nbsp;</span>{/if}{tiles} tiles
-			<span class="dim">· {Object.keys(photos).length} photos · {kb(photoTotal)}</span>
+			<span class="dim">· {Object.keys(photos).length} photos · {kb(photoTotal)}</span>{#if unusedPhotos.length > 0}<span class="red" title="stored photos no live blob points at: {unusedPhotos.join(' ')}">&nbsp;· {unusedPhotos.length} unused ({kb(unusedBytes)})</span>{/if}
 		</span>
 		<button class="wipe" onclick={onWipe} disabled={busy}>WIPE</button>
 	</div>
