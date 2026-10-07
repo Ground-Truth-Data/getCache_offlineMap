@@ -1,6 +1,6 @@
 <script lang="ts">
 /** What is on disk, newest pin blob focused; every row a ledger of tiles in, bytes fetched, paint. */
-import { onDestroy, onMount, untrack } from "svelte";
+import { onDestroy, untrack } from "svelte";
 import type { MapUiPorts } from "../../lib/shared/mapHostPorts";
 import { FOLLOW_MARGIN_KM } from "./follow";
 import { blobBytes, BUDGET_MB } from "./budget";
@@ -55,6 +55,7 @@ let {
 const CAP = 12;
 let showAll = $state(false);
 let quota = $state<number | null>(null);
+let usage = $state<number | null>(null);
 
 const mb = (b: number) => `${(b / 1048576).toFixed(1)} MB`;
 const kb = (b: number) => (b < 1048576 ? `${Math.round(b / 1024)} KB` : mb(b));
@@ -76,7 +77,7 @@ const report = (r: Region) => {
 		waited: r.msWait == null ? "not timed" : `${secs(r.msWait)} · tap → ${r.photoKey ? "photo" : "map"} on screen`,
 		health: health(r),
 		saved: `${new Date(r.at).toLocaleString()} (${ago(r.at)})`,
-		added: mb(rowBytes(r)),
+		added: `+${filesAdded(r)} files · +${mb(rowBytes(r))}`,
 		tiles: {
 			count: r.tiles,
 			onDisk: mb(r.bytes),
@@ -130,6 +131,8 @@ const ownsPhoto = (r: Region): boolean =>
 const photoAdded = (r: Region): number => (ownsPhoto(r) ? (photoOf(r)?.bytes ?? 0) : 0);
 const closeAddedTiles = (r: Region): number => (ownsPhoto(r) ? (photoOf(r)?.closeUp.addedTiles ?? 0) : 0);
 const closeAddedBytes = (r: Region): number => (ownsPhoto(r) ? (photoOf(r)?.closeUp.addedBytes ?? 0) : 0);
+/** New files this blob put on the phone: map tiles it fetched, its own photo, close-up tiles no earlier blob had. */
+const filesAdded = (r: Region): number => r.fetched + (ownsPhoto(r) && photoOf(r) ? 1 : 0) + closeAddedTiles(r);
 // What the blob ADDED to the phone, not what it covers.
 const rowBytes = (r: Region): number => blobBytes(r.newBytes ?? r.bytes, photoAdded(r) + closeAddedBytes(r));
 const broken = $derived(regions.filter((r) => (missing[r.id] ?? 0) > 0).length);
@@ -150,9 +153,12 @@ const ordered = $derived(
 const focus = $derived(ordered[0]);
 const rest = $derived(showAll ? ordered.slice(1) : ordered.slice(1, 1 + CAP));
 
-onMount(() => {
+// The browser's own count of what this whole site holds: the one number we did not tally ourselves.
+$effect(() => {
+	void used;
 	navigator.storage?.estimate?.().then((e) => {
 		quota = e.quota ?? null;
+		usage = e.usage ?? null;
 	});
 });
 </script>
@@ -178,6 +184,9 @@ onMount(() => {
 		{/if}
 		<span class="budget" class:full={used >= budgetMb * 1048576}>{mb(used)} of {budgetMb} MB</span>
 	</div>
+	{#if usage !== null}
+		<div class="hint" title="everything this site stores in the browser: maps, photos, and the app's own database and caches">on the phone: {mb(used)} counted here · {mb(usage)} the browser reports for the whole site</div>
+	{/if}
 	{#if failure}
 		<div class="fail">✕ {failure}</div>
 	{/if}
@@ -218,7 +227,7 @@ onMount(() => {
 						<button class="eye" aria-label="see this blob on the map" title="see on map" onclick={() => eyeBlink.blinkThen(() => onFly(r), r.id)}>
 							<ui.MaskedFrameIcon src={eyeBlink.srcFor(r.id)} frames={ui.eyeAllFrames} size={23} color="var(--rt-yellow, #ffd700)" />
 						</button>
-						<span class="bytes">{mb(rowBytes(r))}</span>
+						<span class="bytes" title="new files and megabytes this blob put on the phone">+{filesAdded(r)} files · +{mb(rowBytes(r))}</span>
 						<button class="x" onclick={() => copyJson(r)} title="copy this blob's JSON">{copied === r.id ? "✓" : copied === `!${r.id}` ? "✕" : "⧉"}</button>
 						<button class="x" onclick={() => onDelete(r.id)} disabled={busy} title="delete this blob">✕</button>
 					</div>
@@ -234,8 +243,8 @@ onMount(() => {
 							<span class="dir">in</span>
 							<span class="ico">🗺️</span>
 							<span class="lname">tiles</span>
-							<span class="ldetail">{r.tiles} tiles · {mb(r.bytes)}</span>
-							<span class="lbytes">{r.newBytes == null ? "—" : mb(r.newBytes)}</span>
+							<span class="ldetail">{r.fetched} new files · {r.tiles - r.fetched} already there</span>
+							<span class="lbytes">{r.newBytes == null ? "—" : `+${mb(r.newBytes)}`}</span>
 						</div>
 						<div class="layer" class:on={photoOf(r) != null}>
 							<span class="dir">in</span>
@@ -259,7 +268,7 @@ onMount(() => {
 								<span class="dir">in</span>
 								<span class="ico">🔍</span>
 								<span class="lname">close-up</span>
-								<span class="ldetail">{closeAddedTiles(r)} new of {photoOf(r)?.closeUp.tiles ?? 0} raw z{specOf(r).zoom} tiles</span>
+								<span class="ldetail">{closeAddedTiles(r)} new files · {(photoOf(r)?.closeUp.tiles ?? 0) - closeAddedTiles(r)} already there</span>
 								<span class="lbytes">{photoOf(r) == null ? "—" : `+${kb(closeAddedBytes(r))}`}</span>
 							</div>
 						{/if}
@@ -267,7 +276,7 @@ onMount(() => {
 							<span class="dir">net</span>
 							<span class="ico">⬇️</span>
 							<span class="lname">fetched</span>
-							<span class="ldetail">{r.fetched} new · {r.tiles - r.fetched} shared</span>
+							<span class="ldetail">time to disk</span>
 							<span class="lbytes">{secs(r.ms)}</span>
 						</div>
 						<div class="layer" class:on={r.msPaint != null}>
