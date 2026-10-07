@@ -91,6 +91,23 @@ describe("deleting a blob whose photo another still uses", () => {
 	});
 });
 
+describe("removing every user of a photo at once", () => {
+	beforeEach(async () => {
+		await wipe();
+		setBudgetMb(1024);
+		dropped.length = 0;
+	});
+
+	it("still drops the photo — neither delete may leave it because the other looked alive", async () => {
+		const a = born(kmEast(0), []);
+		const b = born(kmEast(0.5), [a]);
+		await putRegion(a);
+		await putRegion(b);
+		await Promise.all([deleteRegion(a.id), deleteRegion(b.id)]);
+		expect([...new Set(dropped)]).toEqual([a.photoKey]);
+	});
+});
+
 describe("what a blob's close-up put on the phone", () => {
 	const Z = PHOTO_SOURCES[0].zoom;
 	const tilesOf = (c: [number, number]) => photoTilesFor(c, Z).map((t) => `${Z}/${t.x}/${t.y}`);

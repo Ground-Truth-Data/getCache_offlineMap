@@ -394,7 +394,8 @@ async function removeBlob(id: string): Promise<void> {
 async function wipeAll(): Promise<void> {
 	busy = true;
 	try {
-		for (const r of regions) if (r.photoKey) await dropPhoto(r.photoKey);
+		// Every stored photo, not just the ones live blobs name: wipe means empty.
+		for (const key of Object.keys(await photoInfo())) await dropPhoto(key);
 		await wipe();
 		invalidatePlanet();
 		await refresh();

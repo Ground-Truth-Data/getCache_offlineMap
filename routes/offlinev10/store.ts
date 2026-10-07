@@ -493,8 +493,8 @@ export async function deleteRegion(id: string, keepRow = false): Promise<number 
 	await done(tx);
 	tileBytes = null;
 	regionsChanged();
-	// Another blob may use this photo: it goes with the last of them.
-	if (gone.photoKey && !others.some((r) => r.photoKey === gone.photoKey)) await deleteSatImage(gone.photoKey);
+	// Another blob may use this photo: it goes with the last of them. Judged after this delete committed, against the rows now on disk: of two deletes at once the later one sees both gone.
+	if (gone.photoKey && !(await listRegions()).some((r) => r.photoKey === gone.photoKey)) await deleteSatImage(gone.photoKey);
 	return doomed.length;
 }
 
