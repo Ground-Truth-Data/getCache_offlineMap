@@ -1,4 +1,4 @@
-/** Where a feature gets offline blobs: point → one; line → a ribbon every LINE_STEP_KM; polygon → ONE at the centroid (deters huge polys); overlay → its four corners. */
+/** Where a feature gets offline blobs: point → one; line → a ribbon every LINE_STEP_KM; polygon → ONE at the centroid (deters huge polys); overlay → ONE at its centre. */
 import { kmBetween } from "./kmGeo";
 import { GRID_RADIUS_KM } from "../contract/grid";
 
@@ -116,12 +116,7 @@ export function anchorsOf(f: {
 	if (!g) {
 		if (f.overlayBounds) {
 			const [w, s, e, n] = f.overlayBounds;
-			return [
-				[w, s],
-				[w, n],
-				[e, s],
-				[e, n],
-			];
+			return [[(w + e) / 2, (s + n) / 2]];
 		}
 		return [];
 	}

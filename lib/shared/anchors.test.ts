@@ -91,13 +91,13 @@ describe("the other geometries keep their own rules", () => {
         expect(big).toHaveLength(1);
     });
 
-    it("an overlay is its four corners", () => {
+    it("an overlay is one blob at its centre", () => {
         expect(
             anchorsOf({
                 geometry: null,
                 overlayBounds: [-118, 56, -116, 57],
             } as Parameters<typeof anchorsOf>[0]),
-        ).toHaveLength(4);
+        ).toEqual([[-117, 56.5]]);
     });
 });
 
