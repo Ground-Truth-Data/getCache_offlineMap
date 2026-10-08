@@ -35,7 +35,7 @@ import type { Progress } from "./download";
 import { onFires } from "../fires/fireService";
 import { HOSPITAL_LAYER_ID_LIST, type HospitalLayerHandle, attachHospitalLayer } from "../hospitals/hospitalLayer";
 import { overlayVisibility } from "../../lib/mapState/overlayVisibility.svelte";
-import { dropPhoto, onPhoto, type PhotoInfo, photoInfo, setPhotoNarration } from "./satellite";
+import { dropPhoto, onPhoto, onPhotoIssue, type PhotoInfo, photoInfo, photoIssue, setPhotoNarration } from "./satellite";
 import { FOLLOW_MARGIN_KM, marginKm, moved } from "./follow";
 import { PHOTO_TILES, PLANET_TILES, installProtocol } from "./protocol";
 import { type Kept, type Region, checkRegions, keepStorage, listRegions, patchRegion, stats, touchRegions, wipe } from "./store";
@@ -51,6 +51,7 @@ let hospitalHandle: HospitalLayerHandle | null = null;
 let photos: SatelliteMount | null = null;
 let regions = $state<Region[]>([]);
 let photoMeta = $state<Record<string, PhotoInfo>>({});
+let photoProblem = $state<string | null>(null);
 let tiles = $state(0);
 let bytes = $state(0);
 let busy = $state(false);
@@ -487,6 +488,7 @@ onMount(() => {
 	});
 	const unfires = onFires(() => fireHandle?.repaint());
 	const unphoto = onPhoto(onPhotoLanded);
+	const unissue = onPhotoIssue(() => (photoProblem = photoIssue()));
 	m.on("moveend", reconcilePhotos);
 	m.on("moveend", touchInView);
 	m.on("idle", () => markPainted(m));
@@ -510,6 +512,7 @@ onMount(() => {
 	return () => {
 		unfires();
 		unphoto();
+		unissue();
 		photos?.dispose();
 		photos = null;
 		fireHandle?.();
@@ -587,6 +590,7 @@ onMount(() => {
 			{missing}
 			{budgetMb}
 			{failure}
+			{photoProblem}
 			follow={fix ? { at: fix, margin: margin ?? Number.NEGATIVE_INFINITY } : null}
 			onAddHere={() => { const c = map?.getCenter(); if (c) void queueBlob(c.lng, c.lat); }}
 			onAddForPins={blobsForPinsInView}

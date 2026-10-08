@@ -198,13 +198,21 @@ export async function getEach(
 	onTile: (i: number, body: ArrayBuffer | null) => void,
 	stop: () => boolean = () => false,
 	skipFailed = false,
+	onSkipped?: (error: unknown) => void,
 ): Promise<void> {
 	let next = 0;
 	let failed: unknown = null;
 	const lane = async (): Promise<void> => {
 		while (next < urls.length && failed === null && !stop()) {
 			const i = next++;
-			onTile(i, await getOne(urls[i]).catch((e) => (skipFailed ? null : Promise.reject(e))));
+			onTile(
+				i,
+				await getOne(urls[i]).catch((e) => {
+					if (!skipFailed) return Promise.reject(e);
+					onSkipped?.(e);
+					return null;
+				}),
+			);
 		}
 	};
 	const lanes = await Promise.allSettled(

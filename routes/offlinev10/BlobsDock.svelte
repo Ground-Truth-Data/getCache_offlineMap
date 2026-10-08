@@ -20,6 +20,7 @@ let {
 	missing = {},
 	budgetMb = BUDGET_MB,
 	failure = null,
+	photoProblem = null,
 	onAddHere,
 	onAddForPins,
 	onDelete,
@@ -42,6 +43,8 @@ let {
 	missing?: Record<string, number>;
 	budgetMb?: number;
 	failure?: string | null;
+	/** why photos are not baking, in the host's words; null while they are */
+	photoProblem?: string | null;
 	onAddHere: () => void;
 	onAddForPins: () => void;
 	onDelete: (id: string) => void;
@@ -189,6 +192,9 @@ $effect(() => {
 	{/if}
 	{#if failure}
 		<div class="fail">✕ {failure}</div>
+	{/if}
+	{#if photoProblem}
+		<div class="fail" title="the photo pass retries every minute and on reload; blobs without a photo get theirs when it clears">✕ photos not baking: {photoProblem}</div>
 	{/if}
 	<button class="add" onclick={onAddHere} disabled={busy}>{busy ? "downloading…" : "+ blob at map centre"}</button>
 	<button class="add" onclick={onAddForPins} disabled={busy}>+ blobs for pins in view</button>

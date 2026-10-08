@@ -30,8 +30,36 @@ import {
 	regionsSnapshot,
 } from "./store";
 
+// Why photos are not baking, in the host's words; null while they are. The dock shows it.
+let issue: string | null = null;
+let lastTileFailure: string | null = null;
+const issueListeners = new Set<() => void>();
+
+export const photoIssue = (): string | null => issue;
+
+export function onPhotoIssue(fn: () => void): () => void {
+	issueListeners.add(fn);
+	return () => {
+		issueListeners.delete(fn);
+	};
+}
+
+function setIssue(next: string | null): void {
+	if (next === issue) return;
+	issue = next;
+	for (const fn of issueListeners) fn();
+}
+
+/** The host's reason out of a failed tile read: what follows "HTTP 502", without the tile it names. */
+const reasonOf = (e: unknown): string =>
+	String(e instanceof Error ? e.message : e)
+		.replace(/^.*?HTTP \d+ /, "")
+		.replace(/ for \d+\/\d+\/\d+$/, "")
+		.trim() || "tile request failed";
+
 /** A photo's tiles: disk first, the rest one GET each, written under `owner`'s row before they are drawn. */
 export async function photoTiles(keys: string[], owner: string): Promise<Map<string, ArrayBuffer>> {
+	lastTileFailure = null;
 	const have = await getPhotoTiles(keys);
 	const missing = keys.filter((k) => !have.has(k));
 	if (missing.length === 0 || (typeof navigator !== "undefined" && navigator.onLine === false)) return have;
@@ -51,6 +79,9 @@ export async function photoTiles(keys: string[], owner: string): Promise<Map<str
 		() => sessionCap.tripped,
 		// MapTiler lacks some tiles; the bake already tolerates gaps.
 		true,
+		(e) => {
+			lastTileFailure = reasonOf(e);
+		},
 	);
 	await putPhotoTiles(got, owner);
 	return have;
@@ -175,9 +206,11 @@ async function pass(asks: readonly PhotoAsk[]): Promise<number> {
 		if (!img) {
 			// The remaining asks would only fail against the same host.
 			pausedUntil = Date.now() + PHOTO_RETRY_MS;
-			console.warn(`[offlineV10] photo: no imagery for ${id} — pass paused ${PHOTO_RETRY_MS / 1000}s`);
+			console.warn(`[offlineV10] photo: no imagery for ${id} — pass paused ${PHOTO_RETRY_MS / 1000}s${lastTileFailure ? ` (${lastTileFailure})` : ""}`);
+			setIssue(lastTileFailure ?? "no imagery came back");
 			break;
 		}
+		setIssue(null);
 		landed++;
 		say(`[offlineV10] photo: ${PHOTO_COVERAGE_RADIUS_KM} km around ${id} (${(img.blob.size / 1024).toFixed(0)} KB)`);
 		for (const fn of listeners) fn();
