@@ -26,7 +26,7 @@ export function pinLibraryUrl(file: string): string {
 // Persisted by this string, so the set is a stable contract.
 export type PinKey =
     | "pin"
-    | "cone"
+    | "cones"
     | "cache"
     | "truck"
     | "bear"
@@ -112,7 +112,7 @@ export const ICONS: readonly IconRow[] = [
         path: pinLibraryUrl("pin_emoji_poop_sm.webp"),
     },
     { name: "tree", pin: "glyph", path: pinLibraryUrl("pin_tree_sm.webp") },
-    { name: "cone", pin: "glyph", path: pinLibraryUrl("pin_cone_sm.webp") },
+    { name: "cones", pin: "glyph", path: pinLibraryUrl("pin_cone_sm.webp") },
     { name: "pin", path: pinLibraryUrl("pin_default_sm.webp") },
     { name: "red", pin: "rainbow", path: pinLibraryUrl("1pin_red_sm.webp") },
     {
