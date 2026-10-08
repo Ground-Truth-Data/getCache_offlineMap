@@ -109,7 +109,7 @@ export const ICONS: readonly IconRow[] = [
         path: pinLibraryUrl("pin_emoji_poop_sm.webp"),
     },
     { name: "tree", pin: "glyph", path: pinLibraryUrl("pin_tree_sm.webp") },
-    { name: "pin", pin: "glyph", path: pinLibraryUrl("pin_default_sm.webp") },
+    { name: "pin", pin: "glyph", path: pinLibraryUrl("pin_cone_sm.webp") },
     { name: "red", pin: "rainbow", path: pinLibraryUrl("1pin_red_sm.webp") },
     {
         name: "orange",

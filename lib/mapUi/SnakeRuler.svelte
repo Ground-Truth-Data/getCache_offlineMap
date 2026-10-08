@@ -4,7 +4,6 @@ import { iconPath } from "../shared/icons";
 import handShovelCursor from "$gc/assets/hand_shovel_cursor.webp";
 import handShovelCursorRight from "$gc/assets/hand_shovel_cursor_right.webp";
 import handShovelCursor100 from "$gc/assets/hand_shovel_cursor_100.webp";
-import pinDefaultUrl from "../assets/pin_library_small/pin_default_sm.webp";
 import xCloseWhite from "$gc/assets/x_close_white.webp";
 import type { Feature } from "geojson";
 import type { Map as MapboxMap } from "mapbox-gl";
@@ -961,7 +960,7 @@ $effect(() => {
                 Plot
             </button>
             <button class="measure-btn measure-save" onclick={savePoint} title="Save pin">
-                <img class="measure-pin-ic" src={pinDefaultUrl} alt="" />
+                <img class="measure-pin-ic" src={iconPath("pin")} alt="" />
                 Save
             </button>
         {:else}
