@@ -57,9 +57,6 @@ const reasonOf = (e: unknown): string =>
 		.replace(/ for \d+\/\d+\/\d+$/, "")
 		.trim() || "tile request failed";
 
-// MapTiler rate-limits by burst; a photo is ~180 tiles, so 48 at once would trip it.
-const PHOTO_TILES_IN_FLIGHT = 8;
-
 /** A photo's tiles: disk first, the rest one GET each, written under `owner`'s row before they are drawn. */
 export async function photoTiles(keys: string[], owner: string): Promise<Map<string, ArrayBuffer>> {
 	lastTileFailure = null;
@@ -85,7 +82,6 @@ export async function photoTiles(keys: string[], owner: string): Promise<Map<str
 		(e) => {
 			lastTileFailure = reasonOf(e);
 		},
-		PHOTO_TILES_IN_FLIGHT,
 	);
 	await putPhotoTiles(got, owner);
 	return have;
