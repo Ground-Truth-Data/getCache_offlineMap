@@ -162,7 +162,7 @@ describe("a removed area's row leaves with its pin", () => {
 		await putRegion(r);
 		await putTiles([[ownTile(r), new ArrayBuffer(1024)]], r.id);
 		await removeArea(r);
-		const pins = [{ anchors: [at], lastTouched: new Date().toISOString(), corridor: false }];
+		const pins = [{ anchors: [at], lastTouchedAt: new Date().toISOString(), corridor: false }];
 		let changed = (): void => undefined;
 		const ports = {
 			places: () => pins,

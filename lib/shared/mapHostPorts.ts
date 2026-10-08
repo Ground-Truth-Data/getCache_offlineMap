@@ -19,7 +19,7 @@ export interface MapHostFeature {
 	featureName: string;
 	featureType: string;
 	featureDesc: string | null;
-	featureData: string | null;
+	featureDataJson: string | null;
 	contacts?: string[];
 	geometry: Feature | null;
 	importedCount: number | null;
@@ -31,15 +31,15 @@ export interface MapHostFeature {
 		| null;
 	overlayLabels: MapHostOverlayLabel[] | null;
 	createdAt: string;
-	lastTouched: string;
+	lastTouchedAt: string;
 }
 
 export interface MapHostSession {
 	mapKey: string;
-	mapTitle: string;
+	mapName: string;
 	landKey?: string | null;
 	createdAt: string;
-	lastTouched: string;
+	lastTouchedAt: string;
 	features: MapHostFeature[];
 }
 
@@ -63,7 +63,7 @@ export interface MapHostStore {
 			name?: string;
 			featureType?: string;
 			featureDesc?: string;
-			featureData?: string;
+			featureDataJson?: string;
 			contacts?: string[];
 			geometry?: Feature | null;
 			/** Typed text names this shape's block, "" releases it; a key picks one. */
@@ -71,7 +71,7 @@ export interface MapHostStore {
 			landKey?: string;
 			/** Stored in the geometry's properties; `null`/`false`/`""` REMOVE the prop. */
 			fillOpacity?: number | null;
-			titleShown?: boolean;
+			isTitleShown?: boolean;
 		},
 	): void;
 	deleteFeature(mapFeatureKey: string): void;
@@ -149,8 +149,8 @@ export interface MapQ704PlotRow {
 	id: string;
 	plotNo?: number;
 	planted: number | null;
-	plantableSpotsOverride: number | null;
-	plantableSpots?: number | null;
+	plantableSpotsOverrideQty: number | null;
+	plantableSpotsQty?: number | null;
 	faults: string[];
 	comment: string;
 	species?: MapQ704Species[];
@@ -188,8 +188,8 @@ export interface MapQ704PendingDrop {
 
 export interface MapQ704PlotEdit {
 	planted?: number | null;
-	plantableSpotsOverride?: number | null;
-	plantableSpots?: number | null;
+	plantableSpotsOverrideQty?: number | null;
+	plantableSpotsQty?: number | null;
 	faults?: string[];
 	comment?: string;
 	species?: MapQ704Species[] | undefined;

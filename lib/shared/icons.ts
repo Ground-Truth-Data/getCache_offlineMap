@@ -198,7 +198,7 @@ export function parsePinKey(raw: unknown): PinKey | null {
     return typeof raw === "string" && PIN_SET.has(raw) ? (raw as PinKey) : null;
 }
 
-// pinTypeKey is an open namespace (emoji:<char>, plot:<n>): never string-match one inline — ask this module, or its readers drift apart.
+// pinIcon is an open namespace (emoji:<char>, plot:<n>): never string-match one inline — ask this module, or its readers drift apart.
 
 export const EMOJI_PIN_PREFIX = "emoji:";
 

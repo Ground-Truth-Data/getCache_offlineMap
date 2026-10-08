@@ -55,7 +55,7 @@ const plot = $derived.by<MapQ704PlotPinData | null>(() => {
 // Fallback when the row lookup misses: the pin's own type key (`plot:N`).
 const pinPlotNo = $derived.by(() => {
 	if (isCreate) return pendingPlotNo ?? 0;
-	const k = (feature?.properties?.pinTypeKey as string) ?? "";
+	const k = (feature?.properties?.pinIcon as string) ?? "";
 	const m = k.match(/^plot:(\d+)$/);
 	return m ? Number(m[1]) : 0;
 });
@@ -161,7 +161,7 @@ onMount(async () => {
 					id: pend.rowKey,
 					plotNo: pend.plotNo,
 					planted: null,
-					plantableSpotsOverride: null,
+					plantableSpotsOverrideQty: null,
 					faults: [],
 					comment: "",
 					openLocode: pend.gridCode || undefined,
@@ -192,8 +192,8 @@ $effect(() => {
 			r,
 			fields: {
 				planted: r.planted,
-				plantableSpotsOverride: r.plantableSpotsOverride,
-				plantableSpots: r.plantableSpots,
+				plantableSpotsOverrideQty: r.plantableSpotsOverrideQty,
+				plantableSpotsQty: r.plantableSpotsQty,
 				faults: [...r.faults],
 				comment: r.comment,
 				species: r.species?.map((s) => ({ ...s })),

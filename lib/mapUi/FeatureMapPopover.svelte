@@ -31,7 +31,7 @@ let {
     containerWidth: number;
     containerHeight: number;
     onShare: (format: MapShareFormat) => void;
-    onSave: (name: string, featureDesc: string, featureData: string) => void;
+    onSave: (name: string, featureDesc: string, featureDataJson: string) => void;
     onClose: () => void;
     onChangeIcon?: (key: string) => void;
     /** Show or hide this polygon's name on the map. */

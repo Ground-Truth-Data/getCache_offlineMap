@@ -21,9 +21,9 @@ export function maxSpots(density: number, radius: PlotRadius): number {
 
 export type PlotInputs = {
 	planted: number | null;
-	plantableSpotsOverride: number | null; // override down only
+	plantableSpotsOverrideQty: number | null; // override down only
 	// M frozen when the count was recorded; null = live-derive from the header's current M.
-	plantableSpots?: number | null;
+	plantableSpotsQty?: number | null;
 	faults: string[];
 };
 
@@ -35,11 +35,11 @@ export type PlotDerived = {
 	valid: boolean;
 };
 
-// A row's own frozen plantableSpots always beats M.
+// A row's own frozen plantableSpotsQty always beats M.
 export function derivePlot(row: PlotInputs, M: number): PlotDerived {
 	const planted = row.planted ?? 0;
-	const cap = row.plantableSpots ?? M;
-	const spots = row.plantableSpotsOverride ?? cap;
+	const cap = row.plantableSpotsQty ?? M;
+	const spots = row.plantableSpotsOverrideQty ?? cap;
 	const excess = Math.max(0, planted - spots);
 	const unsat = row.faults.length;
 	const satisfactory = planted - excess - unsat;

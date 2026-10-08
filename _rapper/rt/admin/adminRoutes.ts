@@ -80,8 +80,8 @@ export type AdminParent = {
 
 // Central's getCacheMobile tables — superCrud's MIRRORED_TABLES.
 export const MIRRORED_TABLES = [
-	"authorEntity",
-	"authorTable",
+	"personEntity",
+	"personTable",
 	"mapEntity",
 	"mapFeatureEntity",
 	"qaSurveyEntity",
@@ -103,17 +103,17 @@ export const MIRRORED_TABLES = [
 	"bagUpTable",
 	"tallyTable",
 	"packageTable",
-	"appStateTable",
+	"appState",
 	"organizationTable",
-	"userProfileTable",
+	"userProfile",
 ] as const;
 
-// Every table on the phone — the mirrored ones plus the local-only ones (authorIdTable, touchTable).
+// Every table on the phone — the mirrored ones plus the local-only ones (personIdTable, touchTable).
 export const DEVICE_TABLES = [
-	"appStateTable",
-	"authorEntity",
-	"authorIdTable",
-	"authorTable",
+	"appState",
+	"personEntity",
+	"personIdTable",
+	"personTable",
 	"bagUpEntity",
 	"bagUpTable",
 	"cacheEntity",
@@ -137,7 +137,7 @@ export const DEVICE_TABLES = [
 	"tallyEntity",
 	"tallyTable",
 	"touchTable",
-	"userProfileTable",
+	"userProfile",
 ] as const;
 
 // Where each table sits on the Get Cache schema maps, four to a row, each
@@ -149,8 +149,8 @@ export const GC_SCHEMA_SEATS = [
 	"qaPlotTable", "qaPlotEntity", "cacheTable", "cacheEntity",
 	"bagUpTable", "bagUpEntity", "tallyTable", "tallyEntity",
 	"packageTable", "packageEntity", "cropTable", "cropEntity",
-	"crewTable", "authorEntity", "authorTable", "authorIdTable",
-	"appStateTable", "userProfileTable", "organizationTable", "touchTable", "snapshot",
+	"crewTable", "personEntity", "personTable", "personIdTable",
+	"appState", "userProfile", "organizationTable", "touchTable", "snapshot",
 ] as const;
 
 // The pill caption IS the SQL identifier, casing included.

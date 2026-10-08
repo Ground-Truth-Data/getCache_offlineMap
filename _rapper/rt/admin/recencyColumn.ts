@@ -6,7 +6,7 @@
  * `retiredAt`, which is null for every live row and would sort them to the bottom.
  */
 const BY_PREFERENCE = [
-	"lastTouched",
+	"lastTouchedAt",
 	"updatedAt",
 	"editedAt",
 	"loggedAt",
