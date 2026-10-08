@@ -26,6 +26,7 @@ export function pinLibraryUrl(file: string): string {
 // Persisted by this string, so the set is a stable contract.
 export type PinKey =
     | "pin"
+    | "cone"
     | "cache"
     | "truck"
     | "bear"
@@ -43,7 +44,8 @@ export type PinKey =
     | "yellow"
     | "green"
     | "blue"
-    | "purple";
+    | "purple"
+    | "magenta";
 
 export type IconName =
     | PinKey
@@ -75,7 +77,8 @@ export type IconRow = {
 export type PinRow = IconRow & { name: PinKey; pin: "glyph" | "rainbow" };
 
 export const ICONS: readonly IconRow[] = [
-    // Row order = display order; "pin" sits last as the default.
+    // Row order = display order. "pin" has no library section: it is what a
+    // fresh drop wears, and a slot in the library would only repeat it.
     { name: "truck", pin: "glyph", path: pinLibraryUrl("pin_truck_sm.webp") },
     { name: "cache", pin: "glyph", path: pinLibraryUrl("pin_cache_sm.webp") },
     { name: "atv", pin: "glyph", path: pinLibraryUrl("pin_atv_sm.webp") },
@@ -109,7 +112,8 @@ export const ICONS: readonly IconRow[] = [
         path: pinLibraryUrl("pin_emoji_poop_sm.webp"),
     },
     { name: "tree", pin: "glyph", path: pinLibraryUrl("pin_tree_sm.webp") },
-    { name: "pin", pin: "glyph", path: pinLibraryUrl("pin_cone_sm.webp") },
+    { name: "cone", pin: "glyph", path: pinLibraryUrl("pin_cone_sm.webp") },
+    { name: "pin", path: pinLibraryUrl("pin_default_sm.webp") },
     { name: "red", pin: "rainbow", path: pinLibraryUrl("1pin_red_sm.webp") },
     {
         name: "orange",
@@ -131,6 +135,11 @@ export const ICONS: readonly IconRow[] = [
         name: "purple",
         pin: "rainbow",
         path: pinLibraryUrl("6pin_purple_sm.webp"),
+    },
+    {
+        name: "magenta",
+        pin: "rainbow",
+        path: pinLibraryUrl("7pin_magenta_sm.webp"),
     },
     { name: "map", path: `${DIR}/map_icon_v2_sm.webp` },
     // Deliberately unlike the map/poly/line outlines: a block is administrative, not drawn.
@@ -182,7 +191,7 @@ export const ALL_PINS: readonly PinRow[] = PIN_ROWS;
 /** The pin a feature carries before the user deliberately picks one. */
 export const DEFAULT_PIN_KEY: PinKey = "pin";
 
-const PIN_SET: ReadonlySet<string> = new Set(ALL_PINS.map((r) => r.name));
+const PIN_SET: ReadonlySet<string> = new Set([DEFAULT_PIN_KEY, ...ALL_PINS.map((r) => r.name)]);
 
 /** Parse an untrusted string (KML ExtendedData, envelope field, deep-link param) into a PinKey, or null if it isn't one. */
 export function parsePinKey(raw: unknown): PinKey | null {

@@ -15,9 +15,9 @@ import {
 	polygonOpacity,
 } from "../mapState/overlayOpacity.svelte";
 import type { MapHostPorts } from "../shared/mapHostPorts";
+import { iconPath } from "../shared/icons";
 import fireIconUrl from "../assets/fire_icon.webp";
 import pdfMapsIconUrl from "../assets/pdf_maps_icon.webp";
-import pinDefaultUrl from "../assets/pin_library_small/pin_cone_sm.webp";
 import clusterPinUrl from "../assets/pin_library_small/pin_cluster_gold_sm.webp";
 import hospitalPinUrl from "../../routes/hospitals/hospitalPin.webp";
 
@@ -71,7 +71,7 @@ export type LegendRow = {
 type Section = { title: string; rows: readonly LegendRow[] };
 
 const SWATCH_IMG: Partial<Record<Swatch, string>> = {
-	pin: pinDefaultUrl,
+	pin: iconPath("pin"),
 	pdf: pdfMapsIconUrl,
 	fire: fireIconUrl,
 	cluster: clusterPinUrl,
