@@ -66,3 +66,18 @@ it("a map and its photo downloading together never have more than 48 requests ou
 	expect(fetchMock).toHaveBeenCalledTimes(600);
 	expect(most).toBe(48);
 });
+
+it("a caller that asks for a narrower width never has more than that many requests out", async () => {
+	let open = 0;
+	let most = 0;
+	fetchMock.mockImplementation(async () => {
+		most = Math.max(most, ++open);
+		await new Promise((r) => setTimeout(r, 1));
+		open--;
+		return new Response(new ArrayBuffer(1));
+	});
+	const { getEach } = await import("./download");
+	const urls = Array.from({ length: 100 }, (_, i) => `https://tiles.test/${i}`);
+	await getEach(urls, () => undefined, () => false, false, undefined, 6);
+	expect(most).toBe(6);
+});

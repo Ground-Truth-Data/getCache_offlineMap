@@ -192,13 +192,14 @@ async function fetchInto(
 	if (refused) throw refused;
 }
 
-/** One GET per tile, at most IN_FLIGHT across all callers, in `urls` order; a 204 is null, and so is a failure when `skipFailed`. `stop` runs before each fetch and may throw. */
+/** One GET per tile, at most IN_FLIGHT across all callers and `width` for this one, in `urls` order; a 204 is null, and so is a failure when `skipFailed`. `stop` runs before each fetch and may throw. */
 export async function getEach(
 	urls: readonly string[],
 	onTile: (i: number, body: ArrayBuffer | null) => void,
 	stop: () => boolean = () => false,
 	skipFailed = false,
 	onSkipped?: (error: unknown) => void,
+	width = IN_FLIGHT,
 ): Promise<void> {
 	let next = 0;
 	let failed: unknown = null;
@@ -216,7 +217,7 @@ export async function getEach(
 		}
 	};
 	const lanes = await Promise.allSettled(
-		Array.from({ length: IN_FLIGHT }, () =>
+		Array.from({ length: Math.min(width, IN_FLIGHT) }, () =>
 			lane().catch((e) => {
 				failed ??= e;
 				throw e;
