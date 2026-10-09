@@ -9,7 +9,7 @@ function featureCenter(geom: GeoJSON.Geometry | undefined): Pt | null {
 	const box = { w: Infinity, s: Infinity, e: -Infinity, n: -Infinity };
 	const fold = (c: unknown): void => {
 		if (Array.isArray(c) && typeof c[0] === "number") {
-			const [x, y] = c as number[];
+			const [x = NaN, y = NaN] = c as number[];
 			if (Number.isFinite(x) && Number.isFinite(y)) {
 				box.w = Math.min(box.w, x);
 				box.e = Math.max(box.e, x);
@@ -36,26 +36,24 @@ function sampleLineAnchors(
 	const pts = (coords ?? []).filter(
 		(p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]),
 	) as Pt[];
-	if (pts.length === 0) return [];
-	if (pts.length === 1) return [pts[0]];
-	const out: Pt[] = [pts[0]];
+	const [first, ...rest] = pts;
+	if (!first) return [];
+	const out: Pt[] = [first];
 	let acc = 0;
-	for (let i = 1; i < pts.length; i++) {
-		const a = pts[i - 1];
-		const b = pts[i];
+	let a = first;
+	for (const b of rest) {
 		const segKm = kmBetween(a, b);
-		if (segKm === 0) continue;
 		let t0 = 0;
-		while (acc + (1 - t0) * segKm >= stepKm) {
+		while (segKm > 0 && acc + (1 - t0) * segKm >= stepKm) {
 			const t = t0 + (stepKm - acc) / segKm;
 			out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
 			t0 = t;
 			acc = 0;
 		}
 		acc += (1 - t0) * segKm;
+		a = b;
 	}
-	const last = pts[pts.length - 1];
-	if (kmBetween(out[out.length - 1], last) > 0.01) out.push(last);
+	if (kmBetween(out[out.length - 1]!, a) > 0.01) out.push(a);
 	return out;
 }
 
@@ -73,10 +71,12 @@ function polygonAnchor(rings: Pt[][]): Pt[] {
 	let cx = 0;
 	let cy = 0;
 	for (let i = 0, j = outer.length - 1; i < outer.length; j = i++) {
-		const cross = outer[j][0] * outer[i][1] - outer[i][0] * outer[j][1];
+		const [xj, yj] = outer[j]!;
+		const [xi, yi] = outer[i]!;
+		const cross = xj * yi - xi * yj;
 		a += cross;
-		cx += (outer[j][0] + outer[i][0]) * cross;
-		cy += (outer[j][1] + outer[i][1]) * cross;
+		cx += (xj + xi) * cross;
+		cy += (yj + yi) * cross;
 	}
 	a *= 0.5;
 	if (Math.abs(a) < 1e-12) {
@@ -103,7 +103,7 @@ function thinToCeiling(pts: Pt[]): Pt[] {
 	const out: Pt[] = [];
 	const step = (pts.length - 1) / (MAX_ANCHORS_PER_FEATURE - 1);
 	for (let i = 0; i < MAX_ANCHORS_PER_FEATURE; i++)
-		out.push(pts[Math.round(i * step)]);
+		out.push(pts[Math.round(i * step)]!);
 	return out;
 }
 

@@ -58,7 +58,7 @@ export function bearing16(
 			Math.cos(to[1] * RAD) *
 			Math.cos((to[0] - from[0]) * RAD);
 	const deg = (Math.atan2(y, x) / RAD + 360) % 360;
-	return POINTS_16[Math.round(deg / 22.5) % 16];
+	return POINTS_16[Math.round(deg / 22.5) % 16]!;
 }
 
 /** Nearest 1 km under 100, nearest 10 km above — precision the data supports. */
@@ -137,15 +137,13 @@ export function placeReference(
 	places: readonly PlaceRow[],
 ): PlaceReference {
 	const byTier = [TIER_VILLAGE, TIER_TOWN, TIER_NOTABLE, TIER_MAJOR].map((t) =>
-		nearestInTier(at, places, t, TIER_RADIUS_KM[t]),
+		nearestInTier(at, places, t, TIER_RADIUS_KM[t]!),
 	);
 	const hits = byTier.filter((h): h is PlaceHit => h !== null);
 
 	// Smallest tier wins, but a more prominent tier overrides if genuinely closer (< 0.6× distance) — else "near a village" beats "in the city" from 2 km away.
-	const primary =
-		hits.length === 0
-			? null
-			: hits.reduce((best, h) => (h.km < best.km * 0.6 ? h : best), hits[0]);
+	const [first, ...more] = hits;
+	const primary = first ? more.reduce((best, h) => (h.km < best.km * 0.6 ? h : best), first) : null;
 
 	if (primary === null) {
 		const region = regionNear(at, places);

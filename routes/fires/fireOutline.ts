@@ -57,17 +57,16 @@ export function convexHull(
 	for (const p of pts) {
 		while (
 			lower.length >= 2 &&
-			cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0
+			cross(lower[lower.length - 2]!, lower[lower.length - 1]!, p) <= 0
 		)
 			lower.pop();
 		lower.push(p);
 	}
 	const upper: (readonly [number, number])[] = [];
-	for (let i = pts.length - 1; i >= 0; i--) {
-		const p = pts[i];
+	for (const p of pts.reverse()) {
 		while (
 			upper.length >= 2 &&
-			cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0
+			cross(upper[upper.length - 2]!, upper[upper.length - 1]!, p) <= 0
 		)
 			upper.pop();
 		upper.push(p);
@@ -183,7 +182,7 @@ export function fireOutlines(
 			properties: {},
 			geometry: {
 				type: "Polygon",
-				coordinates: [[...ring, ring[0]]],
+				coordinates: [[...ring, ring[0]!]],
 			},
 		});
 	}

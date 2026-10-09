@@ -50,7 +50,7 @@ export function bearingLabel(
 			Math.cos((to[0] - from[0]) * toRad);
 	const deg = (Math.atan2(y, x) / toRad + 360) % 360;
 	const points = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] as const;
-	return points[Math.round(deg / 45) % 8];
+	return points[Math.round(deg / 45) % 8]!;
 }
 
 /** "336 km NE of you", or null with no fix. */

@@ -200,14 +200,13 @@ export function unionHotspots(entries: readonly FireCacheEntry[]): UnionResult {
 	const boxes = entries.map(discBox);
 	const newerThan = entries.map((e) =>
 		entries
-			.map((other, j) => ({ other, box: boxes[j] }))
+			.map((other, j) => ({ other, box: boxes[j]! }))
 			.filter(({ other }) => other.fetchedAt > e.fetchedAt)
 			.sort((a, b) => b.other.fetchedAt - a.other.fetchedAt),
 	);
 	const best = new Map<string, FireHotspot>();
-	for (let i = 0; i < entries.length; i++) {
-		const e = entries[i];
-		const newer = newerThan[i];
+	for (const [i, e] of entries.entries()) {
+		const newer = newerThan[i]!;
 		for (const h of e.hotspots) {
 			// Box-reject before kmBetween: trig per (hotspot × disc) pegged the CPU at idle.
 			const [lng, lat] = h.coordinates;

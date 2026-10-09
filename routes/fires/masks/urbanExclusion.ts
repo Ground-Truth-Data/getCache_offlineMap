@@ -25,8 +25,8 @@ export function pointInRing(lng: number, lat: number, ring: Ring): boolean {
 	let inside = false;
 	const n = ring.length;
 	for (let i = 0; i < n; i++) {
-		const [x1, y1] = ring[i];
-		const [x2, y2] = ring[(i + 1) % n];
+		const [x1 = NaN, y1 = NaN] = ring[i]!;
+		const [x2 = NaN, y2 = NaN] = ring[(i + 1) % n]!;
 		if (
 			y1 > lat !== y2 > lat &&
 			lng < ((x2 - x1) * (lat - y1)) / (y2 - y1 || 1e-12) + x1
@@ -41,9 +41,9 @@ export function pointInRing(lng: number, lat: number, ring: Ring): boolean {
 export function kmToRing(lng: number, lat: number, ring: Ring): number {
 	const kmPerDegLng = 111.32 * Math.cos((lat * Math.PI) / 180);
 	let best = Number.POSITIVE_INFINITY;
-	for (const p of ring) {
-		const dx = (p[0] - lng) * kmPerDegLng;
-		const dy = (p[1] - lat) * KM_PER_DEG_LAT;
+	for (const [x = NaN, y = NaN] of ring) {
+		const dx = (x - lng) * kmPerDegLng;
+		const dy = (y - lat) * KM_PER_DEG_LAT;
 		const d = Math.hypot(dx, dy);
 		if (d < best) best = d;
 	}
@@ -64,11 +64,11 @@ export function prepareUrban(
 		let minY = Number.POSITIVE_INFINITY;
 		let maxX = Number.NEGATIVE_INFINITY;
 		let maxY = Number.NEGATIVE_INFINITY;
-		for (const p of ring) {
-			if (p[0] < minX) minX = p[0];
-			if (p[0] > maxX) maxX = p[0];
-			if (p[1] < minY) minY = p[1];
-			if (p[1] > maxY) maxY = p[1];
+		for (const [x = NaN, y = NaN] of ring) {
+			if (x < minX) minX = x;
+			if (x > maxX) maxX = x;
+			if (y < minY) minY = y;
+			if (y > maxY) maxY = y;
 		}
 		if (region && !bboxInRegion(region, minX, minY, maxX, maxY)) continue;
 		out.push({ minX, minY, maxX, maxY, ring });

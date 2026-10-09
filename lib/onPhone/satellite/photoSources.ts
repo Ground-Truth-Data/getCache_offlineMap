@@ -36,5 +36,5 @@ for (const src of PHOTO_SOURCES) {
 
 /** A photo drawn by any other source (or unnamed, predating the registry) is stale and re-bakes. */
 export function isBestPhotoSource(name: string | undefined): boolean {
-    return name === PHOTO_SOURCES[0].name;
+    return name === PHOTO_SOURCES[0]?.name;
 }

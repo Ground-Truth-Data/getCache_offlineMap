@@ -55,7 +55,7 @@ export function fireCentresWorthFetching(
 
 export function isUsableFix(pos: unknown): pos is LngLat {
 	if (!Array.isArray(pos) || pos.length !== 2) return false;
-	const [lng, lat] = pos as number[];
+	const [lng, lat] = pos as [number, number];
 	return (
 		Number.isFinite(lng) &&
 		Number.isFinite(lat) &&

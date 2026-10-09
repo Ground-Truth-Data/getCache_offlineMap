@@ -218,7 +218,7 @@ export function severityFor(areaKm2: number, peakFrpMw: number): SeverityRow {
 			f >= r.frpMinMw &&
 			f < r.frpMaxMw,
 	);
-	return hit ?? SEVERITY_TABLE[0];
+	return hit ?? SEVERITY_TABLE[0]!;
 }
 
 export type TrendBand = "new" | "growing" | "steady" | "quieter" | "absent";

@@ -86,7 +86,7 @@ export async function getSatImageByKey(
  */
 export async function getAllSatImages(): Promise<{ key: string; img: SatImage }[]> {
 	const [keys, vals] = await Promise.all([idb.keys(), idb.getAll()]);
-	return keys.map((k, i) => ({ key: k, img: vals[i] }));
+	return keys.map((k, i) => ({ key: k, img: vals[i]! }));
 }
 
 /** Per-area metadata, never pixels; cursor-streamed so peak heap is one photo. */
@@ -112,7 +112,7 @@ export async function satImageMeta(): Promise<
 			ms: v.ms,
 		})),
 	]);
-	return keys.map((k, i) => ({ key: k, ...meta[i] }));
+	return keys.map((k, i) => ({ key: k, ...meta[i]! }));
 }
 export async function getSatKeys(): Promise<string[]> {
 	return idb.keys();
@@ -275,7 +275,7 @@ async function bakeFrom(
 	const have = await tiles(keys);
 	const tileDraw: TileDraw[] = [];
 	tileGeo.forEach((t, i) => {
-		const buf = have.get(keys[i]);
+		const buf = have.get(keys[i]!);
 		if (!buf?.byteLength) return;
 		const dx = Math.floor(xf(t.w));
 		const dy = Math.floor(yf(t.n));

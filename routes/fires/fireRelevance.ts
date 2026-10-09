@@ -126,9 +126,9 @@ export function fireFeatureCollection(opts: {
 		const props = f.properties as Record<string, unknown>;
 		// Mapbox has no "now": age is baked in at paint time for the opacity ramp.
 		props.ageH = (opts.now - (props.t as number)) / 3_600_000;
-		const co = (f.geometry as GeoJSON.Point).coordinates;
+		const [lng = NaN, lat = NaN] = (f.geometry as GeoJSON.Point).coordinates;
 		// Flagged, never removed: a refinery genuinely can catch fire.
-		props.ind = opts.isStatic(co[0], co[1], opts.staticMask) ? 1 : 0;
+		props.ind = opts.isStatic(lng, lat, opts.staticMask) ? 1 : 0;
 	}
 	return { fc, shown };
 }
