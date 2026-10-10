@@ -50,7 +50,7 @@ let {
         share: boolean,
         format?: MapShareFormat,
     ) => void;
-    onSavePoint?: ((lng: number, lat: number) => void) | undefined;
+    onSavePoint?: ((lng: number, lat: number, kind: "pin" | "cachePin") => void) | undefined;
     /** `atSelf` = seed snapped onto the blue dot (proof-of-presence); `plusCode` = snapped grid dot, null if dropped free. */
     onPlot?:
         | ((
@@ -600,7 +600,7 @@ $effect(() => {
             // Deferred so the host's own map-click handler can't instantly clear the fresh pin's selection.
             const [lng, lat] = pt;
             queueMicrotask(() => {
-                onSavePoint?.(lng, lat);
+                onSavePoint?.(lng, lat, "pin");
                 discard();
             });
         } else if (armed === "line") {
@@ -624,6 +624,11 @@ $effect(() => {
                 isPolygon = true;
                 cursor = null;
                 render();
+                return;
+            }
+            // A lone node's menu has no ✕: tapping away is the dismiss, and the node grows by drag.
+            if (verts.length === 1) {
+                if (nearIdx === -1) discard();
                 return;
             }
             if (nearIdx !== -1 || !mayAddVertex(verts.length)) return;
@@ -863,10 +868,10 @@ async function sharePoint() {
         copyFailed = false;
     }, 1600);
 }
-function savePoint() {
+function savePoint(kind: "pin" | "cachePin") {
     const p = verts[0];
     if (!p) return;
-    onSavePoint?.(p[0], p[1]);
+    onSavePoint?.(p[0], p[1], kind);
     discard();
 }
 function dropPlot() {
@@ -938,7 +943,7 @@ $effect(() => {
 {#if active && popAnchor && (canFinish || singlePoint)}
     <div class="measure-pop" class:measure-grid={singlePoint} class:measure-at-self={singlePoint && seedAtSelf} class:measure-gliding={!!cursor} class:measure-below={popAnchor.below} style="left:{popAnchor.popX}px; top:{popAnchor.y}px;">
         {#if singlePoint}
-            <!-- 2×2 checkerboard: copy · ✕ / plot · save — Save under the right thumb. -->
+            <!-- 2×2: copy · plot / pin · cache. No ✕: a tap off the node dismisses. -->
             {#if seedAtSelf}
                 <div class="measure-self-badge">
                     <span class="measure-self-dot"></span>At your location
@@ -954,14 +959,17 @@ $effect(() => {
                     Copy
                 {/if}
             </button>
-            <button style="--x-white:url({xCloseWhite})" class="measure-btn measure-x" onclick={discard} title="Discard" aria-label="Discard measurement">&#x2715;</button>
             <button class="measure-btn measure-plot" class:at-self={seedAtSelf} onclick={dropPlot} title={seedAtSelf ? "Drop a plot AT your location (proof you were here)" : "Drop a Quality 704 plot here"}>
                 <img class="measure-plot-ic" src={iconPath("qualityWhite")} alt="" />
                 Plot
             </button>
-            <button class="measure-btn measure-save" onclick={savePoint} title="Save pin">
+            <button class="measure-btn measure-save" onclick={() => savePoint("pin")} title="Drop a pin">
                 <img class="measure-pin-ic" src={iconPath("pin")} alt="" />
-                Save
+                Pin
+            </button>
+            <button class="measure-btn measure-save" onclick={() => savePoint("cachePin")} title="Drop a cache">
+                <img class="measure-pin-ic" src={iconPath("classicCache")} alt="" />
+                Cache
             </button>
         {:else}
             <div class="measure-col">

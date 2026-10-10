@@ -27,7 +27,6 @@ export function pinLibraryUrl(file: string): string {
 export type PinKey =
     | "pin"
     | "cones"
-    | "cache"
     | "truck"
     | "bear"
     | "heli"
@@ -39,13 +38,21 @@ export type PinKey =
     | "home"
     | "poop"
     | "tree"
-    | "red"
-    | "orange"
-    | "yellow"
-    | "green"
-    | "blue"
-    | "purple"
-    | "magenta";
+    | "classicCache"
+    | "rainbowCache"
+    | "zebraCache"
+    | "plaidCache"
+    | "tigerCache"
+    | "beeCache"
+    | "watermelonCache"
+    | "spiderCache"
+    | "redCache"
+    | "orangeCache"
+    | "yellowCache"
+    | "greenCache"
+    | "blueCache"
+    | "purpleCache"
+    | "pinkCache";
 
 export type IconName =
     | PinKey
@@ -70,17 +77,16 @@ export type IconName =
 export type IconRow = {
     name: IconName;
     path: string;
-    /** Present only on a user-droppable map pin: its library section. */
-    pin?: "glyph" | "rainbow";
+    /** Present only on a user-droppable map pin: its library section. A cachePin is land, not a glyph pin. */
+    pin?: "glyph" | "cachePin";
 };
 
-export type PinRow = IconRow & { name: PinKey; pin: "glyph" | "rainbow" };
+export type PinRow = IconRow & { name: PinKey; pin: "glyph" | "cachePin" };
 
 export const ICONS: readonly IconRow[] = [
-    // Row order = display order. "pin" has no library section: it is what a
-    // fresh drop wears, and a slot in the library would only repeat it.
+    // Row order = display order; each section's first row is what a fresh drop wears.
+    { name: "pin", pin: "glyph", path: pinLibraryUrl("pin_default_sm.webp") },
     { name: "truck", pin: "glyph", path: pinLibraryUrl("pin_truck_sm.webp") },
-    { name: "cache", pin: "glyph", path: pinLibraryUrl("pin_cache_sm.webp") },
     { name: "atv", pin: "glyph", path: pinLibraryUrl("pin_atv_sm.webp") },
     { name: "bear", pin: "glyph", path: pinLibraryUrl("pin_bear_sm.webp") },
     {
@@ -113,34 +119,21 @@ export const ICONS: readonly IconRow[] = [
     },
     { name: "tree", pin: "glyph", path: pinLibraryUrl("pin_tree_sm.webp") },
     { name: "cones", pin: "glyph", path: pinLibraryUrl("pin_cone_sm.webp") },
-    { name: "pin", path: pinLibraryUrl("pin_default_sm.webp") },
-    { name: "red", pin: "rainbow", path: pinLibraryUrl("1pin_red_sm.webp") },
-    {
-        name: "orange",
-        pin: "rainbow",
-        path: pinLibraryUrl("2pin_orange_sm.webp"),
-    },
-    {
-        name: "yellow",
-        pin: "rainbow",
-        path: pinLibraryUrl("3pin_yellow_sm.webp"),
-    },
-    {
-        name: "green",
-        pin: "rainbow",
-        path: pinLibraryUrl("4pin_green_sm.webp"),
-    },
-    { name: "blue", pin: "rainbow", path: pinLibraryUrl("5pin_blue_sm.webp") },
-    {
-        name: "purple",
-        pin: "rainbow",
-        path: pinLibraryUrl("6pin_purple_sm.webp"),
-    },
-    {
-        name: "magenta",
-        pin: "rainbow",
-        path: pinLibraryUrl("7pin_magenta_sm.webp"),
-    },
+    { name: "classicCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_sm.webp") },
+    { name: "redCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_red_sm.webp") },
+    { name: "orangeCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_orange_sm.webp") },
+    { name: "yellowCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_yellow_sm.webp") },
+    { name: "greenCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_green_sm.webp") },
+    { name: "blueCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_blue_sm.webp") },
+    { name: "purpleCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_purple_sm.webp") },
+    { name: "pinkCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_pink_sm.webp") },
+    { name: "rainbowCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_rainbow_sm.webp") },
+    { name: "zebraCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_zebra_sm.webp") },
+    { name: "plaidCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_plaid_sm.webp") },
+    { name: "tigerCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_tiger_sm.webp") },
+    { name: "beeCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_bee_sm.webp") },
+    { name: "watermelonCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_watermelon_sm.webp") },
+    { name: "spiderCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_spider_sm.webp") },
     { name: "map", path: `${DIR}/map_icon_v2_sm.webp` },
     // Deliberately unlike the map/poly/line outlines: a block is administrative, not drawn.
     { name: "block", path: `${DIR}/block_icon_sm.webp` },
@@ -182,8 +175,8 @@ export const GLYPH_PINS: readonly PinRow[] = PIN_ROWS.filter(
     (r) => r.pin === "glyph",
 );
 
-export const RAINBOW_PINS: readonly PinRow[] = PIN_ROWS.filter(
-    (r) => r.pin === "rainbow",
+export const CACHE_PINS: readonly PinRow[] = PIN_ROWS.filter(
+    (r) => r.pin === "cachePin",
 );
 
 export const ALL_PINS: readonly PinRow[] = PIN_ROWS;
@@ -191,11 +184,17 @@ export const ALL_PINS: readonly PinRow[] = PIN_ROWS;
 /** The pin a feature carries before the user deliberately picks one. */
 export const DEFAULT_PIN_KEY: PinKey = "pin";
 
-const PIN_SET: ReadonlySet<string> = new Set([DEFAULT_PIN_KEY, ...ALL_PINS.map((r) => r.name)]);
+const PIN_SET: ReadonlySet<string> = new Set(ALL_PINS.map((r) => r.name));
+const CACHE_PIN_SET: ReadonlySet<string> = new Set(CACHE_PINS.map((r) => r.name));
 
 /** Parse an untrusted string (KML ExtendedData, envelope field, deep-link param) into a PinKey, or null if it isn't one. */
 export function parsePinKey(raw: unknown): PinKey | null {
     return typeof raw === "string" && PIN_SET.has(raw) ? (raw as PinKey) : null;
+}
+
+/** A cache pin is land: it takes contacts and a block, a glyph pin takes neither. */
+export function isCachePinKey(raw: unknown): boolean {
+    return typeof raw === "string" && CACHE_PIN_SET.has(raw);
 }
 
 // pinIcon is an open namespace (emoji:<char>, plot:<n>): never string-match one inline — ask this module, or its readers drift apart.
