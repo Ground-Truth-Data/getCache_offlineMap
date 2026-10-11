@@ -111,12 +111,7 @@ export const ICONS: readonly IconRow[] = [
         path: pinLibraryUrl("pin_muster_point_sm.webp"),
     },
     { name: "home", pin: "glyph", path: pinLibraryUrl("pin_home_sm.webp") },
-    // Baked by tools/makeEmojiPins.mjs.
-    {
-        name: "poop",
-        pin: "glyph",
-        path: pinLibraryUrl("pin_emoji_poop_sm.webp"),
-    },
+    { name: "poop", pin: "glyph", path: pinLibraryUrl("pin_emoji_poop_sm.webp") },
     { name: "tree", pin: "glyph", path: pinLibraryUrl("pin_tree_sm.webp") },
     { name: "cones", pin: "glyph", path: pinLibraryUrl("pin_cone_sm.webp") },
     { name: "cache", pin: "cachePin", path: pinLibraryUrl("pin_cache_sm.webp") },

@@ -2,8 +2,8 @@
 // FRACTIONS of pin width. No imports — tools/makeEmojiPins.mjs loads this from
 // bare Node, so anything added must stay importable there too.
 
-/** Past ~0.68 the widest glyphs (❤️, 🤝, flags) breach the sage ring. */
-export const EMOJI_PIN_GLYPH_SCALE = 0.66;
+/** Past ~0.75 the widest glyphs (❤️, 🤝, flags) breach the sage ring. */
+export const EMOJI_PIN_GLYPH_SCALE = 0.73;
 
 /** Fraction of pin height; the glyph centres in the head above it. */
 export const EMOJI_PIN_TAIL_FRACTION = 0.28;
