@@ -968,7 +968,7 @@ $effect(() => {
                 Pin
             </button>
             <button class="measure-btn measure-save" onclick={() => savePoint("cachePin")} title="Drop a cache">
-                <img class="measure-pin-ic" src={iconPath("classicCache")} alt="" />
+                <img class="measure-pin-ic" src={iconPath("cache")} alt="" />
                 Cache
             </button>
         {:else}

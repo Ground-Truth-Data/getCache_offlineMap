@@ -38,7 +38,7 @@ export type PinKey =
     | "home"
     | "poop"
     | "tree"
-    | "classicCache"
+    | "cache"
     | "rainbowCache"
     | "zebraCache"
     | "plaidCache"
@@ -119,7 +119,7 @@ export const ICONS: readonly IconRow[] = [
     },
     { name: "tree", pin: "glyph", path: pinLibraryUrl("pin_tree_sm.webp") },
     { name: "cones", pin: "glyph", path: pinLibraryUrl("pin_cone_sm.webp") },
-    { name: "classicCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_sm.webp") },
+    { name: "cache", pin: "cachePin", path: pinLibraryUrl("pin_cache_sm.webp") },
     { name: "redCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_red_sm.webp") },
     { name: "orangeCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_orange_sm.webp") },
     { name: "yellowCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_yellow_sm.webp") },
