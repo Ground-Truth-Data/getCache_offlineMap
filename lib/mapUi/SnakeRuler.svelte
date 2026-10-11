@@ -14,7 +14,7 @@ import type { Lnglat } from "$parent/siblings/getCache_OnlineMap/lib/draw/mapDra
 import { mayAddVertex } from "$parent/siblings/getCache_OnlineMap/lib/draw/drawLimit";
 import { formatHectares, formatMeasureDist } from "../panels/measureFormat";
 import { legLabelsReadable } from "./legLabelCrowding";
-import { type Rect, mapKeepOutRects, shiftClear } from "../shared/mapKeepOut";
+import { type Rect, mapKeepOutRects, readTopBarH, rectsOverlap, shiftClear } from "../shared/mapKeepOut";
 import type {
     MapHostPorts,
     MapShareFormat,
@@ -730,6 +730,10 @@ const TOTAL_HALF_W = 72;
 const POP_OFFSET_PX = 52;
 const TOTAL_OFFSET_PX = 16;
 const POP_H = 78;
+const TOTAL_H = 22;
+// The lone node's ring plus the hand hanging down-right of it (HEAD_CURSOR: 47px wide, ≈64px tall).
+const ARM_RECT = { l: 12, t: 12, w: 52, h: 76 };
+const BESIDE_GAP = 18;
 
 // Above the bbox by default; below if above clips the top; `cornered` when neither fits.
 let popAnchor = $derived.by(() => {
@@ -771,51 +775,60 @@ let popAnchor = $derived.by(() => {
     ) {
         return null;
     }
-    const fitsAbove = minY - CHROME_STACK_PX >= VP_MARGIN;
+    // The app header overlays the canvas top, so "the top" starts under it.
+    const topY = readTopBarH() + VP_MARGIN;
+    const fitsAbove = minY - CHROME_STACK_PX >= topY;
     const belowY = maxY + HAND_DROP_PX;
     const fitsBelow = belowY + CHROME_STACK_PX <= H - VP_MARGIN;
-    const below = !fitsAbove && fitsBelow;
-    const cornered = !fitsAbove && !fitsBelow;
-    const y = below ? belowY : minY;
+    // A lone node's menu never goes below: the hand hangs down-right, so it sits level, on the LEFT.
+    const beside = singlePoint && !fitsAbove;
+    const below = !singlePoint && !fitsAbove && fitsBelow;
+    const cornered = !singlePoint && !fitsAbove && !fitsBelow;
     const clampX = (x: number, half: number, edge: number) =>
         Math.min(Math.max(x, edge + half), W - edge - half);
     const popHalf = singlePoint ? POP_GRID_W / 2 : POP_HALF_W;
-    let popX = clampX(cx, popHalf, POP_EDGE_PX);
+    const leftX = minX - BESIDE_GAP - popHalf;
+    const besideX = leftX - popHalf >= POP_EDGE_PX ? leftX : minX - ARM_RECT.l + ARM_RECT.w + BESIDE_GAP + popHalf;
+    let popX = beside ? besideX : clampX(cx, popHalf, POP_EDGE_PX);
+    const y = below ? belowY : minY;
 
     // Dodge the map's floating chrome SIDEWAYS (upward reads as a diagonal leap), pill + popover as ONE box.
     const popW = popHalf * 2;
     // The snake itself is a keep-out: sideways from the crow's corner is straight onto the measurement.
-    const snakeRect: Rect = {
-        x: minX,
-        y: minY,
-        w: Math.max(maxX - minX, 1),
-        h: Math.max(maxY - minY, 1),
-    };
+    const snakeRect: Rect = singlePoint
+        ? { x: minX - ARM_RECT.l, y: minY - ARM_RECT.t, w: ARM_RECT.w, h: ARM_RECT.h }
+        : { x: minX, y: minY, w: Math.max(maxX - minX, 1), h: Math.max(maxY - minY, 1) };
     const rects = [
         ...mapKeepOutRects(W, undefined, map.getCanvas()),
         snakeRect,
     ];
     const minPopX = POP_EDGE_PX;
     const maxPopX = W - POP_EDGE_PX - popW;
-    const stackBox = (atY: number, isBelow: boolean): Rect => ({
+    const stackBox = (atY: number): Rect => ({
         x: popX - popHalf,
-        y: isBelow ? atY + TOTAL_OFFSET_PX : atY - POP_OFFSET_PX - POP_H,
+        y: beside ? atY - POP_H / 2 : below ? atY + TOTAL_OFFSET_PX : atY - POP_OFFSET_PX - POP_H,
         w: popW,
-        h: POP_OFFSET_PX + POP_H - TOTAL_OFFSET_PX,
+        h: beside ? POP_H + TOTAL_OFFSET_PX + TOTAL_H : POP_OFFSET_PX + POP_H - TOTAL_OFFSET_PX,
     });
-    const shifted = shiftClear(stackBox(y, below), rects, minPopX, maxPopX);
+    const shifted = shiftClear(stackBox(y), rects, minPopX, maxPopX);
     if (shifted !== null) popX = shifted + popHalf;
 
     // A sideways dodge drops the upward lift and sits level with the snake instead.
     const dodgedSideways =
-        shifted !== null && Math.abs(shifted + popHalf - clampX(cx, popHalf, POP_EDGE_PX)) > 1;
-    const levelY = dodgedSideways ? (minY + maxY) / 2 + POP_OFFSET_PX + POP_H / 2 : y;
+        !singlePoint && shifted !== null && Math.abs(shifted + popHalf - clampX(cx, popHalf, POP_EDGE_PX)) > 1;
+    let levelY = dodgedSideways ? (minY + maxY) / 2 + POP_OFFSET_PX + POP_H / 2 : y;
+    // Beside with no sideways lane (arm one side, draw strip the other): drop under the obstacle, still left of the arm.
+    if (beside && shifted === null) {
+        const box = stackBox(y);
+        levelY = Math.max(...rects.filter((r) => rectsOverlap(box, r)).map((r) => r.y + r.h)) + POP_H / 2;
+    }
 
     // The ✕ Discard lives in this box, so it must always be reachable; the `cornered` pan can silently refuse.
-    const topOffset = below ? TOTAL_OFFSET_PX : -POP_OFFSET_PX - POP_H;
+    const topOffset = beside ? -POP_H / 2 : below ? TOTAL_OFFSET_PX : -POP_OFFSET_PX - POP_H;
+    // Beside, the pill hangs under the popover, so the pair must clear the bottom together.
     const clampedY = Math.min(
-        Math.max(levelY, VP_MARGIN - topOffset),
-        H - VP_MARGIN - POP_H - topOffset,
+        Math.max(levelY, topY - topOffset),
+        H - VP_MARGIN - POP_H - topOffset - (beside ? TOTAL_OFFSET_PX + TOTAL_H : 0),
     );
 
     return {
@@ -824,7 +837,9 @@ let popAnchor = $derived.by(() => {
             ? popX
             : clampX(cx + (tailX - cx) * TOTAL_TAIL_BIAS, TOTAL_HALF_W, VP_MARGIN),
         y: clampedY,
+        totalY: beside ? clampedY + POP_H / 2 : clampedY,
         below,
+        beside,
         cornered,
         minY,
     };
@@ -930,8 +945,8 @@ $effect(() => {
     <div
         class="rt-line-label rt-line-label-total measure-total"
         class:measure-gliding={!!cursor}
-        class:measure-below={popAnchor.below}
-        style="left:{popAnchor.totalX}px; top:{popAnchor.y}px;"
+        class:measure-below={popAnchor.below || popAnchor.beside}
+        style="left:{popAnchor.totalX}px; top:{popAnchor.totalY}px;"
     >{totalText}</div>
 {/if}
 
@@ -941,7 +956,7 @@ $effect(() => {
 {/if}
 
 {#if active && popAnchor && (canFinish || singlePoint)}
-    <div class="measure-pop" class:measure-grid={singlePoint} class:measure-at-self={singlePoint && seedAtSelf} class:measure-gliding={!!cursor} class:measure-below={popAnchor.below} style="left:{popAnchor.popX}px; top:{popAnchor.y}px;">
+    <div class="measure-pop" class:measure-grid={singlePoint} class:measure-at-self={singlePoint && seedAtSelf} class:measure-gliding={!!cursor} class:measure-below={popAnchor.below} class:measure-beside={popAnchor.beside} style="left:{popAnchor.popX}px; top:{popAnchor.y}px;">
         {#if singlePoint}
             <!-- 2×2: copy · plot / pin · cache. No ✕: a tap off the node dismisses. -->
             {#if seedAtSelf}
@@ -1031,6 +1046,7 @@ $effect(() => {
         box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
     }
     .measure-pop.measure-below { transform: translate(-50%, 52px); }
+    .measure-pop.measure-beside { transform: translate(-50%, -50%); }
 
     .measure-x-loose {
         position: absolute;
