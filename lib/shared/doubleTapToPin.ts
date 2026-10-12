@@ -11,16 +11,19 @@ type TapMap = {
 };
 
 // A long-press's eventual click fires as a real tap unless swallowed at DOM capture. Window listener, not module state, so HMR duplication can't fork the flag.
-function swallowNextClick(windowMs = 250): void {
+// iOS yields no click after a long press, so the next pointerdown disarms it — never a timer, which a fast second tap beats and loses its click to.
+function swallowNextClick(): void {
 	const kill = (e: MouseEvent) => {
 		e.stopPropagation();
 		e.preventDefault();
 		cleanup();
 	};
-	const cleanup = () => window.removeEventListener("click", kill, true);
+	const cleanup = () => {
+		window.removeEventListener("click", kill, true);
+		window.removeEventListener("pointerdown", cleanup, true);
+	};
 	window.addEventListener("click", kill, true);
-	// Expire fast, or a genuine later tap gets eaten.
-	setTimeout(cleanup, windowMs);
+	window.addEventListener("pointerdown", cleanup, true);
 }
 
 export interface IdentifyResult {
@@ -169,8 +172,9 @@ export function attachDoubleTapToPin(
 	};
 
 	const onMouseOut = () => cancelPress("mouseout");
-	const onDragStart = () => cancelPress("map dragstart");
-	const onContextMenu = () => cancelPress("contextmenu");
+	// iOS Safari fires contextmenu ~500 ms into a long press; swallow it so the hold runs on. Mapbox's own
+	// dragstart is NOT a cancel either: it fires at 3 px, and a settling thumb moves that much — the slop above decides.
+	const onContextMenu = (e: MapMouseEvent) => e.originalEvent?.preventDefault();
 	const onTouchCancel = () => cancelPress("touchcancel");
 
 	map.on("dblclick", onDbl);
@@ -178,7 +182,6 @@ export function attachDoubleTapToPin(
 	map.on("mousemove", onMove);
 	map.on("mouseup", onUp);
 	map.on("mouseout", onMouseOut);
-	map.on("dragstart", onDragStart);
 	map.on("contextmenu", onContextMenu);
 	map.on("touchstart", onDown);
 	map.on("touchmove", onMove);
@@ -191,7 +194,6 @@ export function attachDoubleTapToPin(
 		map.off("mousemove", onMove);
 		map.off("mouseup", onUp);
 		map.off("mouseout", onMouseOut);
-		map.off("dragstart", onDragStart);
 		map.off("contextmenu", onContextMenu);
 		map.off("touchstart", onDown);
 		map.off("touchmove", onMove);

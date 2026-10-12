@@ -137,7 +137,7 @@ export const ICONS: readonly IconRow[] = [
     { name: "box", path: `${DIR}/treeBox.webp` },
     { name: "cacheGroup", path: cacheIconUrl },
     { name: "tally", path: `${DIR}/cent_icon_plain_v3_gold.webp` },
-    { name: "poly", path: `${DIR}/blockHeart_sm2.webp` },
+    { name: "poly", path: `${DIR}/polyHeart_sm2.webp` },
     { name: "line", path: `${DIR}/line_icon.webp` },
     // A track is NOT a line; never give it line_icon.
     { name: "track", path: tracksIcon },

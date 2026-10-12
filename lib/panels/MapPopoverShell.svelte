@@ -7,7 +7,6 @@ export const POPOVER_BOTTOM_RESERVE = 95;
 <script lang="ts">
 import type { Snippet } from "svelte";
 import { leaderLine, placePopover } from "./mapPopoverGeom";
-import { yieldStyle } from "./popoverYield";
 
 let {
 	bbox,
@@ -16,7 +15,6 @@ let {
 	isPoint = false,
 	wide = false,
 	scrollLocked = false,
-	drawLive = false,
 	children,
 }: {
 	bbox: { minX: number; minY: number; maxX: number; maxY: number };
@@ -26,8 +24,6 @@ let {
 	wide?: boolean;
 	/** ⚠️ Must stay frozen during edit-spotlight or the focused row slides out from under the scrim. */
 	scrollLocked?: boolean;
-	/** The card fades and stops taking taps so the shape drawn under it stays visible and clickable. */
-	drawLive?: boolean;
 	children: Snippet;
 } = $props();
 
@@ -61,10 +57,8 @@ const geom = $derived(
 		crow: crowExclusion(),
 	}),
 );
-const yielding = $derived(yieldStyle(drawLive).css);
 const style = $derived(
-	`left:${geom.left}px;top:${geom.top}px;width:${geom.width}px;max-height:${geom.maxH}px` +
-		(yielding ? `;${yielding}` : ""),
+	`left:${geom.left}px;top:${geom.top}px;width:${geom.width}px;max-height:${geom.maxH}px`,
 );
 
 const leader = $derived(isPoint ? leaderLine(bbox, geom) : null);
@@ -80,8 +74,7 @@ $effect(() => {
 	function setPassthrough(on: boolean) {
 		if (passthrough === on) return;
 		passthrough = on;
-		// Clearing it mid-draw would hand the card back the taps the draw needs.
-		node.style.pointerEvents = on || drawLive ? "none" : "";
+		node.style.pointerEvents = on ? "none" : "";
 	}
 
 	function onPointerDown(e: PointerEvent) {

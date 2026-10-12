@@ -530,7 +530,7 @@ function start(kind: typeof armed, seed?: Lnglat) {
     render();
     if (seedAtSelf) onSnapSelf?.();
 }
-function discard() {
+export function discard() {
     active = false;
     armed = null;
     seedAtSelf = false;
