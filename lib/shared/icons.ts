@@ -133,7 +133,8 @@ export const ICONS: readonly IconRow[] = [
     // Deliberately unlike the map/poly/line outlines: a block is administrative, not drawn.
     { name: "block", path: `${DIR}/block_icon_sm.webp` },
     { name: "project", path: `${DIR}/project_icon_sm.webp` },
-    { name: "box", path: `${DIR}/box_icon_V9.webp` },
+    // One box lifted off the cache pin's stack: a cache holds tree boxes.
+    { name: "box", path: `${DIR}/treeBox.webp` },
     { name: "cacheGroup", path: cacheIconUrl },
     { name: "tally", path: `${DIR}/cent_icon_plain_v3_gold.webp` },
     { name: "poly", path: `${DIR}/blockHeart_sm2.webp` },
