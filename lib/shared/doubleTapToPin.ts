@@ -64,7 +64,7 @@ export function attachDoubleTapToPin(
 	};
 
 	// The timer firing while the pointer is still down (never past slop) is itself the proof of "held + still".
-	const LONG_PRESS_MS = 550;
+	const LONG_PRESS_MS = 2000;
 	const MOUSE_SLOP_PX = 6;
 	const TOUCH_SLOP_PX = 14;
 	const DEBUG = false;
@@ -96,6 +96,10 @@ export function attachDoubleTapToPin(
 		};
 	};
 
+	// ShovelCursor (rapper) counts the hold 1·2 from these; a window event because a child can't import rapper's state.
+	const emit = (phase: "arm" | "end" | "fire", x = 0, y = 0) =>
+		window.dispatchEvent(new CustomEvent("gc-press", { detail: { phase, x, y } }));
+
 	const killTimer = () => {
 		if (pressTimer) {
 			clearTimeout(pressTimer);
@@ -107,6 +111,7 @@ export function attachDoubleTapToPin(
 		pressTimer = null;
 		if (!pressLngLat) return;
 		armReleaseSwallow();
+		emit("fire");
 		log("✅ LONG-PRESS fires → seed ruler", {
 			heldMs: Math.round(performance.now() - downAt),
 		});
@@ -139,11 +144,13 @@ export function attachDoubleTapToPin(
 		downAt = performance.now();
 		killTimer();
 		pressTimer = setTimeout(fireLongPress, LONG_PRESS_MS);
+		emit("arm", pressStart.x, pressStart.y);
 		log("⬇️ down — timer armed", { isTouch, at: pressStart });
 	};
 
 	const cancelPress = (why: string) => {
 		if (pressStart) log(`✖️ cancel (${why})`);
+		if (pressTimer) emit("end");
 		killTimer();
 		pressStart = null;
 		pressLngLat = null;

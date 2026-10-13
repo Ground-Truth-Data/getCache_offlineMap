@@ -3,7 +3,7 @@
 import { iconPath } from "../shared/icons";
 import handShovelCursor from "$gc/assets/hand_shovel_cursor.webp";
 import handShovelCursorRight from "$gc/assets/hand_shovel_cursor_right.webp";
-import handShovelCursor100 from "$gc/assets/hand_shovel_cursor_100.webp";
+import { HOTSPOT_X, HOTSPOT_Y } from "$gc/ShovelCursor.svelte";
 import xCloseWhite from "$gc/assets/x_close_white.webp";
 import type { Feature } from "geojson";
 import type { Map as MapboxMap } from "mapbox-gl";
@@ -314,13 +314,13 @@ function wireHandDrag(el: HTMLElement, which: "head" | "tail") {
     // Node-to-pointer gap at grab time, so the node doesn't jump to the cursor.
     let grabDX = 0;
     let grabDY = 0;
-    // preventDefault blocks the mousemove the fake cursor follows, so it is parked from pointer events instead. 11,5 = FAKE_CURSOR_HOTSPOT.
+    // preventDefault blocks the mousemove the fake cursor follows, so it is parked from pointer events instead.
     let fakeCursor: HTMLElement | null = null;
     const syncFakeCursor = (e: PointerEvent) => {
         if (e.pointerType !== "mouse") return;
         fakeCursor ??= document.querySelector<HTMLElement>(".fake-cursor");
         if (fakeCursor) {
-            fakeCursor.style.transform = `translate3d(${e.clientX - 11}px, ${e.clientY - 5}px, 0)`;
+            fakeCursor.style.transform = `translate3d(${e.clientX - HOTSPOT_X}px, ${e.clientY - HOTSPOT_Y}px, 0)`;
         }
     };
     // The page is CSS-zoomed, so a viewport px is more than a canvas px; the same ratio Mapbox applies to its own pointer events.
@@ -356,7 +356,7 @@ function wireHandDrag(el: HTMLElement, which: "head" | "tail") {
         window.removeEventListener("pointercancel", onUp);
         if (raf) { cancelAnimationFrame(raf); raf = 0; }
         pendingLL = null;
-        syncFakeCursor(e); // park it at the release point BEFORE it un-hides
+        syncFakeCursor(e);
         endGrab(moved && map ? toLngLat(e) : null);
         moved = false;
     };
@@ -385,8 +385,6 @@ function beginGrab(which: "head" | "tail"): Lnglat {
     dragAnchor = anchor;
     onMeasureDrag?.();
     map?.dragPan.disable();
-    // The var holds the WHOLE `url(...)` token: `url(var(--x))` is invalid CSS.
-    document.body.style.setProperty("--rt-grab-cursor", `url(${handShovelCursor100})`);
     document.body.classList.add("rt-snake-grabbing");
     return anchor;
 }
@@ -1268,12 +1266,6 @@ $effect(() => {
         -webkit-user-select: none;
     }
     :global(.rt-measure-grab:active) { cursor: grabbing; }
-    /* Hotspot 11,5 matches the fake cursor, which is hidden so there's a single hand. */
-    :global(body.rt-snake-grabbing),
-    :global(body.rt-snake-grabbing *) {
-        cursor: var(--rt-grab-cursor) 11 5, grabbing !important;
-    }
-    :global(body.rt-snake-grabbing .fake-cursor) { visibility: hidden !important; }
     :global(.rt-measure-grab img) {
         display: block;
         height: auto;
