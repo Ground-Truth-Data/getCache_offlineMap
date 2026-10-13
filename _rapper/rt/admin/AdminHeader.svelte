@@ -4,11 +4,13 @@
   🎬 stage-controls link to the Get Cache host, tier-1 because clicking it
   doesn't change which product you're in. Band 2 (THE STRIP): everything inside the
   active parent as ONE wrapping run of captioned groups — TOOLS (the apps
-  inside the parent), screens/views (uncaptioned, not tables), CRUD (rust),
-  LOOKUP (sage, reference vocabularies) — flowing like words in a sentence so
-  a row per group doesn't push the grid under the fold; a caption can never
-  separate from its first pill (see .grp). A table appears only under the
-  TOOL that owns it, never a parent-level fallback.
+  inside the parent), screens/views (uncaptioned, not tables) — flowing like
+  words in a sentence so a row per group doesn't push the grid under the fold;
+  a caption can never separate from its first pill (see .grp). Band 3 (THE
+  FLIP): CRUD (rust) and LOOKUP (sage, reference vocabularies) on the back of a
+  one-row card that starts face-down — thirty pills would otherwise push every
+  page under the fold. A table appears only under the TOOL that owns it, never
+  a parent-level fallback.
 -->
 <script lang="ts">
 import { dev } from "$app/environment";
@@ -107,14 +109,14 @@ const who = $derived(email ? email.split("@")[0] : "");
 const tools = $derived(current.tools);
 // Derived once: re-filtering per strip slice would let the halves disagree.
 const visibleTools = $derived(tools.filter((t) => !t.devOnly || dev));
-const rowTools = $derived(visibleTools.filter((t) => !t.ownRow));
+// `ownRow` no longer buys a row of its own: the pill sits with the tools, and only its TABLES differ, riding the flip on every page of the parent.
 const ownRowTools = $derived(visibleTools.filter((t) => t.ownRow));
 // Foundr splits tier 2 by what follows the dropdown: a `scopedToSite` pill means nothing until a site is picked, so it sits in its own group right of the rule.
 const corpusTools = $derived(
-	isFoundr ? rowTools.filter((t) => !t.scopedToSite) : rowTools,
+	isFoundr ? visibleTools.filter((t) => !t.scopedToSite) : visibleTools,
 );
 const projectTools = $derived(
-	isFoundr ? rowTools.filter((t) => t.scopedToSite) : [],
+	isFoundr ? visibleTools.filter((t) => t.scopedToSite) : [],
 );
 // Never a parent-level fallback — that hung ReTreever's twenty tables under all five hand-built screens. An own-row tool's tables are already on its line.
 const tables = $derived(
@@ -126,6 +128,32 @@ const crudScreens = $derived(tables.filter((l) => l.kind === "tool"));
 const crudTables = $derived(tables.filter((l) => l.kind === "table" || !l.kind));
 const crudLookups = $derived(tables.filter((l) => l.kind === "lookup"));
 const crudViews = $derived(tables.filter((l) => l.kind === "view"));
+const flipCount = $derived(
+	crudTables.length +
+		crudLookups.length +
+		ownRowTools.reduce((n, t) => n + (t.tables?.length ?? 0), 0),
+);
+
+// On a table page the card arrives open, so the lit pill shows where you are.
+const onTable = $derived(
+	[...crudTables, ...crudLookups, ...ownRowTools.flatMap((t) => t.tables ?? [])].some(
+		(l) => l.href === path,
+	),
+);
+
+// The flip is a two-beat animation: the card turns edge-on, the face swaps (and the row's height with it, unseen), then it turns the rest of the way.
+let open = $state(false);
+let turn = $state<"" | "away" | "arrive">("");
+const flip = () => (turn = "away");
+function turned() {
+	if (turn === "away") {
+		open = !open;
+		turn = "arrive";
+	} else turn = "";
+}
+$effect(() => {
+	open = onTable;
+});
 
 /**
  * Not a pathname test like every other pill: the views share ONE path,
@@ -325,21 +353,6 @@ $effect(() => {
                     {/each}
                 </span>
             {/if}
-            <!-- Own-row tools: a forced break, the tool's pill, a rule, then its CRUD/LOOKUP groups — unlike the active-tool ones below, these stay up on every page of the parent. -->
-            {#each ownRowTools as tool (tool.key)}
-                {@const own = tool.tables ?? []}
-                {@const ownTables = own.filter((l) => l.kind === "table" || !l.kind)}
-                {@const ownLookups = own.filter((l) => l.kind === "lookup")}
-                <span class="break" aria-hidden="true"></span>
-                {@render toolPill(tool)}
-                {#if ownTables.length}
-                    <span class="rule" aria-hidden="true"></span>
-                    {@render tableGroup(ownTables)}
-                {/if}
-                {#if ownLookups.length}
-                    {@render tableGroup(ownLookups, true)}
-                {/if}
-            {/each}
             <!-- The active tool's own pages. No caption: not tables, so CRUD would be lying about them. -->
             {#if crudScreens.length}
                 <span class="grp">
@@ -371,13 +384,42 @@ $effect(() => {
                     {/each}
                 </span>
             {/if}
-            {#if crudTables.length}
-                {@render tableGroup(crudTables)}
-            {/if}
-            {#if crudLookups.length}
-                {@render tableGroup(crudLookups, true)}
-            {/if}
         </nav>
+    {/if}
+    {#if flipCount}
+        <div
+            class="flip"
+            class:away={turn === "away"}
+            class:arrive={turn === "arrive"}
+            onanimationend={turned}
+        >
+            {#if open}
+                <!-- The pills navigate; anywhere else on the card turns it back. -->
+                <div
+                    class="face back strip"
+                    role="button"
+                    tabindex="0"
+                    aria-expanded="true"
+                    onclick={(e) => { if (!(e.target as Element).closest("a")) flip(); }}
+                    onkeydown={(e) => { if (e.key === "Escape" && !turn) flip(); }}
+                >
+                    {#each ownRowTools as tool (tool.key)}
+                        {@const own = tool.tables ?? []}
+                        {@const ownTables = own.filter((l) => l.kind === "table" || !l.kind)}
+                        {@const ownLookups = own.filter((l) => l.kind === "lookup")}
+                        {#if ownTables.length}{@render tableGroup(ownTables)}{/if}
+                        {#if ownLookups.length}{@render tableGroup(ownLookups, true)}{/if}
+                    {/each}
+                    {#if crudTables.length}{@render tableGroup(crudTables)}{/if}
+                    {#if crudLookups.length}{@render tableGroup(crudLookups, true)}{/if}
+                </div>
+            {:else}
+                <button class="face front" type="button" aria-expanded="false" onclick={flip}>
+                    <span class="grp-tag">FLIP CRUD</span>
+                    <span class="flip-n">{flipCount} tables</span>
+                </button>
+            {/if}
+        </div>
     {/if}
 </header>
 
@@ -606,10 +648,56 @@ $effect(() => {
         margin: 0 0.35rem;
         background: var(--at-line-strong);
     }
-    /* A forced line break — the one place a row boundary is meant, not incidental. */
-    .break {
-        flex-basis: 100%;
-        height: 0;
+    /* Hinged on its top edge, so the one-row front and the many-row back turn about the same line. Two half-turns, not one 180°: the faces differ in height, and the swap lands at 90° where the card is a line and the jump can't be seen. */
+    .flip {
+        transform-origin: top center;
+    }
+    .flip.away {
+        animation: away 0.16s ease-in forwards;
+    }
+    .flip.arrive {
+        animation: arrive 0.2s ease-out;
+    }
+    @keyframes away {
+        to {
+            transform: perspective(900px) rotateX(90deg);
+        }
+    }
+    @keyframes arrive {
+        from {
+            transform: perspective(900px) rotateX(-90deg);
+        }
+    }
+    .face {
+        box-sizing: border-box;
+        width: 100%;
+        padding: 0.35rem 0.6rem;
+        border: 1px solid var(--at-line-strong);
+        border-radius: 8px;
+        background: var(--at-inset);
+        cursor: pointer;
+        transition: border-color 0.12s ease;
+    }
+    .face:hover {
+        border-color: color-mix(in srgb, var(--rt-rust), var(--at-panel) 45%);
+    }
+    .front {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font: inherit;
+        color: inherit;
+    }
+    .front .grp-tag {
+        margin-left: 0;
+    }
+    .flip-n {
+        font-size: 0.68rem;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        color: var(--hd-dim);
+    }
+    .back {
+        outline: none;
     }
     /* inline-flex + line-height:1, not padding: with `display:inline` the mono font's line box sits the baseline high, so symmetric padding looks bottom-heavy. */
     .lnk {

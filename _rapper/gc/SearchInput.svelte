@@ -22,6 +22,7 @@ type Props = {
     readonly?: boolean;
     onclick?: (e: MouseEvent) => void;
 };
+const id = $props.id();
 let {
     value = $bindable(""),
     placeholder = "Search…",
@@ -39,7 +40,7 @@ function handleClear() {
 }
 </script>
 
-<div class="rt-search">
+<label class="rt-search" for={id}>
     <span class="rt-search__icon" aria-hidden="true">
         <Icon name="search" size={16} />
     </span>
@@ -47,6 +48,7 @@ function handleClear() {
     <!-- svelte-ignore a11y_autofocus -->
     <input
         class="rt-search__input"
+        {id}
         type="search"
         {placeholder}
         bind:value
@@ -58,7 +60,7 @@ function handleClear() {
     {#if value}
         <button type="button" class="rt-search__clear" aria-label="Clear" onclick={handleClear}>×</button>
     {/if}
-</div>
+</label>
 
 <style>
     .rt-search {
@@ -69,6 +71,7 @@ function handleClear() {
         background: var(--rt-input);
         border: 1px solid var(--rt-border);
         border-radius: var(--rt-radius-sm);
+        cursor: text;
     }
     .rt-search:focus-within { border-color: var(--rt-yellow); }
 

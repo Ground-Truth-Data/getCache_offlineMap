@@ -131,6 +131,7 @@ async function copy() {
 			role="dialog"
 			aria-modal="true"
 			aria-label="{open.col} value"
+			tabindex="-1"
 			transition:arrive
 			onkeydown={trapTab}
 		>
@@ -154,6 +155,7 @@ async function copy() {
 				<p class="jp-msg dim">Empty.</p>
 			{:else}
 				<!-- Focusable because it SCROLLS: thousands of lines a keyboard user could otherwise never reach. -->
+				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 				<pre tabindex="0">{peekState.peek.text}</pre>
 			{/if}
 

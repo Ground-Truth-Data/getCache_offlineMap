@@ -11,7 +11,7 @@ component repos on its own. rapper itself carries almost nothing — the
 components (children) live in their own repos:
 
 - [getCache_OfflineMap](https://github.com/Ground-Truth-Data/getCache_OfflineMap)
-- [getCache_OnlineMap](https://github.com/Ground-Truth-Data/getCache_OnlineMap)
+- getCache_OnlineMap (private)
 - [ReTreever_who_what](https://github.com/Ground-Truth-Data/ReTreever_who_what)
 - [ReTreever_where](https://github.com/Ground-Truth-Data/ReTreever_where)
 
@@ -79,7 +79,8 @@ every import inside it fails. In the development workspace both parents and
 every child are members of one npm workspace with one `node_modules`.
 
 `rig/`, `gc/` and `rt/` are the shared tree, and THIS repo is its home —
-ReTreever imports them from here through the same `$rig`/`$gc`/`$rt` aliases.
+ReTreever and Get Cache import them from here through the same
+`$rig`/`$gc`/`$rt` aliases.
 Nothing is copied. `src/app.unique.css` is the one per-tier file: it imports
 `$gc/theme.css` and then the tokens the tiers disagree on, which is how a page
 declares its tier.
@@ -105,15 +106,17 @@ The guards discover children by **shape** — any folder containing `lib/` and
    children both need is duplicated in each.
 5. **No relative path climbs out of the child.**
 
-The build-time guards live in ReTreever — the only tier that can see both
-sides — so a contributor cloning rapper does not receive them:
+Two guards run in every `vite build`, from `src/lib/guards/`: `noEscapePlugin`
+(no raw climb out of a child) and `noRawCameraPlugin` (camera calls go through
+`safeMap`). The cross-tier tests live in ReTreever — the only tier that can see
+both sides — so a contributor cloning rapper does not receive them:
 
 ```bash
 npx vitest run src/lib/core/rapperGuards/   # from the ReTreever repo
 ```
 
-Each child also carries its own `lib/noParentNames.test.ts`, which runs in a
-bare clone with `npm test`. If one goes red while you are moving code, it is
+Each child also carries its own `noParentNames.test.ts` under `lib/`, which
+runs in a bare clone with `npm test`. If one goes red while you are moving code, it is
 telling you the child just stopped being liftable. Fix the shape, do not
 loosen the rule — and after touching a guard, plant a violation and watch it
 fail.

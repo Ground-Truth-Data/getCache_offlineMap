@@ -4,10 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { noRawCamera } from "./noRawCameraPlugin";
 
-// The predecessor of this guard (ReTreever/scripts/check-direct-mapbox-camera.sh)
-// passed green for weeks while grepping paths the map code had already left. So
-// the load-bearing assertion here is not "clean code passes" — it is that the
-// guard FIRES on a real violation. A guard that cannot fail is not a guard.
+// The load-bearing assertion is that the guard FIRES on a real violation, not
+// that clean code passes. A guard that cannot fail is not a guard.
 
 const ROOT = mkdtempSync(join(tmpdir(), "raw-camera-"));
 

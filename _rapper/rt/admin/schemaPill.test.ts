@@ -23,7 +23,7 @@ describe("the schema pill", () => {
 
 	// The Foundr tool row already overflows its window; appended to the end is a pill nobody scrolls to.
 	it("leads the TOOLS run", () => {
-		const corpus = tools.filter((t) => !t.scopedToSite && !t.ownRow);
+		const corpus = tools.filter((t) => !t.scopedToSite);
 		expect(corpus[0]?.key).toBe("schema");
 	});
 });

@@ -5,7 +5,8 @@
 
 // On a landscape route the turned screen is the frame's inner surface, and it
 // disagrees with the unturned frame about which way is right.
-const HOMES = ".mobile-preview-screen, .mobile-preview-frame";
+// .mobile-shell is zoomed to the pane; a hand outside it would keep its design size.
+const HOMES = ".mobile-preview-screen, .mobile-preview-frame, .mobile-shell";
 
 /** The box a hand should live in, from its target element. */
 export function frameFor(
@@ -13,9 +14,9 @@ export function frameFor(
 ): HTMLElement | null {
 	const owned = target?.closest?.(HOMES) as HTMLElement | null;
 	if (owned) return owned;
-	// Several frames with no target is ambiguous: bail to <body> rather than guess.
-	const all = document.querySelectorAll<HTMLElement>(HOMES);
-	return all.length === 1 ? all[0] : null;
+	// Nested homes are one frame: take the innermost. Several frames with no target is ambiguous: <body> rather than a guess.
+	const inner = [...document.querySelectorAll<HTMLElement>(HOMES)].filter((h) => !h.querySelector(HOMES));
+	return inner.length === 1 ? inner[0]! : null;
 }
 
 /** Svelte action: move `node` into the phone frame if one exists, else <body>. Read once at mount. */

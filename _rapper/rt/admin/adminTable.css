@@ -95,7 +95,6 @@
 	min-width: 12rem;
 	flex: 0 1 22rem;
 }
-.filter :global(.rt-search),
 .filter .rt-search {
 	flex: 1 1 auto;
 	min-width: 0;

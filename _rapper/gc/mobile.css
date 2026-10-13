@@ -183,6 +183,24 @@ hr {
 	margin: 0;
 }
 
+/* Item count on a row's type glyph (its parent is position:relative). Counts never sit on the meta line
+   as text; the ring in the row surface cuts the badge out of the icon stroke. */
+.rt-count-badge {
+	position: absolute;
+	top: 0;
+	right: -3px;
+	min-width: 20px;
+	height: 20px;
+	padding: 0 5px;
+	border-radius: 999px;
+	background: var(--rt-meta);
+	color: var(--rt-gold-ink);
+	border: 2px solid var(--rt-surface);
+	font: 800 12.5px/16px var(--rt-font-body);
+	text-align: center;
+	pointer-events: none;
+}
+
 .rt-text-title {
 	font-family: var(--rt-font-display);
 	font-size: var(--rt-fs-title);
@@ -291,6 +309,14 @@ hr {
 }
 .rt-pad .rt-key:nth-child(5n + 1):nth-last-child(-n + 5) {
 	border-bottom-left-radius: 15px;
+}
+/* Side borders are halved into seams, so a lit key drops them and draws one
+   even ring at the pad's own weight; the caller sets --rt-key-ring. */
+.rt-pad .rt-key.rt-key--lit {
+	border-width: 0;
+	box-shadow:
+		inset 0 0 0 1.4px var(--rt-key-ring),
+		0 0 18px -4px color-mix(in srgb, var(--rt-key-ring) 55%, transparent);
 }
 
 .rt-key {
@@ -613,7 +639,7 @@ body.shovel-cursor * {
 	position: fixed;
 	top: 0;
 	left: 0;
-	width: auto;
+	width: 72px;
 	height: 100px;
 	pointer-events: none;
 	z-index: 2147483647;
@@ -626,8 +652,35 @@ body.mobile-app .fake-cursor,
 body.shovel-cursor .fake-cursor {
 	display: block;
 }
+.fake-cursor img {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	opacity: 0;
+}
+/* A ruler-end drag (SnakeRuler's body class) holds the gold hand whatever the press frame says. */
+.fake-cursor[data-frame="point"] .fake-cursor-point,
+.fake-cursor[data-frame="open"] .fake-cursor-open,
+.fake-cursor[data-frame="fist"] .fake-cursor-fist,
+.fake-cursor[data-frame="gold"] .fake-cursor-gold,
+body.rt-snake-grabbing .fake-cursor .fake-cursor-gold {
+	opacity: 1;
+}
+body.rt-snake-grabbing .fake-cursor img:not(.fake-cursor-gold) {
+	opacity: 0;
+}
 
-/* Click splash — companion to .fake-cursor; shows WHEN a tap lands, not just where. Created/self-removed by ShovelCursor.svelte. */
+/* ShovelCursor's HoldRing, centred on its point. */
+.hold-ring-at {
+	position: fixed;
+	transform: translate(-50%, -50%) scale(0.6);
+	opacity: 0.9;
+	pointer-events: none;
+	z-index: 2147483646;
+}
+
+/* Shows WHEN a tap lands, not just where. Created/self-removed by ShovelCursor.svelte. */
 .click-splash {
 	position: fixed;
 	width: 34px;
@@ -662,6 +715,10 @@ body.shovel-cursor .fake-cursor {
 	body.shovel-cursor .fake-cursor,
 	.click-splash {
 		display: none;
+	}
+	/* Except under the finger during a map press, so the hold reads on a phone too. */
+	body.shovel-cursor.gc-map-pressing .fake-cursor {
+		display: block;
 	}
 }
 

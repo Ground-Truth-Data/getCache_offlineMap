@@ -171,7 +171,7 @@ export const ICONS = {
 		body: `<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z"/>`,
 		sw: 2,
 	},
-	// Section-rail glyphs (the polygon/block card's one-row rail).
+	// Section-rail glyphs (the piece/block card's one-row rail).
 	"rail-note": {
 		body: `<path d="M5 3.5h14v17H5z"/><path d="M8.5 8.5h7M8.5 12.5h7M8.5 16.5h4"/>`,
 		sw: 1.9,
@@ -181,13 +181,13 @@ export const ICONS = {
 		sw: 1.9,
 	},
 	// Never a generic pentagon — the corners and contents are what make it
-	// read as a block rather than "a polygon".
+	// read as a block rather than a bare piece.
 	"rail-block": {
 		body: `<path d="M4.12 6.75 12.38 3l7.5 4.88-2.25 12.38-11.25 1.12z"/><circle cx="4.12" cy="6.75" r="1.27"/><circle cx="12.38" cy="3" r="1.27"/><circle cx="19.88" cy="7.88" r="1.27"/><circle cx="17.62" cy="20.25" r="1.27"/><circle cx="6.38" cy="21.38" r="1.27"/><path d="M14.25 9.75l-2.25 3.75h4.5z"/><path d="M14.25 13.5v2.25"/><ellipse cx="7.88" cy="14.25" rx="2.25" ry="1.12"/><path d="M5.62 14.25v1.88c0 .64 1.01 1.12 2.25 1.12s2.25-.49 2.25-1.12v-1.88"/>`,
 		// Authored at 64×64 with sw 3.4; rescaled to this catalog's 24×24 box.
 		sw: 1.28,
 	},
-	// Deliberately not a polygon-with-handles (collides with rail-block) or
+	// Deliberately not a shape-with-handles (collides with rail-block) or
 	// a pencil (collides with rail-note).
 	"rail-edit": {
 		body: `<rect x="9" y="9" width="6" height="6" rx="1.4"/><path d="M12 2.6v3.6M12 17.8v3.6M2.6 12h3.6M17.8 12h3.6"/><path d="m9.8 4.6 2.2-2 2.2 2M9.8 19.4l2.2 2 2.2-2M4.6 9.8l-2 2.2 2 2.2M19.4 9.8l2 2.2-2 2.2"/>`,
@@ -203,6 +203,17 @@ export const ICONS = {
 	"eye-closed": {
 		body: `<path d="M2 11.5s4 5.5 10 5.5 10-5.5 10-5.5"/><line x1="4" y1="15.2" x2="2.6" y2="17.6"/><line x1="8" y1="17" x2="7.2" y2="19.6"/><line x1="12" y1="17.5" x2="12" y2="20.2"/><line x1="16" y1="17" x2="16.8" y2="19.6"/><line x1="20" y1="15.2" x2="21.4" y2="17.6"/>`,
 		sw: 2,
+	},
+
+	// Your edit was replaced by a concurrent one — the clobber mark.
+	hammer: {
+		body: `<path d="m15 12-8.5 8.5a2.12 2.12 0 1 1-3-3L12 9"/><path d="M17.64 15 22 10.64"/><path d="m20.91 11.7-1.25-1.25c-.6-.6-.93-1.4-.93-2.25v-.86L16.01 4.6a5.56 5.56 0 0 0-3.94-1.64H9l.92.82A6.18 6.18 0 0 1 12 8.4v1.56l2 2h2.47l2.26 1.91"/>`,
+		sw: 2,
+	},
+	// Make an older version current again.
+	restore: {
+		body: `<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>`,
+		sw: 2.2,
 	},
 
 	"chevron-right": { body: `<polyline points="9 18 15 12 9 6"/>`, sw: 2 },

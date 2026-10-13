@@ -19,8 +19,8 @@ describe("parent pills remember the last tool", () => {
 
 	it("keeps path AND query, per parent", () => {
 		rememberTool("retreever", "/retreever_dash/tool/orgs?type=parent");
-		rememberTool("foundr", "/foundr_dash/tool/missmap?site=restor");
+		rememberTool("foundr", "/foundr_dash/tool/missmeta?site=restor");
 		expect(lastTool("retreever")).toBe("/retreever_dash/tool/orgs?type=parent");
-		expect(lastTool("foundr")).toBe("/foundr_dash/tool/missmap?site=restor");
+		expect(lastTool("foundr")).toBe("/foundr_dash/tool/missmeta?site=restor");
 	});
 });

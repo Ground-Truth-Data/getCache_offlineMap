@@ -109,7 +109,7 @@
 		ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
 		'Noto Color Emoji';
 	--font-mono:
-		Monaco, 'Roboto Mono', 'JetBrains Mono', 'SF Mono', Menlo, Consolas, 'Courier New', monospace;
+		Monaco, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, 'Courier New', monospace;
 }
 
 @layer base {
