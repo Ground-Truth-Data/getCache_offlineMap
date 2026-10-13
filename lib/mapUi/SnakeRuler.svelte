@@ -12,6 +12,7 @@ import turfLength from "@turf/length";
 import { markerCtor } from "../shared/rendererOf";
 import type { Lnglat } from "$parent/siblings/getCache_OnlineMap/lib/draw/mapDraw";
 import { mayAddVertex } from "$parent/siblings/getCache_OnlineMap/lib/draw/drawLimit";
+import { POLYGON_FILL, POLYGON_OUTLINE, STROKE } from "$parent/siblings/getCache_OnlineMap/lib/draw/drawStyle";
 import { type SnapRings, snapLngLat, snapRings } from "$parent/siblings/getCache_OnlineMap/lib/draw/snapToShapes";
 import { formatHectares, formatMeasureDist } from "../panels/measureFormat";
 import { legLabelsReadable } from "./legLabelCrowding";
@@ -307,7 +308,7 @@ function makeEndCursorEl(src: string, w: number): HTMLElement {
     el.appendChild(img);
     return el;
 }
-// move/up listeners live on WINDOW so the gesture survives the sprite being removed mid-drag when it snaps to a polygon.
+// move/up listeners live on WINDOW so the gesture survives the sprite being removed mid-drag when it snaps closed into a piece.
 function wireHandDrag(el: HTMLElement, which: "head" | "tail") {
     let moved = false;
     // Node-to-pointer gap at grab time, so the node doesn't jump to the cursor.
@@ -356,16 +357,7 @@ function wireHandDrag(el: HTMLElement, which: "head" | "tail") {
         if (raf) { cancelAnimationFrame(raf); raf = 0; }
         pendingLL = null;
         syncFakeCursor(e); // park it at the release point BEFORE it un-hides
-        document.body.classList.remove("rt-snake-grabbing");
-        if (map) map.dragPan.enable();
-        if (moved && map) {
-            const [lng, lat] = toLngLat(e);
-            commitAt(lng, lat);
-        } else {
-            cursor = null;
-            isPolygon = false;
-            render();
-        }
+        endGrab(moved && map ? toLngLat(e) : null);
         moved = false;
     };
     el.addEventListener("pointerdown", (e: PointerEvent) => {
@@ -373,28 +365,96 @@ function wireHandDrag(el: HTMLElement, which: "head" | "tail") {
         e.preventDefault();
         e.stopPropagation();
         moved = false;
-        shapeRings = null;
-        dragFromHead = which === "head";
-        dragAnchor = which === "head" ? verts[0] : verts[verts.length - 1];
+        const anchor = beginGrab(which);
         {
-            const ns = map.project({ lng: dragAnchor[0], lat: dragAnchor[1] });
+            const ns = map.project({ lng: anchor[0], lat: anchor[1] });
             const [x0, y0] = canvasPx(e);
             grabDX = ns.x - x0;
             grabDY = ns.y - y0;
         }
-        onMeasureDrag?.();
-        map.dragPan.disable();
-        // The var holds the WHOLE `url(...)` token: `url(var(--x))` is invalid CSS.
-        document.body.style.setProperty(
-            "--rt-grab-cursor",
-            `url(${handShovelCursor100})`,
-        );
-        document.body.classList.add("rt-snake-grabbing");
         window.addEventListener("pointermove", onMove);
         window.addEventListener("pointerup", onUp);
         window.addEventListener("pointercancel", onUp);
     });
 }
+// The non-pointer half of a hand drag, shared with the teaching-hand tour.
+function beginGrab(which: "head" | "tail"): Lnglat {
+    shapeRings = null;
+    dragFromHead = which === "head";
+    const anchor = which === "head" ? verts[0] : verts[verts.length - 1];
+    dragAnchor = anchor;
+    onMeasureDrag?.();
+    map?.dragPan.disable();
+    // The var holds the WHOLE `url(...)` token: `url(var(--x))` is invalid CSS.
+    document.body.style.setProperty("--rt-grab-cursor", `url(${handShovelCursor100})`);
+    document.body.classList.add("rt-snake-grabbing");
+    return anchor;
+}
+function endGrab(ll: Lnglat | null) {
+    document.body.classList.remove("rt-snake-grabbing");
+    map?.dragPan.enable();
+    if (ll) return commitAt(ll[0], ll[1]);
+    cursor = null;
+    isPolygon = false;
+    render();
+}
+// The lesson's "saved" beat: the shape turns into a saved piece (drawStyle's own paint), holds,
+// then dims to nothing and is discarded. A new start or a discard mid-fade bumps the token, so the
+// fade leaves whatever replaced it alone.
+let fading = $state(false);
+let fadeGen = 0;
+const SAVED_HOLD_MS = 700;
+const SAVED_PAINT = [
+    ["measure-fill", "fill-color", POLYGON_FILL],
+    ["measure-fill", "fill-opacity", 0.35],
+    ["measure-line-casing", "line-color", POLYGON_OUTLINE],
+    ["measure-line-casing", "line-width", STROKE.polygon.line],
+    ["measure-line-casing", "line-opacity", 1],
+    ["measure-ticks", "line-opacity", 0],
+    ["measure-nodes", "circle-stroke-opacity", 0],
+    ["measure-end-dots", "circle-color", POLYGON_OUTLINE],
+    ["measure-end-dots", "circle-radius", 4],
+    ["measure-end-dots", "circle-opacity", 1],
+] as const;
+const DIM_PAINT = [
+    ["measure-fill", "fill-opacity", 0.35],
+    ["measure-line-casing", "line-opacity", 1],
+    ["measure-end-dots", "circle-opacity", 1],
+] as const;
+async function tourFade(ms: number): Promise<void> {
+    const m = map;
+    if (!m || !active) return discard();
+    const gen = ++fadeGen;
+    fading = true;
+    clearLegs();
+    const base = SAVED_PAINT.map(([id, prop]) => [id, prop, m.getPaintProperty(id, prop)] as const);
+    for (const [id, prop, v] of SAVED_PAINT) m.setPaintProperty(id, prop, v);
+    await new Promise((r) => setTimeout(r, SAVED_HOLD_MS));
+    const t0 = performance.now();
+    await new Promise<void>((done) => {
+        const step = () => {
+            const k = gen === fadeGen ? Math.min(1, (performance.now() - t0) / ms) : 1;
+            for (const [id, prop, full] of DIM_PAINT) m.setPaintProperty(id, prop, full * (1 - k));
+            if (k < 1) requestAnimationFrame(step);
+            else done();
+        };
+        requestAnimationFrame(step);
+    });
+    if (gen === fadeGen) discard();
+    for (const [id, prop, v] of base) m.setPaintProperty(id, prop, v);
+    fading = false;
+}
+/** The teaching hand drives a real ruler through these instead of synthetic pointer events. */
+export const tour = {
+    seed: (lng: number, lat: number) => start(null, [lng, lat]),
+    grab: (which: "head" | "tail") => {
+        if (active && map) beginGrab(which);
+    },
+    hover,
+    drop: (lng: number, lat: number) => endGrab([lng, lat]),
+    fade: tourFade,
+    discard,
+};
 function removeEndCursors() {
     headCursor?.remove();
     headCursor = null;
@@ -552,6 +612,7 @@ function snapSeedToSelf(seed: Lnglat): { seed: Lnglat; atSelf: boolean } {
 /** Hands mode starts from a double-tap seed; palette mode starts armed and empty. */
 function start(kind: typeof armed, seed?: Lnglat) {
     const snapped = seed ? snapSeedToSelf(seed) : null;
+    fadeGen++;
     active = true;
     armed = kind;
     cursor = null;
@@ -564,6 +625,7 @@ function start(kind: typeof armed, seed?: Lnglat) {
     if (seedAtSelf) onSnapSelf?.();
 }
 export function discard() {
+    fadeGen++;
     active = false;
     armed = null;
     seedAtSelf = false;
@@ -971,7 +1033,7 @@ $effect(() => {
     if (!m) return;
     const onMove = () => {
         // Guard first: this fires every pan frame for the map's whole life.
-        if (!active) return;
+        if (!active || fading) return;
         mapMoveSeq += 1;
         shapeRings = null;
         setData(MEASURE_TICKS_SRC, buildTicksFC(ring()));
@@ -983,7 +1045,7 @@ $effect(() => {
 });
 </script>
 
-{#if active && totalText && popAnchor}
+{#if active && totalText && popAnchor && !fading}
     <div
         class="rt-line-label rt-line-label-total measure-total"
         class:measure-gliding={!!cursor}
@@ -997,7 +1059,7 @@ $effect(() => {
     <button style="--x-white:url({xCloseWhite})" class="measure-btn measure-x measure-x-loose" onclick={discard} title="Discard" aria-label="Discard measurement">&#x2715;</button>
 {/if}
 
-{#if active && popAnchor && (canFinish || singlePoint)}
+{#if active && popAnchor && (canFinish || singlePoint) && !fading}
     <div class="measure-pop" class:measure-grid={singlePoint} class:measure-at-self={singlePoint && seedAtSelf} class:measure-gliding={!!cursor} class:measure-below={popAnchor.below} class:measure-beside={popAnchor.beside} style="left:{popAnchor.popX}px; top:{popAnchor.y}px;">
         {#if singlePoint}
             <!-- 2×2: copy · plot / pin · cache. No ✕: a tap off the node dismisses. -->

@@ -1,4 +1,4 @@
-<!-- DrawPalette — the LINE/POLY/PIN tool strip; presentational only. Picking a tool arms the Snake Ruler (armKind), which then owns all geometry, the readout, and finishing. -->
+<!-- DrawPalette — the LINE/PIECE/PIN tool strip; presentational only. Picking a tool arms the Snake Ruler (armKind), which then owns all geometry, the readout, and finishing. -->
 <script lang="ts">
 import type { MapHostPorts } from "../shared/mapHostPorts";
 import xCloseWhite from "$gc/assets/x_close_white.webp";
@@ -35,10 +35,10 @@ let {
             class="strip-btn strip-btn-poly"
             class:strip-btn-active-poly={activeTool === 'polygon'}
             onclick={() => onMode('draw_polygon')}
-            title="Draw polygon"
+            title="Draw a piece"
         >
             <ports.ui.Icon name="pentagon" size={20} />
-            <span>POLY</span>
+            <span>PIECE</span>
         </button>
         <button
             class="strip-btn"

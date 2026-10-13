@@ -85,11 +85,11 @@ const SWATCH_IMG: Partial<Record<Swatch, string>> = {
 		title: "Your features · tap {eye} to show / hide",
 		rows: [
 			{ label: "Labels", swatch: "text", kind: "labels", slider: labelDensity, rest: 30 },
-			{ label: "Polygon", swatch: "fill", color: "#e8a06a", kind: "shapes", slider: polygonOpacity },
+			{ label: "Piece", swatch: "fill", color: "#e8a06a", kind: "shapes", slider: polygonOpacity },
 			{ label: "PDF map", swatch: "pdf", kind: "pdf", slider: overlayOpacity },
 			{ label: "Pin", swatch: "pin", kind: "pins" },
 			{ label: "Block", swatch: "block" },
-			{ label: "Line / polygon", swatch: "line", color: "#b36940" },
+			{ label: "Line / piece", swatch: "line", color: "#b36940" },
 			{ label: "Track", swatch: "rail", color: "#ffd700", note: "Your recorded GPS trail." },
 			{ label: "Several pins", swatch: "cluster" },
 		],

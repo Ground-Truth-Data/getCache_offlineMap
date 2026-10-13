@@ -52,7 +52,7 @@ class OverlayOpacityStore {
 
 export const overlayOpacity = new OverlayOpacityStore(0.5);
 
-// Blanket fill-opacity for ALL drawn polygons (Legend's Polygon-row slider). CENTRE-RESTING: 0.5 = as-designed, left fades toward zero, right boosts up to 2× (capped opaque). Outlines untouched.
+// Blanket fill-opacity for ALL drawn pieces (Legend's Piece-row slider). CENTRE-RESTING: 0.5 = as-designed, left fades toward zero, right boosts up to 2× (capped opaque). Outlines untouched.
 export const polygonOpacity = new OverlayOpacityStore(0.5);
 
 // How many labels the map shows (0 = none, 0.3 = the shipped look, 1 = busiest that still reads clean). Read by draw/labelDial.ts via MapDrawControls.

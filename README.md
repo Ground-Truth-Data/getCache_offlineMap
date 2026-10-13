@@ -8,7 +8,7 @@ The feature is an offline preview: it previews the map data stored on the
 phone (or browser, since it is a Capacitor app) for use offline, and works
 with no network. The vector roads and satellite tile
 "blobs" are downloaded dynamically based on the user's location and the pins
-and polygons added to the map. Repos:
+and pieces added to the map. Repos:
 [offline preview GitHub](https://github.com/Ground-Truth-Data/getCache_offlineMap) ·
 [rapper GitHub](https://github.com/Ground-Truth-Data/rapper)
 

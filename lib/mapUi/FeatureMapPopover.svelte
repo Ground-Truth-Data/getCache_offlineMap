@@ -33,7 +33,7 @@ let {
     onSave: (name: string, featureDesc: string, featureDataJson: string) => void;
     onClose: () => void;
     onChangeIcon?: (key: string) => void;
-    /** Show or hide this polygon's name on the map. */
+    /** Show or hide this piece's name on the map. */
     onTitleShown?: (v: boolean) => void;
     onDelete?: () => void;
     onContacts?: (keys: string[]) => void;
@@ -47,7 +47,7 @@ const isPoint = $derived(feature.geometry?.type === "Point");
 </script>
 
 <MapPopoverShell {bbox} {containerWidth} {containerHeight} {isPoint}>
-    <!-- Pins/lines/polygons get an easy delete (garbage can beside Share); PLOT pins use their own popover and intentionally have no trash. -->
+    <!-- Pins/lines/pieces get an easy delete (garbage can beside Share); PLOT pins use their own popover and intentionally have no trash. -->
     <ports.ui.FeatureDetail
         {map}
         {feature}

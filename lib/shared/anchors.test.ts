@@ -73,7 +73,7 @@ describe("the other geometries keep their own rules", () => {
         ).toEqual([p]);
     });
 
-    it("a polygon is ONE blob at its centroid — a big draw earns no more", () => {
+    it("a piece is ONE blob at its centroid — a big draw earns no more", () => {
         const big = anchorsOf(
             feat({
                 type: "Polygon",
