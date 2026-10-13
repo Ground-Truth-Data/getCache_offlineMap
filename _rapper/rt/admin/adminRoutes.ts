@@ -82,6 +82,7 @@ export type AdminParent = {
 export const MIRRORED_TABLES = [
 	"personEntity",
 	"personTable",
+	"personIdTable",
 	"mapEntity",
 	"mapFeatureEntity",
 	"qaSurveyEntity",
@@ -95,6 +96,7 @@ export const MIRRORED_TABLES = [
 	"mapTable",
 	"mapFeatureTable",
 	"crewTable",
+	"dropTable",
 	"qaSurveyTable",
 	"qaPlotTable",
 	"landTable",
@@ -108,7 +110,7 @@ export const MIRRORED_TABLES = [
 	"userProfile",
 ] as const;
 
-// Every table on the phone — the mirrored ones plus the local-only ones (personIdTable, touchTable).
+// Every table on the phone — the mirrored ones plus the local-only ones (touchTable, reviewTable).
 export const DEVICE_TABLES = [
 	"appState",
 	"personEntity",
@@ -120,6 +122,7 @@ export const DEVICE_TABLES = [
 	"cacheTable",
 	"crewTable",
 	"cropEntity",
+	"dropTable",
 	"cropTable",
 	"mapFeatureEntity",
 	"mapFeatureTable",
@@ -134,6 +137,7 @@ export const DEVICE_TABLES = [
 	"qaPlotTable",
 	"qaSurveyEntity",
 	"qaSurveyTable",
+	"reviewTable",
 	"tallyEntity",
 	"tallyTable",
 	"touchTable",
@@ -166,7 +170,7 @@ export const RETREEVER_HOME = `${RETREEVER_TOOL}/orgs`;
 export const FOUNDR_DASH = "/foundr_dash";
 export const FOUNDR_TOOL = `${FOUNDR_DASH}/tool`;
 export const FOUNDR_TABLE = `${FOUNDR_DASH}/table`;
-export const FOUNDR_HOME = `${FOUNDR_TOOL}/modelpicks`;
+export const FOUNDR_HOME = `${FOUNDR_TOOL}/overview`;
 const FOUNDR_REPORT = `${FOUNDR_DASH}/report`;
 
 /** Get Cache's namespace, and where a login that states no destination lands. */
@@ -488,29 +492,21 @@ export const ADMIN_PARENTS: AdminParent[] = [
 				title:
 					"Corpus-wide: how much of every site's raw scrape has a home in the schema",
 			},
-			{
-				key: "missmap",
-				scopedToSite: true,
-				label: "missMap",
-				href: `${FOUNDR_TOOL}/missmap`,
-				title: "The focused site's missMeta — what is left, and a run button",
-			},
-			// A tool, not a report: the form that writes `{s}3MissMeta.json`.
+			// A tool, not a report: the desk that writes `{s}3MissMeta.json`.
 			{
 				key: "missmeta",
 				scopedToSite: true,
-				label: "missMeta",
+				label: "Mapping desk",
 				href: `${FOUNDR_TOOL}/missmeta`,
 				title:
-					"The focused site's mapping decisions — the form that writes {s}3MissMeta.json",
+					"Decide the focused site's raw paths one card at a time — writes {s}3MissMeta.json and runs missMap",
 			},
 			{
-				key: "modelpicks",
+				key: "mapsheet",
 				scopedToSite: true,
-				label: "Model picks",
-				href: `${FOUNDR_TOOL}/modelpicks`,
-				title:
-					"mlFindr's and Jev's suggestions for the same unmapped paths, side by side",
+				label: "Map sheet",
+				href: `${FOUNDR_TOOL}/mapsheet`,
+				title: "The focused site's ledger by table and column, and what {s}3Map.ts does not read yet",
 			},
 			// Chris's benchmark: a person against mlFindr and Jev on decided paths.
 			{
@@ -541,6 +537,13 @@ export const ADMIN_PARENTS: AdminParent[] = [
 				href: `${FOUNDR_TOOL}/trace`,
 				title:
 					"One stored value followed back to its map line, ledger decision, raw scrape and source",
+			},
+			{
+				key: "endpoints",
+				label: "endpoints",
+				href: `${FOUNDR_TOOL}/endpoints`,
+				title:
+					"Every url Foundr asks each platform, and what this machine has called — local dev only",
 			},
 			// The same screen as ReTreever's Platforms pill; the project dropdown
 			// reads this table.
@@ -593,10 +596,8 @@ export function activeParent(pathname: string): AdminParent {
 	}
 	// The bare dash addresses redirect, but the header renders BEFORE the
 	// redirect lands — without these the pill blinks off for one paint.
-	if (pathname.startsWith(RETREEVER_DASH)) return ADMIN_PARENTS[0];
-	if (pathname.startsWith("/getcache_dash")) return ADMIN_PARENTS[1];
-	if (pathname.startsWith(FOUNDR_DASH)) return ADMIN_PARENTS[2];
-	return NO_PARENT;
+	const dash = [RETREEVER_DASH, "/getcache_dash", FOUNDR_DASH].findIndex((d) => pathname.startsWith(d));
+	return ADMIN_PARENTS[dash] ?? NO_PARENT;
 }
 
 /** The admin tab icon follows the lit pill; Get Cache's is its G¢ app icon, not the pill's dragonfly logo. "" with none lit. */
