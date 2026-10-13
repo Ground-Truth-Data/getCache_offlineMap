@@ -64,7 +64,7 @@ export function attachDoubleTapToPin(
 	};
 
 	// The timer firing while the pointer is still down (never past slop) is itself the proof of "held + still".
-	const LONG_PRESS_MS = 2000;
+	const LONG_PRESS_MS = 750;
 	const MOUSE_SLOP_PX = 6;
 	const TOUCH_SLOP_PX = 14;
 	const DEBUG = false;
@@ -96,9 +96,9 @@ export function attachDoubleTapToPin(
 		};
 	};
 
-	// ShovelCursor (rapper) counts the hold 1·2 from these; a window event because a child can't import rapper's state.
-	const emit = (phase: "arm" | "end" | "fire", x = 0, y = 0) =>
-		window.dispatchEvent(new CustomEvent("gc-press", { detail: { phase, x, y } }));
+	// ShovelCursor (rapper) fills its hold ring from these; a window event because a child can't import rapper's state.
+	const emit = (phase: "arm" | "drag" | "end" | "fire", x = 0, y = 0) =>
+		window.dispatchEvent(new CustomEvent("gc-press", { detail: { phase, x, y, ms: LONG_PRESS_MS } }));
 
 	const killTimer = () => {
 		if (pressTimer) {
@@ -150,7 +150,7 @@ export function attachDoubleTapToPin(
 
 	const cancelPress = (why: string) => {
 		if (pressStart) log(`✖️ cancel (${why})`);
-		if (pressTimer) emit("end");
+		if (pressTimer) emit(why === "drag past slop" ? "drag" : "end");
 		killTimer();
 		pressStart = null;
 		pressLngLat = null;
