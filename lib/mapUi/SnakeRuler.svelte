@@ -12,6 +12,7 @@ import turfLength from "@turf/length";
 import { markerCtor } from "../shared/rendererOf";
 import type { Lnglat } from "$parent/siblings/getCache_OnlineMap/lib/draw/mapDraw";
 import { mayAddVertex } from "$parent/siblings/getCache_OnlineMap/lib/draw/drawLimit";
+import { type SnapRings, snapLngLat, snapRings } from "$parent/siblings/getCache_OnlineMap/lib/draw/snapToShapes";
 import { formatHectares, formatMeasureDist } from "../panels/measureFormat";
 import { legLabelsReadable } from "./legLabelCrowding";
 import { type Rect, mapKeepOutRects, readTopBarH, rectsOverlap, shiftClear } from "../shared/mapKeepOut";
@@ -35,6 +36,7 @@ let {
     onSnapSelf,
     gridSnap,
     setGridGlow,
+    snapShapes,
 }: {
     ports: MapHostPorts;
     map: MapboxMap | null;
@@ -76,11 +78,14 @@ let {
               dot: { lng: number; lat: number; plusCode: string } | null,
           ) => void)
         | undefined;
+    /** Saved shapes on the map; a dragged point snaps to their corners and edges. */
+    snapShapes?: (() => Feature[]) | undefined;
 } = $props();
 
 let active = $state(false);
-let verts: Lnglat[] = $state([]);
-let cursor: Lnglat | null = $state(null);
+// Raw: a point keeps its identity, which is how `snapped` recognises it.
+let verts: Lnglat[] = $state.raw([]);
+let cursor: Lnglat | null = $state.raw(null);
 let isPolygon = $state(false);
 let dragFromHead = false;
 let dragAnchor: Lnglat | null = null;
@@ -100,6 +105,17 @@ let seedAtSelf = $state(false);
 let gridSnapDot = $state<{ lng: number; lat: number; plusCode: string } | null>(
     null,
 );
+// Saved-shape rings projected once per drag; dropped on map move, so a tap builds them fresh.
+let shapeRings: SnapRings | null = null;
+// Points born from a snap, by identity: they read white while held AND after the drop.
+const snapped = new WeakSet<Lnglat>();
+function snap(lng: number, lat: number): Lnglat {
+    if (!map || !snapShapes) return [lng, lat];
+    shapeRings ??= snapRings(map, snapShapes());
+    const s = snapLngLat(map, [lng, lat], shapeRings);
+    if (s.kind) snapped.add(s.ll);
+    return s.ll;
+}
 
 const MEASURE_LINE_SRC = "measure-line";
 const MEASURE_NODES_SRC = "measure-nodes";
@@ -118,7 +134,7 @@ const TOTAL_TAIL_BIAS = 0.35;
 
 const fc = (features: GeoJSON.Feature[] = []): GeoJSON.FeatureCollection => ({ type: "FeatureCollection", features });
 const pointsFC = (cs: Lnglat[]) =>
-    fc(cs.map((c) => ({ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: c } })));
+    fc(cs.map((c) => ({ type: "Feature", properties: snapped.has(c) ? { _snapped: true } : {}, geometry: { type: "Point", coordinates: c } })));
 
 function setData(id: string, data: GeoJSON.FeatureCollection) {
     const src = map?.getSource(id);
@@ -151,7 +167,8 @@ function ensureLayers() {
         id: "measure-nodes", type: "circle", source: MEASURE_NODES_SRC,
         paint: {
             "circle-radius": 4.5, "circle-color": "#000000", "circle-opacity": 0,
-            "circle-stroke-color": "#f5d565", "circle-stroke-width": 2,
+            "circle-stroke-color": ["case", ["==", ["get", "_snapped"], true], "#ffffff", "#f5d565"],
+            "circle-stroke-width": 2,
         },
     });
     // Invisible fat halo so a node is easy to grab with a finger.
@@ -161,7 +178,10 @@ function ensureLayers() {
     });
     map.addLayer({
         id: "measure-end-dots", type: "circle", source: MEASURE_ENDDOTS_SRC,
-        paint: { "circle-radius": 2, "circle-color": "#c97a4a" },
+        paint: {
+            "circle-radius": ["case", ["==", ["get", "_snapped"], true], 5, 2],
+            "circle-color": ["case", ["==", ["get", "_snapped"], true], "#ffffff", "#c97a4a"],
+        },
     });
 }
 
@@ -250,6 +270,7 @@ function clearAll() {
     cursor = null;
     isPolygon = false;
     moveIndex = null;
+    shapeRings = null;
     copied = false;
     copyFailed = false;
     document.body.classList.remove("rt-snake-grabbing");
@@ -298,9 +319,16 @@ function wireHandDrag(el: HTMLElement, which: "head" | "tail") {
             fakeCursor.style.transform = `translate3d(${e.clientX - 11}px, ${e.clientY - 5}px, 0)`;
         }
     };
+    // The page is CSS-zoomed, so a viewport px is more than a canvas px; the same ratio Mapbox applies to its own pointer events.
+    const canvasPx = (e: PointerEvent): [number, number] => {
+        const c = map!.getCanvas();
+        const r = c.getBoundingClientRect();
+        const s = c.offsetWidth / r.width;
+        return [(e.clientX - r.left) * s, (e.clientY - r.top) * s];
+    };
     const toLngLat = (e: PointerEvent): Lnglat => {
-        const r = map!.getCanvas().getBoundingClientRect();
-        const p = map!.unproject([e.clientX - r.left + grabDX, e.clientY - r.top + grabDY]);
+        const [x, y] = canvasPx(e);
+        const p = map!.unproject([x + grabDX, y + grabDY]);
         return [p.lng, p.lat];
     };
     let raf = 0;
@@ -342,13 +370,14 @@ function wireHandDrag(el: HTMLElement, which: "head" | "tail") {
         e.preventDefault();
         e.stopPropagation();
         moved = false;
+        shapeRings = null;
         dragFromHead = which === "head";
         dragAnchor = which === "head" ? verts[0] : verts[verts.length - 1];
         {
-            const r0 = map.getCanvas().getBoundingClientRect();
             const ns = map.project({ lng: dragAnchor[0], lat: dragAnchor[1] });
-            grabDX = ns.x - (e.clientX - r0.left);
-            grabDY = ns.y - (e.clientY - r0.top);
+            const [x0, y0] = canvasPx(e);
+            grabDX = ns.x - x0;
+            grabDY = ns.y - y0;
         }
         onMeasureDrag?.();
         map.dragPan.disable();
@@ -474,11 +503,12 @@ function hover(lng: number, lat: number) {
         }
     }
     isPolygon = false;
-    cursor = [lng, lat];
+    cursor = snap(lng, lat);
     render();
 }
 function commitAt(lng: number, lat: number) {
     if (!active) return;
+    const ll = snap(lng, lat);
     if (isPolygon) {
         cursor = null;
         render();
@@ -499,7 +529,7 @@ function commitAt(lng: number, lat: number) {
         render();
         return;
     }
-    verts = dragFromHead ? [[lng, lat], ...verts] : [...verts, [lng, lat]];
+    verts = dragFromHead ? [ll, ...verts] : [...verts, ll];
     seedAtSelf = false;
     cursor = null;
     render();
@@ -576,7 +606,7 @@ $effect(() => {
     if (armed) return;
     // A fast final click-to-commit can read as a dblclick; swallow the seed so the fresh popover isn't torn down.
     if (performance.now() - lastCommitAt < 600) return;
-    start(null, [ev.lng, ev.lat]);
+    start(null, snap(ev.lng, ev.lat));
 });
 
 $effect(() => {
@@ -591,7 +621,7 @@ $effect(() => {
     if (!m) return;
     const onClick = (e: mapboxgl.MapMouseEvent) => {
         if (!active) return;
-        const pt: Lnglat = [e.lngLat.lng, e.lngLat.lat];
+        const pt = snap(e.lngLat.lng, e.lngLat.lat);
         const nearIdx = verts.findIndex((v) => {
             const q = m.project({ lng: v[0], lat: v[1] });
             return (q.x - e.point.x) ** 2 + (q.y - e.point.y) ** 2 < FINISH_TAP_PX ** 2;
@@ -674,13 +704,14 @@ $effect(() => {
         e.preventDefault();
         dragging = true;
         moved = false;
+        shapeRings = null;
         m.dragPan.disable();
     };
     const move = (e: { lngLat: { lng: number; lat: number } }) => {
         if (!dragging) return;
         moved = true;
         if (moveIndex !== null) {
-            cursor = [e.lngLat.lng, e.lngLat.lat];
+            cursor = snap(e.lngLat.lng, e.lngLat.lat);
             render();
         } else {
             hover(e.lngLat.lng, e.lngLat.lat);
@@ -693,7 +724,7 @@ $effect(() => {
         if (moveIndex !== null) {
             if (moved) {
                 const v = [...verts];
-                v[moveIndex] = [e.lngLat.lng, e.lngLat.lat];
+                v[moveIndex] = snap(e.lngLat.lng, e.lngLat.lat);
                 verts = v;
             }
             moveIndex = null;
@@ -790,7 +821,8 @@ let popAnchor = $derived.by(() => {
     const leftX = minX - BESIDE_GAP - popHalf;
     const besideX = leftX - popHalf >= POP_EDGE_PX ? leftX : minX - ARM_RECT.l + ARM_RECT.w + BESIDE_GAP + popHalf;
     let popX = beside ? besideX : clampX(cx, popHalf, POP_EDGE_PX);
-    const y = below ? belowY : minY;
+    // Cornered, the stack ends up pinned under the top bar ON the snake; start it there so the sideways dodge sees the overlap.
+    const y = below ? belowY : cornered ? Math.max(minY, topY + POP_OFFSET_PX + POP_H) : minY;
 
     // Dodge the map's floating chrome SIDEWAYS (upward reads as a diagonal leap), pill + popover as ONE box.
     const popW = popHalf * 2;
@@ -906,7 +938,7 @@ $effect(() => {
     map.setPaintProperty(
         "measure-nodes",
         "circle-stroke-color",
-        seedAtSelf ? "#1da1f2" : "#f5d565",
+        ["case", ["==", ["get", "_snapped"], true], "#ffffff", seedAtSelf ? "#1da1f2" : "#f5d565"],
     );
 });
 
@@ -932,6 +964,7 @@ $effect(() => {
         // Guard first: this fires every pan frame for the map's whole life.
         if (!active) return;
         mapMoveSeq += 1;
+        shapeRings = null;
         setData(MEASURE_TICKS_SRC, buildTicksFC(ring()));
         // Rebuild ONLY when the crowding verdict flips; renderLegs recreates every marker's DOM.
         if (legLabelsShown !== legLabelsFit()) renderLegs();

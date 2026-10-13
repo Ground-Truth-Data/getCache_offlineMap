@@ -32,6 +32,8 @@ const LEFT_CHROME_SELECTORS = [".draw-strip", ".tracking-strip"];
 function measuredLeftChrome(canvasEl: Element | null): Rect[] {
     if (typeof document === "undefined" || !canvasEl) return [];
     const base = canvasEl.getBoundingClientRect();
+    // Client rects are viewport px; the page is CSS-zoomed, so canvas px are smaller by this ratio.
+    const s = base.width ? (canvasEl as HTMLElement).offsetWidth / base.width : 1;
     const out: Rect[] = [];
     for (const sel of LEFT_CHROME_SELECTORS) {
         const el = document.querySelector(sel);
@@ -39,10 +41,10 @@ function measuredLeftChrome(canvasEl: Element | null): Rect[] {
         const b = el.getBoundingClientRect();
         if (b.width === 0 || b.height === 0) continue; // hidden / collapsed
         out.push({
-            x: b.left - base.left - PAD,
-            y: b.top - base.top - PAD,
-            w: b.width + PAD * 2,
-            h: b.height + PAD * 2,
+            x: (b.left - base.left) * s - PAD,
+            y: (b.top - base.top) * s - PAD,
+            w: b.width * s + PAD * 2,
+            h: b.height * s + PAD * 2,
         });
     }
     return out;
