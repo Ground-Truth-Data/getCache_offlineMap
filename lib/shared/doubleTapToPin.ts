@@ -131,6 +131,7 @@ export function attachDoubleTapToPin(
 	const onDown = (e: MapMouseEvent | MapTouchEvent) => {
 		const oe = e.originalEvent;
 		if (oe instanceof MouseEvent && oe.button !== 0) return;
+		if (isTouchLike(oe) && oe.touches.length > 1) return cancelPress("second finger");
 		pressStart = getClientCoords(oe);
 		pressLngLat = e.lngLat;
 		pressPoint = e.point;
@@ -149,9 +150,11 @@ export function attachDoubleTapToPin(
 		pressPoint = null;
 	};
 
-	const onMove = (e: MapMouseEvent | MapTouchEvent) => {
+	// Raw window events, not the map's: Mapbox mutes its mousemove the moment its pan takes over (3 px),
+	// which is before the slop, so a map-fed check never hears a drag and the timer fires mid-pan.
+	const onMove = (evt: MouseEvent | TouchEvent) => {
 		if (!pressStart || !pressTimer) return;
-		const coords = getClientCoords(e.originalEvent);
+		const coords = getClientCoords(evt);
 		const dist = Math.hypot(coords.x - pressStart.x, coords.y - pressStart.y);
 		const slop = isTouch ? TOUCH_SLOP_PX : MOUSE_SLOP_PX;
 		if (dist > slop) {
@@ -179,25 +182,25 @@ export function attachDoubleTapToPin(
 
 	map.on("dblclick", onDbl);
 	map.on("mousedown", onDown);
-	map.on("mousemove", onMove);
 	map.on("mouseup", onUp);
 	map.on("mouseout", onMouseOut);
 	map.on("contextmenu", onContextMenu);
 	map.on("touchstart", onDown);
-	map.on("touchmove", onMove);
 	map.on("touchend", onUp);
 	map.on("touchcancel", onTouchCancel);
+	window.addEventListener("mousemove", onMove, true);
+	window.addEventListener("touchmove", onMove, true);
 
 	return () => {
 		map.off("dblclick", onDbl);
 		map.off("mousedown", onDown);
-		map.off("mousemove", onMove);
 		map.off("mouseup", onUp);
 		map.off("mouseout", onMouseOut);
 		map.off("contextmenu", onContextMenu);
 		map.off("touchstart", onDown);
-		map.off("touchmove", onMove);
 		map.off("touchend", onUp);
+		window.removeEventListener("mousemove", onMove, true);
+		window.removeEventListener("touchmove", onMove, true);
 		map.off("touchcancel", onTouchCancel);
 		cancelPress("detach");
 		disarmReleaseSwallow?.();

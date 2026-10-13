@@ -279,6 +279,9 @@ function clearAll() {
     clearLegs();
     removeEndCursors();
 }
+// The hands and leg labels are Markers added to the map, not Svelte DOM: a dev hot-swap of this
+// component would otherwise leave them on the map with no state behind them and no way to dismiss.
+$effect(() => () => clearAll());
 
 // HEAD (vertex 0) = LEFT hand; TAIL = RIGHT hand. Widths chosen so both render ≈64px tall.
 const HEAD_CURSOR = {
