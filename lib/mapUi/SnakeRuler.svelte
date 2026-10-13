@@ -842,13 +842,19 @@ let popAnchor = $derived.by(() => {
         w: popW,
         h: beside ? POP_H + TOTAL_OFFSET_PX + TOTAL_H : POP_OFFSET_PX + POP_H - TOTAL_OFFSET_PX,
     });
-    const shifted = shiftClear(stackBox(y), rects, minPopX, maxPopX);
+    let shifted = shiftClear(stackBox(y), rects, minPopX, maxPopX);
+    let levelY = y;
+    // A sideways dodge sits level with the snake instead of lifted above it — re-checked at THAT height, since
+    // a box clear of the chrome up there lands square on the snake once lowered.
+    if (!singlePoint && shifted !== null && Math.abs(shifted + popHalf - clampX(cx, popHalf, POP_EDGE_PX)) > 1) {
+        const mid = (minY + maxY) / 2 + POP_OFFSET_PX + POP_H / 2;
+        const level = shiftClear(stackBox(mid), rects, minPopX, maxPopX);
+        if (level !== null) {
+            shifted = level;
+            levelY = mid;
+        }
+    }
     if (shifted !== null) popX = shifted + popHalf;
-
-    // A sideways dodge drops the upward lift and sits level with the snake instead.
-    const dodgedSideways =
-        !singlePoint && shifted !== null && Math.abs(shifted + popHalf - clampX(cx, popHalf, POP_EDGE_PX)) > 1;
-    let levelY = dodgedSideways ? (minY + maxY) / 2 + POP_OFFSET_PX + POP_H / 2 : y;
     // Beside with no sideways lane (arm one side, draw strip the other): drop under the obstacle, still left of the arm.
     if (beside && shifted === null) {
         const box = stackBox(y);

@@ -78,6 +78,15 @@ describe("shiftClear", () => {
         expect(rectsOverlap({ ...box, x: x as number }, second)).toBe(false);
     });
 
+    // Level with the snake, the stack overlaps the chrome AND the snake; both lanes beside
+    // the chrome are blocked, and the only clear lane is beside the snake.
+    it("tries the lanes beside EVERY hit, not just the first", () => {
+        const chrome: Rect = { x: 356, y: 0, w: 100, h: 300 };
+        const snake: Rect = { x: 200, y: 0, w: 150, h: 300 };
+        const box: Rect = { x: 280, y: 50, w: 170, h: 100 };
+        expect(shiftClear(box, [chrome, snake], 5, 452 - 5 - 170)).toBe(30);
+    });
+
     it("prefers the NEAREST clear lane — the popover stays with its snake", () => {
         const obstacle: Rect = { x: 200, y: 0, w: 100, h: 200 };
         const box: Rect = { x: 250, y: 50, w: 80, h: 60 };

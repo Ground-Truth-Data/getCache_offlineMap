@@ -71,20 +71,12 @@ export function shiftClear(
     minX: number,
     maxX: number,
 ): number | null {
-    const hit = rects.find((r) => rectsOverlap(box, r));
-    if (!hit) return box.x;
-
-    const left = hit.x - box.w; // box's right edge just left of the obstacle
-    const right = hit.x + hit.w; // box's left edge just right of the obstacle
-    // NEAREST lane first, or a shorter hop gets skipped and the popover reads as teleporting across the obstacle
-    const candidates =
-        Math.abs(left - box.x) <= Math.abs(right - box.x)
-            ? [left, right]
-            : [right, left];
-    for (const cand of candidates) {
-        if (cand < minX || cand > maxX) continue;
-        const moved = { ...box, x: cand };
-        if (!rects.some((r) => rectsOverlap(moved, r))) return cand;
-    }
-    return null;
+    const hits = rects.filter((r) => rectsOverlap(box, r));
+    if (!hits.length) return box.x;
+    // A lane hugs some obstacle's edge; NEAREST first, or a shorter hop gets skipped and the popover reads as teleporting.
+    const candidates = hits
+        .flatMap((r) => [r.x - box.w, r.x + r.w])
+        .filter((c) => c >= minX && c <= maxX)
+        .sort((a, b) => Math.abs(a - box.x) - Math.abs(b - box.x));
+    return candidates.find((c) => !rects.some((r) => rectsOverlap({ ...box, x: c }, r))) ?? null;
 }
