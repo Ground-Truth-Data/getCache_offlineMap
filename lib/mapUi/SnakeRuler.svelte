@@ -5,6 +5,7 @@ import handShovelCursor from "$gc/assets/hand_shovel_cursor.webp";
 import handShovelCursorRight from "$gc/assets/hand_shovel_cursor_right.webp";
 import { HOTSPOT_X, HOTSPOT_Y } from "$gc/ShovelCursor.svelte";
 import xCloseWhite from "$gc/assets/x_close_white.webp";
+import treeBoxGreen from "$gc/assets/treeBox_green_idle.webp";
 import type { Feature } from "geojson";
 import type { Map as MapboxMap } from "mapbox-gl";
 import area from "@turf/area";
@@ -184,6 +185,29 @@ function ensureLayers() {
             "circle-color": ["case", ["==", ["get", "_snapped"], true], "#ffffff", "#c97a4a"],
         },
     });
+    map.addLayer({
+        id: "measure-close-flash", type: "circle", source: MEASURE_NODES_SRC,
+        paint: {
+            "circle-radius": FLASH_R[0], "circle-color": "#ffffff", "circle-opacity": 0,
+            "circle-radius-transition": { duration: 0 }, "circle-opacity-transition": { duration: 0 },
+        },
+    });
+}
+
+// Closing a line into a piece flashes every corner white, so the snap reads as "this is a shape now".
+const FLASH_R = [6, 13] as const;
+const FLASH_MS = 450;
+function flashCorners() {
+    const m = map;
+    if (!m?.getLayer("measure-close-flash")) return;
+    const t0 = performance.now();
+    const step = () => {
+        const k = Math.min(1, (performance.now() - t0) / FLASH_MS);
+        m.setPaintProperty("measure-close-flash", "circle-opacity", 0.95 * (1 - k));
+        m.setPaintProperty("measure-close-flash", "circle-radius", FLASH_R[0] + (FLASH_R[1] - FLASH_R[0]) * k);
+        if (k < 1) requestAnimationFrame(step);
+    };
+    step();
 }
 
 // Ticks are built per leg, in screen px, so they never fight across a bend; rebuilt on every move.
@@ -365,6 +389,8 @@ function wireHandDrag(el: HTMLElement, which: "head" | "tail") {
         e.preventDefault();
         e.stopPropagation();
         moved = false;
+        // A press on a handle is already a grab. Here, not in beginGrab, so the tour's grabs leave the real cursor alone.
+        window.dispatchEvent(new CustomEvent("gc-press", { detail: { phase: "drag" } }));
         const anchor = beginGrab(which);
         {
             const ns = map.project({ lng: anchor[0], lat: anchor[1] });
@@ -557,9 +583,11 @@ function hover(lng: number, lat: number) {
         const d2 = (f.x - p.x) ** 2 + (f.y - p.y) ** 2;
         const threshold = isPolygon ? MEASURE_UNSNAP_PX : MEASURE_SNAP_PX;
         if (d2 < threshold ** 2) {
+            const closing = !isPolygon;
             isPolygon = true;
             cursor = anchor;
             render();
+            if (closing) flashCorners();
             return;
         }
     }
@@ -678,7 +706,8 @@ $effect(() => {
     else if (!k && armed) discard();
 });
 
-// Hands mode is click-to-place: tap the LAST node to commit, the FIRST (3+ nodes) to close.
+// Hands mode grows ONLY by dragging a hand; a tap never adds a corner. Tap the LAST node
+// to save, the FIRST (3+) to close, anywhere else to dismiss.
 $effect(() => {
     const m = map;
     if (!m) return;
@@ -707,28 +736,19 @@ $effect(() => {
             isPolygon = verts.length >= 3;
             render();
         } else {
-            if (isPolygon) return;
-            if (nearIdx === verts.length - 1 && canFinish) {
+            if (!isPolygon && nearIdx === verts.length - 1 && canFinish) {
                 // This handler registers before the host's; a synchronous select would read as an outside tap and get deselected.
                 queueMicrotask(() => persist(false));
                 return;
             }
-            if (nearIdx === 0 && verts.length >= 3) {
+            if (!isPolygon && nearIdx === 0 && verts.length >= 3) {
                 isPolygon = true;
                 cursor = null;
                 render();
+                flashCorners();
                 return;
             }
-            // A lone node's menu has no ✕: tapping away is the dismiss, and the node grows by drag.
-            if (verts.length === 1) {
-                if (nearIdx === -1) discard();
-                return;
-            }
-            if (nearIdx !== -1 || !mayAddVertex(verts.length)) return;
-            verts = [...verts, pt];
-            seedAtSelf = false;
-            cursor = null;
-            render();
+            if (nearIdx === -1) discard();
         }
     };
     m.on("click", onClick);
@@ -1103,7 +1123,7 @@ $effect(() => {
                 {/if}
                 <button class="measure-btn measure-save" onclick={() => persist(false)} title="Save">
                     {#if isPolygon}
-                        <ports.ui.Icon name="pentagon" size={13} style="flex-shrink:0" />
+                        <img class="measure-pin-ic" src={treeBoxGreen} alt="" />
                     {:else}
                         <ports.ui.Icon name="share-nodes" size={13} style="flex-shrink:0" />
                     {/if}

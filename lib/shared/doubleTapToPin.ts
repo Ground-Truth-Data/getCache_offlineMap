@@ -26,6 +26,8 @@ function swallowNextClick(): void {
 	window.addEventListener("pointerdown", cleanup, true);
 }
 
+export const LONG_PRESS_MS = 750;
+
 export interface IdentifyResult {
 	label: string;
 	geometry?: GeoJSON.Geometry;
@@ -64,7 +66,6 @@ export function attachDoubleTapToPin(
 	};
 
 	// The timer firing while the pointer is still down (never past slop) is itself the proof of "held + still".
-	const LONG_PRESS_MS = 750;
 	const MOUSE_SLOP_PX = 6;
 	const TOUCH_SLOP_PX = 14;
 	const DEBUG = false;

@@ -15,7 +15,6 @@ let {
     onSave,
     onClose,
     onChangeIcon,
-    onTitleShown,
     onDelete,
     onContacts,
     onBlock,
@@ -33,8 +32,6 @@ let {
     onSave: (name: string, featureDesc: string, featureDataJson: string) => void;
     onClose: () => void;
     onChangeIcon?: (key: string) => void;
-    /** Show or hide this piece's name on the map. */
-    onTitleShown?: (v: boolean) => void;
     onDelete?: () => void;
     onContacts?: (keys: string[]) => void;
     onBlock?: (pick: BlockPick) => void;
@@ -55,7 +52,6 @@ const isPoint = $derived(feature.geometry?.type === "Point");
         {onSave}
         {onClose}
         {onChangeIcon}
-        {onTitleShown}
         {onDelete}
         {onContacts}
         {onBlock}

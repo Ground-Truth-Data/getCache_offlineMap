@@ -71,7 +71,6 @@ export interface MapHostStore {
 			landKey?: string;
 			/** Stored in the geometry's properties; `null`/`false`/`""` REMOVE the prop. */
 			fillOpacity?: number | null;
-			isTitleShown?: boolean;
 		},
 	): void;
 	deleteFeature(mapFeatureKey: string): void;

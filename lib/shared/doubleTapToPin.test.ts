@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { attachDoubleTapToPin } from "./doubleTapToPin";
+import { LONG_PRESS_MS, attachDoubleTapToPin } from "./doubleTapToPin";
 
 // Node has EventTarget and Event but no DOM: a window plus the two pointer event classes the detector
 // duck-types against is all the real thing needs.
@@ -64,7 +64,7 @@ describe("long press vs drag", () => {
 
 	it("a still press seeds the ruler", () => {
 		map.fire("mousedown", new FakeMouseEvent("mousedown", 100, 100));
-		vi.advanceTimersByTime(600);
+		vi.advanceTimersByTime(LONG_PRESS_MS);
 		expect(seed).toHaveBeenCalledTimes(1);
 	});
 
