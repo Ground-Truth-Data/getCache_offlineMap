@@ -55,7 +55,7 @@ describe("lastMapRoute", () => {
 
 		it("ignores a route that is not one of the two maps", () => {
 			saveLastMapRoute(OFFLINE_PREVIEW_ROUTE);
-			saveLastMapRoute("/app/cache" as never);
+			saveLastMapRoute("/app/bags" as never);
 			expect(loadLastMapRoute()).toBe(OFFLINE_PREVIEW_ROUTE);
 		});
 	});
@@ -115,7 +115,7 @@ describe("lastMapRoute", () => {
 		});
 
 		it("is false for the other tabs", () => {
-			expect(isMapPath("/app/cache")).toBe(false);
+			expect(isMapPath("/app/bags")).toBe(false);
 			expect(isMapPath("/app/quality704")).toBe(false);
 			expect(isMapPath("/app/stats")).toBe(false);
 			expect(isMapPath("/app/inbox")).toBe(false);
