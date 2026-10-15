@@ -4,6 +4,7 @@ import pdfMapsIcon from "../assets/pdf_maps_icon.webp";
 import backupIcon from "../assets/backup_icon.webp";
 import tracksIcon from "$parent/siblings/getCache_OnlineMap/lib/assets/mobileAssets/tracks_goldV3.webp";
 import cacheIconUrl from "$gc/assets/cache_icon.webp";
+import bagsBlackUrl from "$gc/assets/bags_icon_black.webp";
 
 const DIR = "/mobileAssets";
 
@@ -72,7 +73,8 @@ export type IconName =
     | "backup"
     | "cleanCache"
     | "handPointLeft"
-    | "handPointRight";
+    | "handPointRight"
+    | "bagsBlack";
 
 export type IconRow = {
     name: IconName;
@@ -150,6 +152,7 @@ export const ICONS: readonly IconRow[] = [
     { name: "cleanCache", path: `${DIR}/animations/cleanCache_anime.webp` },
     { name: "handPointLeft", path: `${DIR}/hand_point_left.webp` },
     { name: "handPointRight", path: `${DIR}/hand_point_right.png` },
+    { name: "bagsBlack", path: bagsBlackUrl },
 ];
 
 const BY_NAME = new Map<string, IconRow>(ICONS.map((r) => [r.name, r]));

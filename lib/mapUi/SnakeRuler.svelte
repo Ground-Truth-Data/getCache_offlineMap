@@ -5,7 +5,6 @@ import handShovelCursor from "$gc/assets/hand_shovel_cursor.webp";
 import handShovelCursorRight from "$gc/assets/hand_shovel_cursor_right.webp";
 import { HOTSPOT_X, HOTSPOT_Y } from "$gc/ShovelCursor.svelte";
 import xCloseWhite from "$gc/assets/x_close_white.webp";
-import treeBoxGreen from "$gc/assets/treeBox_green_idle.webp";
 import type { Feature } from "geojson";
 import type { Map as MapboxMap } from "mapbox-gl";
 import area from "@turf/area";
@@ -1123,7 +1122,7 @@ $effect(() => {
                 {/if}
                 <button class="measure-btn measure-save" onclick={() => persist(false)} title="Save">
                     {#if isPolygon}
-                        <img class="measure-pin-ic" src={treeBoxGreen} alt="" />
+                        <img class="measure-pin-ic" src={iconPath("poly")} alt="" />
                     {:else}
                         <ports.ui.Icon name="share-nodes" size={13} style="flex-shrink:0" />
                     {/if}
