@@ -13,7 +13,7 @@ import { markerCtor } from "../shared/rendererOf";
 import type { Lnglat } from "$parent/siblings/getCache_OnlineMap/lib/draw/mapDraw";
 import { mayAddVertex } from "$parent/siblings/getCache_OnlineMap/lib/draw/drawLimit";
 import { POLYGON_FILL, POLYGON_OUTLINE, STROKE } from "$parent/siblings/getCache_OnlineMap/lib/draw/drawStyle";
-import { type SnapRings, snapLngLat, snapRings } from "$parent/siblings/getCache_OnlineMap/lib/draw/snapToShapes";
+import { type SnapKind, type SnapRings, snapLngLat, snapRings } from "$parent/siblings/getCache_OnlineMap/lib/draw/snapToShapes";
 import { formatHectares, formatMeasureDist } from "../panels/measureFormat";
 import { legLabelsReadable } from "./legLabelCrowding";
 import { type Rect, mapKeepOutRects, readTopBarH, rectsOverlap, shiftClear } from "../shared/mapKeepOut";
@@ -110,11 +110,15 @@ let gridSnapDot = $state<{ lng: number; lat: number; plusCode: string } | null>(
 let shapeRings: SnapRings | null = null;
 // Points born from a snap, by identity: they read white while held AND after the drop.
 const snapped = new WeakSet<Lnglat>();
+let lastSnap: SnapKind = null;
 function snap(lng: number, lat: number): Lnglat {
     if (!map || !snapShapes) return [lng, lat];
     shapeRings ??= snapRings(map, snapShapes());
     const s = snapLngLat(map, [lng, lat], shapeRings);
     if (s.kind) snapped.add(s.ll);
+    // The snapping node is under the finger; the far nodes pulsing is what the user can see. Edge → corner pulses again.
+    if (s.kind && s.kind !== lastSnap) flashCorners(SNAP_RUST);
+    lastSnap = s.kind;
     return s.ll;
 }
 
@@ -188,23 +192,33 @@ function ensureLayers() {
         id: "measure-close-flash", type: "circle", source: MEASURE_NODES_SRC,
         paint: {
             "circle-radius": FLASH_R[0], "circle-color": "#ffffff", "circle-opacity": 0,
+            "circle-stroke-color": "#ffffff", "circle-stroke-width": 4, "circle-stroke-opacity": 0,
             "circle-radius-transition": { duration: 0 }, "circle-opacity-transition": { duration: 0 },
+            "circle-color-transition": { duration: 0 }, "circle-stroke-opacity-transition": { duration: 0 },
+            "circle-stroke-color-transition": { duration: 0 },
         },
     });
 }
 
-// Closing a line into a piece flashes every corner white, so the snap reads as "this is a shape now".
-const FLASH_R = [6, 13] as const;
-const FLASH_MS = 450;
-function flashCorners() {
+// Every corner throws a ring at once: white = closed into a piece, rust = touched a saved shape.
+const FLASH_R = [6, 38] as const;
+const FLASH_MS = 750;
+const SNAP_RUST = "#e8763a";
+let flashRaf = 0;
+function flashCorners(color = "#ffffff") {
     const m = map;
     if (!m?.getLayer("measure-close-flash")) return;
+    cancelAnimationFrame(flashRaf);
+    m.setPaintProperty("measure-close-flash", "circle-color", color);
+    m.setPaintProperty("measure-close-flash", "circle-stroke-color", color);
     const t0 = performance.now();
     const step = () => {
         const k = Math.min(1, (performance.now() - t0) / FLASH_MS);
-        m.setPaintProperty("measure-close-flash", "circle-opacity", 0.95 * (1 - k));
-        m.setPaintProperty("measure-close-flash", "circle-radius", FLASH_R[0] + (FLASH_R[1] - FLASH_R[0]) * k);
-        if (k < 1) requestAnimationFrame(step);
+        const out = 1 - (1 - k) ** 3;
+        m.setPaintProperty("measure-close-flash", "circle-opacity", 0.6 * (1 - k) ** 3);
+        m.setPaintProperty("measure-close-flash", "circle-stroke-opacity", 1 - k);
+        m.setPaintProperty("measure-close-flash", "circle-radius", FLASH_R[0] + (FLASH_R[1] - FLASH_R[0]) * out);
+        if (k < 1) flashRaf = requestAnimationFrame(step);
     };
     step();
 }

@@ -64,6 +64,7 @@ export type IconName =
     | "cacheGroup"
     | "tally"
     | "poly"
+    | "polyRust"
     | "line"
     | "track"
     | "pdf"
@@ -140,6 +141,8 @@ export const ICONS: readonly IconRow[] = [
     { name: "cacheGroup", path: cacheIconUrl },
     { name: "tally", path: `${DIR}/cent_icon_plain_v3_gold.webp` },
     { name: "poly", path: `${DIR}/polyHeart_sm2.webp` },
+    // The map's own polygon colour, for the inbox pill.
+    { name: "polyRust", path: `${DIR}/poly_icon_rust_sm.webp` },
     { name: "line", path: `${DIR}/line_icon.webp` },
     // A track is NOT a line; never give it line_icon.
     { name: "track", path: tracksIcon },

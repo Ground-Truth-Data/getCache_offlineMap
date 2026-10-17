@@ -64,8 +64,6 @@ export type LegendRow = {
 	/** An eye toggle; absent → the row only explains. */
 	kind?: OverlayKind;
 	slider?: { percent: number; setPercent: (p: number) => void };
-	/** Where the slider's default tick sits, in percent; 50 when absent. */
-	rest?: number;
 	note?: string;
 };
 type Section = { title: string; rows: readonly LegendRow[] };
@@ -84,7 +82,7 @@ const SWATCH_IMG: Partial<Record<Swatch, string>> = {
 	{
 		title: "Your features · tap {eye} to show / hide",
 		rows: [
-			{ label: "Labels", swatch: "text", kind: "labels", slider: labelDensity, rest: 30 },
+			{ label: "Labels", swatch: "text", kind: "labels", slider: labelDensity },
 			{ label: "Piece", swatch: "fill", color: "#e8a06a", kind: "shapes", slider: polygonOpacity },
 			{ label: "PDF map", swatch: "pdf", kind: "pdf", slider: overlayOpacity },
 			{ label: "Pin", swatch: "pin", kind: "pins" },
@@ -182,7 +180,7 @@ function noteFor(row: LegendRow, on: boolean): string | undefined {
 							<span class="legend-label">{row.label}</span>
 							{#if row.slider}
 								{@const slider = row.slider}
-								<span class="legend-slider-wrap" style:--rest="{row.rest ?? 50}%">
+								<span class="legend-slider-wrap">
 									<input
 										class="legend-slider"
 										type="range"
@@ -370,7 +368,7 @@ function noteFor(row: LegendRow, on: boolean): string | undefined {
 	.legend-slider-wrap::before {
 		content: "";
 		position: absolute;
-		left: var(--rest, 50%);
+		left: 50%;
 		top: -0.18rem;
 		transform: translateX(-50%);
 		width: 2px;
