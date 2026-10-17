@@ -4,6 +4,7 @@ import { iconPath } from "../shared/icons";
 import type { Feature } from "geojson";
 import { onDestroy, onMount } from "svelte";
 import { fade } from "svelte/transition";
+import FancyButton from "$gc/FancyButton.svelte";
 import MapPopoverShell from "../panels/MapPopoverShell.svelte";
 import type {
 	MapHostPorts,
@@ -253,14 +254,14 @@ function requestClose() {
 			<!-- Edit belongs to any EXISTING plot, not only a counted one: the plot whose count did not land is the one you most need to open. -->
 			{#if canOpenInForm}
 				<span class="pp-edit">
-					<ports.ui.GoldButton
+					<FancyButton
 						size="sm"
 						ariaLabel="Edit plot in form"
 						title="Edit"
 						onclick={() => onOpenInForm(plotNo)}
 					>
 						{#snippet icon()}<ports.ui.Icon name="edit-tilt" size={18} />{/snippet}
-					</ports.ui.GoldButton>
+					</FancyButton>
 				</span>
 			{/if}
 			{#if canOpenInForm}

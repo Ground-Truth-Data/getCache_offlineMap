@@ -36,7 +36,6 @@ export function soloMapPorts(): MapHostPorts {
 		MaskedIcon: Empty,
 		MaskedFrameIcon: Empty,
 		EmojiPin: Empty,
-		GoldButton: Empty,
 		SharePicker: Empty,
 		FeatureDetail: Empty,
 		CrowSwitch: Empty,

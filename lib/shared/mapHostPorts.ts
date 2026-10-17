@@ -100,7 +100,6 @@ export interface MapUiPorts {
 	Icon: Component<IconProps>;
 	MaskedIcon: Component<Record<string, unknown>>;
 	EmojiPin: Component<Record<string, unknown>>;
-	GoldButton: Component<Record<string, unknown>>;
 	SharePicker: Component<Record<string, unknown>>;
 	/** The feature editor body; host-owned because it edits the host's store. */
 	FeatureDetail: Component<Record<string, unknown>>;

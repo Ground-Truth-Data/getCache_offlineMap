@@ -251,7 +251,7 @@ function fmtBytes(b: number): string {
 						{#if focusedBlobName}
 							<div class="em-head">{focusedBlobName}</div>
 						{/if}
-						<button class="em-opt em-opt--active" onclick={() => exportJson("copied")}>
+						<button class="em-opt rt-fancy-btn" onclick={() => exportJson("copied")}>
 							copy json
 						</button>
 						<button class="em-opt" onclick={() => exportJson("saved")}>download</button>
@@ -678,29 +678,18 @@ tr.hot .name {
 	text-align: left;
 	padding: 0.5rem 0.9rem;
 	border-radius: 8px;
-	border: 1px solid transparent;
-	background: transparent;
-	color: #e8b923;
 	font-family: "Inter", -apple-system, sans-serif;
 	font-size: 12.5px;
 	font-weight: 700;
 	cursor: pointer;
 }
-.em-opt:hover {
+.em-opt:not(.rt-fancy-btn) {
+	border: 1px solid transparent;
+	background: transparent;
+	color: #e8b923;
+}
+.em-opt:not(.rt-fancy-btn):hover {
 	background: rgba(232, 185, 35, 0.14);
-}
-/* Hand-matched to Get Cache's .rt-gold-btn, which this child may not import. */
-.em-opt--active {
-	background: linear-gradient(180deg, #f5d565 0%, #e8b923 100%);
-	border-color: transparent;
-	color: #1a1405;
-	box-shadow:
-		0 2px 0 #b8901c,
-		0 6px 14px rgba(232, 185, 35, 0.25),
-		inset 0 1px 0 rgba(255, 255, 255, 0.45);
-}
-.em-opt--active:hover {
-	background: linear-gradient(180deg, #f5d565 0%, #e8b923 100%);
 }
 .em-err {
 	font-size: 10px;
