@@ -114,7 +114,7 @@ let lastSnap: SnapKind = null;
 function snap(lng: number, lat: number): Lnglat {
     if (!map || !snapShapes) return [lng, lat];
     shapeRings ??= snapRings(map, snapShapes());
-    const s = snapLngLat(map, [lng, lat], shapeRings);
+    const s = snapLngLat(map, [lng, lat], shapeRings, lastSnap);
     if (s.kind) snapped.add(s.ll);
     // The snapping node is under the finger; the far nodes pulsing is what the user can see. Edge → corner pulses again.
     if (s.kind && s.kind !== lastSnap) flashCorners(SNAP_RUST);
@@ -192,35 +192,37 @@ function ensureLayers() {
         id: "measure-close-flash", type: "circle", source: MEASURE_NODES_SRC,
         paint: {
             "circle-radius": FLASH_R[0], "circle-color": "#ffffff", "circle-opacity": 0,
-            "circle-stroke-color": "#ffffff", "circle-stroke-width": 4, "circle-stroke-opacity": 0,
-            "circle-radius-transition": { duration: 0 }, "circle-opacity-transition": { duration: 0 },
-            "circle-color-transition": { duration: 0 }, "circle-stroke-opacity-transition": { duration: 0 },
-            "circle-stroke-color-transition": { duration: 0 },
+            "circle-stroke-color": "#ffffff", "circle-stroke-width": 3, "circle-stroke-opacity": 0,
         },
     });
 }
 
 // Every corner throws a ring at once: white = closed into a piece, rust = touched a saved shape.
-const FLASH_R = [6, 38] as const;
-const FLASH_MS = 750;
+// Mapbox tweens it: one setPaintProperty per frame re-parses the style and stutters the drag.
+const FLASH_LAYER = "measure-close-flash";
+const FLASH_R = [6, 28] as const;
+const FLASH_MS = 650;
 const SNAP_RUST = "#e8763a";
+const FLASH_TWEENED = ["circle-radius", "circle-opacity", "circle-stroke-opacity"] as const;
 let flashRaf = 0;
 function flashCorners(color = "#ffffff") {
     const m = map;
-    if (!m?.getLayer("measure-close-flash")) return;
-    cancelAnimationFrame(flashRaf);
-    m.setPaintProperty("measure-close-flash", "circle-color", color);
-    m.setPaintProperty("measure-close-flash", "circle-stroke-color", color);
-    const t0 = performance.now();
-    const step = () => {
-        const k = Math.min(1, (performance.now() - t0) / FLASH_MS);
-        const out = 1 - (1 - k) ** 3;
-        m.setPaintProperty("measure-close-flash", "circle-opacity", 0.6 * (1 - k) ** 3);
-        m.setPaintProperty("measure-close-flash", "circle-stroke-opacity", 1 - k);
-        m.setPaintProperty("measure-close-flash", "circle-radius", FLASH_R[0] + (FLASH_R[1] - FLASH_R[0]) * out);
-        if (k < 1) flashRaf = requestAnimationFrame(step);
+    if (!m?.getLayer(FLASH_LAYER)) return;
+    const paint = (p: string, v: unknown) => m.setPaintProperty(FLASH_LAYER, p as "circle-radius", v as number);
+    const pose = (r: number, fill: number, ring: number, ms: number) => {
+        for (const p of FLASH_TWEENED) paint(`${p}-transition`, { duration: ms, delay: 0 });
+        paint("circle-radius", r);
+        paint("circle-opacity", fill);
+        paint("circle-stroke-opacity", ring);
     };
-    step();
+    cancelAnimationFrame(flashRaf);
+    paint("circle-color", color);
+    paint("circle-stroke-color", color);
+    pose(FLASH_R[0], 0.4, 0.9, 0);
+    // The start pose must paint once before the tween to the end pose begins.
+    flashRaf = requestAnimationFrame(() => {
+        flashRaf = requestAnimationFrame(() => pose(FLASH_R[1], 0, 0, FLASH_MS));
+    });
 }
 
 // Ticks are built per leg, in screen px, so they never fight across a bend; rebuilt on every move.
@@ -801,6 +803,7 @@ $effect(() => {
         dragging = true;
         moved = false;
         shapeRings = null;
+        lastSnap = null;
         m.dragPan.disable();
     };
     const move = (e: { lngLat: { lng: number; lat: number } }) => {
