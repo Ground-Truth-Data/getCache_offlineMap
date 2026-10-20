@@ -137,9 +137,9 @@ export const ICONS: readonly IconRow[] = [
     { name: "block", path: `${DIR}/block_icon_sm.webp` },
     { name: "project", path: `${DIR}/project_icon_sm.webp` },
     // One box lifted off the cache pin's stack: a cache holds tree boxes.
-    { name: "box", path: `${DIR}/treeBox.webp` },
+    { name: "box", path: `${DIR}/kit/tree/treeBox.webp` },
     { name: "cacheGroup", path: cacheIconUrl },
-    { name: "tally", path: `${DIR}/cent_icon_plain_v3_gold.webp` },
+    { name: "tally", path: `${DIR}/currency/CAD/minor_fancy.webp` },
     { name: "poly", path: `${DIR}/polyHeart_sm2.webp` },
     // The map's own polygon colour, for the inbox pill.
     { name: "polyRust", path: `${DIR}/poly_icon_rust_sm.webp` },
