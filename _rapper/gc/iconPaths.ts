@@ -146,10 +146,6 @@ export const ICONS = {
 		body: `<path d="M5 2.5 2.3 6.7h5.4Z"/><path d="M2.3 9.9h5.4v4.2h-5.4Z"/><circle cx="5" cy="19.4" r="2.4"/><path d="M11 5.3h11"/><path d="M11 12h11"/><path d="M11 19.4h11"/>`,
 		sw: 1.9,
 	},
-	users: {
-		body: `<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>`,
-		sw: 2,
-	},
 	// Distinct from `file` (a document) and `grid` (a bare lattice) — this one
 	// says "pictures". lucide `image`.
 	image: {
@@ -174,10 +170,6 @@ export const ICONS = {
 	// Section-rail glyphs (the piece/block card's one-row rail).
 	"rail-note": {
 		body: `<path d="M5 3.5h14v17H5z"/><path d="M8.5 8.5h7M8.5 12.5h7M8.5 16.5h4"/>`,
-		sw: 1.9,
-	},
-	"rail-contacts": {
-		body: `<circle cx="9.2" cy="8.4" r="3.3"/><path d="M3.4 19.6c0-3.1 2.6-5.4 5.8-5.4s5.8 2.3 5.8 5.4"/><circle cx="17.6" cy="9.6" r="2.4"/><path d="M16.2 14.4c2.5.3 4.4 2.2 4.4 4.6"/>`,
 		sw: 1.9,
 	},
 	// Never a generic pentagon — the corners and contents are what make it

@@ -11,9 +11,15 @@ export function announceExport(filename: string): void {
 	);
 }
 
-export function announceImport(filename: string): void {
+export type ImportedDetail = { filename: string; landed: boolean };
+
+/** `landed: false` is a refusal: the logs page repaints, nothing celebrates. */
+export function announceImport(filename: string, landed = true): void {
 	if (typeof window === "undefined") return;
 	window.dispatchEvent(
-		new CustomEvent(FILE_IMPORTED_EVENT, { detail: { filename } }),
+		new CustomEvent<ImportedDetail>(FILE_IMPORTED_EVENT, { detail: { filename, landed } }),
 	);
 }
+
+export const landedImport = (e: Event): boolean =>
+	(e as CustomEvent<ImportedDetail>).detail?.landed === true;

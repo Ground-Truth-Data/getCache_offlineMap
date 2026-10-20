@@ -167,7 +167,7 @@
 	/* ── Bottom tab bar ─────────────────────────────────────── */
 	/* Anything on the tab bar's top edge offsets by this; 15cqw tracks the phone frame. */
 	--gc-navbar-h: calc(
-		clamp(3.5625rem, 15cqw, 5.7rem) + max(env(safe-area-inset-bottom), 10px)
+		clamp(3.5625rem, 15cqw, 5.7rem) + 2px + max(env(safe-area-inset-bottom), 10px)
 	);
 
 	/* ── Top nav bar ────────────────────────────────────────── */
@@ -187,16 +187,16 @@ hr {
    as text; the ring in the row surface cuts the badge out of the icon stroke. */
 .rt-count-badge {
 	position: absolute;
-	top: 0;
-	right: -3px;
-	min-width: 20px;
-	height: 20px;
-	padding: 0 5px;
+	top: -4px;
+	right: -6px;
+	min-width: 18px;
+	height: 18px;
+	padding: 0 4px;
 	border-radius: 999px;
 	background: var(--rt-meta);
 	color: var(--rt-gold-ink);
 	border: 2px solid var(--rt-surface);
-	font: 800 12.5px/16px var(--rt-font-body);
+	font: 800 11px/14px var(--rt-font-body);
 	text-align: center;
 	pointer-events: none;
 }
@@ -433,6 +433,46 @@ hr {
 	display: none;
 }
 
+/* The 30px header icon button: share, delete, close all share the box. */
+.rt-icon-btn {
+	flex: 0 0 auto;
+	width: 30px;
+	height: 30px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(0, 0, 0, 0.28);
+	border: 2px solid var(--rt-border-subtle);
+	border-radius: 10px;
+	color: var(--rt-fg-muted);
+	cursor: pointer;
+	padding: 0;
+	-webkit-tap-highlight-color: transparent;
+}
+.rt-icon-btn:active {
+	background: rgba(255, 255, 255, 0.12);
+}
+.rt-icon-btn--share {
+	color: var(--rt-yellow);
+	border-color: var(--rt-yellow);
+}
+.rt-icon-btn--share:active {
+	background: var(--rt-yellow-soft);
+}
+.rt-icon-btn--delete {
+	color: #c0392b;
+	border-color: #c0392b;
+}
+.rt-icon-btn--delete:active {
+	background: color-mix(in srgb, #c0392b 18%, transparent);
+}
+.rt-icon-btn:disabled {
+	color: var(--rt-fg-muted);
+	border-color: var(--rt-border-subtle);
+	opacity: 0.6;
+	cursor: default;
+}
+
 @keyframes mob-buzz-red {
 	0% { box-shadow: none; background: var(--rt-bg-button); }
 	20% { box-shadow: 0 0 0 2px rgba(220, 60, 60, 0.7); background: #4a2020; }
@@ -452,13 +492,6 @@ hr {
 	100% { opacity: 0.85; filter: brightness(1.1); }
 }
 .mob-bag-flash { animation: mob-bag-flash 400ms ease-in-out infinite alternate; }
-
-.bagout-btn {
-	background: var(--rt-btn-commit-bg);
-	color: var(--rt-btn-commit-text);
-	font-size: 2rem;
-	border: none;
-}
 
 [data-sonner-toaster] {
 	/* Just under Z_HANDS (zTiers.ts) so hands and the share quad ride over a toast. */
@@ -593,8 +626,7 @@ hr {
 			.mobile-map-fill *,
 			:disabled,
 			[aria-disabled="true"],
-			.rt-gold-btn,
-			.cache-popover-ok,
+			.rt-fancy-btn,
 			.set-size-cta,
 			.cache-drawer-handle,
 			.shovel-handle,
@@ -659,16 +691,11 @@ body.shovel-cursor .fake-cursor {
 	height: 100%;
 	opacity: 0;
 }
-/* A ruler-end drag (SnakeRuler's body class) holds the gold hand whatever the press frame says. */
 .fake-cursor[data-frame="point"] .fake-cursor-point,
 .fake-cursor[data-frame="open"] .fake-cursor-open,
 .fake-cursor[data-frame="fist"] .fake-cursor-fist,
-.fake-cursor[data-frame="gold"] .fake-cursor-gold,
-body.rt-snake-grabbing .fake-cursor .fake-cursor-gold {
+.fake-cursor[data-frame="gold"] .fake-cursor-gold {
 	opacity: 1;
-}
-body.rt-snake-grabbing .fake-cursor img:not(.fake-cursor-gold) {
-	opacity: 0;
 }
 
 /* ShovelCursor's HoldRing, centred on its point. */
@@ -1126,37 +1153,6 @@ body.map-only .mobile-map-fill .maplibregl-ctrl-bottom-left {
 	/* GOLD fill: --rt-yellow is :root-scoped so it reaches this global marker; --color-accent/--color-draw do NOT cascade here. Keep it gold. */
 	background: var(--rt-yellow, #ffd700);
 	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
-}
-
-/* Global, not scoped, so the holdToLift action's classes survive. */
-.rt-lift-pop {
-	position: fixed;
-	z-index: 9999;
-	box-sizing: border-box;
-	line-height: 1.5; /* airier than the input so the bands don't merge */
-	text-align: left;
-	white-space: pre-wrap;
-	overflow-wrap: anywhere;
-	pointer-events: none;
-	-webkit-user-select: none;
-	user-select: none;
-	will-change: transform;
-}
-/* box-decoration-break clones the padded band per wrapped line, so the highlighter hugs each line's ragged edge. */
-.rt-lift-pop__ink {
-	-webkit-box-decoration-break: clone;
-	box-decoration-break: clone;
-	background: rgba(0, 0, 0, 0.55);
-	padding: 0.12em 0.3em;
-	border-radius: 4px;
-	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
-}
-/* Source field blanks while its copy is lifted — one readable copy, and the held finger can't highlight the text behind it. */
-.rt-lift-source--lifted {
-	color: transparent !important;
-	caret-color: transparent;
-	-webkit-user-select: none;
-	user-select: none;
 }
 
 /* Terracotta, NEVER red: red means destructive here, and this is information, not a button. */

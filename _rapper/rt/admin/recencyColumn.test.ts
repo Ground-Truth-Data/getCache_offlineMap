@@ -16,6 +16,6 @@ describe("recencyColumn", () => {
 	// "" is the component's unsorted marker: a table with no notion of recency
 	// keeps its natural order rather than being sorted by the wrong column.
 	it("returns the unsorted marker when the table has no time at all", () => {
-		expect(recencyColumn(["cacheKey", "boxTag"])).toBe("");
+		expect(recencyColumn(["bagKey", "boxTag"])).toBe("");
 	});
 });

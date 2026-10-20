@@ -224,6 +224,15 @@ $effect(() => {
 	return () => ro.disconnect();
 });
 
+// Fills the window, not the screen: the Fullscreen API refuses without a click,
+// and the map opening whole is the point of the page.
+let full = $state(true);
+// The ResizeObserver fits only once, so entering and leaving re-fit here.
+function toggleFull() {
+	full = !full;
+	requestAnimationFrame(fit);
+}
+
 // With no rows, every column is 0 filled — same as any other empty column,
 // so this doesn't dim a whole-table-empty column differently.
 function cellBand(t: TableFill, column: string, filled: number): Band {
@@ -241,6 +250,7 @@ const pct = (filled: number, rows: number) =>
 	class="canvas"
 	bind:this={viewport}
 	class:dragging
+	class:full
 	onwheel={onWheel}
 	onpointerdown={onPointerDown}
 	onpointermove={onPointerMove}
@@ -317,7 +327,20 @@ const pct = (filled: number, rows: number) =>
 			</div>
 		{/each}
 	</div>
+	<button
+		class="fs"
+		onpointerdown={(e) => e.stopPropagation()}
+		onclick={toggleFull}
+		title={full ? "Exit full screen (Esc)" : "Full screen"}
+	>
+		<svg viewBox="0 0 24 24" aria-hidden="true">
+			{#each [0, 90, 180, 270] as r (r)}
+				<path transform="rotate({r} 12 12)" d={full ? "M4 10h6V4M3 3l7 7" : "M3 9V3h6M3 3l7 7"} />
+			{/each}
+		</svg>
+	</button>
 </div>
+<svelte:window onkeydown={(e) => e.key === "Escape" && full && toggleFull()} />
 
 <style>
 	.canvas {
@@ -341,6 +364,35 @@ const pct = (filled: number, rows: number) =>
 	}
 	.canvas.dragging {
 		cursor: grabbing;
+	}
+	.canvas.full {
+		position: fixed;
+		inset: 0;
+		z-index: 1000;
+	}
+	.fs {
+		position: absolute;
+		top: 12px;
+		right: 12px;
+		z-index: 2;
+		width: 44px;
+		height: 44px;
+		padding: 8px;
+		border: 1px solid var(--at-line, #262626);
+		border-radius: 8px;
+		background: rgb(17 17 17 / 85%);
+		cursor: pointer;
+	}
+	.fs svg {
+		display: block;
+		fill: none;
+		stroke: var(--at-gold, #eab627);
+		stroke-width: 2.6;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
+	.fs:hover {
+		border-color: var(--at-gold, #eab627);
 	}
 	.sheet {
 		position: absolute;

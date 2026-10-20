@@ -28,7 +28,6 @@ let {
     map,
     measureEvent = $bindable(null),
     armKind = $bindable(null),
-    onMeasureDrag,
     onPersist,
     onSavePoint,
     onPlot,
@@ -45,8 +44,6 @@ let {
     measureEvent?: { lng: number; lat: number; n: number } | null;
     /** Palette tap-to-build mode; null = double-tap + hands mode. */
     armKind?: "line" | "polygon" | "pin" | null;
-    /** Fired the instant an end is grabbed so the host can drop its stale "Drop a pin" card. */
-    onMeasureDrag?: (() => void) | undefined;
     onPersist: (
         kind: "line" | "polygon",
         verts: Lnglat[],
@@ -424,7 +421,6 @@ function beginGrab(which: "head" | "tail"): Lnglat {
     dragFromHead = which === "head";
     const anchor = which === "head" ? verts[0] : verts[verts.length - 1];
     dragAnchor = anchor;
-    onMeasureDrag?.();
     map?.dragPan.disable();
     document.body.classList.add("rt-snake-grabbing");
     return anchor;
@@ -771,10 +767,6 @@ $effect(() => {
 });
 
 $effect(() => {
-    if (active && verts.length >= 2) onMeasureDrag?.();
-});
-
-$effect(() => {
     const m = map;
     if (!m) return;
     let dragging = false;
@@ -797,7 +789,6 @@ $effect(() => {
             dragFromHead = isHead && !isTail;
             dragAnchor = verts[nearest];
             moveIndex = null;
-            onMeasureDrag?.();
         }
         e.preventDefault();
         dragging = true;

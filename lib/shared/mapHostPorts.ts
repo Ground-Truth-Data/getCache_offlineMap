@@ -37,14 +37,14 @@ export interface MapHostFeature {
 export interface MapHostSession {
 	mapKey: string;
 	mapName: string;
-	landKey?: string | null;
+	blockKey?: string | null;
 	createdAt: string;
 	lastTouchedAt: string;
 	features: MapHostFeature[];
 }
 
 /** The block drawer's answer: a tapped row's key, or typed text. */
-export type BlockPick = { landKey: string } | { landName: string };
+export type BlockPick = { blockKey: string } | { blockName: string };
 
 export interface MapHostStore {
 	readonly activeMapKey: string | null;
@@ -67,8 +67,8 @@ export interface MapHostStore {
 			contacts?: string[];
 			geometry?: Feature | null;
 			/** Typed text names this shape's block, "" releases it; a key picks one. */
-			landName?: string;
-			landKey?: string;
+			blockName?: string;
+			blockKey?: string;
 			/** Stored in the geometry's properties; `null`/`false`/`""` REMOVE the prop. */
 			fillOpacity?: number | null;
 		},
@@ -159,8 +159,8 @@ export interface MapQ704PlotRow {
 
 export interface MapQ704BlockHeader {
 	name?: string;
-	landKey: string;
-	landName: string;
+	blockKey: string;
+	blockName: string;
 	treesPerHa: number | null;
 	totalHa: number | null;
 	mapKey?: string;

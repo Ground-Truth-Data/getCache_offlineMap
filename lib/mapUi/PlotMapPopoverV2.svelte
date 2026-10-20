@@ -107,8 +107,8 @@ const faultGroups = $derived.by<[string, number][]>(() => {
 
 // Loaded VERBATIM, no repair: an illegal buried null makes the deck's assertThread THROW on purpose.
 let block = $state({
-	landKey: "",
-	landName: "",
+	blockKey: "",
+	blockName: "",
 	treesPerHa: null as number | null,
 	totalHa: null as number | null,
 	speciesChoices: [] as string[],

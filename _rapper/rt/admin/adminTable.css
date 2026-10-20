@@ -223,34 +223,26 @@
 /* ── Buttons ─────────────────────────────────────────────────────────── */
 
 .admin-btn {
-	background: none;
-	border: 1px solid var(--at-line-strong);
-	color: var(--at-muted);
 	font: inherit;
 	font-size: 12.5px;
 	font-weight: 700;
 	padding: 7px 12px;
 	border-radius: var(--at-radius-sm);
 	cursor: pointer;
+}
+/* `.rt-fancy-btn` is the commit action. Exactly one per expanded row may wear it, or "the obvious thing to click" stops meaning anything. */
+.admin-btn:not(.rt-fancy-btn) {
+	background: none;
+	border: 1px solid var(--at-line-strong);
+	color: var(--at-muted);
 	transition:
 		border-color 120ms ease,
 		color 120ms ease,
 		background-color 120ms ease;
 }
-.admin-btn:hover {
+.admin-btn:not(.rt-fancy-btn):hover {
 	border-color: var(--at-accent);
 	color: var(--at-fg);
-}
-
-/* Get Cache's "commit" gold gradient. Exactly one action per expanded row may wear it, or "the obvious thing to click" stops meaning anything. */
-.admin-btn.primary {
-	background: linear-gradient(var(--rt-gold-1), var(--rt-gold-2));
-	color: var(--rt-gold-ink);
-	text-shadow: 0 1px 0 var(--rt-press-lo), 0 -1px 0 var(--rt-press-hi);
-	border: none;
-}
-.admin-btn.primary:hover {
-	filter: brightness(1.06);
 }
 
 /* Neutral at rest so a row of buttons isn't a row of alarms; red only once the pointer commits. */

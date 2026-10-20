@@ -25,6 +25,10 @@ function fakeMap() {
 	const listeners = new Map<string, Set<(e: unknown) => void>>();
 	return {
 		doubleClickZoom: { disable() {} },
+		dragPan: { enable() {}, disable() {} },
+		getCanvas: () =>
+			({ offsetWidth: 400, getBoundingClientRect: () => ({ left: 0, top: 0, width: 400 }) }) as HTMLCanvasElement,
+		unproject: ([x, y]: [number, number]) => ({ lng: x, lat: y }),
 		on(type: string, fn: (e: unknown) => void) {
 			if (!listeners.has(type)) listeners.set(type, new Set());
 			listeners.get(type)?.add(fn);
@@ -54,7 +58,7 @@ describe("long press vs drag", () => {
 		g.TouchEvent = FakeTouchEvent;
 		map = fakeMap();
 		seed = vi.fn();
-		detach = attachDoubleTapToPin(map, { onDrop: () => {}, onMeasureSeed: seed });
+		detach = attachDoubleTapToPin(map, { onMeasureSeed: seed });
 	});
 	afterEach(() => {
 		detach();
@@ -89,5 +93,60 @@ describe("long press vs drag", () => {
 		map.fire("touchstart", new FakeTouchEvent("touchstart", [[100, 100], [200, 200]]));
 		vi.advanceTimersByTime(2000);
 		expect(seed).not.toHaveBeenCalled();
+	});
+});
+
+describe("touch hold extends the arm", () => {
+	let map: ReturnType<typeof fakeMap>;
+	let seed: ReturnType<typeof vi.fn>;
+	let detach: () => void;
+	const touch = (type: string, ...pts: [number, number][]) => new FakeTouchEvent(type, pts);
+	const move = (x: number, y: number) => (g.window as EventTarget).dispatchEvent(touch("touchmove", [x, y]));
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+		g.window = new EventTarget();
+		g.MouseEvent = FakeMouseEvent;
+		g.TouchEvent = FakeTouchEvent;
+		map = fakeMap();
+		seed = vi.fn();
+		detach = attachDoubleTapToPin(map, { onMeasureSeed: seed });
+	});
+	afterEach(() => {
+		detach();
+		vi.useRealTimers();
+		Object.assign(g, saved);
+	});
+
+	it("seeds at the fingertip, up-left of the finger, only on lift", () => {
+		map.fire("touchstart", touch("touchstart", [200, 300]));
+		vi.advanceTimersByTime(300);
+		move(220, 310);
+		expect(seed).not.toHaveBeenCalled();
+		map.fire("touchend", touch("touchend"));
+		expect(seed).toHaveBeenCalledWith(170, 230);
+	});
+
+	it("a quick tap never seeds", () => {
+		map.fire("touchstart", touch("touchstart", [200, 300]));
+		vi.advanceTimersByTime(200);
+		map.fire("touchend", touch("touchend"));
+		vi.advanceTimersByTime(2000);
+		expect(seed).not.toHaveBeenCalled();
+	});
+
+	it("a second finger mid-aim cancels without committing", () => {
+		map.fire("touchstart", touch("touchstart", [200, 300]));
+		vi.advanceTimersByTime(300);
+		map.fire("touchstart", touch("touchstart", [200, 300], [250, 350]));
+		map.fire("touchend", touch("touchend"));
+		expect(seed).not.toHaveBeenCalled();
+	});
+
+	it("flips below and right of the finger near the top-left corner", () => {
+		map.fire("touchstart", touch("touchstart", [20, 90]));
+		vi.advanceTimersByTime(300);
+		map.fire("touchend", touch("touchend"));
+		expect(seed).toHaveBeenCalledWith(70, 170);
 	});
 });

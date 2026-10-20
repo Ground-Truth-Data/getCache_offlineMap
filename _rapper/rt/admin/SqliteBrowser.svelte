@@ -1,13 +1,17 @@
 <!--
   Every table of one SQLite database, one table at a time, named by the path
   after `base`. The database is the caller's: Get Cache's live OPFS file, or a
-  `.sqlite3` dropped on admin — `all` is the only thing this reads through.
+  `.sqlite3` dropped on admin. No SQL text crosses this door: each host owns its
+  queries.
 -->
 <script module lang="ts">
-export type SqlQuery = <T extends Record<string, unknown> = Record<string, unknown>>(
-	sql: string,
-	params?: unknown[],
-) => Promise<T[]>;
+export type SqliteDoor = {
+	/** Rows per table, in one read: one per table stalls a cold open. */
+	tableCounts: () => Promise<Record<string, number>>;
+	/** Every row, no LIMIT: the pager keeps the DOM small, and a LIMIT truncates
+	 *  in silence. Columns come from the schema so an empty table has headers. */
+	table: (name: string) => Promise<{ rows: Record<string, unknown>[]; columns: string[] }>;
+};
 </script>
 
 <script lang="ts">
@@ -33,13 +37,13 @@ type Row = Record<string, unknown>;
 
 let {
 	base,
-	all,
+	db,
 	name,
 	sub,
 	children,
 }: {
 	base: string;
-	all: SqlQuery;
+	db: SqliteDoor;
 	/** The heading while no table is chosen. */
 	name: string;
 	sub: string;
@@ -119,40 +123,9 @@ function onFilter(v: string) {
 	goto(pageHref(0), { keepFocus: true, noScroll: true, replaceState: true });
 }
 
-/**
- * Row count per table in one statement — one per table stalls a cold open. An
- * unreadable table is left out, never recorded as 0.
- */
-async function tableCounts(): Promise<Record<string, number>> {
-	const names = await all<{ name: string }>(
-		"SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
-	);
-	if (names.length === 0) return {};
-	const union = names
-		.map((t) => `SELECT '${t.name}' AS t, COUNT(*) AS n FROM "${t.name}"`)
-		.join(" UNION ALL ");
-	const out: Record<string, number> = {};
-	for (const r of await all<{ t: string; n: number }>(union)) out[r.t] = r.n;
-	return out;
-}
-
 async function load(name: string) {
-	// Identifiers cannot be bound, so the name is checked against the database.
-	const known = await all<{ name: string }>(
-		"SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
-		[name],
-	);
-	if (known.length === 0) throw new Error(`No table "${name}" in this database`);
-	// No LIMIT: the pager keeps the DOM small, and a LIMIT truncates in silence.
-	// Columns come from the schema so an empty table still shows headers.
-	// Both awaited before either is assigned, or new rows render against old
-	// columns for one frame.
-	const [nextRows, info] = await Promise.all([
-		all(`SELECT * FROM "${name}"`),
-		all<{ name: string }>(`PRAGMA table_info("${name}")`),
-	]);
-	rows = nextRows;
-	columns = info.map((c) => c.name);
+	// Assigned together, or new rows render against old columns for one frame.
+	({ rows, columns } = await db.table(name));
 	// Keys belong to the table they were read from.
 	ticked.clear();
 	// There is no schema here for whatever table the URL names, so the recency
@@ -161,7 +134,7 @@ async function load(name: string) {
 }
 
 $effect(() => {
-	tableCounts().then(setTableCounts, (e) => (err = String(e?.message ?? e)));
+	db.tableCounts().then(setTableCounts, (e) => (err = String(e?.message ?? e)));
 });
 
 // `table` comes from the URL, so navigation is the trigger. replaceState would

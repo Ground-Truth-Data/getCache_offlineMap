@@ -14,7 +14,7 @@ export const HOTSPOT_Y = 5;
  *
  * A map press (doubleTapToPin.ts emits `gc-press`) turns the hand gold and
  * fills a HoldRing up-left of the press; held still it fires the snake
- * ruler. Moving past slop drops the ring and closes the hand to a fist for
+ * ruler. Moving past slop drops the ring and the hand opens, then fists, for
  * the rest of that press. On touch the hand shows only during a map press.
  */
 import { onMount } from "svelte";
@@ -32,9 +32,13 @@ const FRAMES: [Frame, string][] = [
 	["fist", handFist],
 	["gold", handGold],
 ];
-const LET_GO_MS = 500;
+// A drag's open hand: a flick as it grabs, a beat as it lets go.
+const GRAB_OPEN_MS = 100;
+const LET_GO_OPEN_MS = 250;
 const RETRACT_MS = 300;
 const DONE_HOLD_MS = 400;
+// A plain click never sees the ring: it shows from three o'clock on.
+const SHOW_AT = 3 / 12;
 // The ring's centre sits up-left of the press so the finger never covers it.
 const RING_DX = 38;
 const RING_DY = 37;
@@ -87,13 +91,11 @@ onMount(() => {
 			return;
 		}
 		dragging = false;
+		frame = "open";
 		frameTimer = setTimeout(() => {
-			frame = "open";
-			frameTimer = setTimeout(() => {
-				frame = "point";
-				pressing = false;
-			}, LET_GO_MS);
-		}, LET_GO_MS);
+			frame = "point";
+			pressing = false;
+		}, LET_GO_OPEN_MS);
 	};
 
 	const onPress = (e: Event) => {
@@ -109,10 +111,15 @@ onMount(() => {
 			animateRing(0, 1, ms);
 		} else if (phase === "drag") {
 			dropRing();
+			clearTimeout(frameTimer);
 			dragging = true;
-			frame = "fist";
+			pressing = true;
+			frame = "open";
+			frameTimer = setTimeout(() => (frame = "fist"), GRAB_OPEN_MS);
 		} else if (phase === "end") {
-			if (ring && !ring.done) animateRing(ring.progress, 0, RETRACT_MS, dropRing);
+			if (!ring || ring.done) return;
+			if (ring.progress < SHOW_AT) dropRing();
+			else animateRing(ring.progress, SHOW_AT, RETRACT_MS, dropRing);
 		} else if (ring) {
 			cancelAnimationFrame(raf);
 			ring.progress = 1;
@@ -139,12 +146,13 @@ onMount(() => {
 		splash.addEventListener("animationend", () => splash.remove());
 		document.body.appendChild(splash);
 	};
-	const onMouseUp = (e: MouseEvent) => e.button === 0 && release();
+	// pointerup, not mouseup: a ruler handle's preventDefault on pointerdown swallows the mouseup.
+	const onPointerUp = (e: PointerEvent) => e.pointerType === "mouse" && e.button === 0 && release();
 	const onTouchEnd = (e: TouchEvent) => e.touches.length === 0 && release();
 
 	window.addEventListener("mousemove", onMouseMove, { passive: true });
 	window.addEventListener("mousedown", onMouseDown, { passive: true });
-	window.addEventListener("mouseup", onMouseUp, { passive: true });
+	window.addEventListener("pointerup", onPointerUp, { passive: true });
 	window.addEventListener("touchmove", onTouchMove, { passive: true, capture: true });
 	window.addEventListener("touchend", onTouchEnd, { passive: true });
 	window.addEventListener("touchcancel", onTouchEnd, { passive: true });
@@ -157,7 +165,7 @@ onMount(() => {
 		cancelAnimationFrame(raf);
 		window.removeEventListener("mousemove", onMouseMove);
 		window.removeEventListener("mousedown", onMouseDown);
-		window.removeEventListener("mouseup", onMouseUp);
+		window.removeEventListener("pointerup", onPointerUp);
 		window.removeEventListener("touchmove", onTouchMove, true);
 		window.removeEventListener("touchend", onTouchEnd);
 		window.removeEventListener("touchcancel", onTouchEnd);
@@ -175,7 +183,7 @@ onMount(() => {
 	{/each}
 </div>
 
-{#if ring}
+{#if ring && ring.progress >= SHOW_AT}
 	<div class="hold-ring-at" style="left:{ring.x}px; top:{ring.y}px">
 		<HoldRing progress={ring.progress} done={ring.done} />
 	</div>

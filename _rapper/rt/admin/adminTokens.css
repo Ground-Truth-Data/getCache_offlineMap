@@ -23,7 +23,7 @@
 	--at-line-strong: rgba(255, 255, 255, 0.16);
 
 	/* Gold = "a control you act with"; rust (--at-accent) marks identifiers.
-	   NOT for a gold BUTTON's fill (that's `rt-gold-btn` in src/app.css) — this is a flat tint, e.g. a dropdown's hover highlight. */
+	   NOT for a gold BUTTON's fill (that is `.rt-fancy-btn`) — this is a flat tint, e.g. a dropdown's hover highlight. */
 	--at-gold: #eab627;
 	--at-panel-2: #242424; /* raised surface inside a panel — search boxes, selects, page-size input, the Σ band */
 	--at-accent: var(--rt-rust);

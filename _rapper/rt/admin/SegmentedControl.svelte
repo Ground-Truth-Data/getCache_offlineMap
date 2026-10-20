@@ -27,7 +27,7 @@ function pick(v: string) {
 
 <div class="seg" role="radiogroup" aria-label={label}>
 	{#each options as opt (opt.value)}
-		<label class="seg-item" class:sel={value === opt.value}>
+		<label class="seg-item" class:rt-fancy-btn={value === opt.value}>
 			<input
 				type="radio"
 				{name}
@@ -52,29 +52,19 @@ function pick(v: string) {
 	.seg-item {
 		font-size: 12.5px;
 		font-weight: 700;
-		color: var(--at-muted, #8f8b80);
 		padding: 7px 10px;
+		border: 0;
+		border-radius: 0;
 		cursor: pointer;
 		white-space: nowrap;
 		user-select: none;
 		transition: background 120ms ease, color 120ms ease;
 	}
-	.seg-item:hover:not(.sel) {
-		color: var(--at-fg, #f3f1e9);
+	.seg-item:not(.rt-fancy-btn) {
+		color: var(--at-muted, #8f8b80);
 	}
-	/* Same gold as every other gold control, but NOT the outer glow/bevel —
-	   those lift a button off the surface, and a segment is set INTO a
-	   bordered group; the inset highlight alone reads as raised within the
-	   track. Dark ink: gold is LIGHT on this palette, white fails contrast. */
-	.seg-item.sel {
-		background: linear-gradient(
-			180deg,
-			var(--rt-gold-1, #f5d565) 0%,
-			var(--rt-gold-2, #e8b923) 100%
-		);
-		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
-		color: var(--rt-gold-ink, #1c0d04);
-		text-shadow: 0 1px 0 var(--rt-press-lo), 0 -1px 0 var(--rt-press-hi);
+	.seg-item:hover:not(.rt-fancy-btn) {
+		color: var(--at-fg, #f3f1e9);
 	}
 	/* Hidden with clip, not display:none, so it stays focusable and reachable. */
 	.seg-item input {

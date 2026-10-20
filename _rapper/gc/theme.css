@@ -225,51 +225,125 @@
 
 }
 
-/* THE GOLD BUTTON: never a literal hex, always the --rt-gold-* tokens. Gold fills NEVER
-   carry white text — it disappears in sunlight; `.rt-on-gold` for anything custom. */
-.rt-gold-btn {
+/* THE FANCY BUTTON — Chris's name for it. Every gold or rust action button wears this one class,
+   usually through $gc/FancyButton.svelte; never hand-roll a gradient in a scoped <style>.
+   Sheen (lit top half) + bottom lip + letterpress ink. `--rust` swaps only the tokens. */
+.rt-fancy-btn {
+    --fb-hi: color-mix(in srgb, var(--rt-yellow) 85%, #fff);
+    --fb-mid: var(--rt-yellow);
+    --fb-lo: color-mix(in srgb, var(--rt-yellow) 80%, #000);
+    --fb-lip: var(--rt-gold-bevel);
+    --fb-glow: color-mix(in srgb, var(--rt-yellow) 30%, transparent);
+    --fb-press-lo: var(--rt-press-lo);
+    --fb-press-hi: var(--rt-press-hi);
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--fb-lo);
+    background: linear-gradient(180deg, var(--fb-hi) 0%, var(--fb-mid) 46%, var(--fb-lo) 100%);
+    cursor: pointer;
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.6),
+        0 2px 0 var(--fb-lip),
+        0 6px 14px var(--fb-glow);
+    transition:
+        transform 80ms ease,
+        box-shadow 80ms ease,
+        filter 80ms ease;
+}
+/* Zero specificity: any caller's own size/layout class wins. */
+:where(.rt-fancy-btn) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 10px;
-    border: none;
+    box-sizing: border-box;
     border-radius: var(--rt-radius-md, 0.75rem);
     padding: 0.7rem 1rem;
     font-family: "Retreever", sans-serif;
     font-weight: 600;
     line-height: 1.15;
-    cursor: pointer;
-    text-decoration: none;
-    box-sizing: border-box;
-    -webkit-tap-highlight-color: transparent;
-    background: linear-gradient(180deg, var(--rt-gold-1) 0%, var(--rt-gold-2) 100%);
-    box-shadow: var(--rt-shadow-gold);
-    transition:
-        transform 80ms ease,
-        box-shadow 80ms ease,
-        background 80ms ease;
+}
+.rt-fancy-btn--rust {
+    --fb-hi: #f0947a;
+    --fb-mid: #e87958;
+    --fb-lo: #b8552f;
+    --fb-lip: #8a3d1f;
+    --fb-glow: rgba(232, 121, 88, 0.25);
+    --fb-press-lo: rgba(255, 255, 255, 0.3);
+    --fb-press-hi: rgba(0, 0, 0, 0.3);
+}
+.rt-fancy-btn::before {
+    content: "";
+    position: absolute;
+    inset: 1px 1px auto 1px;
+    height: 45%;
+    border-radius: inherit;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.5), transparent);
+    pointer-events: none;
 }
 /* The `body.mobile-app span/a` rules force white onto descendants, so the ink is pinned on children too. */
-.rt-gold-btn,
-.rt-gold-btn * {
+.rt-fancy-btn,
+.rt-fancy-btn * {
     color: var(--rt-gold-ink);
+    text-shadow:
+        0 1px 0 var(--fb-press-lo),
+        0 -1px 0 var(--fb-press-hi);
+}
+/* Icons stay flat: chained drop-shadows draw a 2px stroke three times and it reads as double vision. */
+.rt-fancy-btn svg {
+    flex-shrink: 0;
+}
+@media (hover: hover) and (pointer: fine) {
+    .rt-fancy-btn:hover:not(:disabled, .disabled, :active, .pressed) {
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.6),
+            0 2px 0 var(--fb-lip),
+            0 6px 14px var(--fb-glow),
+            0 0 22px 4px var(--fb-glow);
+    }
+}
+/* :active for plain buttons; `.pressed` for FancyButton, which tracks the pointer. The lip collapses
+   and the top rim goes dark, so it reads as pushed in. */
+.rt-fancy-btn:is(:active, .pressed):not(:disabled, .disabled) {
+    transform: translateY(2px);
+    filter: brightness(0.94);
+    box-shadow:
+        inset 0 2px 3px color-mix(in srgb, var(--rt-gold-ink) 40%, transparent),
+        0 0 0 var(--fb-lip),
+        0 2px 6px var(--fb-glow);
+}
+/* Pressed, the emboss shallows out rather than inverting, which would read as a different button. */
+.rt-fancy-btn:is(:active, .pressed):not(:disabled, .disabled),
+.rt-fancy-btn:is(:active, .pressed):not(:disabled, .disabled) * {
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+.rt-fancy-btn:is(:disabled, .disabled) {
+    opacity: 0.55;
+    cursor: not-allowed;
 }
 
-/* Also keyed on `color:` — hand-rolled gold fills wear no shared class, and dark ink is only ever chosen because the ground is saturated. */
+/* A table's column-title row: gold above, grey below — never gold below. */
+.rt-table-head {
+    background: var(--rt-bg-input-alt);
+    border-top: 2px solid var(--rt-yellow);
+    border-bottom: 2px solid rgba(255, 255, 255, 0.12);
+    font-family: var(--rt-font-display);
+    font-weight: 600;
+    text-transform: lowercase;
+    letter-spacing: 0.03em;
+    color: var(--rt-yellow);
+    text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.9), 2px 2px 4px rgba(0, 0, 0, 0.7);
+    white-space: nowrap;
+}
+
 .rt-letterpress,
 .rt-letterpress *,
-.rt-gold-btn,
-.rt-gold-btn *,
 :is(button, a, [role="button"], [role="tab"], label)[style*="--rt-gold-ink"] {
     text-shadow:
         0 1px 0 var(--rt-press-lo),
         0 -1px 0 var(--rt-press-hi);
-}
-.rt-letterpress svg,
-.rt-gold-btn svg {
-    filter:
-        drop-shadow(0 1px 0 var(--rt-press-lo))
-        drop-shadow(0 -1px 0 var(--rt-press-hi));
 }
 
 /* Darker grounds (terracotta, olive): the white highlight blows out, so it is dialled back. */
@@ -279,56 +353,27 @@
         0 1px 0 rgba(255, 255, 255, 0.3),
         0 -1px 0 rgba(0, 0, 0, 0.3);
 }
-.rt-letterpress--deep svg {
-    filter:
-        drop-shadow(0 1px 0 rgba(255, 255, 255, 0.3))
-        drop-shadow(0 -1px 0 rgba(0, 0, 0, 0.3));
-}
-/* Pressed, the emboss shallows out rather than inverting, which would read as a different button. */
-.rt-gold-btn:active:not(:disabled):not(.disabled),
-.rt-gold-btn:active:not(:disabled):not(.disabled) *,
-.rt-gold-btn.pressed:not(:disabled):not(.disabled),
-.rt-gold-btn.pressed:not(:disabled):not(.disabled) *,
 .rt-letterpress:active:not(:disabled):not(.disabled),
 .rt-letterpress:active:not(:disabled):not(.disabled) * {
     text-shadow: 0 1px 0 rgba(255, 255, 255, 0.28);
 }
-.rt-gold-btn:active:not(:disabled):not(.disabled) svg,
-.rt-gold-btn.pressed:not(:disabled):not(.disabled) svg,
-.rt-letterpress:active:not(:disabled):not(.disabled) svg {
-    filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.28));
+
+/* Every "add trees" button (cache footer, map cache, block): black, gold outline, gold ink.
+   Material only; the tree box image sits where a + would. */
+.rt-add-trees {
+    border: 2px solid var(--rt-yellow);
+    background: #000;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 80ms ease;
 }
-@media (hover: hover) and (pointer: fine) {
-    .rt-gold-btn:hover:not(:disabled):not(.disabled):not(:active):not(.pressed) {
-        box-shadow: var(--rt-shadow-gold-hover);
-    }
+.rt-add-trees,
+.rt-add-trees * {
+    color: var(--rt-yellow);
+    text-shadow: none;
 }
-/* :active so a plain <button> gets the press; `.pressed` for callers that track it (GoldButton). */
-.rt-gold-btn:active:not(:disabled):not(.disabled),
-.rt-gold-btn.pressed:not(:disabled):not(.disabled) {
-    background: linear-gradient(180deg, var(--rt-gold-1-press) 0%, var(--rt-gold-2-press) 100%);
-    box-shadow: var(--rt-shadow-gold-press);
-    transform: translateY(1px);
-}
-.rt-gold-btn:disabled,
-.rt-gold-btn.disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-}
-.rt-gold-btn svg {
-    flex-shrink: 0;
-}
-.rt-gold-btn-sm {
-    padding: 0.45rem 0.75rem;
-    font-size: 0.85rem;
-    border-radius: var(--rt-radius-sm, 0.6rem);
-    gap: 7px;
-}
-.rt-gold-btn-lg {
-    padding: 1.15rem 1.25rem;
-    font-size: 1.25rem;
-    border-radius: var(--rt-radius-lg, 1rem);
-    gap: 14px;
+.rt-add-trees:not(:disabled):active {
+    transform: scale(0.97);
 }
 
 .rt-on-gold,
@@ -361,14 +406,6 @@
     text-shadow:
         0 1px 0 var(--rt-press-lo),
         0 -1px 0 var(--rt-press-hi);
-}
-.rt-on-gold svg,
-:is(button, a, [role="button"], [role="tab"])[aria-pressed="true"] svg,
-:is(button, a, [role="button"], [role="tab"]):not([role="option"])[aria-selected="true"] svg,
-:is(button, a, [role="button"])[data-on-gold] svg {
-    filter:
-        drop-shadow(0 1px 0 var(--rt-press-lo))
-        drop-shadow(0 -1px 0 var(--rt-press-hi));
 }
 
 @layer utilities {

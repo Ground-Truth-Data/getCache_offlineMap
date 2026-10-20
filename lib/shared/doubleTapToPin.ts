@@ -1,9 +1,13 @@
 /** Double-tap OR long-press → Snake Ruler, shared by the offline and online maps so the two never drift. */
-import type { MapMouseEvent, MapTouchEvent, Point } from "mapbox-gl";
+import type { MapMouseEvent, MapTouchEvent } from "mapbox-gl";
+import { readTopBarH } from "./mapKeepOut";
 
 /** Both Mapbox and MapLibre satisfy this; on/off are loose because the two overload sets don't unify. */
 type TapMap = {
 	doubleClickZoom: { disable(): void };
+	dragPan: { enable(): void; disable(): void };
+	getCanvas(): HTMLCanvasElement;
+	unproject(p: [number, number]): { lng: number; lat: number };
 	// biome-ignore lint/suspicious/noExplicitAny: two renderers, two overload sets
 	on(type: string, listener: (e: any) => void): unknown;
 	// biome-ignore lint/suspicious/noExplicitAny: mirrors `on`
@@ -27,21 +31,16 @@ function swallowNextClick(): void {
 }
 
 export const LONG_PRESS_MS = 750;
-
-export interface IdentifyResult {
-	label: string;
-	geometry?: GeoJSON.Geometry;
-}
+// Touch only: a hold this long extends the arm instead of seeding under the finger.
+const TOUCH_HOLD_MS = 300;
+// The arm's fingertip, up-left of the finger so the thumb never covers what it aims at.
+const AIM_DX = -50;
+const AIM_DY = -80;
+const AIM_EDGE_PX = 8;
 
 export interface DoubleTapToPinOpts {
-	/** Return null when nothing can be named — the popover then shows only the GPS point. */
-	identify?: (point: Point) => IdentifyResult | null | undefined;
-	onSelect?: (geometry: GeoJSON.Geometry | null) => void;
-	onDrop: (lng: number, lat: number) => void;
 	/** Plant the first ruler node at the tap so it's immediately grabbable. */
 	onMeasureSeed?: (lng: number, lat: number) => void;
-	/** Call the dismiss fn the moment the tap turns into a ruler drag, or the card goes stale. */
-	registerDismiss?: (dismiss: () => void) => void;
 }
 
 export function attachDoubleTapToPin(
@@ -50,13 +49,7 @@ export function attachDoubleTapToPin(
 ): () => void {
 	map.doubleClickZoom.disable(); // dblclick drops a pin; pinch / two-finger zooms
 
-	const teardown = () => opts.onSelect?.(null);
-	opts.registerDismiss?.(teardown);
-
 	const onDbl = (e: MapMouseEvent) => {
-		teardown();
-		const hit = opts.identify?.(e.point) ?? null;
-		if (hit?.geometry) opts.onSelect?.(hit.geometry);
 		// ⛔ Not gated by DEBUG — without it "pin didn't drop" and "download failed" look identical.
 		console.info(
 			`[pin] 📍 double-tap at ${e.lngLat.lng.toFixed(5)}, ${e.lngLat.lat.toFixed(5)} — seeding`,
@@ -75,10 +68,12 @@ export function attachDoubleTapToPin(
 
 	let pressStart: { x: number; y: number } | null = null;
 	let pressLngLat: { lng: number; lat: number } | null = null;
-	let pressPoint: Point | null = null;
 	let isTouch = false;
 	let pressTimer: ReturnType<typeof setTimeout> | null = null;
 	let downAt = 0;
+	let holdMs = LONG_PRESS_MS;
+	// Set while a touch hold has the arm out: the finger aims, lifting commits at the fingertip.
+	let aim: { dx: number; dy: number; tip: { x: number; y: number } } | null = null;
 
 	// Arm on the raw DOM release, not the map's mouseup — seeding mounts DOM under the held pointer, which fires mouseout and wipes the bookkeeping first.
 	let disarmReleaseSwallow: (() => void) | null = null;
@@ -98,8 +93,50 @@ export function attachDoubleTapToPin(
 	};
 
 	// ShovelCursor (rapper) fills its hold ring from these; a window event because a child can't import rapper's state.
-	const emit = (phase: "arm" | "drag" | "end" | "fire", x = 0, y = 0) =>
-		window.dispatchEvent(new CustomEvent("gc-press", { detail: { phase, x, y, ms: LONG_PRESS_MS } }));
+	const emit = (phase: "arm" | "drag" | "end" | "fire" | "aim", x = 0, y = 0, extra = {}) =>
+		window.dispatchEvent(new CustomEvent("gc-press", { detail: { phase, x, y, ms: holdMs, ...extra } }));
+
+	// The page is CSS-zoomed, so a viewport px is more than a canvas px.
+	const toCanvas = (p: { x: number; y: number }): [number, number] => {
+		const c = map.getCanvas();
+		const r = c.getBoundingClientRect();
+		const s = c.offsetWidth / r.width;
+		return [(p.x - r.left) * s, (p.y - r.top) * s];
+	};
+
+	const aimAt = (finger: { x: number; y: number }) => {
+		if (!aim) return;
+		aim.tip = { x: finger.x + aim.dx, y: finger.y + aim.dy };
+		const ll = map.unproject(toCanvas(aim.tip));
+		emit("aim", aim.tip.x, aim.tip.y, {
+			flipX: aim.dx > 0,
+			flipY: aim.dy > 0,
+			label: `${ll.lat.toFixed(3)}°, ${ll.lng.toFixed(3)}°`,
+		});
+	};
+
+	// Flipped once, at the start, so the fingertip never jumps mid-aim; only flips to keep it on screen.
+	const startAim = () => {
+		if (!pressStart) return;
+		const r = map.getCanvas().getBoundingClientRect();
+		const dx = pressStart.x + AIM_DX < r.left + AIM_EDGE_PX ? -AIM_DX : AIM_DX;
+		const dy = pressStart.y + AIM_DY < r.top + readTopBarH() + AIM_EDGE_PX ? -AIM_DY : AIM_DY;
+		aim = { dx, dy, tip: pressStart };
+		armReleaseSwallow();
+		map.dragPan.disable();
+		aimAt(pressStart);
+	};
+
+	const endAim = (commit: boolean) => {
+		if (!aim) return;
+		const tip = toCanvas(aim.tip);
+		aim = null;
+		map.dragPan.enable();
+		emit("end");
+		if (!commit) return;
+		const ll = map.unproject(tip);
+		opts.onMeasureSeed?.(ll.lng, ll.lat);
+	};
 
 	const killTimer = () => {
 		if (pressTimer) {
@@ -111,14 +148,15 @@ export function attachDoubleTapToPin(
 	const fireLongPress = () => {
 		pressTimer = null;
 		if (!pressLngLat) return;
+		if (isTouch) {
+			log("✅ TOUCH HOLD → arm out, aiming");
+			return startAim();
+		}
 		armReleaseSwallow();
 		emit("fire");
 		log("✅ LONG-PRESS fires → seed ruler", {
 			heldMs: Math.round(performance.now() - downAt),
 		});
-		teardown();
-		const hit = pressPoint ? (opts.identify?.(pressPoint) ?? null) : null;
-		if (hit?.geometry) opts.onSelect?.(hit.geometry);
 		opts.onMeasureSeed?.(pressLngLat.lng, pressLngLat.lat);
 	};
 
@@ -140,11 +178,11 @@ export function attachDoubleTapToPin(
 		if (isTouchLike(oe) && oe.touches.length > 1) return cancelPress("second finger");
 		pressStart = getClientCoords(oe);
 		pressLngLat = e.lngLat;
-		pressPoint = e.point;
 		isTouch = isTouchLike(oe);
+		holdMs = isTouch ? TOUCH_HOLD_MS : LONG_PRESS_MS;
 		downAt = performance.now();
 		killTimer();
-		pressTimer = setTimeout(fireLongPress, LONG_PRESS_MS);
+		pressTimer = setTimeout(fireLongPress, holdMs);
 		emit("arm", pressStart.x, pressStart.y);
 		log("⬇️ down — timer armed", { isTouch, at: pressStart });
 	};
@@ -152,15 +190,16 @@ export function attachDoubleTapToPin(
 	const cancelPress = (why: string) => {
 		if (pressStart) log(`✖️ cancel (${why})`);
 		if (pressTimer) emit(why === "drag past slop" ? "drag" : "end");
+		endAim(false);
 		killTimer();
 		pressStart = null;
 		pressLngLat = null;
-		pressPoint = null;
 	};
 
 	// Raw window events, not the map's: Mapbox mutes its mousemove the moment its pan takes over (3 px),
 	// which is before the slop, so a map-fed check never hears a drag and the timer fires mid-pan.
 	const onMove = (evt: MouseEvent | TouchEvent) => {
+		if (aim && isTouchLike(evt) && evt.touches.length === 1) return aimAt(getClientCoords(evt));
 		if (!pressStart || !pressTimer) return;
 		const coords = getClientCoords(evt);
 		const dist = Math.hypot(coords.x - pressStart.x, coords.y - pressStart.y);
@@ -179,6 +218,7 @@ export function attachDoubleTapToPin(
 			log("⬆️ up before timer → CLICK (no seed)", {
 				heldMs: Math.round(performance.now() - downAt),
 			});
+		endAim(true);
 		cancelPress("pointer up");
 	};
 
@@ -212,6 +252,5 @@ export function attachDoubleTapToPin(
 		map.off("touchcancel", onTouchCancel);
 		cancelPress("detach");
 		disarmReleaseSwallow?.();
-		teardown();
 	};
 }

@@ -8,5 +8,8 @@ export const Z_HANDS = 10500;
 /** Full-scrim modal surfaces eclipse even the hands. Scrim at this value, card at +1. */
 export const Z_OVER_HANDS = Z_HANDS + 100;
 
+/** A hand pointing INTO a modal belongs to that modal: above its card, under its field menus. */
+export const Z_HANDS_IN_MODAL = Z_OVER_HANDS + 2;
+
 /** A dropdown owned by a field inside a popover: a sibling of the opaque card, so it must outrank it. */
 export const Z_FIELD_MENU = Z_OVER_HANDS + 10;

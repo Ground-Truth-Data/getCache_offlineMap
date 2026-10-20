@@ -38,6 +38,41 @@
 	z-index: 0;
 }
 
+/* The reorder grip. Its dots centre on the track's right nub — card edge
+   (wrapper right − 0.6rem − 6px) to track edge (+0.4rem) — and the padding
+   stretches the grab area back over the card. */
+.row-grip {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	right: -0.4rem;
+	z-index: 4;
+	box-sizing: border-box;
+	width: calc(1.6rem + 6px);
+	padding-left: 0.6rem;
+	display: grid;
+	grid-template-columns: 4px 4px;
+	gap: 4px 3px;
+	align-content: center;
+	justify-content: center;
+	cursor: grab;
+	touch-action: none;
+	-webkit-tap-highlight-color: transparent;
+	-webkit-user-select: none;
+	user-select: none;
+}
+
+.row-grip:active {
+	cursor: grabbing;
+}
+
+.row-grip > i {
+	width: 4px;
+	height: 4px;
+	border-radius: 50%;
+	background: rgba(0, 0, 0, 0.35);
+}
+
 /* Swipe colours: bagging=GOLD (right, unbagged), unbagging=ORANGE (left, bagged), wrong-way=RED, bagged-rest=GOLD tint. The drag-surface gold wash is separate — always gold, not the directional signal. */
 
 .row-track--bagged {

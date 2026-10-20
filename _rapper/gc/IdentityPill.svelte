@@ -1,6 +1,6 @@
 <script lang="ts" module>
 /** A person as every surface draws them. `picked`: the book owner chose this
- *  colour (ring); otherwise it was handed out on arrival (solid). */
+ *  colour (filled); otherwise it was handed out on arrival (dashed outline). */
 export type Identity = { label: string; color: string; self: boolean; picked: boolean };
 </script>
 
@@ -19,12 +19,12 @@ let {
 const second = $derived(hammer || !!editor || edited);
 </script>
 
-<!-- A ring is the "chosen on purpose" look, the same build as you. Never a
-     plain outline: the count chips beside it are outlines. -->
+<!-- Dashed = a colour handed out on arrival, still unstyled; filled = chosen
+     on purpose. Only you wear a solid gold outline. -->
 <span class="id-pill-wrap" class:id-pill-wrap--double={second}>
     <span
         class="id-pill"
-        class:id-pill--ring={who.self || who.picked}
+        class:id-pill--picked={who.picked && !who.self}
         class:id-pill--self={who.self}
         style:--id-c={who.color || null}
         title={who.label}>{who.label}</span
@@ -53,9 +53,12 @@ const second = $derived(hammer || !!editor || edited);
         max-width: 9rem;
         height: 1.15rem;
         padding: 0 0.45rem;
+        box-sizing: border-box;
+        border: 2px dashed var(--id-ink);
         border-radius: 999px;
-        background: var(--id-ink);
-        color: #15170f;
+        /* Dashed ink alone washes out on the steel buttons it sits on. */
+        background: #111;
+        color: var(--id-ink);
         font-family: var(--rt-font-body);
         font-size: 0.7rem;
         font-weight: 700;
@@ -64,12 +67,13 @@ const second = $derived(hammer || !!editor || edited);
         overflow: hidden;
         text-overflow: ellipsis;
     }
-    .id-pill--ring {
-        background: #000;
-        color: var(--id-ink);
-        box-shadow: inset 0 0 0 1.5px var(--id-ink);
+    .id-pill--picked {
+        border-style: solid;
+        background: var(--id-ink);
+        color: #14150c;
     }
     .id-pill--self {
+        border-style: solid;
         font-weight: 800;
     }
     .id-pill-wrap--double .id-pill:first-child {
@@ -79,6 +83,7 @@ const second = $derived(hammer || !!editor || edited);
     .id-pill--editor {
         gap: 3px;
         max-width: 7rem;
+        border: 0;
         border-radius: 0 999px 999px 0;
         background: #3a2f22;
         color: #e9c79c;

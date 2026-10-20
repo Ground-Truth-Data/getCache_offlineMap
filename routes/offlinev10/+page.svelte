@@ -98,7 +98,6 @@ $effect(() => {
 	hospitalHandle?.repaint();
 });
 let armKind = $state<"line" | "polygon" | "pin" | null>(null);
-let dropPinAt = $state<[number, number] | null>(null);
 let measureEvent = $state<{ lng: number; lat: number; n: number } | null>(null);
 /** The host's doors — every one optional, since a host with no Get Cache app behind it supplies none. */
 let {
@@ -499,7 +498,6 @@ onMount(() => {
 	const detachCamera = attachCameraPersistence(m as unknown as Parameters<typeof attachCameraPersistence>[0]);
 	// Double-tap plants the ruler's first node; its Save drops the pin, whose arrival in the store earns the blob.
 	const detachTap = attachDoubleTapToPin(m, {
-		onDrop: () => {},
 		onMeasureSeed: (lng, lat) => {
 			measureEvent = { lng, lat, n: measureN++ };
 		},
@@ -549,7 +547,6 @@ onMount(() => {
 		noAutoFrame
 		{mapOnly}
 		bind:armKind
-		bind:dropPinAt
 		bind:measureEvent
 		{onUserFix}
 		onLegend={() => (legendOpen = true)}
