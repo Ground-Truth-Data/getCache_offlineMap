@@ -1,6 +1,5 @@
 /** Double-tap OR long-press → Snake Ruler, shared by the offline and online maps so the two never drift. */
 import type { MapMouseEvent, MapTouchEvent } from "mapbox-gl";
-import { readTopBarH } from "./mapKeepOut";
 
 /** Both Mapbox and MapLibre satisfy this; on/off are loose because the two overload sets don't unify. */
 type TapMap = {
@@ -30,12 +29,11 @@ function swallowNextClick(): void {
 	window.addEventListener("pointerdown", cleanup, true);
 }
 
-// Mouse and finger alike: a hold this long extends the arm, so desktop rehearses exactly what the phone does.
-export const HOLD_MS = 300;
-// The arm's fingertip, up-left of the finger so the thumb never covers what it aims at.
-const AIM_DX = -50;
-const AIM_DY = -80;
-const AIM_EDGE_PX = 8;
+// Mouse and finger alike: a hold this long fires the ruler, so desktop rehearses exactly what the phone does.
+export const HOLD_MS = 1200;
+// The pointer holds the shovel handle; the hand's fingertip, up-left of it, is what clicks. = REACH in rapper's ShovelCursor.svelte.
+const TIP_DX = -39;
+const TIP_DY = -67;
 
 export interface DoubleTapToPinOpts {
 	/** Plant the first ruler node at the tap so it's immediately grabbable. */
@@ -49,12 +47,17 @@ export function attachDoubleTapToPin(
 	map.doubleClickZoom.disable(); // dblclick drops a pin; pinch / two-finger zooms
 
 	const onDbl = (e: MapMouseEvent) => {
+		const c = map.getCanvas();
+		const s = c.offsetWidth / c.getBoundingClientRect().width;
+		const ll = map.unproject([e.point.x + TIP_DX * s, e.point.y + TIP_DY * s]);
 		// ⛔ Not gated by DEBUG — without it "pin didn't drop" and "download failed" look identical.
 		console.info(
-			`[pin] 📍 double-tap at ${e.lngLat.lng.toFixed(5)}, ${e.lngLat.lat.toFixed(5)} — seeding`,
+			`[pin] 📍 double-tap at ${ll.lng.toFixed(5)}, ${ll.lat.toFixed(5)} — seeding`,
 			{ handler: opts.onMeasureSeed ? "attached" : "MISSING (nothing will happen)" },
 		);
-		opts.onMeasureSeed?.(e.lngLat.lng, e.lngLat.lat);
+		opts.onMeasureSeed?.(ll.lng, ll.lat);
+		// The ruler's own hand takes over; ShovelCursor's would sit on top of it.
+		emit("drop");
 	};
 
 	// The timer firing while the pointer is still down (never past slop) is itself the proof of "held + still".
@@ -67,8 +70,8 @@ export function attachDoubleTapToPin(
 	let pressStart: { x: number; y: number } | null = null;
 	let isTouch = false;
 	let pressTimer: ReturnType<typeof setTimeout> | null = null;
-	// Set while a hold has the arm out: the pointer aims, lifting commits at the fingertip.
-	let aim: { dx: number; dy: number; tip: { x: number; y: number } } | null = null;
+	// Set while a hold is complete: the pointer can still slide, and lifting commits at the fingertip.
+	let aim: { tip: { x: number; y: number } } | null = null;
 
 	// Arm on the raw DOM release, not the map's mouseup — seeding mounts DOM under the held pointer, which fires mouseout and wipes the bookkeeping first.
 	let disarmReleaseSwallow: (() => void) | null = null;
@@ -88,7 +91,7 @@ export function attachDoubleTapToPin(
 	};
 
 	// ShovelCursor (rapper) fills its hold ring from these; a window event because a child can't import rapper's state.
-	const emit = (phase: "arm" | "drag" | "end" | "aim", x = 0, y = 0, extra = {}) =>
+	const emit = (phase: "arm" | "drag" | "end" | "aim" | "drop", x = 0, y = 0, extra = {}) =>
 		window.dispatchEvent(new CustomEvent("gc-press", { detail: { phase, x, y, ms: HOLD_MS, ...extra } }));
 
 	// The page is CSS-zoomed, so a viewport px is more than a canvas px.
@@ -101,22 +104,14 @@ export function attachDoubleTapToPin(
 
 	const aimAt = (finger: { x: number; y: number }) => {
 		if (!aim) return;
-		aim.tip = { x: finger.x + aim.dx, y: finger.y + aim.dy };
+		aim.tip = { x: finger.x + TIP_DX, y: finger.y + TIP_DY };
 		const ll = map.unproject(toCanvas(aim.tip));
-		emit("aim", aim.tip.x, aim.tip.y, {
-			flipX: aim.dx > 0,
-			flipY: aim.dy > 0,
-			label: `${ll.lat.toFixed(3)}°, ${ll.lng.toFixed(3)}°`,
-		});
+		emit("aim", aim.tip.x, aim.tip.y, { label: `${ll.lat.toFixed(3)}°, ${ll.lng.toFixed(3)}°` });
 	};
 
-	// Flipped once, at the start, so the fingertip never jumps mid-aim; only flips to keep it on screen.
 	const startAim = () => {
 		if (!pressStart) return;
-		const r = map.getCanvas().getBoundingClientRect();
-		const dx = pressStart.x + AIM_DX < r.left + AIM_EDGE_PX ? -AIM_DX : AIM_DX;
-		const dy = pressStart.y + AIM_DY < r.top + readTopBarH() + AIM_EDGE_PX ? -AIM_DY : AIM_DY;
-		aim = { dx, dy, tip: pressStart };
+		aim = { tip: pressStart };
 		armReleaseSwallow();
 		map.dragPan.disable();
 		aimAt(pressStart);
@@ -204,6 +199,11 @@ export function attachDoubleTapToPin(
 	// dragstart is NOT a cancel either: it fires at 3 px, and a settling thumb moves that much — the slop above decides.
 	const onContextMenu = (e: MapMouseEvent) => e.originalEvent?.preventDefault();
 	const onTouchCancel = () => cancelPress("touchcancel");
+	// ShovelCursor's lingering hand, held still on touch, plants the ruler at its fingertip.
+	const onHandSeed = (e: Event) => {
+		const ll = map.unproject(toCanvas((e as CustomEvent<{ x: number; y: number }>).detail));
+		opts.onMeasureSeed?.(ll.lng, ll.lat);
+	};
 
 	map.on("dblclick", onDbl);
 	map.on("mousedown", onDown);
@@ -215,6 +215,7 @@ export function attachDoubleTapToPin(
 	map.on("touchcancel", onTouchCancel);
 	window.addEventListener("mousemove", onMove, true);
 	window.addEventListener("touchmove", onMove, true);
+	window.addEventListener("gc-hand-seed", onHandSeed);
 
 	return () => {
 		map.off("dblclick", onDbl);
@@ -226,6 +227,7 @@ export function attachDoubleTapToPin(
 		map.off("touchend", onUp);
 		window.removeEventListener("mousemove", onMove, true);
 		window.removeEventListener("touchmove", onMove, true);
+		window.removeEventListener("gc-hand-seed", onHandSeed);
 		map.off("touchcancel", onTouchCancel);
 		cancelPress("detach");
 		disarmReleaseSwallow?.();

@@ -66,14 +66,14 @@ describe("long press vs drag", () => {
 		Object.assign(g, saved);
 	});
 
-	// Desktop rehearses the phone: the mouse extends the same arm and commits at its fingertip.
-	it("a still mouse press seeds at the arm's fingertip, on release", () => {
+	// Desktop rehearses the phone: a hold commits at the fingertip, up-left of the pointer, when it lifts.
+	it("a still mouse press seeds at the fingertip, on release", () => {
 		map.fire("mousedown", new FakeMouseEvent("mousedown", 200, 300));
 		vi.advanceTimersByTime(HOLD_MS);
 		(g.window as EventTarget).dispatchEvent(new FakeMouseEvent("mousemove", 220, 310));
 		expect(seed).not.toHaveBeenCalled();
 		map.fire("mouseup", new FakeMouseEvent("mouseup", 220, 310));
-		expect(seed).toHaveBeenCalledWith(170, 230);
+		expect(seed).toHaveBeenCalledWith(181, 243);
 	});
 
 	// A ruler hand is the handle: holding it must not also reach a second hand out over it.
@@ -134,11 +134,11 @@ describe("touch hold extends the arm", () => {
 
 	it("seeds at the fingertip, up-left of the finger, only on lift", () => {
 		map.fire("touchstart", touch("touchstart", [200, 300]));
-		vi.advanceTimersByTime(300);
+		vi.advanceTimersByTime(HOLD_MS);
 		move(220, 310);
 		expect(seed).not.toHaveBeenCalled();
 		map.fire("touchend", touch("touchend"));
-		expect(seed).toHaveBeenCalledWith(170, 230);
+		expect(seed).toHaveBeenCalledWith(181, 243);
 	});
 
 	it("a quick tap never seeds", () => {
@@ -151,16 +151,9 @@ describe("touch hold extends the arm", () => {
 
 	it("a second finger mid-aim cancels without committing", () => {
 		map.fire("touchstart", touch("touchstart", [200, 300]));
-		vi.advanceTimersByTime(300);
+		vi.advanceTimersByTime(HOLD_MS);
 		map.fire("touchstart", touch("touchstart", [200, 300], [250, 350]));
 		map.fire("touchend", touch("touchend"));
 		expect(seed).not.toHaveBeenCalled();
-	});
-
-	it("flips below and right of the finger near the top-left corner", () => {
-		map.fire("touchstart", touch("touchstart", [20, 90]));
-		vi.advanceTimersByTime(300);
-		map.fire("touchend", touch("touchend"));
-		expect(seed).toHaveBeenCalledWith(70, 170);
 	});
 });

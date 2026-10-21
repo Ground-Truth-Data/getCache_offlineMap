@@ -321,16 +321,16 @@ function clearAll() {
 // component would otherwise leave them on the map with no state behind them and no way to dismiss.
 $effect(() => () => clearAll());
 
-// HEAD (vertex 0) = LEFT hand; TAIL = RIGHT hand. Widths chosen so both render ≈64px tall.
+// HEAD (vertex 0) = LEFT hand; TAIL = RIGHT hand. Widths chosen so both render ≈100px tall, ShovelCursor's size.
 const HEAD_CURSOR = {
     src: handShovelCursor,
-    w: 47,
-    offset: [16, -2] as [number, number], // fingertip nudge
+    w: 73,
+    offset: [25, -3] as [number, number], // fingertip nudge
 };
 const TAIL_CURSOR = {
     src: handShovelCursorRight,
-    w: 28,
-    offset: [4, -2] as [number, number],
+    w: 44,
+    offset: [6, -3] as [number, number],
 };
 let headCursor: mapboxgl.Marker | null = null;
 let tailCursor: mapboxgl.Marker | null = null;
@@ -869,8 +869,8 @@ const POP_OFFSET_PX = 52;
 const TOTAL_OFFSET_PX = 16;
 const POP_H = 78;
 const TOTAL_H = 22;
-// The lone node's ring plus the hand hanging down-right of it (HEAD_CURSOR: 47px wide, ≈64px tall).
-const ARM_RECT = { l: 12, t: 12, w: 52, h: 76 };
+// The lone node's ring plus the hand hanging down-right of it (HEAD_CURSOR: 73px wide, ≈100px tall).
+const ARM_RECT = { l: 12, t: 12, w: 81, h: 119 };
 const BESIDE_GAP = 18;
 
 // Above the bbox by default; below if above clips the top; `cornered` when neither fits.
