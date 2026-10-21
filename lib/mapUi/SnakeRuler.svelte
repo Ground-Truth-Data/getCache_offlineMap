@@ -15,7 +15,7 @@ import type { Lnglat } from "$parent/siblings/getCache_OnlineMap/lib/draw/mapDra
 import { mayAddVertex } from "$parent/siblings/getCache_OnlineMap/lib/draw/drawLimit";
 import { POLYGON_FILL, POLYGON_OUTLINE, STROKE } from "$parent/siblings/getCache_OnlineMap/lib/draw/drawStyle";
 import { type SnapKind, type SnapRings, snapLngLat, snapRings } from "$parent/siblings/getCache_OnlineMap/lib/draw/snapToShapes";
-import { formatHectares, formatMeasureDist } from "../panels/measureFormat";
+import { formatArea, formatLength } from "$gc/units.svelte";
 import { legLabelsReadable } from "./legLabelCrowding";
 import { type Rect, mapKeepOutRects, readTopBarH, rectsOverlap, shiftClear } from "../shared/mapKeepOut";
 import type {
@@ -582,7 +582,7 @@ function renderLegs() {
             type: "Feature", properties: {},
             geometry: { type: "LineString", coordinates: [r[i], r[i + 1]] },
         });
-        addLeg(geo, formatMeasureDist(segKm), off);
+        addLeg(geo, formatLength(segKm * 1000), off);
     });
 }
 
@@ -991,13 +991,13 @@ let totalText = $derived.by(() => {
     if (pts.length >= 3) {
         const ring: Lnglat[] = [...pts, pts[0]];
         const poly: Feature = { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [ring] } };
-        const ha = formatHectares((area(poly) || 0) / 10000);
-        return isPolygon ? ha : `≈ ${ha}`;
+        const size = formatArea(area(poly) || 0);
+        return isPolygon ? size : `≈ ${size}`;
     }
     if (pts.length < 1) return null;
     if (pts.length === 1) return `${pts[0][1].toFixed(3)}°, ${pts[0][0].toFixed(3)}°`;
     const km = turfLength({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: pts } });
-    return formatMeasureDist(km);
+    return formatLength(km * 1000);
 });
 
 async function sharePoint() {

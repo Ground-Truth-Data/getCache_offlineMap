@@ -507,7 +507,7 @@ onMount(() => {
 	m.on("moveend", touchInView);
 	m.on("idle", () => markPainted(m));
 	m.addControl(
-		new NiceScaleBarControl({ width: 200, maxRangeMeters: 100_000_000, minStepWidth: 23, maxDepth: 4, height: 10, unit: "m" }) as maplibregl.IControl,
+		new NiceScaleBarControl({ width: 200, maxRangeMeters: 100_000_000, minStepWidth: 23, maxDepth: 4, height: 10 }) as maplibregl.IControl,
 		"bottom-left",
 	);
 	const detachCamera = attachCameraPersistence(m as unknown as Parameters<typeof attachCameraPersistence>[0]);

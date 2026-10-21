@@ -12,6 +12,7 @@ import { cellKey, industrialLabel } from "./masks/staticHeatSources";
 import type { FireHotspot } from "./fireCache";
 import { m } from "$parent/src/lib/paraglide/messages";
 import { getLocale } from "$parent/src/lib/paraglide/runtime";
+import { formatArea, longUnit } from "$gc/units.svelte";
 
 const fixed1 = (n: number): string =>
 	n.toLocaleString(getLocale(), {
@@ -134,16 +135,8 @@ export function clusterAreaKm2(
 	return ungridded + cells.size * CELL_KM ** 2;
 }
 
-/** Hectares. Mirrors `formatArea` in the online map's featureMeasure.ts (not
- * imported directly — that pulls in turf); a test pins the two. */
-export function areaLabel(km2: number): string {
-	const ha = km2 * 100;
-	// A detection is never "0 m²".
-	if (ha < 0.1)
-		return `${Math.max(1, Math.round(km2 * 1_000_000)).toLocaleString(getLocale())} m²`;
-	if (ha < 10) return `${fixed1(ha)} ha`;
-	return `${Math.round(ha).toLocaleString(getLocale())} ha`;
-}
+// A detection is never "0 m²".
+export const areaLabel = (km2: number): string => formatArea(Math.max(km2 * 1_000_000, 1));
 
 /** Labelled rows, not sentences: rows can be scanned. */
 export interface CardRow {
@@ -216,11 +209,12 @@ export function fromYouValue(
 	you: readonly [number, number] | null,
 ): string | null {
 	if (you === null) return null;
-	const km = kmApart(you, at);
+	const u = longUnit();
+	const n = (kmApart(you, at) * 1000) / u.metres;
 	const dir = bearingLabel(you, at);
 	// Sub-km precision would be false: the pixel itself is ~0.4 km across.
-	if (km < 1) return m.ofmap_shared_fire_distance_under_km({ dir });
-	return m.ofmap_shared_fire_distance_km({ km: String(Math.round(km)), dir });
+	if (n < 1) return m.ofmap_shared_fire_distance_under({ unit: u.name, dir });
+	return m.ofmap_shared_fire_distance({ n: String(Math.round(n)), unit: u.name, dir });
 }
 
 export function buildHotspotCard(

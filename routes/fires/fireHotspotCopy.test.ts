@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { distance } from "$gc/units.svelte";
 import {
 	areaLabel,
 	bearingLabel,
@@ -17,6 +18,11 @@ import { CELL_DEG } from "./masks/staticHeatSources";
 const VANCOUVER: [number, number] = [-123.1, 49.28];
 const KAMLOOPS: [number, number] = [-120.33, 50.67];
 const NOW = Date.UTC(2026, 7, 8, 12, 0);
+
+// The runner's en-US would otherwise start every test in imperial.
+beforeEach(() => {
+	distance.value = "metric";
+});
 
 describe("intensity — the 'how big is this' number", () => {
 	it("bands FRP from low to extreme", () => {
@@ -182,17 +188,11 @@ describe("areaLabel — hectares, the unit the job speaks", () => {
 		expect(areaLabel(0.0000005)).toBe("1 m²");
 	});
 
-	it("matches the app's own formatArea rules", () => {
-		// Mirrors featureMeasure.formatArea, which is not imported because it pulls in turf.
-		const formatArea = (sqMetres: number): string => {
-			const ha = sqMetres / 10000;
-			if (ha < 0.1) return `${Math.round(sqMetres).toLocaleString()} m²`;
-			if (ha < 10) return `${ha.toFixed(1)} ha`;
-			return `${Math.round(ha).toLocaleString()} ha`;
-		};
-		for (const km2 of [0.0000005, 0.042, 0.1, 0.140625, 2.08, 94.6, 223.28]) {
-			expect(areaLabel(km2)).toBe(formatArea(km2 * 1_000_000));
-		}
+	it("speaks acres when the phone is set to imperial", () => {
+		distance.value = "imperial";
+		expect(areaLabel(0.042)).toBe("10 ac");
+		expect(areaLabel(2.08)).toBe("514 ac");
+		expect(distanceLine(KAMLOOPS, VANCOUVER)).toMatch(/^\d+ mi NE of you$/);
 	});
 });
 

@@ -12,6 +12,7 @@ import {
 	wantHospitals,
 } from "./hospitalCache";
 import { m } from "$parent/src/lib/paraglide/messages";
+import { longUnit } from "$gc/units.svelte";
 
 export const HOSPITAL_LAYER_IDS = {
 	src: "rt-hospital-geo",
@@ -128,9 +129,10 @@ export function hospitalCardHtml(opts: {
 	const phoneRow = opts.phone
 		? `<div class="rt-hospital-row"><span class="rt-hospital-k">${m.ofmap_shared_hospital_phone()}</span><span class="rt-hospital-v"><button type="button" class="rt-hospital-tel" data-copy="${esc(opts.phone)}">${esc(opts.phone)}</button><button type="button" class="rt-hospital-copy" data-copy="${esc(opts.phone)}" aria-label="${m.ofmap_shared_hospital_copy_phone()}">${COPY_GLYPH}</button></span></div>`
 		: "";
+	const u = longUnit();
 	const fromRow =
 		opts.fromYouKm != null && Number.isFinite(opts.fromYouKm)
-			? `<div class="rt-hospital-row"><span class="rt-hospital-k">${m.ofmap_shared_hospital_from_you()}</span><span class="rt-hospital-v">${Math.round(opts.fromYouKm)} km</span></div>`
+			? `<div class="rt-hospital-row"><span class="rt-hospital-k">${m.ofmap_shared_hospital_from_you()}</span><span class="rt-hospital-v">${Math.round((opts.fromYouKm * 1000) / u.metres)} ${u.name}</span></div>`
 			: "";
 	const locate = opts.locateButton
 		? `<button type="button" class="rt-hospital-loc">${m.ofmap_shared_hospital_my_location()}</button>`
