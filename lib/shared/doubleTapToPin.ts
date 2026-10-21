@@ -38,6 +38,8 @@ const TIP_DY = -67;
 export interface DoubleTapToPinOpts {
 	/** Plant the first ruler node at the tap so it's immediately grabbable. */
 	onMeasureSeed?: (lng: number, lat: number) => void;
+	/** The tap here opens or dismisses something, so the hand stays hidden unless the press becomes a drag or a hold. */
+	claimsTap?: (point: { x: number; y: number }) => boolean;
 }
 
 export function attachDoubleTapToPin(
@@ -163,7 +165,7 @@ export function attachDoubleTapToPin(
 		isTouch = isTouchLike(oe);
 		killTimer();
 		pressTimer = setTimeout(fireLongPress, HOLD_MS);
-		emit("arm", pressStart.x, pressStart.y);
+		emit("arm", pressStart.x, pressStart.y, { veiled: opts.claimsTap?.(e.point) ?? false });
 		log("⬇️ down — timer armed", { isTouch, at: pressStart });
 	};
 
