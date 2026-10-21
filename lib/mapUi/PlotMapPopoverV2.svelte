@@ -1,6 +1,7 @@
 <!-- Body gated on counted (editable deck vs read-only); header Edit/Share gated on the plot EXISTING, never its count. -->
 <script lang="ts">
 import { iconPath } from "../shared/icons";
+import { m } from "$parent/src/lib/paraglide/messages";
 import type { Feature } from "geojson";
 import { onDestroy, onMount } from "svelte";
 import { fade } from "svelte/transition";
@@ -249,15 +250,15 @@ function requestClose() {
 	<div class="plot-pop">
 		<div class="pp-hdr">
 			<img class="pp-glyph" src={iconPath("quality")} alt="" />
-			<span class="pp-kind">Quality plot</span>
+			<span class="pp-kind">{m.ofmap_ui_quality_plot()}</span>
 			<span class="pp-spacer"></span>
 			<!-- Edit belongs to any EXISTING plot, not only a counted one: the plot whose count did not land is the one you most need to open. -->
 			{#if canOpenInForm}
 				<span class="pp-edit">
 					<FancyButton
 						size="sm"
-						ariaLabel="Edit plot in form"
-						title="Edit"
+						ariaLabel={m.ofmap_ui_plot_edit_aria()}
+						title={m.ofmap_ui_edit()}
 						onclick={() => onOpenInForm(plotNo)}
 					>
 						{#snippet icon()}<ports.ui.Icon name="edit-tilt" size={18} />{/snippet}
@@ -265,20 +266,20 @@ function requestClose() {
 				</span>
 			{/if}
 			{#if canOpenInForm}
-				<button class="pp-icon" aria-label="Share plot" title="Share" use:atvShare onclick={() => onShare("getcache")}>
+				<button class="pp-icon" aria-label={m.ofmap_ui_plot_share_aria()} title={m.ofmap_ui_share()} use:atvShare onclick={() => onShare("getcache")}>
 					<ports.ui.Icon name="share" size={18} />
 				</button>
 			{/if}
 			<!-- No delete: a plot pin is the plot's key. -->
-			<button class="rt-popover-close" aria-label="Close" title="Close" onclick={requestClose}><ports.ui.Icon name="close-x" /></button>
+			<button class="rt-popover-close" aria-label={m.ofmap_ui_close()} title={m.ofmap_ui_close()} onclick={requestClose}><ports.ui.Icon name="close-x" /></button>
 		</div>
 
 		<!-- 0 = unnumbered; a dash says "no number yet" instead of claiming plot zero. -->
-		<div class="pp-title" aria-label={displayNo ? `Plot ${displayNo}` : "Plot, not numbered yet"}>
-			<span class="pp-title-lead">Plot #</span>
+		<div class="pp-title" aria-label={displayNo ? m.ofmap_ui_plot_numbered_aria({ no: displayNo }) : m.ofmap_ui_plot_unnumbered_aria()}>
+			<span class="pp-title-lead">{m.ofmap_ui_plot_no_lead()}</span>
 			<span class="pp-title-no">{displayNo || "—"}</span>
 			{#if plotShortCode}
-				<span class="pp-title-code" aria-label="Plot code {plotShortCode}">
+				<span class="pp-title-code" aria-label={m.ofmap_ui_plot_code_aria({ code: plotShortCode })}>
 					<span class="pp-title-code-bar">|</span>&nbsp;{plotShortCode}
 				</span>
 			{/if}
@@ -288,26 +289,26 @@ function requestClose() {
 					<button
 						type="button"
 						class="pp-locode-copy"
-						aria-label="Copy location code"
-						title="Copy"
+						aria-label={m.ofmap_ui_locode_copy_aria()}
+						title={m.ofmap_ui_copy()}
 						onclick={copyLoCode}
 					>
 						{#if loCodeCopied}
 							<svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
 								<path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
 							</svg>
-							<span class="pp-locode-copy-text">COPIED</span>
+							<span class="pp-locode-copy-text">{m.ofmap_ui_copied_caps()}</span>
 						{:else if loCodeCopyFailed}
 							<svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
 								<path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
 							</svg>
-							<span class="pp-locode-copy-text">FAILED</span>
+							<span class="pp-locode-copy-text">{m.ofmap_ui_failed_caps()}</span>
 						{:else}
 							<svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
 								<rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" stroke-width="2" />
 								<path d="M5 15V5a2 2 0 012-2h10" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
 							</svg>
-							<span class="pp-locode-copy-text">COPY</span>
+							<span class="pp-locode-copy-text">{m.ofmap_ui_copy_caps()}</span>
 						{/if}
 					</button>
 				</div>
@@ -332,19 +333,19 @@ function requestClose() {
 			</div>
 		{:else if plot}
 			<div class="pp-view" in:fade={{ duration: 220, delay: 120 }} out:fade={{ duration: 160 }}>
-			<div class="pp-sect">PLOT DATA</div>
+			<div class="pp-sect">{m.ofmap_ui_plot_data()}</div>
 			<div class="pp-data">
 				<div class="pp-cell" class:pp-cell--under={short > 0}>
-					<span class="pp-k">Planted</span>
+					<span class="pp-k">{m.ofmap_ui_planted()}</span>
 					<span class="pp-v">{plot.planted}</span>
 				</div>
-				<div class="pp-cell"><span class="pp-k">Spots</span><span class="pp-v">{plot.spots}</span></div>
+				<div class="pp-cell"><span class="pp-k">{m.ofmap_ui_spots()}</span><span class="pp-v">{plot.spots}</span></div>
 				<div class="pp-cell" class:pp-cell--over={excess > 0}>
-					<span class="pp-k">Excess</span>
+					<span class="pp-k">{m.ofmap_ui_excess()}</span>
 					<span class="pp-v">{plot.excess}</span>
 				</div>
 				<div class="pp-cell" class:pp-cell--bad={faultCount > 0}>
-					<span class="pp-k">Faults</span>
+					<span class="pp-k">{m.ofmap_ui_faults()}</span>
 					<span class="pp-v">{faultCount}</span>
 				</div>
 			</div>
@@ -357,7 +358,7 @@ function requestClose() {
 			{/if}
 			{#if plot.comment.trim()}
 				<div class="pp-comments">
-					<div class="pp-sect">Comments</div>
+					<div class="pp-sect">{m.ofmap_ui_comments()}</div>
 					<p class="pp-comment-text">{plot.comment}</p>
 				</div>
 			{/if}

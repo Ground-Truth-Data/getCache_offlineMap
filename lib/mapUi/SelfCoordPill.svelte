@@ -1,4 +1,5 @@
 <script lang="ts">
+import { m } from "$parent/src/lib/paraglide/messages";
 import type { Map as MapboxMap } from "mapbox-gl";
 import type { MapHostPorts, MapShareRow as ShareFormat } from "../shared/mapHostPorts";
 
@@ -63,8 +64,8 @@ const readout = $derived(
                 <button
                     class="rt-selfcoord__btn"
                     onclick={toggle}
-                    aria-label="Share your GPS location"
-                    title="Share your GPS location"
+                    aria-label={m.ofmap_ui_share_gps()}
+                    title={m.ofmap_ui_share_gps()}
                 >
                     <ports.ui.Icon name="share" size={16} />
                 </button>

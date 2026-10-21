@@ -3,12 +3,13 @@ import Layout from "$rig/Layout.svelte";
 import PhoneRig from "$gc/PhoneRig.svelte";
 import logoUrl from "$gc/assets/GC_fly_logo_transparent.webp";
 import iconUrl from "$gc/assets/favicon.png";
+import { m } from "$parent/src/lib/paraglide/messages";
 import { configureTilesFromEnv } from "../lib/worker/worker-local-dev/tilesFromEnv";
 
 configureTilesFromEnv();
 
 const CHILD = {
-	name: "offline preview",
+	name: m.ofmap_v10_child_name(),
 	owner: "Get Cache",
 	// Casing matters — this becomes a GitHub URL; must match the repo/folder exactly or the link 404s.
 	repo: "getCache_OfflineMap",

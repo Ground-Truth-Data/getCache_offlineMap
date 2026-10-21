@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import { paraglideVitePlugin } from "@inlang/paraglide-js";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { configDefaults, defineConfig } from "vitest/config";
 
@@ -9,7 +10,15 @@ const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 export default defineConfig({
 	// Never the dev server's `node_modules/.vite`: a test run would wipe optimized deps from under a running server.
 	cacheDir: "node_modules/.vite-unit",
-	plugins: [svelte()],
+	plugins: [
+		svelte(),
+		// The words compile into the vendored rapper, which is the tier a bare clone runs in.
+		paraglideVitePlugin({
+			project: "./_rapper/project.inlang",
+			outdir: "./_rapper/src/lib/paraglide",
+			strategy: ["preferredLanguage", "baseLocale"],
+		}),
+	],
 	resolve: {
 		// Keep in sync with svelte.config.js, same order: per-child entries before the bare `$parent`,
 		// or it swallows them. An unresolvable alias kills the module graph before any `it()` registers.
@@ -19,6 +28,7 @@ export default defineConfig({
 			"$parent/siblings/getCache_OfflineMap": r("."),
 			"$parent/siblings/ReTreever_where": r("../ReTreever_where"),
 			"$parent/siblings": r(".."),
+			"$parent/src/lib/paraglide": r("./_rapper/src/lib/paraglide"),
 			$parent: r("."),
 		},
 	},

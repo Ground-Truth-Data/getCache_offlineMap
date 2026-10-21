@@ -1,6 +1,7 @@
 <script lang="ts">
 // ports.scenes is OPTIONAL — no scene registry means a plain, static eye and no timers, never a throw.
 import type { MapHostPorts } from "../shared/mapHostPorts";
+import { m } from "$parent/src/lib/paraglide/messages";
 
 let {
     ports,
@@ -96,7 +97,7 @@ $effect(() => {
         class="eye-toggle"
         class:eye-toggle-open={mapOnly}
         onclick={toggleEye}
-        aria-label={mapOnly ? "Show tools" : "Hide everything but the map"}
+        aria-label={mapOnly ? m.ofmap_ui_show_tools() : m.ofmap_ui_map_only()}
         aria-pressed={mapOnly}
     >
         {#if eyeSrc}

@@ -1,6 +1,7 @@
 <!-- Snake Ruler measure tool. Owns all its own state and never touches draw state, so it cannot open the draw palette. -->
 <script lang="ts">
 import { iconPath } from "../shared/icons";
+import { m } from "$parent/src/lib/paraglide/messages";
 import handShovelCursor from "$gc/assets/hand_shovel_cursor.webp";
 import handShovelCursorRight from "$gc/assets/hand_shovel_cursor_right.webp";
 import { HOTSPOT_X, HOTSPOT_Y } from "$gc/ShovelCursor.svelte";
@@ -336,6 +337,7 @@ let tailCursor: mapboxgl.Marker | null = null;
 function makeEndCursorEl(src: string, w: number): HTMLElement {
     const el = document.createElement("div");
     el.className = "rt-measure-grab";
+    el.setAttribute("aria-label", m.ofmap_ui_map_marker());
     const img = document.createElement("img");
     img.src = src;
     img.alt = "";
@@ -1081,7 +1083,7 @@ $effect(() => {
 
 <!-- Unanchorable snake: the popover carrying ✕ cannot be placed, and the user still needs a way out. -->
 {#if active && !popAnchor}
-    <button style="--x-white:url({xCloseWhite})" class="measure-btn measure-x measure-x-loose" onclick={discard} title="Discard" aria-label="Discard measurement">&#x2715;</button>
+    <button style="--x-white:url({xCloseWhite})" class="measure-btn measure-x measure-x-loose" onclick={discard} title={m.ofmap_ui_discard()} aria-label={m.ofmap_ui_discard_aria()}>&#x2715;</button>
 {/if}
 
 {#if active && popAnchor && (canFinish || singlePoint) && !fading}
@@ -1090,30 +1092,30 @@ $effect(() => {
             <!-- 2×2: copy · plot / pin · cache. No ✕: a tap off the node dismisses. -->
             {#if seedAtSelf}
                 <div class="measure-self-badge">
-                    <span class="measure-self-dot"></span>At your location
+                    <span class="measure-self-dot"></span>{m.ofmap_ui_at_your_location()}
                 </div>
             {/if}
-            <button class="measure-btn measure-share" onclick={sharePoint} title="Copy GPS to clipboard">
+            <button class="measure-btn measure-share" onclick={sharePoint} title={m.ofmap_ui_copy_gps_title()}>
                 {#if copied}
-                    ✓ Copied!
+                    {m.ofmap_ui_copied()}
                 {:else if copyFailed}
-                    Couldn't copy
+                    {m.ofmap_ui_copy_failed()}
                 {:else}
                     <ports.ui.Icon name="copy" size={13} style="flex-shrink:0" />
-                    Copy
+                    {m.ofmap_ui_copy()}
                 {/if}
             </button>
-            <button class="measure-btn measure-plot" class:at-self={seedAtSelf} onclick={dropPlot} title={seedAtSelf ? "Drop a plot AT your location (proof you were here)" : "Drop a Quality 704 plot here"}>
+            <button class="measure-btn measure-plot" class:at-self={seedAtSelf} onclick={dropPlot} title={seedAtSelf ? m.ofmap_ui_drop_plot_self_title() : m.ofmap_ui_drop_plot_title()}>
                 <img class="measure-plot-ic" src={iconPath("qualityWhite")} alt="" />
-                Plot
+                {m.ofmap_ui_plot()}
             </button>
-            <button class="measure-btn measure-save" onclick={() => savePoint("pin")} title="Drop a pin">
+            <button class="measure-btn measure-save" onclick={() => savePoint("pin")} title={m.ofmap_ui_drop_pin_title()}>
                 <img class="measure-pin-ic" src={iconPath("pin")} alt="" />
-                Pin
+                {m.ofmap_ui_pin()}
             </button>
-            <button class="measure-btn measure-save" onclick={() => savePoint("cachePin")} title="Drop a cache">
+            <button class="measure-btn measure-save" onclick={() => savePoint("cachePin")} title={m.ofmap_ui_drop_cache_title()}>
                 <img class="measure-pin-ic" src={iconPath("cache")} alt="" />
-                Cache
+                {m.ofmap_ui_cache()}
             </button>
         {:else}
             <div class="measure-col">
@@ -1121,23 +1123,23 @@ $effect(() => {
                     <!-- side="below": an upward menu would overlap the app header. -->
                     <ports.ui.SharePicker formats={shareFormats} side="below">
                         {#snippet trigger({ toggle }: { toggle: () => void })}
-                            <button class="measure-btn measure-share" onclick={toggle} title="Save &amp; share">
+                            <button class="measure-btn measure-share" onclick={toggle} title={m.ofmap_ui_save_share_title()}>
                                 <ports.ui.Icon name="upload" size={13} style="flex-shrink:0" />
-                                Share
+                                {m.ofmap_ui_share()}
                             </button>
                         {/snippet}
                     </ports.ui.SharePicker>
                 {/if}
-                <button class="measure-btn measure-save" onclick={() => persist(false)} title="Save">
+                <button class="measure-btn measure-save" onclick={() => persist(false)} title={m.ofmap_ui_save()}>
                     {#if isPolygon}
                         <img class="measure-pin-ic" src={iconPath("poly")} alt="" />
                     {:else}
                         <ports.ui.Icon name="share-nodes" size={13} style="flex-shrink:0" />
                     {/if}
-                    Save
+                    {m.ofmap_ui_save()}
                 </button>
             </div>
-            <button style="--x-white:url({xCloseWhite})" class="measure-btn measure-x" onclick={discard} title="Discard" aria-label="Discard measurement">&#x2715;</button>
+            <button style="--x-white:url({xCloseWhite})" class="measure-btn measure-x" onclick={discard} title={m.ofmap_ui_discard()} aria-label={m.ofmap_ui_discard_aria()}>&#x2715;</button>
         {/if}
     </div>
 {/if}

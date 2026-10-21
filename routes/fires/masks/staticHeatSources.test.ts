@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
 	CELL_DEG,
-	INDUSTRIAL_LABEL,
+	industrialLabel,
 	PERSIST_DAYS,
 	buildMask,
 	cellKey,
@@ -94,8 +94,8 @@ describe("isStaticSource — a pixel wanders between passes", () => {
 
 describe("the label states a fact, it does not apologise", () => {
 	it("names what the source IS", () => {
-		expect(INDUSTRIAL_LABEL).toBe("Industrial heat source");
-		expect(INDUSTRIAL_LABEL.toLowerCase()).not.toContain("maybe");
-		expect(INDUSTRIAL_LABEL.toLowerCase()).not.toContain("not a");
+		expect(industrialLabel()).toBe("Industrial heat source");
+		expect(industrialLabel().toLowerCase()).not.toContain("maybe");
+		expect(industrialLabel().toLowerCase()).not.toContain("not a");
 	});
 });

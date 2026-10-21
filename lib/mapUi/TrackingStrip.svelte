@@ -1,4 +1,5 @@
 <script lang="ts">
+import { m } from "$parent/src/lib/paraglide/messages";
 import type { MapHostPorts } from "../shared/mapHostPorts";
 import tracksIconUrl from "$parent/siblings/getCache_OnlineMap/lib/assets/mobileAssets/tracks_goldV3.webp";
 import xCloseGold from "$gc/assets/x_close_gold.webp";
@@ -15,9 +16,9 @@ let {
 </script>
 
 {#if active}
-    <button class="tracking-strip" onclick={onStop} title="Stop tracking">
+    <button class="tracking-strip" onclick={onStop} title={m.ofmap_ui_tracking_stop()}>
         <img class="tracking-strip__x" src={xCloseGold} alt="" draggable="false" />
-        <span class="tracking-strip__label">TRACKING</span>
+        <span class="tracking-strip__label">{m.ofmap_ui_tracking()}</span>
         <ports.ui.MaskedIcon src={tracksIconUrl} size={30} color="var(--color-accent)" />
     </button>
 {/if}

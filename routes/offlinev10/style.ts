@@ -3,6 +3,7 @@
  * invisible. The region is a gold line and nothing else. */
 
 import { DARK, layers } from "@protomaps/basemaps";
+import { m } from "$parent/src/lib/paraglide/messages";
 import type {
 	ExpressionSpecification,
 	LayerSpecification,
@@ -34,11 +35,12 @@ const waterColor: ExpressionSpecification = [
 	WATER_NEAR,
 ];
 
-export const LEGEND = [
-	{ label: "Roads", color: DARK.major, swatch: "line" },
-	{ label: "Lakes / rivers", color: DARK.water, swatch: "line" },
-	{ label: "Saved map edge", color: GOLD, swatch: "line" },
-] as const;
+export const legend = () =>
+	[
+		{ label: m.ofmap_v10_legend_roads(), color: DARK.major, swatch: "line" },
+		{ label: m.ofmap_v10_legend_water(), color: DARK.water, swatch: "line" },
+		{ label: m.ofmap_v10_legend_saved_edge(), color: GOLD, swatch: "line" },
+	] as const;
 
 const BASE_TILES = "/mobileAssets/worldBase/base/tiles";
 const GLYPHS = "/mobileAssets/worldBase/glyphs/{fontstack}/{range}.pbf";

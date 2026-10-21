@@ -1,5 +1,7 @@
 /** Pure functions: no map, no DOM, no fetch. */
 
+import { m } from "$parent/src/lib/paraglide/messages";
+
 export type SeverityLevel = 1 | 2 | 3 | 4 | 5;
 
 export interface SeverityRow {
@@ -239,12 +241,12 @@ export const TREND_LINES: Readonly<Record<TrendBand, string>> = {
 	absent: "Nothing detected on last pass",
 };
 
-export const TREND_STATUS: Readonly<Record<TrendBand, string>> = {
-	new: "Newly spotted",
-	growing: "Growing",
-	steady: "Holding steady",
-	quieter: "Dying down",
-	absent: "Not seen last pass",
+export const TREND_STATUS: Readonly<Record<TrendBand, () => string>> = {
+	new: m.ofmap_shared_fire_trend_new,
+	growing: m.ofmap_shared_fire_trend_growing,
+	steady: m.ofmap_shared_fire_trend_steady,
+	quieter: m.ofmap_shared_fire_trend_quieter,
+	absent: m.ofmap_shared_fire_trend_absent,
 };
 
 /** Fewest satellite passes before a direction is claimed. */
@@ -274,7 +276,7 @@ export function trendFor(
 	}
 	const passes = [...byPass.entries()].sort((a, b) => a[0] - b[0]);
 	if (passes.length < TREND_MIN_PASSES)
-		return { band: "new", line: TREND_LINES.new, status: TREND_STATUS.new };
+		return { band: "new", line: TREND_LINES.new, status: TREND_STATUS.new() };
 
 	const mid = Math.floor(passes.length / 2);
 	const mean = (xs: readonly [number, number][]): number =>
@@ -282,7 +284,7 @@ export function trendFor(
 	const earlyFrp = mean(passes.slice(0, mid));
 	const lateFrp = mean(passes.slice(mid));
 	if (earlyFrp <= 0)
-		return { band: "new", line: TREND_LINES.new, status: TREND_STATUS.new };
+		return { band: "new", line: TREND_LINES.new, status: TREND_STATUS.new() };
 
 	const ratio = lateFrp / earlyFrp;
 	const band: TrendBand =
@@ -291,5 +293,5 @@ export function trendFor(
 			: ratio < TREND_QUIETER_RATIO
 				? "quieter"
 				: "steady";
-	return { band, line: TREND_LINES[band], status: TREND_STATUS[band] };
+	return { band, line: TREND_LINES[band], status: TREND_STATUS[band]() };
 }

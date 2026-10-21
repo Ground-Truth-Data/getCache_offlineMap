@@ -11,6 +11,7 @@ import {
 	onHospitals,
 	wantHospitals,
 } from "./hospitalCache";
+import { m } from "$parent/src/lib/paraglide/messages";
 
 export const HOSPITAL_LAYER_IDS = {
 	src: "rt-hospital-geo",
@@ -125,14 +126,14 @@ export function hospitalCardHtml(opts: {
 }): string {
 	// The number copies rather than dials: in the field it goes into a text or the sat phone.
 	const phoneRow = opts.phone
-		? `<div class="rt-hospital-row"><span class="rt-hospital-k">Phone</span><span class="rt-hospital-v"><button type="button" class="rt-hospital-tel" data-copy="${esc(opts.phone)}">${esc(opts.phone)}</button><button type="button" class="rt-hospital-copy" data-copy="${esc(opts.phone)}" aria-label="Copy phone number">${COPY_GLYPH}</button></span></div>`
+		? `<div class="rt-hospital-row"><span class="rt-hospital-k">${m.ofmap_shared_hospital_phone()}</span><span class="rt-hospital-v"><button type="button" class="rt-hospital-tel" data-copy="${esc(opts.phone)}">${esc(opts.phone)}</button><button type="button" class="rt-hospital-copy" data-copy="${esc(opts.phone)}" aria-label="${m.ofmap_shared_hospital_copy_phone()}">${COPY_GLYPH}</button></span></div>`
 		: "";
 	const fromRow =
 		opts.fromYouKm != null && Number.isFinite(opts.fromYouKm)
-			? `<div class="rt-hospital-row"><span class="rt-hospital-k">From you</span><span class="rt-hospital-v">${Math.round(opts.fromYouKm)} km</span></div>`
+			? `<div class="rt-hospital-row"><span class="rt-hospital-k">${m.ofmap_shared_hospital_from_you()}</span><span class="rt-hospital-v">${Math.round(opts.fromYouKm)} km</span></div>`
 			: "";
 	const locate = opts.locateButton
-		? `<button type="button" class="rt-hospital-loc">My location</button>`
+		? `<button type="button" class="rt-hospital-loc">${m.ofmap_shared_hospital_my_location()}</button>`
 		: "";
 	return (
 		`<div class="rt-hospital-card">` +
@@ -184,7 +185,7 @@ async function copyPhone(
 	const copy = card?.querySelector<HTMLButtonElement>(".rt-hospital-copy");
 	if (!copy) return;
 	copy.classList.add("is-copied");
-	copy.innerHTML = "Copied";
+	copy.innerHTML = m.ofmap_shared_hospital_copied();
 	setTimeout(() => {
 		copy.classList.remove("is-copied");
 		copy.innerHTML = COPY_GLYPH;
@@ -280,7 +281,7 @@ export function attachHospitalLayer(
 			.setLngLat([at[0], at[1]])
 			.setHTML(
 				hospitalCardHtml({
-					name: typeof props?.name === "string" ? props.name : "Hospital",
+					name: typeof props?.name === "string" ? props.name : m.ofmap_shared_hospital_fallback_name(),
 					phone: typeof props?.phone === "string" ? props.phone : null,
 					fromYouKm: nearestKm(at, opts.origins()),
 					locateButton: opts.onShowMyLocation !== undefined,

@@ -25,6 +25,7 @@
 		"svelte": "^5.57.0"
 	},
 	"devDependencies": {
+		"@inlang/paraglide-js": "^2.27.0",
 		"@sveltejs/vite-plugin-svelte": "^7.3.0",
 		"fake-indexeddb": "^6.2.5",
 		"svelte": "^5.57.0",

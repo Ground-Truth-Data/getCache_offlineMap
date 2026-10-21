@@ -8,8 +8,17 @@ import {
 	type TrendBand,
 	trendFor,
 } from "./fireSeverity";
-import { cellKey, INDUSTRIAL_LABEL } from "./masks/staticHeatSources";
+import { cellKey, industrialLabel } from "./masks/staticHeatSources";
 import type { FireHotspot } from "./fireCache";
+import { m } from "$parent/src/lib/paraglide/messages";
+import { getLocale } from "$parent/src/lib/paraglide/runtime";
+
+const fixed1 = (n: number): string =>
+	n.toLocaleString(getLocale(), {
+		minimumFractionDigits: 1,
+		maximumFractionDigits: 1,
+		useGrouping: false,
+	});
 
 /** Coarse on purpose: FRP (MW) swings with viewing angle and cloud. */
 export type FireIntensity = "low" | "moderate" | "high" | "extreme";
@@ -49,8 +58,17 @@ export function bearingLabel(
 			Math.cos(to[1] * toRad) *
 			Math.cos((to[0] - from[0]) * toRad);
 	const deg = (Math.atan2(y, x) / toRad + 360) % 360;
-	const points = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] as const;
-	return points[Math.round(deg / 45) % 8]!;
+	const points = [
+		m.ofmap_shared_compass_n,
+		m.ofmap_shared_compass_ne,
+		m.ofmap_shared_compass_e,
+		m.ofmap_shared_compass_se,
+		m.ofmap_shared_compass_s,
+		m.ofmap_shared_compass_sw,
+		m.ofmap_shared_compass_w,
+		m.ofmap_shared_compass_nw,
+	] as const;
+	return points[Math.round(deg / 45) % 8]!();
 }
 
 /** "336 km NE of you", or null with no fix. */
@@ -58,32 +76,28 @@ export function distanceLine(
 	hotspot: readonly [number, number],
 	you: readonly [number, number] | null,
 ): string | null {
-	if (you === null) return null;
-	const km = kmApart(you, hotspot);
-	const dir = bearingLabel(you, hotspot);
-	// Sub-km precision would be false: the pixel itself is ~0.4 km across.
-	if (km < 1) return `Less than 1 km ${dir} of you`;
-	return `${Math.round(km)} km ${dir} of you`;
+	const distance = fromYouValue(hotspot, you);
+	return distance === null ? null : m.ofmap_shared_fire_of_you({ distance });
 }
 
 /** "Seen 21h ago" — when the SATELLITE saw it, not when we fetched it. */
 export function seenLabel(t: number, now: number = Date.now()): string {
-	const mins = Math.max(0, Math.floor((now - t) / 60_000));
-	if (mins < 60) return `Seen ${mins} min ago`;
+	return m.ofmap_shared_fire_seen({ ago: seenAgo(t, now) });
+}
+
+function minsAgo(mins: number): string {
+	if (mins < 60) return m.ofmap_shared_fire_ago_min({ mins: String(mins) });
 	// Always hours, never days: 23h vs 47h is one missed pass vs four.
 	const hours = mins / 60;
-	if (hours < 10) return `Seen ${Math.floor(hours)}h ago`;
-	return `Seen ${hours.toFixed(1)}h ago`;
+	return m.ofmap_shared_fire_ago_hours({
+		hours: hours < 10 ? String(Math.floor(hours)) : fixed1(hours),
+	});
 }
 
 /** How long since WE pinged NASA; "Just now" under a minute, never "0 min ago". */
 export function pingAgo(t: number, now: number = Date.now()): string {
 	const mins = Math.max(0, Math.floor((now - t) / 60_000));
-	if (mins < 1) return "Just now";
-	if (mins < 60) return `${mins} min ago`;
-	const hours = mins / 60;
-	if (hours < 10) return `${Math.floor(hours)}h ago`;
-	return `${hours.toFixed(1)}h ago`;
+	return mins < 1 ? m.ofmap_shared_fire_just_now() : minsAgo(mins);
 }
 
 /** VIIRS's nominal pixel side; the real px stretches to ~0.75 km at swath edge. */
@@ -126,9 +140,9 @@ export function areaLabel(km2: number): string {
 	const ha = km2 * 100;
 	// A detection is never "0 m²".
 	if (ha < 0.1)
-		return `${Math.max(1, Math.round(km2 * 1_000_000)).toLocaleString()} m²`;
-	if (ha < 10) return `${ha.toFixed(1)} ha`;
-	return `${Math.round(ha).toLocaleString()} ha`;
+		return `${Math.max(1, Math.round(km2 * 1_000_000)).toLocaleString(getLocale())} m²`;
+	if (ha < 10) return `${fixed1(ha)} ha`;
+	return `${Math.round(ha).toLocaleString(getLocale())} ha`;
 }
 
 /** Labelled rows, not sentences: rows can be scanned. */
@@ -163,34 +177,37 @@ function commonRows(opts: {
 }): CardRow[] {
 	const rows: CardRow[] = [
 		{
-			label: "Intensity",
-			value: `${opts.level} of 5`,
+			label: m.ofmap_shared_fire_row_intensity(),
+			value: m.ofmap_shared_fire_intensity_value({ level: String(opts.level) }),
 			level: opts.level,
 			trend: opts.trend,
 		},
-		{ label: "Status", value: opts.status },
-		{ label: "Size", value: areaLabel(opts.areaKm2) },
+		{ label: m.ofmap_shared_fire_row_status(), value: opts.status },
+		{ label: m.ofmap_shared_fire_row_size(), value: areaLabel(opts.areaKm2) },
 	];
 	// One detection row only: a "Last detected" beside "Last checked" reads as a contradiction.
 	const firstSeen = opts.firstAt != null ? opts.firstAt : opts.seenAt;
-	rows.push({ label: "First detected", value: seenAgo(firstSeen, opts.now) });
+	rows.push({ label: m.ofmap_shared_fire_row_first_detected(), value: seenAgo(firstSeen, opts.now) });
 	// OUR clock, distinct from the NASA clock above: offline, a planter can't otherwise tell 30 s from 3 days.
 	if (opts.pingedAt != null) {
 		rows.push({
-			label: "Last checked",
+			label: m.ofmap_shared_fire_row_last_checked(),
 			value: pingAgo(opts.pingedAt, opts.now),
 		});
 	}
-	if (opts.where) rows.push({ label: "Nearest", value: opts.where });
-	if (opts.fromYou) rows.push({ label: "From you", value: opts.fromYou });
+	if (opts.where)
+		rows.push({ label: m.ofmap_shared_fire_row_nearest(), value: opts.where });
+	if (opts.fromYou)
+		rows.push({ label: m.ofmap_shared_fire_row_from_you(), value: opts.fromYou });
 	// Flagged, not hidden: a refinery can genuinely catch fire.
-	if (opts.industrial) rows.push({ label: "Source", value: INDUSTRIAL_LABEL });
+	if (opts.industrial)
+		rows.push({ label: m.ofmap_shared_fire_row_source(), value: industrialLabel() });
 	return rows;
 }
 
 /** `seenLabel` without the "Seen " prefix, for a labelled row. */
 export function seenAgo(t: number, now: number = Date.now()): string {
-	return seenLabel(t, now).replace(/^Seen /, "");
+	return minsAgo(Math.max(0, Math.floor((now - t) / 60_000)));
 }
 
 /** `distanceLine` without "of you", for a labelled row. */
@@ -198,8 +215,12 @@ export function fromYouValue(
 	at: readonly [number, number],
 	you: readonly [number, number] | null,
 ): string | null {
-	const line = distanceLine(at, you);
-	return line === null ? null : line.replace(/ of you$/, "");
+	if (you === null) return null;
+	const km = kmApart(you, at);
+	const dir = bearingLabel(you, at);
+	// Sub-km precision would be false: the pixel itself is ~0.4 km across.
+	if (km < 1) return m.ofmap_shared_fire_distance_under_km({ dir });
+	return m.ofmap_shared_fire_distance_km({ km: String(Math.round(km)), dir });
 }
 
 export function buildHotspotCard(
@@ -214,10 +235,10 @@ export function buildHotspotCard(
 	const area = clusterAreaKm2([h]);
 	const sev = severityFor(area, h.frp);
 	return {
-		title: "Fire detected",
+		title: m.ofmap_shared_fire_title(),
 		rows: commonRows({
 			level: sev.level,
-			status: TREND_STATUS.new,
+			status: TREND_STATUS.new(),
 			trend: "new",
 			areaKm2: area,
 			seenAt: h.t,
@@ -267,10 +288,10 @@ export function buildClusterCard(
 		fromYou: fromYouValue(centre, you),
 		industrial,
 	});
-	const sizeAt = rows.findIndex((r) => r.label === "Size");
+	const sizeAt = rows.findIndex((r) => r.label === m.ofmap_shared_fire_row_size());
 	rows.splice(sizeAt + 1, 0, {
-		label: "Hot spots",
-		value: `${n} detected`,
+		label: m.ofmap_shared_fire_row_hot_spots(),
+		value: m.ofmap_shared_fire_hot_spots_detected({ count: n }),
 	});
-	return { title: "Fire detected", rows };
+	return { title: m.ofmap_shared_fire_title(), rows };
 }

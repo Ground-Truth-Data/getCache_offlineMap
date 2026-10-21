@@ -1,3 +1,5 @@
+import { m } from "$parent/src/lib/paraglide/messages";
+
 /** [name, lng, lat, tier, region (province/state)]. */
 export type PlaceRow = readonly [string, number, number, number, string?];
 
@@ -120,8 +122,10 @@ export function regionNear(
 /** "18 km NE of Whitecourt" / "at Kamloops" / "near Blue Ridge". */
 export function phraseFor(hit: PlaceHit): string {
 	const km = roundKm(hit.km);
-	if (hit.km < AT_PLACE_KM || km === 0) return `at ${hit.name}`;
-	return `${km} km ${hit.bearing} of ${hit.name}`;
+	if (hit.km < AT_PLACE_KM || km === 0) return m.ofmap_v10_place_at({ name: hit.name });
+	// bearing16's codes are English and also name features; only W differs in French (O).
+	const bearing = hit.bearing.replaceAll("W", m.ofmap_v10_compass_west());
+	return m.ofmap_v10_place_from({ km, bearing, name: hit.name });
 }
 
 export interface PlaceReference {

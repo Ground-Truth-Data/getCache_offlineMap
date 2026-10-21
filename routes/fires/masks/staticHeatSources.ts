@@ -5,6 +5,8 @@
  * FLAG, never delete: a refinery can genuinely catch fire.
  */
 
+import { m } from "$parent/src/lib/paraglide/messages";
+
 /** One VIIRS pixel; keep in sync with `CELL_DEG` in fireOutline. */
 export const CELL_DEG = 0.00375;
 
@@ -56,4 +58,4 @@ export function buildMask(
 	return mask;
 }
 
-export const INDUSTRIAL_LABEL = "Industrial heat source";
+export const industrialLabel = m.ofmap_shared_fire_source_industrial;

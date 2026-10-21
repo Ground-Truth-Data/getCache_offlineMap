@@ -1,5 +1,6 @@
 <!-- DrawPalette — the LINE/PIECE/PIN tool strip; presentational only. Picking a tool arms the Snake Ruler (armKind), which then owns all geometry, the readout, and finishing. -->
 <script lang="ts">
+import { m } from "$parent/src/lib/paraglide/messages";
 import type { MapHostPorts } from "../shared/mapHostPorts";
 import xCloseWhite from "$gc/assets/x_close_white.webp";
 
@@ -26,34 +27,34 @@ let {
             class="strip-btn"
             class:strip-btn-active={activeTool === 'line'}
             onclick={() => onMode('draw_line_string')}
-            title="Draw line"
+            title={m.ofmap_ui_draw_line_title()}
         >
             <ports.ui.Icon name="share-nodes" size={20} />
-            <span>LINE</span>
+            <span>{m.ofmap_ui_draw_line()}</span>
         </button>
         <button
             class="strip-btn strip-btn-poly"
             class:strip-btn-active-poly={activeTool === 'polygon'}
             onclick={() => onMode('draw_polygon')}
-            title="Draw a piece"
+            title={m.ofmap_ui_draw_piece_title()}
         >
             <ports.ui.Icon name="pentagon" size={20} />
-            <span>PIECE</span>
+            <span>{m.ofmap_ui_draw_piece()}</span>
         </button>
         <button
             class="strip-btn"
             class:strip-btn-active={activeTool === 'pin'}
             onclick={() => onMode('draw_pin')}
-            title="Drop pin"
+            title={m.ofmap_ui_draw_pin_title()}
         >
             <ports.ui.Icon name="map-pin" size={20} />
-            <span>PIN</span>
+            <span>{m.ofmap_ui_draw_pin()}</span>
         </button>
-        <button class="strip-btn" onclick={onUndo} title="Undo last point">
+        <button class="strip-btn" onclick={onUndo} title={m.ofmap_ui_draw_undo_title()}>
             <ports.ui.Icon name="undo" size={20} />
-            <span>UNDO</span>
+            <span>{m.ofmap_ui_draw_undo()}</span>
         </button>
-        <button class="strip-btn strip-btn-exit" onclick={onExit} title="Exit draw mode">
+        <button class="strip-btn strip-btn-exit" onclick={onExit} title={m.ofmap_ui_draw_exit_title()}>
             <img class="strip-x" src={xCloseWhite} alt="" draggable="false" />
         </button>
     </div>

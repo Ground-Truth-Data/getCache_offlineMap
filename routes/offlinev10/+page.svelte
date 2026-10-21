@@ -13,6 +13,7 @@ import { FIRE_LAYER_ID_LIST, type FireLayerHandle, attachFireLayer } from "../..
 import { SAT_CLOSE_LAYER, type SatelliteMount, createSatelliteMount, satLayerId } from "../../lib/onPhone/satellite/mountSatellite";
 import { NiceScaleBarControl } from "$parent/siblings/getCache_OnlineMap/lib/chrome/mapScaleBar";
 import { safeFlyTo } from "$parent/siblings/getCache_OnlineMap/lib/core/safeMap";
+import { mapboxLocale } from "$parent/siblings/getCache_OnlineMap/lib/core/mapInit";
 import EphemeralDock from "$rig/dev/EphemeralDock.svelte";
 import type { Component } from "svelte";
 import { soloFireOrigins, soloHostPorts, soloMapPorts } from "../../lib/shared/soloPorts";
@@ -24,6 +25,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 // MapLibre finds its worker beside its own file, which pre-bundling moves; Vite bundles it whole here instead.
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { onMount } from "svelte";
+import { m as msg } from "$parent/src/lib/paraglide/messages";
 import BlobsDock from "./BlobsDock.svelte";
 import ConfigDock, { type LayerRow, type Light } from "./ConfigDock.svelte";
 import DataDock from "./DataDock.svelte";
@@ -40,7 +42,7 @@ import { FOLLOW_MARGIN_KM, marginKm, moved } from "./follow";
 import { PHOTO_TILES, PLANET_TILES, installProtocol } from "./protocol";
 import { type Kept, type Region, checkRegions, keepStorage, listRegions, patchRegion, stats, touchRegions, wipe } from "./store";
 import { validLatLng } from "../../lib/shared/cameraFromUrl";
-import { LEGEND, PHOTO_INSERT_BEFORE, PLANET, REGIONS, buildStyle } from "./style";
+import { PHOTO_INSERT_BEFORE, PLANET, REGIONS, buildStyle, legend } from "./style";
 import { ANCHOR_Z, boxesIntersect, parseKey, rangeBox, tileBox, tileKey } from "./tiles";
 import { type WorkerTarget, getWorkerTarget, setWorkerTarget } from "../../lib/worker/worker-local-dev/tilesHost";
 
@@ -404,6 +406,17 @@ async function wipeAll(): Promise<void> {
 	}
 }
 
+/** Protomaps source-layer names; one not listed shows its key. */
+const LAYER_LABEL: Record<string, () => string> = {
+	earth: msg.ofmap_v10_layer_earth,
+	landuse: msg.ofmap_v10_layer_landuse,
+	water: msg.ofmap_v10_layer_water,
+	roads: msg.ofmap_v10_layer_roads,
+	buildings: msg.ofmap_v10_layer_buildings,
+	pois: msg.ofmap_v10_layer_pois,
+	places: msg.ofmap_v10_layer_places,
+};
+
 /** One switch per pyramid layer, read off the style so a renamed layer cannot leave a dead switch. */
 function buildLayerRows(m: maplibregl.Map): void {
 	const groups = new Map<string, string[]>();
@@ -413,11 +426,11 @@ function buildLayerRows(m: maplibregl.Map): void {
 		groups.set(sl, [...(groups.get(sl) ?? []), l.id]);
 	}
 	layerRows = [
-		...[...groups].map(([key, ids]) => ({ key, label: key, ids, on: true, painted: false })),
+		...[...groups].map(([key, ids]) => ({ key, label: LAYER_LABEL[key]?.() ?? key, ids, on: true, painted: false })),
 		// fires and hospitals add their layers on first paint; photo ids are read off the mount on use
-		{ key: "fires", label: "fires", ids: [...FIRE_LAYER_ID_LIST], on: true, painted: false },
-		{ key: "hospitals", label: "hospitals", ids: [...HOSPITAL_LAYER_ID_LIST], on: true, painted: false },
-		{ key: PHOTO_ROW, label: "photo", ids: [], on: true, painted: false },
+		{ key: "fires", label: msg.ofmap_v10_layer_fires(), ids: [...FIRE_LAYER_ID_LIST], on: true, painted: false },
+		{ key: "hospitals", label: msg.ofmap_v10_layer_hospitals(), ids: [...HOSPITAL_LAYER_ID_LIST], on: true, painted: false },
+		{ key: PHOTO_ROW, label: msg.ofmap_v10_layer_photo(), ids: [], on: true, painted: false },
 	];
 }
 
@@ -468,6 +481,8 @@ onMount(() => {
 		center,
 		zoom,
 		attributionControl: false,
+		// MapLibre reads the same control-label keys as Mapbox.
+		locale: mapboxLocale(),
 	});
 	map = m;
 	m.on("moveend", writeUrl);
@@ -554,7 +569,7 @@ onMount(() => {
 	/>
 	{/if}
 	{#if legendOpen}
-		<MapLegend ports={mapPorts} basemapRows={LEGEND} onClose={() => (legendOpen = false)} />
+		<MapLegend ports={mapPorts} basemapRows={legend()} onClose={() => (legendOpen = false)} />
 	{/if}
 </div>
 

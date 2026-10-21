@@ -15,6 +15,7 @@ import {
 	polygonOpacity,
 } from "../mapState/overlayOpacity.svelte";
 import type { MapHostPorts } from "../shared/mapHostPorts";
+import { m } from "$parent/src/lib/paraglide/messages";
 import { iconPath } from "../shared/icons";
 import fireIconUrl from "../assets/fire_icon.webp";
 import pdfMapsIconUrl from "../assets/pdf_maps_icon.webp";
@@ -66,7 +67,7 @@ export type LegendRow = {
 	slider?: { percent: number; setPercent: (p: number) => void };
 	note?: string;
 };
-type Section = { title: string; rows: readonly LegendRow[] };
+type Section = { title: string; after?: string; rows: readonly LegendRow[] };
 
 const SWATCH_IMG: Partial<Record<Swatch, string>> = {
 	pin: iconPath("pin"),
@@ -80,43 +81,45 @@ const SWATCH_IMG: Partial<Record<Swatch, string>> = {
 // ⚠️ Wildfire is terracotta, never red — red means a destructive action in this app.
  const SECTIONS: readonly Section[] = [
 	{
-		title: "Your features · tap {eye} to show / hide",
+		title: m.ofmap_ui_legend_yours(),
+		after: m.ofmap_ui_legend_toggle_hint(),
 		rows: [
-			{ label: "Labels", swatch: "text", kind: "labels", slider: labelDensity },
-			{ label: "Piece", swatch: "fill", color: "#e8a06a", kind: "shapes", slider: polygonOpacity },
-			{ label: "PDF map", swatch: "pdf", kind: "pdf", slider: overlayOpacity },
-			{ label: "Pin", swatch: "pin", kind: "pins" },
-			{ label: "Block", swatch: "block" },
-			{ label: "Line / piece", swatch: "line", color: "#b36940" },
-			{ label: "Track", swatch: "rail", color: "#ffd700", note: "Your recorded GPS trail." },
-			{ label: "Several pins", swatch: "cluster" },
+			{ label: m.ofmap_ui_legend_labels(), swatch: "text", kind: "labels", slider: labelDensity },
+			{ label: m.ofmap_ui_legend_piece(), swatch: "fill", color: "#e8a06a", kind: "shapes", slider: polygonOpacity },
+			{ label: m.ofmap_ui_legend_pdf_map(), swatch: "pdf", kind: "pdf", slider: overlayOpacity },
+			{ label: m.ofmap_ui_pin(), swatch: "pin", kind: "pins" },
+			{ label: m.ofmap_ui_legend_block(), swatch: "block" },
+			{ label: m.ofmap_ui_legend_line_piece(), swatch: "line", color: "#b36940" },
+			{ label: m.ofmap_ui_legend_track(), swatch: "rail", color: "#ffd700", note: m.ofmap_ui_legend_track_note() },
+			{ label: m.ofmap_ui_legend_several_pins(), swatch: "cluster" },
 		],
 	},
 	{
-		title: "Survey plots",
+		title: m.ofmap_ui_legend_survey_plots(),
 		rows: [
-			{ label: "Quality plot", swatch: "plot", color: "#f5d565", kind: "plots" },
-			{ label: "Several plots", swatch: "plaque" },
-			{ label: "Plot status", swatch: "dots" },
+			{ label: m.ofmap_ui_quality_plot(), swatch: "plot", color: "#f5d565", kind: "plots" },
+			{ label: m.ofmap_ui_legend_several_plots(), swatch: "plaque" },
+			{ label: m.ofmap_ui_legend_plot_status(), swatch: "dots" },
 		],
 	},
 	{
-		title: "Not your features · tap {eye} to show / hide",
+		title: m.ofmap_ui_legend_not_yours(),
+		after: m.ofmap_ui_legend_toggle_hint(),
 		rows: [
-			{ label: "Wildfire", swatch: "fire", kind: "fires" },
-			{ label: "Hospitals", swatch: "hospital", kind: "hospitals" },
+			{ label: m.ofmap_ui_legend_wildfire(), swatch: "fire", kind: "fires" },
+			{ label: m.ofmap_ui_legend_hospitals(), swatch: "hospital", kind: "hospitals" },
 		],
 	},
 ];
 
 const REARM_HOURS = Math.round(REARM_TTL_MS / 3_600_000);
-const sections = $derived(
-	basemapRows.length ? [...SECTIONS, { title: "Basemap", rows: basemapRows }] : SECTIONS,
+const sections = $derived<readonly Section[]>(
+	basemapRows.length ? [...SECTIONS, { title: m.ofmap_ui_legend_basemap(), rows: basemapRows }] : SECTIONS,
 );
 
 function noteFor(row: LegendRow, on: boolean): string | undefined {
 	if (row.kind && !on && REARMING.includes(row.kind))
-		return `Hidden for now — back on its own within ${REARM_HOURS} h.`;
+		return m.ofmap_ui_legend_hidden_note({ hours: REARM_HOURS });
 	return row.note;
 }
 </script>
@@ -148,20 +151,20 @@ function noteFor(row: LegendRow, on: boolean): string | undefined {
 <div
 	class="legend-card"
 	role="dialog"
-	aria-label="Map legend"
+	aria-label={m.ofmap_ui_legend_aria()}
 	use:overlayPortal
 	in:fly|global={{ y: -420, duration: 500, easing: cubicOut, opacity: 1 }}
 	out:fly|global={{ y: -420, duration: 380, easing: cubicOut, opacity: 1 }}
 >
 	<div class="legend-head">
-		<h2 class="legend-title">legend</h2>
-		<button type="button" class="legend-ok" aria-label="Close legend" onclick={onClose}>OK</button>
+		<h2 class="legend-title">{m.ofmap_ui_legend_title()}</h2>
+		<button type="button" class="legend-ok" aria-label={m.ofmap_ui_legend_close()} onclick={onClose}>{m.ofmap_ui_legend_ok()}</button>
 	</div>
 
 	{#each sections as section (section.title)}
-		{@const [before, after] = section.title.split(" {eye} ")}
+		{@const after = section.after}
 		<p class="legend-group-label">
-			{before}{#if after !== undefined}<span class="legend-nowrap">&nbsp;<img class="legend-title-eye" src={eyeToggle.srcFor(true, "title")} alt="eye" /></span> {after}{/if}
+			{section.title}{#if after !== undefined}<span class="legend-nowrap">&nbsp;<img class="legend-title-eye" src={eyeToggle.srcFor(true, "title")} alt={m.ofmap_ui_legend_eye_alt()} /></span> {after}{/if}
 		</p>
 		<ul class="legend-list">
 			{#each section.rows as row (row.label)}
@@ -189,7 +192,7 @@ function noteFor(row: LegendRow, on: boolean): string | undefined {
 										step="1"
 										value={slider.percent}
 										oninput={(e) => slider.setPercent(Number(e.currentTarget.value))}
-										aria-label="{row.label} opacity"
+										aria-label={m.ofmap_ui_legend_opacity_aria({ label: row.label })}
 									/>
 								</span>
 							{/if}
@@ -197,7 +200,7 @@ function noteFor(row: LegendRow, on: boolean): string | undefined {
 								type="button"
 								class="legend-eye-btn"
 								aria-pressed={on}
-								aria-label="Show or hide {row.label}"
+								aria-label={m.ofmap_ui_legend_toggle_aria({ label: row.label })}
 								onclick={() => toggleKind(kind)}
 							>
 								<img class="legend-eye" src={eyeToggle.srcFor(on, kind)} alt="" aria-hidden="true" />
