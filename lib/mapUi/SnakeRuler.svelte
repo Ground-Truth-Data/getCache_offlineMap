@@ -4,7 +4,6 @@ import { iconPath } from "../shared/icons";
 import { m } from "$parent/src/lib/paraglide/messages";
 import handShovelCursor from "$gc/assets/hand_shovel_cursor.webp";
 import handShovelCursorRight from "$gc/assets/hand_shovel_cursor_right.webp";
-import { HOTSPOT_X, HOTSPOT_Y } from "$gc/ShovelCursor.svelte";
 import xCloseWhite from "$gc/assets/x_close_white.webp";
 import type { Feature } from "geojson";
 import type { Map as MapboxMap } from "mapbox-gl";
@@ -353,15 +352,6 @@ function wireHandDrag(el: HTMLElement, which: "head" | "tail") {
     // Node-to-pointer gap at grab time, so the node doesn't jump to the cursor.
     let grabDX = 0;
     let grabDY = 0;
-    // preventDefault blocks the mousemove the fake cursor follows, so it is parked from pointer events instead.
-    let fakeCursor: HTMLElement | null = null;
-    const syncFakeCursor = (e: PointerEvent) => {
-        if (e.pointerType !== "mouse") return;
-        fakeCursor ??= document.querySelector<HTMLElement>(".fake-cursor");
-        if (fakeCursor) {
-            fakeCursor.style.transform = `translate3d(${e.clientX - HOTSPOT_X}px, ${e.clientY - HOTSPOT_Y}px, 0)`;
-        }
-    };
     // The page is CSS-zoomed, so a viewport px is more than a canvas px; the same ratio Mapbox applies to its own pointer events.
     const canvasPx = (e: PointerEvent): [number, number] => {
         const c = map!.getCanvas();
@@ -385,7 +375,6 @@ function wireHandDrag(el: HTMLElement, which: "head" | "tail") {
     const onMove = (e: PointerEvent) => {
         if (!map) return;
         moved = true;
-        syncFakeCursor(e);
         pendingLL = toLngLat(e);
         if (!raf) raf = requestAnimationFrame(flush);
     };
@@ -395,7 +384,6 @@ function wireHandDrag(el: HTMLElement, which: "head" | "tail") {
         window.removeEventListener("pointercancel", onUp);
         if (raf) { cancelAnimationFrame(raf); raf = 0; }
         pendingLL = null;
-        syncFakeCursor(e);
         endGrab(moved && map ? toLngLat(e) : null);
         moved = false;
     };
@@ -404,8 +392,6 @@ function wireHandDrag(el: HTMLElement, which: "head" | "tail") {
         e.preventDefault();
         e.stopPropagation();
         moved = false;
-        // A press on a handle is already a grab. Here, not in beginGrab, so the tour's grabs leave the real cursor alone.
-        window.dispatchEvent(new CustomEvent("gc-press", { detail: { phase: "drag" } }));
         const anchor = beginGrab(which);
         {
             const ns = map.project({ lng: anchor[0], lat: anchor[1] });
@@ -1343,8 +1329,9 @@ $effect(() => {
         height: auto;
         filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55));
     }
+    /* One hand at a time: the grabbed ruler hand IS the pointer, so the cursor hand steps aside. */
+    :global(body.rt-snake-grabbing .fake-cursor) { display: none !important; }
     :global(body.rt-snake-grabbing .rt-measure-grab img) {
-        opacity: 0.65;
         filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 8px rgba(255, 215, 0, 0.5));
     }
 </style>

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LONG_PRESS_MS, attachDoubleTapToPin } from "./doubleTapToPin";
+import { HOLD_MS, attachDoubleTapToPin } from "./doubleTapToPin";
 
 // Node has EventTarget and Event but no DOM: a window plus the two pointer event classes the detector
 // duck-types against is all the real thing needs.
@@ -66,10 +66,24 @@ describe("long press vs drag", () => {
 		Object.assign(g, saved);
 	});
 
-	it("a still press seeds the ruler", () => {
-		map.fire("mousedown", new FakeMouseEvent("mousedown", 100, 100));
-		vi.advanceTimersByTime(LONG_PRESS_MS);
-		expect(seed).toHaveBeenCalledTimes(1);
+	// Desktop rehearses the phone: the mouse extends the same arm and commits at its fingertip.
+	it("a still mouse press seeds at the arm's fingertip, on release", () => {
+		map.fire("mousedown", new FakeMouseEvent("mousedown", 200, 300));
+		vi.advanceTimersByTime(HOLD_MS);
+		(g.window as EventTarget).dispatchEvent(new FakeMouseEvent("mousemove", 220, 310));
+		expect(seed).not.toHaveBeenCalled();
+		map.fire("mouseup", new FakeMouseEvent("mouseup", 220, 310));
+		expect(seed).toHaveBeenCalledWith(170, 230);
+	});
+
+	// A ruler hand is the handle: holding it must not also reach a second hand out over it.
+	it("a press on a marker never starts a hold", () => {
+		const onMarker = new FakeTouchEvent("touchstart", [[100, 100]]);
+		Object.defineProperty(onMarker, "target", { value: { closest: (sel: string) => (sel.includes("marker") ? {} : null) } });
+		map.fire("touchstart", onMarker);
+		vi.advanceTimersByTime(2000);
+		map.fire("touchend", new FakeTouchEvent("touchend", []));
+		expect(seed).not.toHaveBeenCalled();
 	});
 
 	// Mapbox mutes its mousemove map event the moment its pan takes over (3 px), so the only

@@ -30,9 +30,8 @@ function swallowNextClick(): void {
 	window.addEventListener("pointerdown", cleanup, true);
 }
 
-export const LONG_PRESS_MS = 750;
-// Touch only: a hold this long extends the arm instead of seeding under the finger.
-const TOUCH_HOLD_MS = 300;
+// Mouse and finger alike: a hold this long extends the arm, so desktop rehearses exactly what the phone does.
+export const HOLD_MS = 300;
 // The arm's fingertip, up-left of the finger so the thumb never covers what it aims at.
 const AIM_DX = -50;
 const AIM_DY = -80;
@@ -59,20 +58,16 @@ export function attachDoubleTapToPin(
 	};
 
 	// The timer firing while the pointer is still down (never past slop) is itself the proof of "held + still".
-	const MOUSE_SLOP_PX = 6;
-	const TOUCH_SLOP_PX = 14;
+	const SLOP_PX = 14;
 	const DEBUG = false;
 	const log = (...a: unknown[]) => {
 		if (DEBUG) console.log("[snake-gesture]", ...a);
 	};
 
 	let pressStart: { x: number; y: number } | null = null;
-	let pressLngLat: { lng: number; lat: number } | null = null;
 	let isTouch = false;
 	let pressTimer: ReturnType<typeof setTimeout> | null = null;
-	let downAt = 0;
-	let holdMs = LONG_PRESS_MS;
-	// Set while a touch hold has the arm out: the finger aims, lifting commits at the fingertip.
+	// Set while a hold has the arm out: the pointer aims, lifting commits at the fingertip.
 	let aim: { dx: number; dy: number; tip: { x: number; y: number } } | null = null;
 
 	// Arm on the raw DOM release, not the map's mouseup — seeding mounts DOM under the held pointer, which fires mouseout and wipes the bookkeeping first.
@@ -93,8 +88,8 @@ export function attachDoubleTapToPin(
 	};
 
 	// ShovelCursor (rapper) fills its hold ring from these; a window event because a child can't import rapper's state.
-	const emit = (phase: "arm" | "drag" | "end" | "fire" | "aim", x = 0, y = 0, extra = {}) =>
-		window.dispatchEvent(new CustomEvent("gc-press", { detail: { phase, x, y, ms: holdMs, ...extra } }));
+	const emit = (phase: "arm" | "drag" | "end" | "aim", x = 0, y = 0, extra = {}) =>
+		window.dispatchEvent(new CustomEvent("gc-press", { detail: { phase, x, y, ms: HOLD_MS, ...extra } }));
 
 	// The page is CSS-zoomed, so a viewport px is more than a canvas px.
 	const toCanvas = (p: { x: number; y: number }): [number, number] => {
@@ -147,17 +142,8 @@ export function attachDoubleTapToPin(
 
 	const fireLongPress = () => {
 		pressTimer = null;
-		if (!pressLngLat) return;
-		if (isTouch) {
-			log("✅ TOUCH HOLD → arm out, aiming");
-			return startAim();
-		}
-		armReleaseSwallow();
-		emit("fire");
-		log("✅ LONG-PRESS fires → seed ruler", {
-			heldMs: Math.round(performance.now() - downAt),
-		});
-		opts.onMeasureSeed?.(pressLngLat.lng, pressLngLat.lat);
+		log("✅ HOLD → arm out, aiming");
+		startAim();
 	};
 
 	// Desktop Safari has no TouchEvent — `instanceof TouchEvent` throws, so duck-type.
@@ -176,13 +162,12 @@ export function attachDoubleTapToPin(
 		const oe = e.originalEvent;
 		if (oe instanceof MouseEvent && oe.button !== 0) return;
 		if (isTouchLike(oe) && oe.touches.length > 1) return cancelPress("second finger");
+		// A marker (a ruler hand, a pin) is its own handle; Mapbox still reports the press as the map's.
+		if ((oe.target as Element | null)?.closest?.(".mapboxgl-marker, .maplibregl-marker")) return;
 		pressStart = getClientCoords(oe);
-		pressLngLat = e.lngLat;
 		isTouch = isTouchLike(oe);
-		holdMs = isTouch ? TOUCH_HOLD_MS : LONG_PRESS_MS;
-		downAt = performance.now();
 		killTimer();
-		pressTimer = setTimeout(fireLongPress, holdMs);
+		pressTimer = setTimeout(fireLongPress, HOLD_MS);
 		emit("arm", pressStart.x, pressStart.y);
 		log("⬇️ down — timer armed", { isTouch, at: pressStart });
 	};
@@ -193,31 +178,23 @@ export function attachDoubleTapToPin(
 		endAim(false);
 		killTimer();
 		pressStart = null;
-		pressLngLat = null;
 	};
 
 	// Raw window events, not the map's: Mapbox mutes its mousemove the moment its pan takes over (3 px),
 	// which is before the slop, so a map-fed check never hears a drag and the timer fires mid-pan.
 	const onMove = (evt: MouseEvent | TouchEvent) => {
-		if (aim && isTouchLike(evt) && evt.touches.length === 1) return aimAt(getClientCoords(evt));
+		if (aim && (!isTouchLike(evt) || evt.touches.length === 1)) return aimAt(getClientCoords(evt));
 		if (!pressStart || !pressTimer) return;
 		const coords = getClientCoords(evt);
 		const dist = Math.hypot(coords.x - pressStart.x, coords.y - pressStart.y);
-		const slop = isTouch ? TOUCH_SLOP_PX : MOUSE_SLOP_PX;
-		if (dist > slop) {
-			log("↔️ move past slop → DRAG, not press", {
-				dist: Math.round(dist),
-				slop,
-			});
+		if (dist > SLOP_PX) {
+			log("↔️ move past slop → DRAG, not press", { dist: Math.round(dist) });
 			cancelPress("drag past slop");
 		}
 	};
 
 	const onUp = () => {
-		if (pressTimer)
-			log("⬆️ up before timer → CLICK (no seed)", {
-				heldMs: Math.round(performance.now() - downAt),
-			});
+		if (pressTimer) log("⬆️ up before timer → CLICK (no seed)");
 		endAim(true);
 		cancelPress("pointer up");
 	};
