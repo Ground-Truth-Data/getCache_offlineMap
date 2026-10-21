@@ -9,6 +9,20 @@ export function readTopBarH(): number {
     return Number.isFinite(n) && n > 0 ? n : 64;
 }
 
+// The canvas runs on under the tab bar and the drawer's shovel, so its own height is not the floor.
+const FLOOR_SELECTORS = [".bottom-nav", ".shovel-handle"];
+
+export function readFloorY(canvasEl: HTMLElement): number {
+    const base = canvasEl.getBoundingClientRect();
+    const s = base.width ? canvasEl.offsetWidth / base.width : 1;
+    let floor = canvasEl.offsetHeight;
+    for (const sel of FLOOR_SELECTORS) {
+        const b = document.querySelector(sel)?.getBoundingClientRect();
+        if (b?.height) floor = Math.min(floor, (b.top - base.top) * s);
+    }
+    return floor;
+}
+
 // Mirrors MapTopControls.svelte CSS. If those change, change these.
 const CHROME_RIGHT = 14; // .eye-toggle / .crow-slot `right`
 const CHROME_W = 74; // both boxes

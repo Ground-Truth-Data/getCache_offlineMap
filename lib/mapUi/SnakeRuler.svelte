@@ -17,7 +17,7 @@ import { POLYGON_FILL, POLYGON_OUTLINE, STROKE } from "$parent/siblings/getCache
 import { type SnapKind, type SnapRings, snapLngLat, snapRings } from "$parent/siblings/getCache_OnlineMap/lib/draw/snapToShapes";
 import { formatArea, formatLength } from "$gc/units.svelte";
 import { legLabelsReadable } from "./legLabelCrowding";
-import { type Rect, mapKeepOutRects, readTopBarH, rectsOverlap, shiftClear } from "../shared/mapKeepOut";
+import { type Rect, mapKeepOutRects, readFloorY, readTopBarH, rectsOverlap, shiftClear } from "../shared/mapKeepOut";
 import type {
     MapHostPorts,
     MapShareFormat,
@@ -90,6 +90,7 @@ let dragFromHead = false;
 let dragAnchor: Lnglat | null = null;
 let moveIndex: number | null = $state(null); // polygon vertex being reshaped
 let mapMoveSeq = $state(0);
+let spotBump = $state(0);
 let armed: "line" | "polygon" | "pin" | null = $state(null);
 let paletteMode = $derived(armed !== null);
 
@@ -420,6 +421,7 @@ function wireHandDrag(el: HTMLElement, which: "head" | "tail") {
 // The non-pointer half of a hand drag, shared with the teaching-hand tour.
 function beginGrab(which: "head" | "tail"): Lnglat {
     shapeRings = null;
+    lastSnap = null;
     dragFromHead = which === "head";
     const anchor = which === "head" ? verts[0] : verts[verts.length - 1];
     dragAnchor = anchor;
@@ -606,7 +608,18 @@ function hover(lng: number, lat: number) {
     }
     isPolygon = false;
     cursor = snap(lng, lat);
+    if (lastSnap === "corner") dropCorner(cursor);
     render();
+}
+// Dragging across a saved corner drops it as a node and the hand keeps going, so tracing a many-cornered border is one drag.
+function dropCorner(ll: Lnglat) {
+    const end = dragFromHead ? verts[0] : verts[verts.length - 1];
+    if (end?.[0] === ll[0] && end[1] === ll[1]) return;
+    if (!mayAddVertex(verts.length)) return;
+    verts = dragFromHead ? [ll, ...verts] : [...verts, ll];
+    // Releasing on the corner just dropped then cancels in commitAt instead of adding it twice.
+    dragAnchor = ll;
+    seedAtSelf = false;
 }
 function commitAt(lng: number, lat: number) {
     if (!active) return;
@@ -657,6 +670,7 @@ function start(kind: typeof armed, seed?: Lnglat) {
     cursor = null;
     moveIndex = null;
     isPolygon = false;
+    spotBump = 0;
     seedAtSelf = snapped?.atSelf ?? false;
     verts = snapped ? [snapped.seed] : [];
     onActivate?.();
@@ -719,6 +733,18 @@ $effect(() => {
     else if (!k && armed) discard();
 });
 
+function tapOnShape(m: MapboxMap, x: number, y: number): boolean {
+    if (verts.length < 3) return false;
+    const ring = verts.map((v) => m.project({ lng: v[0], lat: v[1] }));
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const a = ring[i];
+        const b = ring[j];
+        if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+    }
+    return inside;
+}
+
 // Hands mode grows ONLY by dragging a hand; a tap never adds a corner. Tap the LAST node
 // to save, the FIRST (3+) to close, anywhere else to dismiss.
 $effect(() => {
@@ -761,7 +787,10 @@ $effect(() => {
                 flashCorners();
                 return;
             }
-            if (nearIdx === -1) discard();
+            if (nearIdx !== -1) return;
+            // A tap on the shape is aimed at it, not away from it — move its chrome, keep the work.
+            if (tapOnShape(m, e.point.x, e.point.y)) spotBump++;
+            else discard();
         }
     };
     m.on("click", onClick);
@@ -901,20 +930,34 @@ let popAnchor = $derived.by(() => {
     // The app header overlays the canvas top, so "the top" starts under it.
     const topY = readTopBarH() + VP_MARGIN;
     const fitsAbove = minY - CHROME_STACK_PX >= topY;
+    const floorY = readFloorY(map.getCanvas()) - VP_MARGIN;
     const belowY = maxY + HAND_DROP_PX;
-    const fitsBelow = belowY + CHROME_STACK_PX <= H - VP_MARGIN;
-    // A lone node's menu never goes below: the hand hangs down-right, so it sits level, on the LEFT.
-    const beside = singlePoint && !fitsAbove;
-    const below = !singlePoint && !fitsAbove && fitsBelow;
-    const cornered = !singlePoint && !fitsAbove && !fitsBelow;
-    const clampX = (x: number, half: number, edge: number) =>
-        Math.min(Math.max(x, edge + half), W - edge - half);
+    const fitsBelow = belowY + CHROME_STACK_PX <= floorY;
     const popHalf = singlePoint ? POP_GRID_W / 2 : POP_HALF_W;
     const leftX = minX - BESIDE_GAP - popHalf;
+    const rightX = maxX + BESIDE_GAP + popHalf;
+    // Each tap on the shape steps to the next spot hugging it: the sides that fit, then over it.
+    const spots: ("above" | "below" | "top" | "left" | "right" | "over")[] = [
+        ...(fitsAbove ? (["above"] as const) : []),
+        ...(fitsBelow ? (["below"] as const) : []),
+        ...(!fitsAbove && !fitsBelow ? (["top"] as const) : []),
+        ...(leftX - popHalf >= POP_EDGE_PX ? (["left"] as const) : []),
+        ...(rightX + popHalf <= W - POP_EDGE_PX ? (["right"] as const) : []),
+        // Only on a shape big enough to leave some of itself to tap past the pad.
+        ...(maxX - minX >= 3 * popHalf &&maxY - minY >= 2 * CHROME_STACK_PX ? (["over"] as const) : []),
+    ];
+    const spot = singlePoint ? "above" : spots[spotBump % spots.length];    // A lone node's menu never goes below: the hand hangs down-right, so it sits level, on the LEFT.
+    const beside = singlePoint && !fitsAbove;
+    const below = spot === "below";
+    const cornered = spot === "top";
+    const level = spot === "left" || spot === "right" || spot === "over";
+    const clampX = (x: number, half: number, edge: number) =>
+        Math.min(Math.max(x, edge + half), W - edge - half);
     const besideX = leftX - popHalf >= POP_EDGE_PX ? leftX : minX - ARM_RECT.l + ARM_RECT.w + BESIDE_GAP + popHalf;
-    let popX = beside ? besideX : clampX(cx, popHalf, POP_EDGE_PX);
+    let popX = beside ? besideX : spot === "left" ? leftX : spot === "right" ? rightX : clampX(cx, popHalf, POP_EDGE_PX);
+    const midY = (minY + maxY) / 2 + POP_OFFSET_PX + POP_H / 2;
     // Cornered, the stack ends up pinned under the top bar ON the snake; start it there so the sideways dodge sees the overlap.
-    const y = below ? belowY : cornered ? Math.max(minY, topY + POP_OFFSET_PX + POP_H) : minY;
+    const y = level ? midY : below ? belowY : cornered ? Math.max(minY, topY + POP_OFFSET_PX + POP_H) : minY;
 
     // Dodge the map's floating chrome SIDEWAYS (upward reads as a diagonal leap), pill + popover as ONE box.
     const popW = popHalf * 2;
@@ -924,7 +967,7 @@ let popAnchor = $derived.by(() => {
         : { x: minX, y: minY, w: Math.max(maxX - minX, 1), h: Math.max(maxY - minY, 1) };
     const rects = [
         ...mapKeepOutRects(W, undefined, map.getCanvas()),
-        snakeRect,
+        ...(spot === "over" ? [] : [snakeRect]),
     ];
     const minPopX = POP_EDGE_PX;
     const maxPopX = W - POP_EDGE_PX - popW;
@@ -938,12 +981,11 @@ let popAnchor = $derived.by(() => {
     let levelY = y;
     // A sideways dodge sits level with the snake instead of lifted above it — re-checked at THAT height, since
     // a box clear of the chrome up there lands square on the snake once lowered.
-    if (!singlePoint && shifted !== null && Math.abs(shifted + popHalf - clampX(cx, popHalf, POP_EDGE_PX)) > 1) {
-        const mid = (minY + maxY) / 2 + POP_OFFSET_PX + POP_H / 2;
-        const level = shiftClear(stackBox(mid), rects, minPopX, maxPopX);
-        if (level !== null) {
-            shifted = level;
-            levelY = mid;
+    if (!singlePoint && !level && shifted !== null && Math.abs(shifted + popHalf - clampX(cx, popHalf, POP_EDGE_PX)) > 1) {
+        const atMid = shiftClear(stackBox(midY), rects, minPopX, maxPopX);
+        if (atMid !== null) {
+            shifted = atMid;
+            levelY = midY;
         }
     }
     if (shifted !== null) popX = shifted + popHalf;
@@ -958,12 +1000,12 @@ let popAnchor = $derived.by(() => {
     // Beside, the pill hangs under the popover, so the pair must clear the bottom together.
     const clampedY = Math.min(
         Math.max(levelY, topY - topOffset),
-        H - VP_MARGIN - POP_H - topOffset - (beside ? TOTAL_OFFSET_PX + TOTAL_H : 0),
+        floorY - POP_H - topOffset - (beside ? TOTAL_OFFSET_PX + TOTAL_H : 0),
     );
 
     return {
         popX,
-        totalX: singlePoint
+        totalX: singlePoint || level
             ? popX
             : clampX(cx + (tailX - cx) * TOTAL_TAIL_BIAS, TOTAL_HALF_W, VP_MARGIN),
         y: clampedY,
@@ -978,7 +1020,8 @@ let popAnchor = $derived.by(() => {
 $effect(() => {
     if (!map || !active) return;
     const a = popAnchor;
-    if (!a?.cornered) return;
+    // A spot the user tapped to is theirs; panning would walk the shape out from under it.
+    if (!a?.cornered || spotBump) return;
     const shortfall = VP_MARGIN + CHROME_STACK_PX - a.minY;
     if (shortfall > 4 && !map.isEasing()) {
         map.panBy([0, shortfall], { duration: 220 });

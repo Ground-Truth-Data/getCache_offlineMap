@@ -1,4 +1,4 @@
-// The snake ruler grows ONLY by dragging a hand; any tap off its corners
+// The snake ruler grows ONLY by dragging a hand; a tap off the shape
 // dismisses it. Tap-to-add has been rebuilt several times by readers who
 // took it for the design — this law fails the day it comes back.
 import { readFileSync } from "node:fs";
@@ -17,7 +17,7 @@ describe("the snake ruler is drag-only", () => {
         expect(hands).not.toMatch(/verts\s*=\s*\[\s*\.\.\.verts/);
     });
 
-    it("dismisses on any tap off a corner", () => {
-        expect(hands).toMatch(/if \(nearIdx === -1\) discard\(\);/);
+    it("a tap on the shape moves its chrome; only a tap off it dismisses", () => {
+        expect(hands).toMatch(/if \(tapOnShape\([^)]*\)\) spotBump\+\+;\s*else discard\(\);/);
     });
 });

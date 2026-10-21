@@ -1,12 +1,7 @@
-<script lang="ts" module>
-// ⚠️ MapDrawControls' ensure-room pan uses these SAME numbers — keep them in sync.
-export const POPOVER_TOP_RESERVE = 150;
-export const POPOVER_BOTTOM_RESERVE = 95;
-</script>
-
 <script lang="ts">
 import type { Snippet } from "svelte";
 import { leaderLine, placePopover } from "./mapPopoverGeom";
+import { readFloorY } from "../shared/mapKeepOut";
 
 let {
 	bbox,
@@ -27,8 +22,8 @@ let {
 	children: Snippet;
 } = $props();
 
-const TOP_RESERVE = POPOVER_TOP_RESERVE;
-const BOTTOM_RESERVE = POPOVER_BOTTOM_RESERVE;
+const TOP_RESERVE = 150;
+const FLOOR_GAP = 8;
 
 let el = $state<HTMLDivElement | null>(null);
 
@@ -53,7 +48,7 @@ const geom = $derived(
 		isPoint,
 		wide,
 		topReserve: TOP_RESERVE,
-		bottomReserve: BOTTOM_RESERVE,
+		bottomReserve: containerHeight - readFloorY(document.querySelector(".mapboxgl-canvas, .maplibregl-canvas") as HTMLElement) + FLOOR_GAP,
 		crow: crowExclusion(),
 	}),
 );
