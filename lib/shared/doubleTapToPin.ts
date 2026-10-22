@@ -29,8 +29,13 @@ function swallowNextClick(): void {
 	window.addEventListener("pointerdown", cleanup, true);
 }
 
-// Mouse and finger alike: a hold this long fires the ruler, so desktop rehearses exactly what the phone does.
-export const HOLD_MS = 1200;
+// Mouse and finger alike, so desktop rehearses exactly what the phone does. A press held this long brings
+// up the loupe; the point then locks once the pointer has rested HOLD_MS, and lifting seeds the ruler there.
+export const ACTIVATE_MS = 260;
+export const HOLD_MS = 900;
+// Before the loupe, a move past this is a pan. After it, a move past this restarts the rest.
+const SLOP_PX = 8;
+const STILL_PX = 4;
 
 export interface DoubleTapToPinOpts {
 	/** Plant the first ruler node at the tap so it's immediately grabbable. */
@@ -55,8 +60,6 @@ export function attachDoubleTapToPin(
 		emit("drop");
 	};
 
-	// The timer firing while the pointer is still down (never past slop) is itself the proof of "held + still".
-	const SLOP_PX = 14;
 	const DEBUG = false;
 	const log = (...a: unknown[]) => {
 		if (DEBUG) console.log("[snake-gesture]", ...a);
@@ -65,8 +68,8 @@ export function attachDoubleTapToPin(
 	let pressStart: { x: number; y: number } | null = null;
 	let isTouch = false;
 	let pressTimer: ReturnType<typeof setTimeout> | null = null;
-	// Set while a hold is complete: the pointer can still slide, and lifting commits under it.
-	let aim: { at: { x: number; y: number } } | null = null;
+	// Set while the loupe is up: where the pointer is, and where and when it last came to rest.
+	let aim: { at: { x: number; y: number }; anchor: { x: number; y: number }; since: number } | null = null;
 
 	// Arm on the raw DOM release, not the map's mouseup — seeding mounts DOM under the held pointer, which fires mouseout and wipes the bookkeeping first.
 	let disarmReleaseSwallow: (() => void) | null = null;
@@ -100,25 +103,35 @@ export function attachDoubleTapToPin(
 	const aimAt = (at: { x: number; y: number }) => {
 		if (!aim) return;
 		aim.at = at;
+		if (Math.hypot(at.x - aim.anchor.x, at.y - aim.anchor.y) > STILL_PX) {
+			aim.anchor = at;
+			aim.since = performance.now();
+		}
 		const ll = map.unproject(toCanvas(at));
-		emit("aim", at.x, at.y, { label: `${ll.lat.toFixed(3)}°, ${ll.lng.toFixed(3)}°` });
+		emit("aim", at.x, at.y, {
+			canvas: map.getCanvas(),
+			since: aim.since,
+			label: `${ll.lat.toFixed(5)}°, ${ll.lng.toFixed(5)}°`,
+		});
 	};
 
 	const startAim = () => {
 		if (!pressStart) return;
-		aim = { at: pressStart };
+		aim = { at: pressStart, anchor: pressStart, since: performance.now() };
 		armReleaseSwallow();
 		map.dragPan.disable();
 		aimAt(pressStart);
 	};
 
-	const endAim = (commit: boolean) => {
+	// The lift seeds only a locked point: one that rested HOLD_MS before the finger left.
+	const endAim = (lift: boolean) => {
 		if (!aim) return;
 		const at = toCanvas(aim.at);
+		const locked = lift && performance.now() - aim.since >= HOLD_MS;
 		aim = null;
 		map.dragPan.enable();
-		emit("end");
-		if (!commit) return;
+		emit("end", 0, 0, { locked });
+		if (!locked) return;
 		const ll = map.unproject(at);
 		opts.onMeasureSeed?.(ll.lng, ll.lat);
 	};
@@ -132,7 +145,7 @@ export function attachDoubleTapToPin(
 
 	const fireLongPress = () => {
 		pressTimer = null;
-		log("✅ HOLD → arm out, aiming");
+		log("✅ HOLD → loupe up");
 		startAim();
 	};
 
@@ -157,8 +170,8 @@ export function attachDoubleTapToPin(
 		pressStart = getClientCoords(oe);
 		isTouch = isTouchLike(oe);
 		killTimer();
-		pressTimer = setTimeout(fireLongPress, HOLD_MS);
-		emit("arm", pressStart.x, pressStart.y, { canvas: map.getCanvas(), veiled: opts.claimsTap?.(e.point) ?? false });
+		pressTimer = setTimeout(fireLongPress, ACTIVATE_MS);
+		emit("arm", pressStart.x, pressStart.y, { veiled: opts.claimsTap?.(e.point) ?? false });
 		log("⬇️ down — timer armed", { isTouch, at: pressStart });
 	};
 

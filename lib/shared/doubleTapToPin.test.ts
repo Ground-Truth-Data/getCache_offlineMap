@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { HOLD_MS, attachDoubleTapToPin } from "./doubleTapToPin";
+import { ACTIVATE_MS, HOLD_MS, attachDoubleTapToPin } from "./doubleTapToPin";
 
 // Node has EventTarget and Event but no DOM: a window plus the two pointer event classes the detector
 // duck-types against is all the real thing needs.
@@ -46,11 +46,10 @@ function fakeMap() {
 const g = globalThis as Record<string, unknown>;
 const saved = { window: g.window, MouseEvent: g.MouseEvent, TouchEvent: g.TouchEvent };
 
-describe("long press vs drag", () => {
+function rig() {
 	let map: ReturnType<typeof fakeMap>;
 	let seed: ReturnType<typeof vi.fn>;
 	let detach: () => void;
-
 	beforeEach(() => {
 		vi.useFakeTimers();
 		g.window = new EventTarget();
@@ -65,95 +64,100 @@ describe("long press vs drag", () => {
 		vi.useRealTimers();
 		Object.assign(g, saved);
 	});
+	return { map: () => map, seed: () => seed };
+}
 
-	// Desktop rehearses the phone: a hold commits under the pointer, wherever it slid to, when it lifts.
-	it("a still mouse press seeds under the pointer, on release", () => {
-		map.fire("mousedown", new FakeMouseEvent("mousedown", 200, 300));
-		vi.advanceTimersByTime(HOLD_MS);
-		(g.window as EventTarget).dispatchEvent(new FakeMouseEvent("mousemove", 220, 310));
-		expect(seed).not.toHaveBeenCalled();
-		map.fire("mouseup", new FakeMouseEvent("mouseup", 220, 310));
-		expect(seed).toHaveBeenCalledWith(220, 310);
+describe("mouse: the hold, the drag, the tap", () => {
+	const r = rig();
+	const move = (x: number, y: number) => (g.window as EventTarget).dispatchEvent(new FakeMouseEvent("mousemove", x, y));
+
+	// Desktop rehearses the phone: a press rested a full hold seeds under the pointer when it lifts.
+	it("a press held still seeds under the pointer, on release", () => {
+		r.map().fire("mousedown", new FakeMouseEvent("mousedown", 200, 300));
+		vi.advanceTimersByTime(ACTIVATE_MS + HOLD_MS);
+		expect(r.seed()).not.toHaveBeenCalled();
+		r.map().fire("mouseup", new FakeMouseEvent("mouseup", 200, 300));
+		expect(r.seed()).toHaveBeenCalledWith(200, 300);
 	});
 
-	// A ruler hand is the handle: holding it must not also reach a second hand out over it.
+	it("once the loupe is up, the pointer slides and the rest restarts where it stops", () => {
+		r.map().fire("mousedown", new FakeMouseEvent("mousedown", 200, 300));
+		vi.advanceTimersByTime(ACTIVATE_MS + HOLD_MS - 100);
+		move(240, 330);
+		vi.advanceTimersByTime(HOLD_MS - 100);
+		r.map().fire("mouseup", new FakeMouseEvent("mouseup", 240, 330));
+		expect(r.seed()).not.toHaveBeenCalled();
+		r.map().fire("mousedown", new FakeMouseEvent("mousedown", 200, 300));
+		vi.advanceTimersByTime(ACTIVATE_MS);
+		move(240, 330);
+		vi.advanceTimersByTime(HOLD_MS);
+		r.map().fire("mouseup", new FakeMouseEvent("mouseup", 240, 330));
+		expect(r.seed()).toHaveBeenCalledWith(240, 330);
+	});
+
+	// A ruler hand is the handle: holding it must not also bring a loupe up over it.
 	it("a press on a marker never starts a hold", () => {
 		const onMarker = new FakeTouchEvent("touchstart", [[100, 100]]);
 		Object.defineProperty(onMarker, "target", { value: { closest: (sel: string) => (sel.includes("marker") ? {} : null) } });
-		map.fire("touchstart", onMarker);
+		r.map().fire("touchstart", onMarker);
 		vi.advanceTimersByTime(2000);
-		map.fire("touchend", new FakeTouchEvent("touchend", []));
-		expect(seed).not.toHaveBeenCalled();
+		r.map().fire("touchend", new FakeTouchEvent("touchend", []));
+		expect(r.seed()).not.toHaveBeenCalled();
 	});
 
 	// Mapbox mutes its mousemove map event the moment its pan takes over (3 px), so the only
 	// evidence of a mouse drag is the raw DOM event.
 	it("a mouse drag the map swallowed never seeds, however long the hold after it", () => {
-		map.fire("mousedown", new FakeMouseEvent("mousedown", 100, 100));
-		(g.window as EventTarget).dispatchEvent(new FakeMouseEvent("mousemove", 300, 100));
+		r.map().fire("mousedown", new FakeMouseEvent("mousedown", 100, 100));
+		move(300, 100);
 		vi.advanceTimersByTime(2000);
-		expect(seed).not.toHaveBeenCalled();
-	});
-
-	it("a touch drag never seeds", () => {
-		map.fire("touchstart", new FakeTouchEvent("touchstart", [[100, 100]]));
-		(g.window as EventTarget).dispatchEvent(new FakeTouchEvent("touchmove", [[300, 100]]));
-		vi.advanceTimersByTime(2000);
-		expect(seed).not.toHaveBeenCalled();
-	});
-
-	it("a second finger is a pinch, never a press", () => {
-		map.fire("touchstart", new FakeTouchEvent("touchstart", [[100, 100]]));
-		map.fire("touchstart", new FakeTouchEvent("touchstart", [[100, 100], [200, 200]]));
-		vi.advanceTimersByTime(2000);
-		expect(seed).not.toHaveBeenCalled();
+		r.map().fire("mouseup", new FakeMouseEvent("mouseup", 300, 100));
+		expect(r.seed()).not.toHaveBeenCalled();
 	});
 });
 
-describe("touch hold extends the arm", () => {
-	let map: ReturnType<typeof fakeMap>;
-	let seed: ReturnType<typeof vi.fn>;
-	let detach: () => void;
+describe("touch: the hold, the pinch, the tap", () => {
+	const r = rig();
 	const touch = (type: string, ...pts: [number, number][]) => new FakeTouchEvent(type, pts);
 	const move = (x: number, y: number) => (g.window as EventTarget).dispatchEvent(touch("touchmove", [x, y]));
 
-	beforeEach(() => {
-		vi.useFakeTimers();
-		g.window = new EventTarget();
-		g.MouseEvent = FakeMouseEvent;
-		g.TouchEvent = FakeTouchEvent;
-		map = fakeMap();
-		seed = vi.fn();
-		detach = attachDoubleTapToPin(map, { onMeasureSeed: seed });
-	});
-	afterEach(() => {
-		detach();
-		vi.useRealTimers();
-		Object.assign(g, saved);
-	});
-
-	it("seeds under the finger, wherever it slid to, only on lift", () => {
-		map.fire("touchstart", touch("touchstart", [200, 300]));
-		vi.advanceTimersByTime(HOLD_MS);
+	it("seeds under the finger, wherever it came to rest, only on lift", () => {
+		r.map().fire("touchstart", touch("touchstart", [200, 300]));
+		vi.advanceTimersByTime(ACTIVATE_MS);
 		move(220, 310);
-		expect(seed).not.toHaveBeenCalled();
-		map.fire("touchend", touch("touchend"));
-		expect(seed).toHaveBeenCalledWith(220, 310);
+		vi.advanceTimersByTime(HOLD_MS);
+		expect(r.seed()).not.toHaveBeenCalled();
+		r.map().fire("touchend", touch("touchend"));
+		expect(r.seed()).toHaveBeenCalledWith(220, 310);
 	});
 
 	it("a quick tap never seeds", () => {
-		map.fire("touchstart", touch("touchstart", [200, 300]));
+		r.map().fire("touchstart", touch("touchstart", [200, 300]));
 		vi.advanceTimersByTime(200);
-		map.fire("touchend", touch("touchend"));
+		r.map().fire("touchend", touch("touchend"));
 		vi.advanceTimersByTime(2000);
-		expect(seed).not.toHaveBeenCalled();
+		expect(r.seed()).not.toHaveBeenCalled();
 	});
 
-	it("a second finger mid-aim cancels without committing", () => {
-		map.fire("touchstart", touch("touchstart", [200, 300]));
-		vi.advanceTimersByTime(HOLD_MS);
-		map.fire("touchstart", touch("touchstart", [200, 300], [250, 350]));
-		map.fire("touchend", touch("touchend"));
-		expect(seed).not.toHaveBeenCalled();
+	it("a touch drag never seeds", () => {
+		r.map().fire("touchstart", touch("touchstart", [100, 100]));
+		move(300, 100);
+		vi.advanceTimersByTime(2000);
+		expect(r.seed()).not.toHaveBeenCalled();
+	});
+
+	it("a second finger is a pinch, never a press", () => {
+		r.map().fire("touchstart", touch("touchstart", [100, 100]));
+		r.map().fire("touchstart", touch("touchstart", [100, 100], [200, 200]));
+		vi.advanceTimersByTime(2000);
+		expect(r.seed()).not.toHaveBeenCalled();
+	});
+
+	it("a second finger mid-hold cancels without committing", () => {
+		r.map().fire("touchstart", touch("touchstart", [200, 300]));
+		vi.advanceTimersByTime(ACTIVATE_MS + HOLD_MS);
+		r.map().fire("touchstart", touch("touchstart", [200, 300], [250, 350]));
+		r.map().fire("touchend", touch("touchend"));
+		expect(r.seed()).not.toHaveBeenCalled();
 	});
 });

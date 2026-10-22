@@ -311,7 +311,6 @@ function clearAll() {
     shapeRings = null;
     copied = false;
     copyFailed = false;
-    document.body.classList.remove("rt-snake-grabbing");
     if (copiedTimer) clearTimeout(copiedTimer);
     for (const id of ALL_SRCS) setData(id, fc());
     clearLegs();
@@ -412,13 +411,13 @@ function beginGrab(which: "head" | "tail"): Lnglat {
     const anchor = which === "head" ? verts[0] : verts[verts.length - 1];
     dragAnchor = anchor;
     map?.dragPan.disable();
-    document.body.classList.add("rt-snake-grabbing");
+    (which === "head" ? headCursor : tailCursor)?.getElement().classList.add("rt-grabbed");
     // The cursor's hand closes into a fist around the ruler's hand, as it does for a pan; its pointerup opens it again.
     window.dispatchEvent(new CustomEvent("gc-press", { detail: { phase: "drag", x: 0, y: 0, ms: 0 } }));
     return anchor;
 }
 function endGrab(ll: Lnglat | null) {
-    document.body.classList.remove("rt-snake-grabbing");
+    for (const h of [headCursor, tailCursor]) h?.getElement().classList.remove("rt-grabbed");
     map?.dragPan.enable();
     if (ll) return commitAt(ll[0], ll[1]);
     cursor = null;
@@ -1331,7 +1330,10 @@ $effect(() => {
         height: auto;
         filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55));
     }
-    :global(body.rt-snake-grabbing .rt-measure-grab img) {
-        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 8px rgba(255, 215, 0, 0.5));
+    /* The hand under the fist: the same gold edging the cursor's own hand wears for a press. */
+    :global(.rt-measure-grab.rt-grabbed img) {
+        filter: drop-shadow(1.5px 0 0 var(--rt-yellow)) drop-shadow(-1.5px 0 0 var(--rt-yellow))
+            drop-shadow(0 1.5px 0 var(--rt-yellow)) drop-shadow(0 -1.5px 0 var(--rt-yellow))
+            drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55));
     }
 </style>
