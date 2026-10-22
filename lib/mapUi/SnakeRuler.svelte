@@ -321,16 +321,16 @@ function clearAll() {
 // component would otherwise leave them on the map with no state behind them and no way to dismiss.
 $effect(() => () => clearAll());
 
-// HEAD (vertex 0) = LEFT hand; TAIL = RIGHT hand. Widths chosen so both render ≈100px tall, ShovelCursor's size.
+// HEAD (vertex 0) = LEFT hand; TAIL = RIGHT hand. Widths chosen so both render ≈75px tall: a handle the cursor's hand (100px) grabs, so smaller than it.
 const HEAD_CURSOR = {
     src: handShovelCursor,
-    w: 73,
-    offset: [25, -3] as [number, number], // fingertip nudge
+    w: 54,
+    offset: [18, -2] as [number, number], // fingertip nudge
 };
 const TAIL_CURSOR = {
     src: handShovelCursorRight,
-    w: 44,
-    offset: [6, -3] as [number, number],
+    w: 33,
+    offset: [4, -2] as [number, number],
 };
 let headCursor: mapboxgl.Marker | null = null;
 let tailCursor: mapboxgl.Marker | null = null;
@@ -413,6 +413,8 @@ function beginGrab(which: "head" | "tail"): Lnglat {
     dragAnchor = anchor;
     map?.dragPan.disable();
     document.body.classList.add("rt-snake-grabbing");
+    // The cursor's hand closes into a fist around the ruler's hand, as it does for a pan; its pointerup opens it again.
+    window.dispatchEvent(new CustomEvent("gc-press", { detail: { phase: "drag", x: 0, y: 0, ms: 0 } }));
     return anchor;
 }
 function endGrab(ll: Lnglat | null) {
@@ -857,7 +859,7 @@ $effect(() => {
 });
 
 const CHROME_STACK_PX = 150; // popover offset + height
-const HAND_DROP_PX = 44; // hands hang below the end nodes
+const HAND_DROP_PX = 34; // hands hang below the end nodes
 const VP_MARGIN = 14;
 const OFFSCREEN_HIDE = 40;
 const POP_HALF_W = 85;
@@ -869,8 +871,8 @@ const POP_OFFSET_PX = 52;
 const TOTAL_OFFSET_PX = 16;
 const POP_H = 78;
 const TOTAL_H = 22;
-// The lone node's ring plus the hand hanging down-right of it (HEAD_CURSOR: 73px wide, ≈100px tall).
-const ARM_RECT = { l: 12, t: 12, w: 81, h: 119 };
+// The lone node's ring plus the hand hanging down-right of it (HEAD_CURSOR: 54px wide, ≈75px tall).
+const ARM_RECT = { l: 12, t: 12, w: 62, h: 92 };
 const BESIDE_GAP = 18;
 
 // Above the bbox by default; below if above clips the top; `cornered` when neither fits.
@@ -1329,8 +1331,6 @@ $effect(() => {
         height: auto;
         filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55));
     }
-    /* One hand at a time: the grabbed ruler hand IS the pointer, so the cursor hand steps aside. */
-    :global(body.rt-snake-grabbing .fake-cursor) { display: none !important; }
     :global(body.rt-snake-grabbing .rt-measure-grab img) {
         filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 8px rgba(255, 215, 0, 0.5));
     }
