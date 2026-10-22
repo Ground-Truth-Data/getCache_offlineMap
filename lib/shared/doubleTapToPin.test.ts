@@ -66,14 +66,14 @@ describe("long press vs drag", () => {
 		Object.assign(g, saved);
 	});
 
-	// Desktop rehearses the phone: a hold commits at the fingertip, up-left of the pointer, when it lifts.
-	it("a still mouse press seeds at the fingertip, on release", () => {
+	// Desktop rehearses the phone: a hold commits under the pointer, wherever it slid to, when it lifts.
+	it("a still mouse press seeds under the pointer, on release", () => {
 		map.fire("mousedown", new FakeMouseEvent("mousedown", 200, 300));
 		vi.advanceTimersByTime(HOLD_MS);
 		(g.window as EventTarget).dispatchEvent(new FakeMouseEvent("mousemove", 220, 310));
 		expect(seed).not.toHaveBeenCalled();
 		map.fire("mouseup", new FakeMouseEvent("mouseup", 220, 310));
-		expect(seed).toHaveBeenCalledWith(181, 243);
+		expect(seed).toHaveBeenCalledWith(220, 310);
 	});
 
 	// A ruler hand is the handle: holding it must not also reach a second hand out over it.
@@ -132,13 +132,13 @@ describe("touch hold extends the arm", () => {
 		Object.assign(g, saved);
 	});
 
-	it("seeds at the fingertip, up-left of the finger, only on lift", () => {
+	it("seeds under the finger, wherever it slid to, only on lift", () => {
 		map.fire("touchstart", touch("touchstart", [200, 300]));
 		vi.advanceTimersByTime(HOLD_MS);
 		move(220, 310);
 		expect(seed).not.toHaveBeenCalled();
 		map.fire("touchend", touch("touchend"));
-		expect(seed).toHaveBeenCalledWith(181, 243);
+		expect(seed).toHaveBeenCalledWith(220, 310);
 	});
 
 	it("a quick tap never seeds", () => {

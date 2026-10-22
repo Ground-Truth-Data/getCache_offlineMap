@@ -483,6 +483,8 @@ onMount(() => {
 		attributionControl: false,
 		// MapLibre reads the same control-label keys as Mapbox.
 		locale: mapboxLocale(),
+		// The hold's Loupe copies this canvas with drawImage between frames, as it does the online map's.
+		canvasContextAttributes: { preserveDrawingBuffer: true },
 	});
 	map = m;
 	m.on("moveend", writeUrl);
