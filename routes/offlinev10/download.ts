@@ -264,9 +264,7 @@ async function getOnce(url: string): Promise<ArrayBuffer | null> {
 		}
 		if (res.status === 204) return null;
 		if (res.ok) return res.arrayBuffer();
-		// A cold isolate's first archive read can race, and R2 blips for seconds
-		// at a time (10043, 22 Oct 2026): a 5xx gets two paced retries, a 4xx none.
-		if (res.status < 500 || attempt === 2) throw new Error(`tile ${url}: HTTP ${res.status} ${await res.text().catch(() => "")}`.trim());
-		await new Promise((r) => setTimeout(r, 1_000 * (attempt + 1)));
+		// A cold isolate's first archive read can race; the retry lands warm.
+		if (attempt === 1) throw new Error(`tile ${url}: HTTP ${res.status} ${await res.text().catch(() => "")}`.trim());
 	}
 }
