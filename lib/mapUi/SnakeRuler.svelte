@@ -16,7 +16,7 @@ import { mayAddVertex } from "$parent/siblings/getCache_OnlineMap/lib/draw/drawL
 import { POLYGON_FILL, POLYGON_OUTLINE, STROKE } from "$parent/siblings/getCache_OnlineMap/lib/draw/drawStyle";
 import { type SnapKind, type SnapRings, snapLngLat, snapRings } from "$parent/siblings/getCache_OnlineMap/lib/draw/snapToShapes";
 import { formatArea, formatLength } from "$gc/units.svelte";
-import { legLabelsReadable } from "./legLabelCrowding";
+import { keptLegLabels } from "./legLabelCrowding";
 import { type Rect, mapKeepOutRects, readFloorY, readTopBarH, rectsOverlap, shiftClear } from "../shared/mapKeepOut";
 import type {
     MapHostPorts,
@@ -531,22 +531,22 @@ function updateEndCursors() {
 }
 
 let legMarkers: mapboxgl.Marker[] = [];
-let legLabelsShown = false;
-/** FALSE with no labels to place, matching what a cleared render leaves, or the move handler rebuilds every pan frame. */
-function legLabelsFit(anchors = legLabelAnchors()): boolean {
+/** Which legs wore a label at the last render, as "1101": the move handler rebuilds only when this changes. */
+let legLabelsShown = "";
+function legLabelsFit(anchors = legLabelAnchors()): boolean[] {
     const m = map;
-    if (!m || !anchors.length) return false;
-    return legLabelsReadable(
-        anchors.map(({ geo, off }) => {
+    if (!m) return [];
+    return keptLegLabels(
+        anchors.map(({ geo, off, lenPx }) => {
             const p = m.project({ lng: geo[0], lat: geo[1] });
-            return { x: p.x + off[0], y: p.y + off[1] };
+            return { x: p.x + off[0], y: p.y + off[1], legPx: lenPx };
         }),
     );
 }
 function clearLegs() {
     for (const m of legMarkers) m.remove();
     legMarkers = [];
-    legLabelsShown = false;
+    legLabelsShown = "";
 }
 function addLeg(lngLat: Lnglat, text: string, offset: [number, number]) {
     if (!map) return;
@@ -557,11 +557,11 @@ function addLeg(lngLat: Lnglat, text: string, offset: [number, number]) {
         new (markerCtor(map))({ element: el, anchor: "center", offset }).setLngLat(lngLat).addTo(map),
     );
 }
-function legLabelAnchors(): Array<{ geo: Lnglat; off: [number, number] }> {
+function legLabelAnchors(): Array<{ geo: Lnglat; off: [number, number]; lenPx: number }> {
     if (!map) return [];
     const r = ring();
     if (r.length < (isPolygon ? 4 : 3)) return [];
-    const out: Array<{ geo: Lnglat; off: [number, number] }> = [];
+    const out: Array<{ geo: Lnglat; off: [number, number]; lenPx: number }> = [];
     for (let i = 0; i < r.length - 1; i++) {
         const geo: Lnglat = [
             r[i][0] + (r[i + 1][0] - r[i][0]) * LEG_LABEL_FRAC,
@@ -573,18 +573,18 @@ function legLabelAnchors(): Array<{ geo: Lnglat; off: [number, number] }> {
         const len = Math.hypot(dx, dy) || 1;
         let px = -dy / len, py = dx / len;
         if (py > 0) { px = -px; py = -py; }
-        out.push({ geo, off: [px * LEG_LABEL_OFF, py * LEG_LABEL_OFF] });
+        out.push({ geo, off: [px * LEG_LABEL_OFF, py * LEG_LABEL_OFF], lenPx: len });
     }
     return out;
 }
 function renderLegs() {
     clearLegs();
     const anchors = legLabelAnchors();
-    // Crowded legs show NO labels: overlapping digits read as a wrong number.
-    legLabelsShown = legLabelsFit(anchors);
-    if (!legLabelsShown) return;
+    const kept = legLabelsFit(anchors);
+    legLabelsShown = kept.map(Number).join("");
     const r = ring();
     anchors.forEach(({ geo, off }, i) => {
+        if (!kept[i]) return;
         const segKm = turfLength({
             type: "Feature", properties: {},
             geometry: { type: "LineString", coordinates: [r[i], r[i + 1]] },
@@ -1136,8 +1136,8 @@ $effect(() => {
         mapMoveSeq += 1;
         shapeRings = null;
         setData(MEASURE_TICKS_SRC, buildTicksFC(ring()));
-        // Rebuild ONLY when the crowding verdict flips; renderLegs recreates every marker's DOM.
-        if (legLabelsShown !== legLabelsFit()) renderLegs();
+        // Rebuild ONLY when the crowding verdict changes; renderLegs recreates every marker's DOM.
+        if (legLabelsShown !== legLabelsFit().map(Number).join("")) renderLegs();
     };
     m.on("movestart", onMoveStart);
     m.on("move", onMove);
