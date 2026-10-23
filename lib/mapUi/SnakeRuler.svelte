@@ -88,6 +88,7 @@ let cursor: Lnglat | null = $state.raw(null);
 let isPolygon = $state(false);
 let dragFromHead = false;
 let dragAnchor: Lnglat | null = null;
+let atAnchor = false;
 let moveIndex: number | null = $state(null); // polygon vertex being reshaped
 let mapMoveSeq = $state(0);
 let spotBump = $state(0);
@@ -110,10 +111,10 @@ let shapeRings: SnapRings | null = null;
 // Points born from a snap, by identity: they read white while held AND after the drop.
 const snapped = new WeakSet<Lnglat>();
 let lastSnap: SnapKind = null;
-function snap(lng: number, lat: number): Lnglat {
+function snap(lng: number, lat: number, reach?: number): Lnglat {
     if (!map || !snapShapes) return [lng, lat];
     shapeRings ??= snapRings(map, snapShapes());
-    const s = snapLngLat(map, [lng, lat], shapeRings, lastSnap);
+    const s = snapLngLat(map, [lng, lat], shapeRings, lastSnap, reach);
     if (s.kind) snapped.add(s.ll);
     // The snapping node is under the finger; the far nodes pulsing is what the user can see. Edge → corner pulses again.
     if (s.kind && s.kind !== lastSnap) flashCorners(SNAP_RUST);
@@ -325,12 +326,12 @@ $effect(() => () => clearAll());
 const HEAD_CURSOR = {
     src: handShovelCursor,
     w: 54,
-    offset: [18, -2] as [number, number], // fingertip nudge
+    offset: [18, 0] as [number, number], // fingertip nudge
 };
 const TAIL_CURSOR = {
     src: handShovelCursorRight,
     w: 33,
-    offset: [4, -2] as [number, number],
+    offset: [4, 0] as [number, number],
 };
 let headCursor: mapboxgl.Marker | null = null;
 let tailCursor: mapboxgl.Marker | null = null;
@@ -371,13 +372,13 @@ function wireHandDrag(el: HTMLElement, which: "head" | "tail") {
         if (!pendingLL || !map) return;
         const [lng, lat] = pendingLL;
         hover(lng, lat);
-        // The loupe rides the end being dragged, so the drop lands where the eye says.
+        // The loupe rides the end being dragged, so the drop lands where the eye says. No clock: a drag is not a hold.
         const node = cursor ?? [lng, lat];
         const c = map.getCanvas();
         const r = c.getBoundingClientRect();
         const s = c.offsetWidth / r.width;
         const p = map.project({ lng: node[0], lat: node[1] });
-        emitPress("aim", r.left + p.x / s, r.top + p.y / s, { canvas: c, since: performance.now(), label: coordLabel(node[0], node[1]) });
+        emitPress("aim", r.left + p.x / s, r.top + p.y / s, { canvas: c, label: coordLabel(node[0], node[1]) });
     };
     const onMove = (e: PointerEvent) => {
         if (!map) return;
@@ -425,6 +426,7 @@ function beginGrab(which: "head" | "tail"): Lnglat {
     dragFromHead = which === "head";
     const anchor = which === "head" ? verts[0] : verts[verts.length - 1];
     dragAnchor = anchor;
+    atAnchor = true;
     map?.dragPan.disable();
     (which === "head" ? headCursor : tailCursor)?.getElement().classList.add("rt-grabbed");
     return anchor;
@@ -432,10 +434,13 @@ function beginGrab(which: "head" | "tail"): Lnglat {
 function endGrab(ll: Lnglat | null) {
     for (const h of [headCursor, tailCursor]) h?.getElement().classList.remove("rt-grabbed");
     map?.dragPan.enable();
-    if (ll) return commitAt(ll[0], ll[1]);
-    cursor = null;
-    isPolygon = false;
-    render();
+    if (ll) commitAt(ll[0], ll[1]);
+    else {
+        cursor = null;
+        isPolygon = false;
+        render();
+    }
+    dragAnchor = null;
 }
 // The lesson's "saved" beat: the shape turns into a saved piece (drawStyle's own paint), holds,
 // then dims to nothing and is discarded. A new start or a discard mid-fade bumps the token, so the
@@ -606,6 +611,20 @@ function hover(lng: number, lat: number) {
             return;
         }
     }
+    // Back over the grabbed end: the cursor sits on it and every node flashes, so a let-go there adds nothing.
+    if (map && dragAnchor) {
+        const a = map.project({ lng: dragAnchor[0], lat: dragAnchor[1] });
+        const p = map.project({ lng, lat });
+        const near = (a.x - p.x) ** 2 + (a.y - p.y) ** 2 < MEASURE_SNAP_PX ** 2;
+        if (near && !atAnchor) flashCorners();
+        atAnchor = near;
+        if (near) {
+            isPolygon = false;
+            cursor = dragAnchor;
+            render();
+            return;
+        }
+    }
     isPolygon = false;
     cursor = snap(lng, lat);
     if (lastSnap === "corner") dropCorner(cursor);
@@ -681,6 +700,7 @@ export function discard() {
     fadeGen++;
     active = false;
     armed = null;
+    armKind = null;
     seedAtSelf = false;
     gridSnapDot = null;
     setGridGlow?.(null);
@@ -724,7 +744,8 @@ $effect(() => {
     if (armed) return;
     // A fast final click-to-commit can read as a dblclick; swallow the seed so the fresh popover isn't torn down.
     if (performance.now() - lastCommitAt < 600) return;
-    start(null, snap(ev.lng, ev.lat));
+    // A finger's reach: a hold aimed at a border lands on it, not beside it.
+    start(null, snap(ev.lng, ev.lat, SELF_SNAP_PX));
 });
 
 $effect(() => {
@@ -1101,17 +1122,29 @@ $effect(() => {
 $effect(() => {
     const m = map;
     if (!m) return;
+    // A search, a "see on map", any fly nobody's finger started takes the ruler with it. A resize
+    // fires the same events with no originalEvent but leaves the camera where it was.
+    const cam = () => `${m.getCenter().lng},${m.getCenter().lat},${m.getZoom()}`;
+    let restCam: string | null = null;
+    const onMoveStart = (e: { originalEvent?: Event }) => {
+        restCam = active && !e.originalEvent ? cam() : null;
+    };
     const onMove = () => {
         // Guard first: this fires every pan frame for the map's whole life.
         if (!active || fading) return;
+        if (restCam && cam() !== restCam) return discard();
         mapMoveSeq += 1;
         shapeRings = null;
         setData(MEASURE_TICKS_SRC, buildTicksFC(ring()));
         // Rebuild ONLY when the crowding verdict flips; renderLegs recreates every marker's DOM.
         if (legLabelsShown !== legLabelsFit()) renderLegs();
     };
+    m.on("movestart", onMoveStart);
     m.on("move", onMove);
-    return () => m.off("move", onMove);
+    return () => {
+        m.off("movestart", onMoveStart);
+        m.off("move", onMove);
+    };
 });
 </script>
 

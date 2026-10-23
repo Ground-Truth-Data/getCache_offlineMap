@@ -518,6 +518,7 @@ onMount(() => {
 		onMeasureSeed: (lng, lat) => {
 			measureEvent = { lng, lat, n: measureN++ };
 		},
+		canSeed: () => drawControlsRef?.canSeed() ?? true,
 	});
 	const unfollowBlobs = followBlobs();
 	if (dev) (window as unknown as { __v10?: unknown }).__v10 = { map: m, addBlob: queueBlob, refresh, fix: onUserFix };

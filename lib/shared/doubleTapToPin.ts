@@ -48,6 +48,8 @@ export interface DoubleTapToPinOpts {
 	onMeasureSeed?: (lng: number, lat: number) => void;
 	/** The tap here opens or dismisses something, so the hand stays hidden unless the press becomes a drag or a hold. */
 	claimsTap?: (point: { x: number; y: number }) => boolean;
+	/** False while another tool owns the map (a ruler open, a palette tool armed, corners being edited): a press then only pans, with no hold and no count. */
+	canSeed?: () => boolean;
 }
 
 export function attachDoubleTapToPin(
@@ -57,6 +59,7 @@ export function attachDoubleTapToPin(
 	map.doubleClickZoom.disable(); // dblclick drops a pin; pinch / two-finger zooms
 
 	const onDbl = (e: MapMouseEvent) => {
+		if (opts.canSeed?.() === false) return;
 		const { lng, lat } = e.lngLat;
 		// ⛔ Not gated by DEBUG — without it "pin didn't drop" and "download failed" look identical.
 		console.info(`[pin] 📍 double-tap at ${lng.toFixed(5)}, ${lat.toFixed(5)} — seeding`, {
@@ -165,6 +168,7 @@ export function attachDoubleTapToPin(
 		if (isTouchLike(oe) && oe.touches.length > 1) return cancelPress("second finger");
 		// A marker (a ruler hand, a pin) is its own handle; Mapbox still reports the press as the map's.
 		if ((oe.target as Element | null)?.closest?.(".mapboxgl-marker, .maplibregl-marker")) return;
+		if (opts.canSeed?.() === false) return;
 		pressStart = getClientCoords(oe);
 		isTouch = isTouchLike(oe);
 		killTimer();

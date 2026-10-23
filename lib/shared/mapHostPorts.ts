@@ -226,6 +226,8 @@ export interface MapQ704CelebrateHostProps {
 export interface MapDrawControlsExports {
 	importFile(file: File): void;
 	requestMyLocation(): Promise<void>;
+	/** False while a tool owns the map, so a hold or double-tap neither counts nor seeds the ruler. */
+	canSeed(): boolean;
 }
 
 export interface MapQ704Ports {
