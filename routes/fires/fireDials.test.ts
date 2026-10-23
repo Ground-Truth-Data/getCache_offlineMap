@@ -39,19 +39,9 @@ describe("the dials stay inside what the layer can render", () => {
 	});
 });
 
-describe("ONE copy of the dials — the two maps cannot drift", () => {
-	it("neither fire layer hardcodes a cluster number", () => {
-		const online = read(
-			"../../../getCache_OnlineMap/lib/fire/fireLayer.ts",
-		);
-		for (const [name, src] of [
-			["offline", OFFLINE_LAYER],
-			["online", online],
-		] as const) {
-			expect(src, name).toMatch(/clusterRadius: FIRE_CLUSTER_RADIUS/);
-			expect(src, name).toMatch(
-				/clusterMaxZoom: FIRE_CLUSTER_MAX_ZOOM/,
-			);
-		}
+describe("ONE copy of the dials — the online map's fireLayer.test.ts checks its half", () => {
+	it("the offline fire layer hardcodes no cluster number", () => {
+		expect(OFFLINE_LAYER).toMatch(/clusterRadius: FIRE_CLUSTER_RADIUS/);
+		expect(OFFLINE_LAYER).toMatch(/clusterMaxZoom: FIRE_CLUSTER_MAX_ZOOM/);
 	});
 });

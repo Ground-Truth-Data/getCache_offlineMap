@@ -24,7 +24,6 @@ export default defineConfig({
 		// or it swallows them. An unresolvable alias kills the module graph before any `it()` registers.
 		alias: {
 			"$parent/siblings/ReTreever_who_what": r("../ReTreever_who_what"),
-			"$parent/siblings/getCache_OnlineMap": r("../getCache_OnlineMap"),
 			"$parent/siblings/getCache_OfflineMap": r("."),
 			"$parent/siblings/ReTreever_where": r("../ReTreever_where"),
 			"$parent/siblings": r(".."),

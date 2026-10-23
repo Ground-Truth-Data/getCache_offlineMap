@@ -11,9 +11,9 @@ import { attachCameraPersistence, loadCamera, MAP_HOME_CENTER } from "../../lib/
 import { attachDoubleTapToPin } from "../../lib/shared/doubleTapToPin";
 import { FIRE_LAYER_ID_LIST, type FireLayerHandle, attachFireLayer } from "../../lib/onPhone/render/fireLayer";
 import { SAT_CLOSE_LAYER, type SatelliteMount, createSatelliteMount, satLayerId } from "../../lib/onPhone/satellite/mountSatellite";
-import { NiceScaleBarControl } from "$parent/siblings/getCache_OnlineMap/lib/chrome/mapScaleBar";
-import { safeFlyTo } from "$parent/siblings/getCache_OnlineMap/lib/core/safeMap";
-import { mapboxLocale } from "$parent/siblings/getCache_OnlineMap/lib/core/mapInit";
+import { NiceScaleBarControl } from "$gc/mapScaleBar";
+import { safeFlyTo } from "$gc/safeMap";
+import { mapboxLocale } from "$gc/mapboxLocale";
 import EphemeralDock from "$rig/dev/EphemeralDock.svelte";
 import type { Component } from "svelte";
 import { soloFireOrigins, soloHostPorts, soloMapPorts } from "../../lib/shared/soloPorts";

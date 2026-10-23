@@ -44,7 +44,7 @@ bakes** — the road disc, never the 2 km satellite disc a line does not fetch
 
 ## Drawing a line
 
-From the `STROKE` dial board in `getCache_OnlineMap/lib/draw/drawStyle.ts` — the weights are a FAMILY, judged
+From the `STROKE` dial board in `rapper/gc/drawDials.ts` — the weights are a FAMILY, judged
 by ratio, not absolute value:
 
 | | line | casing |

@@ -2,7 +2,7 @@
 
 import pdfMapsIcon from "../assets/pdf_maps_icon.webp";
 import backupIcon from "../assets/backup_icon.webp";
-import tracksIcon from "$parent/siblings/getCache_OnlineMap/lib/assets/mobileAssets/tracks_goldV3.webp";
+import tracksIcon from "$gc/assets/tracks_goldV3.webp";
 import cacheIconUrl from "$gc/assets/cache_icon.webp";
 import bagsBlackUrl from "$gc/assets/bags_icon_black.webp";
 

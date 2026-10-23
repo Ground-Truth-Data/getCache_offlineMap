@@ -1,7 +1,7 @@
 <script lang="ts">
 import { m } from "$parent/src/lib/paraglide/messages";
 import type { MapHostPorts } from "../shared/mapHostPorts";
-import tracksIconUrl from "$parent/siblings/getCache_OnlineMap/lib/assets/mobileAssets/tracks_goldV3.webp";
+import tracksIconUrl from "$gc/assets/tracks_goldV3.webp";
 import xCloseGold from "$gc/assets/x_close_gold.webp";
 
 let {
