@@ -13,7 +13,7 @@ import { markerCtor } from "../shared/rendererOf";
 import { coordLabel, emit as emitPress, swallowNextClick } from "../shared/doubleTapToPin";
 import type { Lnglat } from "$parent/siblings/getCache_OnlineMap/lib/draw/mapDraw";
 import { mayAddVertex } from "$parent/siblings/getCache_OnlineMap/lib/draw/drawLimit";
-import { POLYGON_FILL, POLYGON_OUTLINE, STROKE } from "$parent/siblings/getCache_OnlineMap/lib/draw/drawStyle";
+import { BORDER_RUST, POLYGON_FILL, POLYGON_OUTLINE, STROKE } from "$parent/siblings/getCache_OnlineMap/lib/draw/drawStyle";
 import { type SnapKind, type SnapRings, snapLngLat, snapRings } from "$parent/siblings/getCache_OnlineMap/lib/draw/snapToShapes";
 import { formatArea, formatLength } from "$gc/units.svelte";
 import { keptLegLabels } from "./legLabelCrowding";
@@ -117,7 +117,7 @@ function snap(lng: number, lat: number, reach?: number): Lnglat {
     const s = snapLngLat(map, [lng, lat], shapeRings, lastSnap, reach);
     if (s.kind) snapped.add(s.ll);
     // The snapping node is under the finger; the far nodes pulsing is what the user can see. Edge → corner pulses again.
-    if (s.kind && s.kind !== lastSnap) flashCorners(SNAP_RUST);
+    if (s.kind && s.kind !== lastSnap) flashCorners(BORDER_RUST);
     lastSnap = s.kind;
     return s.ll;
 }
@@ -202,7 +202,6 @@ function ensureLayers() {
 const FLASH_LAYER = "measure-close-flash";
 const FLASH_R = [6, 28] as const;
 const FLASH_MS = 650;
-const SNAP_RUST = "#e8763a";
 const FLASH_TWEENED = ["circle-radius", "circle-opacity", "circle-stroke-opacity"] as const;
 let flashRaf = 0;
 function flashCorners(color = "#ffffff") {
