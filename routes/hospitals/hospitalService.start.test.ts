@@ -5,7 +5,7 @@
 // and a Worker that names no radius served 200 km.
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { configureTilesHost, setWorkerTarget } from "../../lib/worker/worker-local-dev/tilesHost";
+import { configureTilesHost, setWorkerTarget } from "../../lib/worker/tilesHost";
 import { notifyHospitals, onHospitals, readDisc, wantHospitals } from "./hospitalCache";
 import { fetchHospitals, startHospitalService } from "./hospitalService";
 

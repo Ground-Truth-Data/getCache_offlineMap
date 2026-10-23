@@ -4,7 +4,7 @@ import PhoneRig from "$gc/PhoneRig.svelte";
 import logoUrl from "$gc/assets/GC_fly_logo_transparent.webp";
 import iconUrl from "$gc/assets/favicon.png";
 import { m } from "$parent/src/lib/paraglide/messages";
-import { configureTilesFromEnv } from "../lib/worker/worker-local-dev/tilesFromEnv";
+import { configureTilesFromEnv } from "../lib/worker/tilesFromEnv";
 
 configureTilesFromEnv();
 

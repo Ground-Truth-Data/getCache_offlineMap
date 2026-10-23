@@ -2,7 +2,7 @@
 import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { HostPorts } from "../../lib/shared/hostPorts";
-import { configureTilesDevHost } from "../../lib/worker/worker-local-dev/tilesHost";
+import { configureTilesDevHost } from "../../lib/worker/tilesHost";
 import { removeArea, removeStaleAreas, startBlobService } from "./blobService";
 import { BudgetError, isStale, OFFLINE_TILES_BYTES, setBudgetMb, STALE_AREA_MONTHS } from "./budget";
 import { downloadRegion, roomFor } from "./download";

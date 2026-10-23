@@ -4,7 +4,7 @@
  * The circle: grey never asked · yellow asked or on disk · green painted in the viewport · red broke.
  */
 import { onMount } from "svelte";
-import { type WorkerTarget, hostFor, probeTarget } from "../../lib/worker/worker-local-dev/tilesHost";
+import { type WorkerTarget, hostFor, probeTarget } from "../../lib/worker/tilesHost";
 import { BUDGET_MB, BUDGET_PRESETS_MB } from "./budget";
 
 export type Light = "idle" | "transit" | "ok" | "drawn" | "err";

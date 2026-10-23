@@ -1,11 +1,11 @@
 // Failure must throw: an empty list reads as "no fires near you".
 
-import { guardPackDownload } from "../../../onPhone/store/downloadGuard";
+import { guardPackDownload } from "../../onPhone/store/downloadGuard";
 import { firesUrl } from "../tilesHost";
 import {
 	FIRE_RADIUS_KM,
 	type FireHotspot,
-} from "../../../shared/fireContract";
+} from "../../shared/fireContract";
 
 const FIRE_TIMEOUT_MS = 20_000;
 

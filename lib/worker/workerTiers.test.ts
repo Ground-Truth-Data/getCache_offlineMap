@@ -6,7 +6,7 @@ beforeEach(() => {
 
 describe("worker tiers", () => {
 	it("routes worker-cloud-prod and worker-cloud-dev to their configured hosts", async () => {
-		const m = await import("./worker-local-dev/tilesHost");
+		const m = await import("./tilesHost");
 		m.configureTilesHost("https://prod.example.test");
 		m.configureTilesDevHost("https://dev.example.test");
 
@@ -18,7 +18,7 @@ describe("worker tiers", () => {
 	});
 
 	it("worker-cloud-dev is null until an app configures it — never a silent fallback to prod", async () => {
-		const m = await import("./worker-local-dev/tilesHost");
+		const m = await import("./tilesHost");
 		m.configureTilesHost("https://prod.example.test");
 		m.setWorkerTarget("worker-cloud-dev");
 		expect(m.tilesHost()).toBeNull();
@@ -26,7 +26,7 @@ describe("worker tiers", () => {
 	});
 
 	it("defaults to worker-cloud-dev in a dev build — a shipped phone is locked to production by the !DEV early return, not by this constant", async () => {
-		const m = await import("./worker-local-dev/tilesHost");
+		const m = await import("./tilesHost");
 		expect(m.DEFAULT_TARGET).toBe("worker-cloud-dev");
 	});
 
@@ -36,7 +36,7 @@ describe("worker tiers", () => {
 			getItem: (k: string) => store.get(k) ?? null,
 			setItem: (k: string, v: string) => void store.set(k, v),
 		});
-		const m = await import("./worker-local-dev/tilesHost");
+		const m = await import("./tilesHost");
 		expect(m.getWorkerTarget()).toBe(m.DEFAULT_TARGET);
 		// No second parameter: a machine fallback would auto-select production.
 		expect(m.setWorkerTarget.length).toBe(1);

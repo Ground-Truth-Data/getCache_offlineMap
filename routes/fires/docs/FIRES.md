@@ -13,7 +13,7 @@ in signal the cache is topped up, and the UI must say how old it is.
 | Half | Where |
 |---|---|
 | Worker `GET /fires?lng=&lat=&km=` | `workers/worker-local-dev/src/index.ts` (route) + `lib/worker/firesWorker.ts` (pure FIRMS logic) |
-| Phone fetch + IndexedDB | `lib/worker/worker-local-dev/fires/fireFetch.ts`, `routes/fires/fireCache.ts` (`rt-fire-cache`) |
+| Phone fetch + IndexedDB | `lib/worker/fires/fireFetch.ts`, `routes/fires/fireCache.ts` (`rt-fire-cache`) |
 | The pass | `routes/fires/fireService.ts`, started by the host's `(getcache)` layout with the blob centres |
 | Render layer | offline: `lib/onPhone/render/fireLayer.ts` (`attachFireLayer`), the Fires row in `lib/onPhone/render/wallLegend.ts` carries its ids; online: `getCache_OnlineMap/lib/fire/fireLayer.ts`, mounted by `MobMapPage.svelte` |
 

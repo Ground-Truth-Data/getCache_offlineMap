@@ -7,7 +7,7 @@
 
 import { noteBytes } from "../../lib/shared/dataMeter.svelte";
 import { sessionCap, spendBytes } from "../../lib/shared/sessionByteCap.svelte";
-import { tileUrl } from "../../lib/worker/worker-local-dev/tilesHost";
+import { tileUrl } from "../../lib/worker/tilesHost";
 import { BLOB_COUNT_CAP, BudgetError, budgetBytes, fullMessage } from "./budget";
 import { nearestPlace } from "./places";
 import {

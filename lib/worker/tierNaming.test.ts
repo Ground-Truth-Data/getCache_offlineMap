@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { LOCAL_DEV_HOST } from "./worker-local-dev/tilesHost";
+import { LOCAL_DEV_HOST } from "./tilesHost";
 
 const ALLOWED = [
 	"tiles-prod.getcache.org",
@@ -43,7 +43,7 @@ describe("tile hostnames — dev, prod, local and nothing else", () => {
 	});
 
 	it("the child bakes in NO production hostname at all", () => {
-		const src = readFileSync(join(__dirname, "worker-local-dev", "tilesHost.ts"), "utf8");
+		const src = readFileSync(join(__dirname, "tilesHost.ts"), "utf8");
 		const code = src
 			.split("\n")
 			.filter((l) => !/^\s*(\*|\/\/|\/\*)/.test(l))

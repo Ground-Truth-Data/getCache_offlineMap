@@ -14,7 +14,7 @@ import {
 	getWorkerTarget,
 	tilesHost,
 	type WorkerTarget,
-} from "../worker/worker-local-dev/tilesHost";
+} from "../worker/tilesHost";
 
 /** Bump when a field's MEANING changes, so an old file is never misread as a new one. */
 export const DEBUG_REPORT_SCHEMA = 1 as const;

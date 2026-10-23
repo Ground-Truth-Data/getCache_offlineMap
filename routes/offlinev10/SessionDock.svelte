@@ -5,7 +5,7 @@ import { type Progress, resetWireStats, wireStats } from "./download";
 import { readCounts, resetReadCounts } from "./protocol";
 import { PHOTO_SPEC, type PhotoInfo } from "./satellite";
 import type { Kept, Region } from "./store";
-import type { WorkerTarget } from "../../lib/worker/worker-local-dev/tilesHost";
+import type { WorkerTarget } from "../../lib/worker/tilesHost";
 
 let {
 	progress = null,

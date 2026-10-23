@@ -44,7 +44,7 @@ import { type Kept, type Region, checkRegions, keepStorage, listRegions, patchRe
 import { validLatLng } from "../../lib/shared/cameraFromUrl";
 import { PHOTO_INSERT_BEFORE, PLANET, REGIONS, buildStyle, legend } from "./style";
 import { ANCHOR_Z, boxesIntersect, parseKey, rangeBox, tileBox, tileKey } from "./tiles";
-import { type WorkerTarget, getWorkerTarget, setWorkerTarget } from "../../lib/worker/worker-local-dev/tilesHost";
+import { type WorkerTarget, getWorkerTarget, setWorkerTarget } from "../../lib/worker/tilesHost";
 
 let host = $state<HTMLDivElement>();
 let map: maplibregl.Map | null = null;

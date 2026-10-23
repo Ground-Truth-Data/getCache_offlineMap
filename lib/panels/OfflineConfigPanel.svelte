@@ -8,7 +8,7 @@ import {
 	probeTarget,
 	setWorkerTarget,
 	type WorkerTarget,
-} from "../worker/worker-local-dev/tilesHost";
+} from "../worker/tilesHost";
 import {
 	allCircuits,
 	light,

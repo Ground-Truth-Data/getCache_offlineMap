@@ -34,7 +34,7 @@ beforeEach(() => {
 });
 
 it("stops fetching road tiles once the session cap trips", async () => {
-	const { configureTilesDevHost } = await import("../../lib/worker/worker-local-dev/tilesHost");
+	const { configureTilesDevHost } = await import("../../lib/worker/tilesHost");
 	configureTilesDevHost("https://tiles.test");
 	const { downloadRegion } = await import("./download");
 	const { SESSION_BYTE_CAP, sessionCap } = await import("../../lib/shared/sessionByteCap.svelte");

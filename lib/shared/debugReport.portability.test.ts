@@ -12,7 +12,7 @@ const SRC = readFileSync(
 const ALLOWED = [
 	"./",
 	"../contract",
-	"../worker/worker-local-dev/tilesHost",
+	"../worker/tilesHost",
 	// wallLegend: a literal switches table (key/label/ids/feed) — no UI/store/runtime, safe to allow.
 	"../onPhone/render/wallLegend",
 ];

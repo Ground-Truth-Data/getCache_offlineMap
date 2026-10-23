@@ -3,7 +3,7 @@ import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { photoTilesFor, satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
 import { PHOTO_SOURCES } from "../../lib/onPhone/satellite/photoSources";
-import { configureTilesDevHost } from "../../lib/worker/worker-local-dev/tilesHost";
+import { configureTilesDevHost } from "../../lib/worker/tilesHost";
 import { setBudgetMb } from "./budget";
 import { photoTiles } from "./satellite";
 import { AreaGone, allTileKeys, deleteRegion, PHOTO_PREFIX, photoTileBytes, putPhotoTiles, putRegion, type Region, wipe } from "./store";

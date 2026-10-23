@@ -28,7 +28,7 @@ vi.mock("./fireCache", () => ({
 }));
 const { FIRE_RETRY_MS, fireKey, refreshFires } = await import("./fireService");
 const { configureTilesHost, setWorkerTarget } = await import(
-    "../../lib/worker/worker-local-dev/tilesHost"
+    "../../lib/worker/tilesHost"
 );
 
 const PENTICTON: [number, number] = [-119.5937, 49.4991];

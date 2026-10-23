@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 // The host is module-level state and leaks across tests otherwise.
 async function freshModule() {
 	vi.resetModules();
-	return await import("./worker-local-dev/tilesHost");
+	return await import("./tilesHost");
 }
 
 describe("tiles host must be configured by the app", () => {

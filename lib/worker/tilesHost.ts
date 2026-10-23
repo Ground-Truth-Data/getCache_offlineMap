@@ -1,4 +1,4 @@
-import { noteProbe } from "../../shared/workMeter.svelte";
+import { noteProbe } from "../shared/workMeter.svelte";
 // No production host is baked in: a hardcoded default bills the maintainer's R2
 // account for every stranger who installs this package.
 let configuredHost: string | null = null;

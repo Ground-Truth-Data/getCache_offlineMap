@@ -7,7 +7,7 @@ import {
     needsFireDisc,
 } from "../../lib/shared/liveAnchor";
 import { passQueue } from "../../lib/shared/passQueue";
-import { fetchAreaFires } from "../../lib/worker/worker-local-dev/fires/fireFetch";
+import { fetchAreaFires } from "../../lib/worker/fires/fireFetch";
 import {
     fireCoverage,
     isCoverageFresh,

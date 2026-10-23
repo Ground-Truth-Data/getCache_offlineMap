@@ -9,7 +9,7 @@ const h = vi.hoisted(() => ({
 	fetch: vi.fn(async (lng: number, lat: number) => ({ fetchedAt: Date.now(), sourcesOk: 2, bytes: 2048, hotspots: [{ coordinates: [lng, lat], t: 1, c: "h", frp: 1 }] })),
 	writes: [] as string[],
 }));
-vi.mock("../../lib/worker/worker-local-dev/fires/fireFetch", () => ({ fetchAreaFires: h.fetch }));
+vi.mock("../../lib/worker/fires/fireFetch", () => ({ fetchAreaFires: h.fetch }));
 vi.mock("./fireCache", () => ({
 	readFireCache: async () => null,
 	writeFireCache: async (k: string) => void h.writes.push(k),

@@ -73,7 +73,7 @@ vi.mock("./blobService", () => ({ onBlob: () => () => undefined }));
 
 const { PHOTO_RETRY_MS, bakePhotos, dropPhoto, photoInfo, photoIssue, setPhotoNarration } =
 	await import("./satellite");
-const { configureTilesDevHost } = await import("../../lib/worker/worker-local-dev/tilesHost");
+const { configureTilesDevHost } = await import("../../lib/worker/tilesHost");
 configureTilesDevHost("https://tiles.test");
 
 /** A pin's coordinates are full-precision floats, as a GPS fix or a map tap delivers them. */

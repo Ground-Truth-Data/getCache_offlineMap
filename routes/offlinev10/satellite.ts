@@ -16,7 +16,7 @@ import { noteSatelliteTiles } from "../../lib/onPhone/store/downloadGuard";
 import { noteBytes } from "../../lib/shared/dataMeter.svelte";
 import { passQueue } from "../../lib/shared/passQueue";
 import { sessionCap, spendBytes } from "../../lib/shared/sessionByteCap.svelte";
-import { satelliteTileUrl } from "../../lib/worker/worker-local-dev/tilesHost";
+import { satelliteTileUrl } from "../../lib/worker/tilesHost";
 import { onBlob } from "./blobService";
 import { getEach } from "./download";
 import {

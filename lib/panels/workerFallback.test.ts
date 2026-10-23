@@ -22,7 +22,7 @@ describe("no worker tier auto-switch", () => {
 // ⚠️ worker-cloud-dev must be configured in the same place as production (configureTilesDevHost) or it's dead by construction — configuredDevHost stays null until called. Both hosts are configured via configureTilesFromEnv(), called from the child's boot.
 const LAYOUT = readFileSync(join(__dirname, "..", "..", "routes", "+layout.svelte"), "utf8");
 const TILES_FROM_ENV = readFileSync(
-	join(__dirname, "..", "worker", "worker-local-dev", "tilesFromEnv.ts"),
+	join(__dirname, "..", "worker", "tilesFromEnv.ts"),
 	"utf8",
 );
 

@@ -19,7 +19,7 @@ like the CONFIG panel rows: `worker-local-dev/` is the copy you edit and run,
 - ⛔ `tiles-local` is the one hand-made DNS record (A → 127.0.0.1, DNS-only);
   prod/dev records come from `wrangler deploy` — see the Worker README.
 - ⛔ No prod/dev host is baked into this child — the host app calls
-  `configureTilesFromEnv()` at boot (`worker-local-dev/tilesFromEnv.ts`), which reads
+  `configureTilesFromEnv()` at boot (`tilesFromEnv.ts`), which reads
   `PUBLIC_GC_tiles_prod_worker` / `PUBLIC_GC_tiles_dev_worker` from the `.env` beside
   vite's root (generated from `.env.schema`). Unset → `null` → the row greys out, and
   the console warns on the first line. A hardcoded default bills the
@@ -38,6 +38,6 @@ prints IPs and your own resolver doesn't, wait it out.
 
 ## One client, three targets
 
-`worker-local-dev/` holds the only client: it runs in the app and picks the
+`tilesHost.ts` is the only client: it runs in the app and picks the
 tier at runtime (`hostFor`), so a per-tier copy would be code no build loads.
 The per-tier record of what each cloud serves is the Worker in `../../workers/`.

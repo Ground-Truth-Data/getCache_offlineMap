@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	configureTilesHost,
 	setWorkerTarget,
-} from "../../lib/worker/worker-local-dev/tilesHost";
+} from "../../lib/worker/tilesHost";
 import {
 	allDiscs,
 	deleteDisc,
