@@ -44,7 +44,8 @@ const site = (s: Omit<Site, "owns">): Site => ({
 	owns: [...s.pages.filter((p) => p !== "/"), ...s.app],
 });
 
-const RETREEVER_ORIGIN = "https://retreever.org";
+// www is Vercel's primary domain (the apex 307s to it), so every canonical signal names www too.
+const RETREEVER_ORIGIN = "https://www.retreever.org";
 const GETCACHE_ORIGIN = "https://getcache.org";
 
 // TO FILL IN — omitted until confirmed:
@@ -56,7 +57,7 @@ export const SITES: readonly Site[] = [
 	site({
 		id: "retreever",
 		label: "ReTreever",
-		hosts: ["retreever.org", "www.retreever.org", "retreever.localhost"],
+		hosts: ["www.retreever.org", "retreever.org", "retreever.localhost"],
 		devHost: "retreever.localhost",
 		icon: rtLogo,
 		home: "/",
@@ -67,7 +68,7 @@ export const SITES: readonly Site[] = [
 		seo: {
 			origin: RETREEVER_ORIGIN,
 			description:
-				"ReTreever builds tools that record reforestation work where it happens — from the planting block to the invoice. Makers of Get Cache, the offline field app for tree planters.",
+				"ReTreever is a data transparency platform that retrieves the world's reforestation data from governments, NGOs, and public sources into a unified, verifiable database.",
 			ogImage: "/og/retreever-og.png",
 			tagline: "Every tree, accounted for.",
 			schema: {
@@ -78,7 +79,7 @@ export const SITES: readonly Site[] = [
 				url: RETREEVER_ORIGIN,
 				logo: `${RETREEVER_ORIGIN}/og/retreever-og.png`,
 				description:
-					"ReTreever builds software for the reforestation industry: field data capture, planting records and reporting, from the block to the invoice.",
+					"ReTreever is a data transparency platform that retrieves the world's reforestation data from governments, NGOs, and public sources into a unified, verifiable database.",
 				knowsAbout: [
 					"Reforestation",
 					"Tree planting",

@@ -5,6 +5,7 @@ export type Identity = { label: string; color: string; self: boolean; picked: bo
 </script>
 
 <script lang="ts">
+import { m } from "$parent/src/lib/paraglide/messages";
 import Icon from "./Icon.svelte";
 
 /** The second half is ONE segment, clobber first: `hammer` (your version was
@@ -30,11 +31,11 @@ const second = $derived(hammer || !!editor || edited);
         title={who.label}>{who.label}</span
     >
     {#if hammer}
-        <span class="id-pill id-pill--editor id-pill--hammer" title="Your edit was replaced"><Icon name="hammer" size={10} stroke={2.6} />{editor?.label ?? ""}</span>
+        <span class="id-pill id-pill--editor id-pill--hammer" title={m.gc_edit_replaced()}><Icon name="hammer" size={10} stroke={2.6} />{editor?.label ?? ""}</span>
     {:else if editor}
-        <span class="id-pill id-pill--editor" title={`edited by ${editor.label}`}><Icon name="edit" size={10} stroke={2.6} />{editor.label}</span>
+        <span class="id-pill id-pill--editor" title={m.gc_edited_by({ name: editor.label })}><Icon name="edit" size={10} stroke={2.6} />{editor.label}</span>
     {:else if edited}
-        <span class="id-pill id-pill--editor" title="Edited since it was made"><Icon name="edit" size={10} stroke={2.6} /></span>
+        <span class="id-pill id-pill--editor" title={m.gc_edited_since_made()}><Icon name="edit" size={10} stroke={2.6} /></span>
     {/if}
 </span>
 

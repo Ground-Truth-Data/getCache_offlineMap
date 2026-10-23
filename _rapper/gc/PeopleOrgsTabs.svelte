@@ -1,12 +1,13 @@
 <script lang="ts">
+import { m } from "$parent/src/lib/paraglide/messages";
 import contactGold from "./assets/contact_gold.webp";
 import orgGold from "./assets/org_gold.webp";
 
 let { tab = $bindable("people") }: { tab?: "people" | "orgs" } = $props();
 </script>
 
-<div class="tabs" role="tablist" aria-label="People or orgs">
-    {#each [["people", "People", contactGold], ["orgs", "Orgs", orgGold]] as const as [key, label, icon] (key)}
+<div class="tabs" role="tablist" aria-label={m.gc_people_or_orgs()}>
+    {#each [["people", m.gc_people(), contactGold], ["orgs", m.gc_orgs(), orgGold]] as const as [key, label, icon] (key)}
         <button type="button" role="tab" aria-selected={tab === key} class:rt-fancy-btn={tab === key} onclick={() => (tab = key)}>
             <img src={icon} alt="" />{label}
         </button>

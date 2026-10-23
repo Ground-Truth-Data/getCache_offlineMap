@@ -1,0 +1,11 @@
+{
+	"$schema": "https://inlang.com/schema/inlang-message-format",
+	"gc_people_or_orgs": "People or orgs",
+	"gc_people": "People",
+	"gc_orgs": "Orgs",
+	"gc_privacy_policy": "Privacy policy",
+	"gc_search_clear": "Clear",
+	"gc_edit_replaced": "Your edit was replaced",
+	"gc_edited_by": "edited by {name}",
+	"gc_edited_since_made": "Edited since it was made"
+}

@@ -11,7 +11,7 @@
 	--rt-overlay-deep: rgba(0, 0, 0, 0.7);
 
 	/* --rt-popover-glass/-scrim = the one knob for every popover; backdrop-filter is disabled on dt-web's preview frame, so alpha must read without blur. */
-	--rt-popover-glass: rgba(0, 0, 0, 0.5);
+	--rt-popover-glass: rgba(0, 0, 0, 0.88);
 	--rt-popover-scrim: rgba(0, 0, 0, 0.18);
 	--rt-bg-card: #272727;
 	--rt-bg-button: #3a3a3a;
@@ -635,8 +635,6 @@ hr {
 			.rt-btn--danger,
 			.rt-card,
 			.combo-option,
-			.rt-group,
-			.rt-group__zone,
 			.rt-ism__tile,
 			.rt-ism__howto,
 			.rt-ism__cancel,
@@ -648,6 +646,7 @@ hr {
 			.rt-popover-opt,
 			.rt-row,
 			.rt-row__cell,
+			.rt-row__half,
 			.na-toggle,
 			.cloud-save,
 			.rw,
@@ -698,13 +697,31 @@ body.shovel-cursor .fake-cursor {
 	opacity: 1;
 }
 
-/* ShovelCursor's HoldRing, centred on its point. */
-.hold-ring-at {
+/* The held finger, under ShovelCursor's Loupe. */
+.touch-halo {
 	position: fixed;
-	transform: translate(-50%, -50%) scale(0.6);
-	opacity: 0.9;
+	width: 46px;
+	height: 46px;
+	margin: -23px 0 0 -23px;
+	border-radius: 50%;
+	background: rgba(255, 255, 255, 0.16);
+	box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
 	pointer-events: none;
-	z-index: 2147483646;
+	z-index: 2147483645;
+}
+/* The hold's coordinates, top-left of the map; ShovelCursor places it. */
+.coord-chip {
+	position: fixed;
+	padding: 3px 8px 2px;
+	border-radius: 7px;
+	background: rgba(18, 19, 16, 0.74);
+	-webkit-backdrop-filter: blur(8px);
+	backdrop-filter: blur(8px);
+	color: #fff;
+	font: 600 12px/1.3 var(--rt-font-display);
+	font-variant-numeric: tabular-nums;
+	pointer-events: none;
+	z-index: 2147483645;
 }
 
 /* Shows WHEN a tap lands, not just where. Created/self-removed by ShovelCursor.svelte. */

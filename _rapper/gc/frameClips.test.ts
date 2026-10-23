@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clipMs, frameUrl, frameUrls, loadClips, type ClipFacts } from "./frameClips";
+import { clipMs, forgetClips, frameUrl, frameUrls, loadClips, type ClipFacts } from "./frameClips";
 
 const facts: ClipFacts = { section: "dog", frameCount: 3, fps: 24, widthRem: 36, note: "t" };
 
@@ -20,10 +20,24 @@ describe("frameClips", () => {
 	});
 
 	it("loads clips.json from the root and refuses a missing one", async () => {
-		const manifest = { states: { opaque: [0, 29] }, clips: { "dog-blink": facts } };
+		const manifest = { clips: { "dog-blink": facts } };
 		const ok = (async () => new Response(JSON.stringify(manifest))) as unknown as typeof fetch;
 		expect(await loadClips("/rt_anime", ok)).toEqual(manifest);
 		const gone = (async () => new Response("", { status: 404 })) as unknown as typeof fetch;
+		expect(await loadClips("/rt_anime", gone)).toEqual(manifest);
+		forgetClips();
 		await expect(loadClips("/rt_anime", gone)).rejects.toThrow("404");
+		await expect(loadClips("/rt_anime", gone)).rejects.toThrow("404");
+	});
+
+	it("asks for a root once however many players mount", async () => {
+		forgetClips();
+		let calls = 0;
+		const counting = (async () => {
+			calls += 1;
+			return new Response(JSON.stringify({ clips: {} }));
+		}) as unknown as typeof fetch;
+		await Promise.all([loadClips("/a", counting), loadClips("/a", counting), loadClips("/a", counting)]);
+		expect(calls).toBe(1);
 	});
 });

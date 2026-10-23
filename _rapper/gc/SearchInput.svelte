@@ -21,6 +21,9 @@ type Props = {
      *  respects the keyboard rule (InputPopover top drawer). */
     readonly?: boolean;
     onclick?: (e: MouseEvent) => void;
+    /** The × button's name. A prop, not a message: ReTreever admin draws this
+     *  field too, and ReTreever has no message catalogue. */
+    clearLabel?: string;
 };
 const id = $props.id();
 let {
@@ -32,6 +35,7 @@ let {
     prefix,
     readonly = false,
     onclick,
+    clearLabel = "Clear",
 }: Props = $props();
 
 function handleClear() {
@@ -58,7 +62,7 @@ function handleClear() {
         {onclick}
     />
     {#if value}
-        <button type="button" class="rt-search__clear" aria-label="Clear" onclick={handleClear}>×</button>
+        <button type="button" class="rt-search__clear" aria-label={clearLabel} onclick={handleClear}>×</button>
     {/if}
 </label>
 

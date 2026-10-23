@@ -32,6 +32,9 @@ scripts/siteSpecificScripts/**/*.json
 scripts/siteSpecificScripts/*.json
 
 
+# Paraglide output, compiled from project.inlang by vite.config.ts
+src/lib/paraglide/
+
 # Prisma generated
 lib/generated/
 src/lib/generated/

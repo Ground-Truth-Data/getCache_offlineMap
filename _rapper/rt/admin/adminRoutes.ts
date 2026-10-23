@@ -87,7 +87,7 @@ export const MIRRORED_TABLES = [
 	"mapFeatureEntity",
 	"qaSurveyEntity",
 	"qaPlotEntity",
-	"landEntity",
+	"blockEntity",
 	"boxEntity",
 	"bagEntity",
 	"bagUpEntity",
@@ -100,7 +100,7 @@ export const MIRRORED_TABLES = [
 	"allocationTable",
 	"qaSurveyTable",
 	"qaPlotTable",
-	"landTable",
+	"blockTable",
 	"boxTable",
 	"bagTable",
 	"bagUpTable",
@@ -113,6 +113,7 @@ export const MIRRORED_TABLES = [
 	"orgKindTable",
 	"orgTagTable",
 	"userProfile",
+	"settingTable",
 ] as const;
 
 // Every table on the phone, in the SQLite pills' order; every one is mirrored too.
@@ -131,8 +132,8 @@ export const DEVICE_TABLES = [
 	"crewTable",
 	"mapFeatureEntity",
 	"mapFeatureTable",
-	"landEntity",
-	"landTable",
+	"blockEntity",
+	"blockTable",
 	"mapEntity",
 	"mapTable",
 	"orgTable",
@@ -150,6 +151,7 @@ export const DEVICE_TABLES = [
 	"tallyTable",
 	"touchTable",
 	"userProfile",
+	"settingTable",
 ] as const;
 
 // Where each table sits on the Get Cache schema maps, four to a row, each
@@ -157,7 +159,7 @@ export const DEVICE_TABLES = [
 // A table left out still draws, after these.
 export const GC_SCHEMA_SEATS = [
 	"mapTable", "mapEntity", "mapFeatureTable", "mapFeatureEntity",
-	"landTable", "landEntity", "qaSurveyTable", "qaSurveyEntity",
+	"blockTable", "blockEntity", "qaSurveyTable", "qaSurveyEntity",
 	"qaPlotTable", "qaPlotEntity", "bagTable", "bagEntity",
 	"bagUpTable", "bagUpEntity", "tallyTable", "tallyEntity",
 	"packageTable", "packageEntity", "boxTable", "boxEntity",

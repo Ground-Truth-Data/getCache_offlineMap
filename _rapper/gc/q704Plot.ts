@@ -4,8 +4,8 @@
 export type PlotRadius = 3.99;
 export const PLOT_RADIUS: PlotRadius = 3.99;
 
-/** The target density (stems/ha) when a block names none. */
-export const DEFAULT_DENSITY = 1600;
+/** The target density (stems/ha) when a block or survey names none. */
+export const DEFAULT_DENSITY = 1800;
 
 export function plotArea(radius: PlotRadius): number {
 	return Math.PI * radius * radius;

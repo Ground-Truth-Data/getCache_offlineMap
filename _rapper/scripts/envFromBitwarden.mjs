@@ -10,7 +10,7 @@
 // any process can inject them, so those keys, and only those, land in .env.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -72,8 +72,16 @@ function* sourceFiles(dir) {
 		} else if (SOURCE.test(e.name)) yield path.join(dir, e.name);
 	}
 }
-const corpus = roots.flatMap((r) => [...sourceFiles(r)]).map((f) => readFileSync(f, "utf8")).join("\n");
-const named = (key) => new RegExp(`(^|[^A-Za-z0-9_])${key}(?![A-Za-z0-9_])`).test(corpus);
+// A scraped corpus is .json too, and Foundr's run to hundreds of MB each: joined into one string they pass Node's limit.
+const MAX_SOURCE_BYTES = 1 << 20;
+const corpus = roots
+	.flatMap((r) => [...sourceFiles(r)])
+	.filter((f) => statSync(f).size <= MAX_SOURCE_BYTES)
+	.map((f) => readFileSync(f, "utf8"));
+const named = (key) => {
+	const re = new RegExp(`(^|[^A-Za-z0-9_])${key}(?![A-Za-z0-9_])`);
+	return corpus.some((src) => re.test(src));
+};
 
 // No bws (Vercel): the committed block stands. It was written from the vault
 // on a developer's machine, and the audit below still proves it against code.

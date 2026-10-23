@@ -13,19 +13,28 @@ export type ClipFacts = {
 };
 
 export type ClipManifest = {
-	/** inclusive score ranges, by state name */
-	states: Record<string, [number, number]>;
 	clips: Record<string, ClipFacts>;
 };
 
+// One manifest per root per page: the curtains, the dog and a dropdown each ask on mount.
+const manifests = new Map<string, Promise<ClipManifest>>();
+
 /** `root` is where clips.json and the frame folders are served from, no trailing slash. */
-export async function loadClips(
-	root: string,
-	fetchFn: typeof fetch = fetch,
-): Promise<ClipManifest> {
-	const res = await fetchFn(`${root}/clips.json`);
-	if (!res.ok) throw new Error(`clips.json at ${root}: ${res.status}`);
-	return (await res.json()) as ClipManifest;
+export function loadClips(root: string, fetchFn: typeof fetch = fetch): Promise<ClipManifest> {
+	const cached = manifests.get(root);
+	if (cached) return cached;
+	const loading = (async () => {
+		const res = await fetchFn(`${root}/clips.json`);
+		if (!res.ok) throw new Error(`clips.json at ${root}: ${res.status}`);
+		return (await res.json()) as ClipManifest;
+	})();
+	manifests.set(root, loading);
+	loading.catch(() => manifests.delete(root));
+	return loading;
+}
+
+export function forgetClips(): void {
+	manifests.clear();
 }
 
 export function frameUrl(root: string, clip: string, facts: ClipFacts, frame: number): string {
