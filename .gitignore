@@ -38,7 +38,7 @@ secrets/
 # scratch (~100 MB) stays out.
 workers/.bake-cache/
 
-# standaloneTest.sh vendors siblings in here to prove this child runs
-# with no workspace around it, then leaves the copy behind. Generated, never
-# committed — unlike _rapper/, which IS tracked so a lone clone can run.
+# gitEr/dressChild.sh writes both, wiped and regenerated on every run. A
+# committed _rapper/ drifted from rapper and had to be hand-synced.
+_rapper/
 _siblings/
