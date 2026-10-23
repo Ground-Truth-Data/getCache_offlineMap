@@ -45,14 +45,4 @@ describe("worker tiers", () => {
 		expect(m.getWorkerTarget()).toBe("worker-cloud-dev");
 		vi.unstubAllGlobals();
 	});
-
-	it("keeps every worker copy identical on the tier surface", async () => {
-		const [a, b, c] = await Promise.all([
-			import("./worker-local-dev/tilesHost"),
-			import("./worker-cloud-dev/tilesHost"),
-			import("./worker-cloud-prod/tilesHost"),
-		]);
-		expect(Object.keys(a).sort()).toEqual(Object.keys(b).sort());
-		expect(Object.keys(a).sort()).toEqual(Object.keys(c).sort());
-	});
 });

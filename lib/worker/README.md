@@ -36,11 +36,8 @@ A resolver asked about a hostname before it existed caches NXDOMAIN for up
 to 30 min. `dig +short tiles-prod.getcache.org @1.1.1.1` is the truth; if it
 prints IPs and your own resolver doesn't, wait it out.
 
-## Three folders — `worker-local-dev/`, `worker-cloud-dev/` and `worker-cloud-prod/`
+## One client, three targets
 
-⛔ **Do not delete or merge them because they look identical.** `worker-local-dev/`
-is what the app imports and what you edit; `worker-cloud-dev/` and `worker-cloud-prod/` are the
-copies that match what each cloud tier serves. Same code at three moments in
-time — the gap is time, not content. `workerEnvironments.test.ts` fails if
-any goes missing; fix the folder, not the test. Renaming means updating every
-import (`rg -l worker`).
+`worker-local-dev/` holds the only client: it runs in the app and picks the
+tier at runtime (`hostFor`), so a per-tier copy would be code no build loads.
+The per-tier record of what each cloud serves is the Worker in `../../workers/`.

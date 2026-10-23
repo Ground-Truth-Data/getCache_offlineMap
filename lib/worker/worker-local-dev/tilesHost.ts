@@ -40,9 +40,6 @@ export function getWorkerTarget(): WorkerTarget {
 	try {
 		const v = sessionStorage.getItem(OVERRIDE_KEY);
 		if (v === "worker-cloud-prod" || v === "worker-cloud-dev" || v === "worker-local-dev") return v;
-		if (v === "production") return "worker-cloud-prod";
-		if (v === "r2Dev") return "worker-cloud-dev";
-		if (v === "localDev") return "worker-local-dev";
 	} catch {
 		// codestyle-allow-swallow: sessionStorage unavailable in SSR/private mode
 	}

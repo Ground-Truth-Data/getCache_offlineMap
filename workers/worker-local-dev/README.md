@@ -58,7 +58,7 @@ Edit only here. `../worker-cloud-dev/` and `../worker-cloud-prod/` are the
 copies that match what `tiles-dev` and `tiles-prod` are running: their deploy
 scripts sync this folder into them, then deploy. A cloud folder differing from
 this one means "not deployed yet" — that gap is its whole message. Never
-delete or merge them (`lib/worker/workerEnvironments.test.ts` fails).
+delete or merge them (`lib/worker/workersLayout.test.ts` fails).
 
 ## Cost
 
