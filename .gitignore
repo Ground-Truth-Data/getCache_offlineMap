@@ -42,3 +42,5 @@ workers/.bake-cache/
 # committed _rapper/ drifted from rapper and had to be hand-synced.
 _rapper/
 _siblings/
+svelte.config.js
+vite.config.ts
