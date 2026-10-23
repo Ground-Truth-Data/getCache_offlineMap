@@ -71,13 +71,17 @@ describe("mouse: the hold, the drag, the tap", () => {
 	const r = rig();
 	const move = (x: number, y: number) => (g.window as EventTarget).dispatchEvent(new FakeMouseEvent("mousemove", x, y));
 
-	// Desktop rehearses the phone: a press rested a full hold seeds under the pointer when it lifts.
-	it("a press held still seeds under the pointer, on release", () => {
+	// Desktop rehearses the phone: a press rested a full hold seeds under the pointer, still down.
+	it("a press held still seeds under the pointer the moment the hold fills", () => {
 		r.map().fire("mousedown", new FakeMouseEvent("mousedown", 200, 300));
-		vi.advanceTimersByTime(ACTIVATE_MS + HOLD_MS);
+		vi.advanceTimersByTime(ACTIVATE_MS + HOLD_MS - 1);
 		expect(r.seed()).not.toHaveBeenCalled();
-		r.map().fire("mouseup", new FakeMouseEvent("mouseup", 200, 300));
+		vi.advanceTimersByTime(1);
 		expect(r.seed()).toHaveBeenCalledWith(200, 300);
+		move(260, 340);
+		vi.advanceTimersByTime(2000);
+		r.map().fire("mouseup", new FakeMouseEvent("mouseup", 260, 340));
+		expect(r.seed()).toHaveBeenCalledTimes(1);
 	});
 
 	it("once the loupe is up, the pointer slides and the rest restarts where it stops", () => {
@@ -91,7 +95,6 @@ describe("mouse: the hold, the drag, the tap", () => {
 		vi.advanceTimersByTime(ACTIVATE_MS);
 		move(240, 330);
 		vi.advanceTimersByTime(HOLD_MS);
-		r.map().fire("mouseup", new FakeMouseEvent("mouseup", 240, 330));
 		expect(r.seed()).toHaveBeenCalledWith(240, 330);
 	});
 
@@ -121,14 +124,16 @@ describe("touch: the hold, the pinch, the tap", () => {
 	const touch = (type: string, ...pts: [number, number][]) => new FakeTouchEvent(type, pts);
 	const move = (x: number, y: number) => (g.window as EventTarget).dispatchEvent(touch("touchmove", [x, y]));
 
-	it("seeds under the finger, wherever it came to rest, only on lift", () => {
+	it("seeds under the finger, wherever it came to rest, with the finger still down", () => {
 		r.map().fire("touchstart", touch("touchstart", [200, 300]));
 		vi.advanceTimersByTime(ACTIVATE_MS);
 		move(220, 310);
-		vi.advanceTimersByTime(HOLD_MS);
+		vi.advanceTimersByTime(HOLD_MS - 1);
 		expect(r.seed()).not.toHaveBeenCalled();
-		r.map().fire("touchend", touch("touchend"));
+		vi.advanceTimersByTime(1);
 		expect(r.seed()).toHaveBeenCalledWith(220, 310);
+		r.map().fire("touchend", touch("touchend"));
+		expect(r.seed()).toHaveBeenCalledTimes(1);
 	});
 
 	it("a quick tap never seeds", () => {
@@ -155,8 +160,9 @@ describe("touch: the hold, the pinch, the tap", () => {
 
 	it("a second finger mid-hold cancels without committing", () => {
 		r.map().fire("touchstart", touch("touchstart", [200, 300]));
-		vi.advanceTimersByTime(ACTIVATE_MS + HOLD_MS);
+		vi.advanceTimersByTime(ACTIVATE_MS + HOLD_MS - 50);
 		r.map().fire("touchstart", touch("touchstart", [200, 300], [250, 350]));
+		vi.advanceTimersByTime(2000);
 		r.map().fire("touchend", touch("touchend"));
 		expect(r.seed()).not.toHaveBeenCalled();
 	});

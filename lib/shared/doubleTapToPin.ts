@@ -30,7 +30,7 @@ export function swallowNextClick(): void {
 }
 
 // Mouse and finger alike, so desktop rehearses exactly what the phone does. A press held this long brings
-// up the loupe; the point then locks once the pointer has rested HOLD_MS, and lifting seeds the ruler there.
+// up the loupe; once the pointer has rested HOLD_MS the ruler seeds there, finger still down or not.
 export const ACTIVATE_MS = 260;
 export const HOLD_MS = 900;
 // Before the loupe, a move past this is a pan. After it, a move past this restarts the rest.
@@ -105,12 +105,31 @@ export function attachDoubleTapToPin(
 		return [(p.x - r.left) * s, (p.y - r.top) * s];
 	};
 
+	// A finger left down after the seed does nothing: the hand under it is the ruler's, and a pan
+	// needs a fresh press.
+	let lockTimer: ReturnType<typeof setTimeout> | null = null;
+	const lock = () => {
+		lockTimer = null;
+		if (!aim) return;
+		const at = toCanvas(aim.at);
+		aim = null;
+		map.dragPan.enable();
+		emit("end", 0, 0, { locked: true });
+		const ll = map.unproject(at);
+		opts.onMeasureSeed?.(ll.lng, ll.lat);
+	};
+	const rest = () => {
+		if (lockTimer) clearTimeout(lockTimer);
+		lockTimer = setTimeout(lock, HOLD_MS);
+		return performance.now();
+	};
+
 	const aimAt = (at: { x: number; y: number }) => {
 		if (!aim) return;
 		aim.at = at;
 		if (Math.hypot(at.x - aim.anchor.x, at.y - aim.anchor.y) > STILL_PX) {
 			aim.anchor = at;
-			aim.since = performance.now();
+			aim.since = rest();
 		}
 		const ll = map.unproject(toCanvas(at));
 		emit("aim", at.x, at.y, { canvas: map.getCanvas(), since: aim.since, label: coordLabel(ll.lng, ll.lat) });
@@ -118,23 +137,19 @@ export function attachDoubleTapToPin(
 
 	const startAim = () => {
 		if (!pressStart) return;
-		aim = { at: pressStart, anchor: pressStart, since: performance.now() };
+		aim = { at: pressStart, anchor: pressStart, since: rest() };
 		armReleaseSwallow();
 		map.dragPan.disable();
 		aimAt(pressStart);
 	};
 
-	// The lift seeds only a locked point: one that rested HOLD_MS before the finger left.
-	const endAim = (lift: boolean) => {
+	const endAim = () => {
+		if (lockTimer) clearTimeout(lockTimer);
+		lockTimer = null;
 		if (!aim) return;
-		const at = toCanvas(aim.at);
-		const locked = lift && performance.now() - aim.since >= HOLD_MS;
 		aim = null;
 		map.dragPan.enable();
-		emit("end", 0, 0, { locked });
-		if (!locked) return;
-		const ll = map.unproject(at);
-		opts.onMeasureSeed?.(ll.lng, ll.lat);
+		emit("end");
 	};
 
 	const killTimer = () => {
@@ -180,7 +195,7 @@ export function attachDoubleTapToPin(
 	const cancelPress = (why: string) => {
 		if (pressStart) log(`✖️ cancel (${why})`);
 		if (pressTimer) emit(why === "drag past slop" ? "drag" : "end");
-		endAim(false);
+		endAim();
 		killTimer();
 		pressStart = null;
 	};
@@ -200,7 +215,6 @@ export function attachDoubleTapToPin(
 
 	const onUp = () => {
 		if (pressTimer) log("⬆️ up before timer → CLICK (no seed)");
-		endAim(true);
 		cancelPress("pointer up");
 	};
 
