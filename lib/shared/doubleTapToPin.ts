@@ -219,16 +219,13 @@ export function attachDoubleTapToPin(
 	};
 
 	const onMouseOut = () => cancelPress("mouseout");
-	// iOS Safari fires contextmenu ~500 ms into a long press; swallow it so the hold runs on. Mapbox's own
-	// dragstart is NOT a cancel either: it fires at 3 px, and a settling thumb moves that much — the slop above decides.
-	const onContextMenu = (e: MapMouseEvent) => e.originalEvent?.preventDefault();
+	// Mapbox's own dragstart is NOT a cancel: it fires at 3 px, and a settling thumb moves that much — the slop above decides.
 	const onTouchCancel = () => cancelPress("touchcancel");
 
 	map.on("dblclick", onDbl);
 	map.on("mousedown", onDown);
 	map.on("mouseup", onUp);
 	map.on("mouseout", onMouseOut);
-	map.on("contextmenu", onContextMenu);
 	map.on("touchstart", onDown);
 	map.on("touchend", onUp);
 	map.on("touchcancel", onTouchCancel);
@@ -240,7 +237,6 @@ export function attachDoubleTapToPin(
 		map.off("mousedown", onDown);
 		map.off("mouseup", onUp);
 		map.off("mouseout", onMouseOut);
-		map.off("contextmenu", onContextMenu);
 		map.off("touchstart", onDown);
 		map.off("touchend", onUp);
 		window.removeEventListener("mousemove", onMove, true);
