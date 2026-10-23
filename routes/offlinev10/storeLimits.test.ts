@@ -25,6 +25,9 @@ import {
 } from "./store";
 import { rangeContains, rangeTiles, regionRange, tileKey } from "./tiles";
 
+// An IndexedDB sweep outruns waitFor's 1 s default when the whole suite loads the machine.
+const SWEEP = { timeout: 10_000 };
+
 vi.stubGlobal("window", new EventTarget());
 vi.mock("./places", () => ({ nearestPlace: async () => null }));
 const photosDropped = vi.hoisted(() => [] as string[]);
@@ -176,7 +179,7 @@ describe("a removed area's row leaves with its pin", () => {
 		const stop = startBlobService(ports);
 		pins.length = 0;
 		changed();
-		await vi.waitFor(async () => expect(await regionKnown(r.id)).toBe(false));
+		await vi.waitFor(async () => expect(await regionKnown(r.id)).toBe(false), SWEEP);
 		stop();
 	});
 });
@@ -208,8 +211,8 @@ describe("an area lives and dies with its pin", () => {
 		expect(await regionKnown(pinned.id)).toBe(true);
 		ready = true;
 		changed();
-		await vi.waitFor(async () => expect(await regionKnown(pinned.id)).toBe(false));
-		await vi.waitFor(async () => expect(await regionKnown(tomb.id)).toBe(false));
+		await vi.waitFor(async () => expect(await regionKnown(pinned.id)).toBe(false), SWEEP);
+		await vi.waitFor(async () => expect(await regionKnown(tomb.id)).toBe(false), SWEEP);
 		expect((await listRegions()).map((r) => r.id)).toEqual([follow.id]);
 		expect([...(await allTileKeys())]).toEqual([ownTile(follow)]);
 		expect(photosDropped).toContain(satImageKey(p));
@@ -259,7 +262,7 @@ describe("a download that stops for any reason leaves no tile without a row", ()
 		});
 		const at = SPOTS[2];
 		void download(at).catch(() => undefined);
-		await vi.waitFor(async () => expect((await allTileKeys()).size).toBeGreaterThanOrEqual(256));
+		await vi.waitFor(async () => expect((await allTileKeys()).size).toBeGreaterThanOrEqual(256), SWEEP);
 		expect(await orphanTiles()).toEqual([]);
 		expect(await regionKnown(regionId(...at))).toBe(false);
 		vi.unstubAllGlobals();

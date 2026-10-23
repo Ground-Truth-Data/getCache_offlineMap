@@ -1,9 +1,7 @@
 /**
  * The flame is decoded once before the layers exist, so every registration
  * after — including the missing-image resolver's — is a synchronous addImage.
- *
- * Source-text scan: this module reaches bundler-only asset imports and cannot
- * be imported under vitest.
+ * Read as source text: the order of statements is the claim, not a result.
  */
 
 import { readFileSync } from "node:fs";
