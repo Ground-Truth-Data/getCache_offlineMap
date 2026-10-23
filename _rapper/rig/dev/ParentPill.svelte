@@ -6,7 +6,6 @@ let {
 	rightLabel,
 	current,
 	href,
-	unavailable = false,
 }: {
 	/** Fixed per deployment, never "me first". */
 	leftLabel: string;
@@ -15,8 +14,6 @@ let {
 	current: string;
 	/** Omitted → no pill (no other tier). */
 	href?: string;
-	/** The other tier is running but does not serve this page: the pill stays, greyed. */
-	unavailable?: boolean;
 } = $props();
 
 const other = $derived(current === leftLabel ? rightLabel : leftLabel);
@@ -29,16 +26,7 @@ function carryHash(e: Event) {
 }
 </script>
 
-{#if unavailable}
-	<span
-		class="host-pill unavailable"
-		title={`${other} is running, but it does not serve this page — nothing to switch to from here.`}
-	>
-		<span class:on={current === leftLabel}>{leftLabel}</span><span
-			class:on={current === rightLabel}>{rightLabel}</span
-		>
-	</span>
-{:else if href}
+{#if href}
 	<!-- Order is fixed on both parents: position carries no meaning; the lit half carries all of it. -->
 	<a
 		class="host-pill"
@@ -65,12 +53,6 @@ function carryHash(e: Event) {
 		font: inherit;
 		padding: 0;
 		white-space: nowrap;
-	}
-	/* `default`, not `not-allowed`: nothing is forbidden, there is nowhere to go. */
-	.host-pill.unavailable {
-		cursor: default;
-		opacity: 0.45;
-		filter: grayscale(1);
 	}
 	.host-pill span {
 		padding: 0.35rem 0.8rem;

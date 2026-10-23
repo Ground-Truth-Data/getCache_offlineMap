@@ -23,10 +23,6 @@ const dev = import.meta.env.DEV;
 // Injected by rapper's vite.config.ts `define`; undefined in a solo clone. Never hardcoded.
 const ENV = import.meta.env as Record<string, string | undefined>;
 const THIS_TIER = ENV.VITE_RAPPER_TIER ?? "";
-const OTHER_TIER = ENV.VITE_OTHER_TIER ?? "";
-const OTHER_ORIGIN = ENV.VITE_OTHER_ORIGIN;
-const OTHER_HOME = ENV.VITE_OTHER_HOME;
-const THIS_SLOT = (ENV.VITE_TIER_SLOT ?? "right") as "left" | "right";
 
 function readRoutes(raw: string | undefined): TierRoute[] {
 	if (!raw) return [];
@@ -60,11 +56,6 @@ const TIER_ROUTES = readRoutes(ENV.VITE_TIER_ROUTES);
 		ghIcon={ghIconUrl}
 		pathname={page.url.pathname}
 		search={page.url.search}
-		tier={THIS_TIER}
-		otherTier={OTHER_TIER}
-		tierSlot={THIS_SLOT}
-		otherHost={OTHER_ORIGIN}
-		otherHome={OTHER_HOME}
 		routes={TIER_ROUTES}
 		selfRepo={THIS_TIER || undefined}
 	/>

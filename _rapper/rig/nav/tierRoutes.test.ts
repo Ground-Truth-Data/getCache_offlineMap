@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
 	TIER_HOME,
 	currentRepo,
+	otherTierOrigin,
 	otherTierPath,
-	servesOtherSide,
 } from "./tierRoutes";
 import type { TierRoute } from "./tierRoutes";
 
@@ -117,21 +117,11 @@ describe("the tier hop round-trips", () => {
 	});
 });
 
-describe("servesOtherSide", () => {
-	it("is true only for a row that declares a counterpart", () => {
-		expect(servesOtherSide("/who", RETREEVER)).toBe(true);
-		expect(servesOtherSide("/what", RETREEVER)).toBe(true);
-	});
-
-	it("is false for a listed route the other tier does not serve", () => {
-		expect(servesOtherSide("/where", RETREEVER)).toBe(false);
-	});
-
-	it("is false for a route nobody has heard of", () => {
-		expect(servesOtherSide("/legal", RETREEVER)).toBe(false);
-	});
-
-	it("resolves through a parent entry like the other helpers do", () => {
-		expect(servesOtherSide("/who/acme", RETREEVER)).toBe(true);
+describe("otherTierOrigin", () => {
+	it("reads the other origin from the matched route and falls home without a table", () => {
+		const routes = [{ path: "/admin", otherPath: "/", otherOrigin: "http://admin.x" }];
+		expect(otherTierOrigin("/admin/users", routes)).toBe("http://admin.x");
+		expect(otherTierOrigin("/who", routes)).toBeUndefined();
+		expect(otherTierPath("/who", [], undefined)).toBe("/");
 	});
 });

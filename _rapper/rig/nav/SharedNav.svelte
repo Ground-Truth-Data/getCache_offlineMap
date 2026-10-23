@@ -1,15 +1,6 @@
 <script lang="ts">
 // rapper's shell, rendered by the child's layout. Dev only.
-import {
-	TIER_HOME,
-	currentRepo,
-	otherTierOrigin,
-	otherTierPath,
-	probeOtherSide,
-	servesOtherSide,
-	type OtherSideStatus,
-} from "./tierRoutes";
-import type { TierRoute } from "./tierRoutes";
+import { currentRepo, type TierRoute } from "./tierRoutes";
 import { childByRepo, childForPath, githubUrl, mountPath } from "$rig/childRegistry";
 
 type View = { href: string; label: string; missing?: boolean };
@@ -24,11 +15,6 @@ let {
 	ghIcon,
 	pathname = "",
 	search = "",
-	tier,
-	otherTier,
-	tierSlot,
-	otherHost,
-	otherHome,
 	selfRepo = "rapper",
 }: {
 	owner: string;
@@ -38,30 +24,15 @@ let {
 	repo: string;
 	views?: View[];
 	ghIcon: string;
-	/** Passed through: this bar does not know which tier it is. */
-	tier: string;
-	otherTier: string;
-	/** Fixed, so the pill never reorders. */
-	tierSlot?: "left" | "right";
-	otherHost?: string;
-	/** "/" is where a server answers, not where its work is. */
-	otherHome?: string;
 	routes?: TierRoute[];
 	selfRepo?: string;
 	/** Not read from $app/state: a non-SvelteKit parent also mounts this. */
 	pathname?: string;
-	/** With its leading "?", carried across the tier switch. */
+	/** With its leading "?", carried into each view. */
 	search?: string;
 } = $props();
 
 const dev = import.meta.env.DEV;
-
-const leftTier = $derived(tierSlot === "left" ? tier : otherTier);
-const rightTier = $derived(tierSlot === "left" ? otherTier : tier);
-
-
-const otherPath = $derived(otherTierPath(pathname, routes, otherHome));
-
 
 function viewUrl(href: string): string {
 	const [path, own = ""] = href.split("?");
@@ -85,41 +56,6 @@ function isCurrentView(href: string): boolean {
 	}
 	return [...ownParams].every(([k]) => live.has(k));
 }
-
-// Origin and path both resolve from the DESTINATION — a fallback route builds the link on the wrong host.
-const otherOrigin = $derived(
-	otherTierOrigin(otherPath, routes.map((r) => ({ ...r, path: r.otherPath ?? r.path }))),
-);
-
-const declaredUnavailable = $derived.by(() => {
-	if (tierSlot === "right") return false;
-	if (routes.length === 0) return false;
-	if (childForPath(pathname)) return false;
-	return !servesOtherSide(pathname, routes);
-});
-
-
-let probed = $state<OtherSideStatus>("unknown");
-
-$effect(() => {
-	const host = otherHost;
-	const dest = otherPath;
-	
-	if (tierSlot === "right") return;
-	if (!host || declaredUnavailable) return;
-	let live = true;
-	probed = "unknown";
-	probeOtherSide(host, dest).then((r) => {
-		if (live) probed = r;
-	});
-	return () => {
-		live = false;
-	};
-});
-
-/** Either source saying no is enough: they answer different questions. */
-const unavailable = $derived(declaredUnavailable || probed === "missing");
-
 
 const MOUNTED = (import.meta.env as Record<string, string | undefined>)
 	.VITE_MOUNTED_CHILD;

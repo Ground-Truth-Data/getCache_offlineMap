@@ -44,32 +44,3 @@ export function otherTierOrigin(
 export function currentRepo(pathname: string, routes: TierRoute[]): string | undefined {
 	return matchRoute(pathname, routes)?.repo;
 }
-
-/** Whether the table maps this page across, as opposed to substituting home. */
-export function servesOtherSide(pathname: string, routes: TierRoute[]): boolean {
-	return matchRoute(pathname, routes)?.otherPath !== undefined;
-}
-
-export type OtherSideStatus = "serves" | "missing" | "unknown";
-
-// A rapper install serves one child, a subset of what the table lists. Dev only — the
-// sole caller is behind `import.meta.env.DEV`. Failure is "unknown", never "missing",
-// so the pill stays live rather than greying out a destination that may be fine.
-export async function probeOtherSide(
-	origin: string,
-	path: string,
-	fetchImpl: typeof fetch = fetch,
-): Promise<OtherSideStatus> {
-	try {
-		const res = await fetchImpl(origin + path, {
-			method: "HEAD",
-			credentials: "omit",
-			cache: "no-store",
-		});
-		if (res.status === 404) return "missing";
-		if (res.ok) return "serves";
-		return res.status >= 500 ? "serves" : "unknown";
-	} catch {
-		return "unknown";
-	}
-}
