@@ -13,9 +13,9 @@ type TapMap = {
 	off(type: string, listener: (e: any) => void): unknown;
 };
 
-// A long-press's eventual click fires as a real tap unless swallowed at DOM capture. Window listener, not module state, so HMR duplication can't fork the flag.
+// The click after a long-press or a hand drag fires as a real tap unless swallowed at DOM capture. Window listener, not module state, so HMR duplication can't fork the flag.
 // iOS yields no click after a long press, so the next pointerdown disarms it — never a timer, which a fast second tap beats and loses its click to.
-function swallowNextClick(): void {
+export function swallowNextClick(): void {
 	const kill = (e: MouseEvent) => {
 		e.stopPropagation();
 		e.preventDefault();
@@ -36,6 +36,12 @@ export const HOLD_MS = 900;
 // Before the loupe, a move past this is a pan. After it, a move past this restarts the rest.
 const SLOP_PX = 8;
 const STILL_PX = 4;
+
+/** ShovelCursor (rapper) draws the hand and the loupe from these; a window event because a child can't import rapper's state. */
+export const emit = (phase: "arm" | "drag" | "end" | "aim" | "drop", x = 0, y = 0, extra = {}) =>
+	window.dispatchEvent(new CustomEvent("gc-press", { detail: { phase, x, y, ms: HOLD_MS, ...extra } }));
+
+export const coordLabel = (lng: number, lat: number) => `${lat.toFixed(5)}°, ${lng.toFixed(5)}°`;
 
 export interface DoubleTapToPinOpts {
 	/** Plant the first ruler node at the tap so it's immediately grabbable. */
@@ -88,10 +94,6 @@ export function attachDoubleTapToPin(
 		};
 	};
 
-	// ShovelCursor (rapper) fills its hold ring from these; a window event because a child can't import rapper's state.
-	const emit = (phase: "arm" | "drag" | "end" | "aim" | "drop", x = 0, y = 0, extra = {}) =>
-		window.dispatchEvent(new CustomEvent("gc-press", { detail: { phase, x, y, ms: HOLD_MS, ...extra } }));
-
 	// The page is CSS-zoomed, so a viewport px is more than a canvas px.
 	const toCanvas = (p: { x: number; y: number }): [number, number] => {
 		const c = map.getCanvas();
@@ -108,11 +110,7 @@ export function attachDoubleTapToPin(
 			aim.since = performance.now();
 		}
 		const ll = map.unproject(toCanvas(at));
-		emit("aim", at.x, at.y, {
-			canvas: map.getCanvas(),
-			since: aim.since,
-			label: `${ll.lat.toFixed(5)}°, ${ll.lng.toFixed(5)}°`,
-		});
+		emit("aim", at.x, at.y, { canvas: map.getCanvas(), since: aim.since, label: coordLabel(ll.lng, ll.lat) });
 	};
 
 	const startAim = () => {

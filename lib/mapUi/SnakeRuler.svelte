@@ -10,6 +10,7 @@ import type { Map as MapboxMap } from "mapbox-gl";
 import area from "@turf/area";
 import turfLength from "@turf/length";
 import { markerCtor } from "../shared/rendererOf";
+import { coordLabel, emit as emitPress, swallowNextClick } from "../shared/doubleTapToPin";
 import type { Lnglat } from "$parent/siblings/getCache_OnlineMap/lib/draw/mapDraw";
 import { mayAddVertex } from "$parent/siblings/getCache_OnlineMap/lib/draw/drawLimit";
 import { POLYGON_FILL, POLYGON_OUTLINE, STROKE } from "$parent/siblings/getCache_OnlineMap/lib/draw/drawStyle";
@@ -370,6 +371,13 @@ function wireHandDrag(el: HTMLElement, which: "head" | "tail") {
         if (!pendingLL || !map) return;
         const [lng, lat] = pendingLL;
         hover(lng, lat);
+        // The loupe rides the end being dragged, so the drop lands where the eye says.
+        const node = cursor ?? [lng, lat];
+        const c = map.getCanvas();
+        const r = c.getBoundingClientRect();
+        const s = c.offsetWidth / r.width;
+        const p = map.project({ lng: node[0], lat: node[1] });
+        emitPress("aim", r.left + p.x / s, r.top + p.y / s, { canvas: c, since: performance.now(), label: coordLabel(node[0], node[1]) });
     };
     const onMove = (e: PointerEvent) => {
         if (!map) return;
@@ -383,6 +391,11 @@ function wireHandDrag(el: HTMLElement, which: "head" | "tail") {
         window.removeEventListener("pointercancel", onUp);
         if (raf) { cancelAnimationFrame(raf); raf = 0; }
         pendingLL = null;
+        // The drag's own click would land as a tap beside the shape and dismiss it.
+        if (moved) {
+            swallowNextClick();
+            emitPress("end", 0, 0, { locked: true });
+        }
         endGrab(moved && map ? toLngLat(e) : null);
         moved = false;
     };
@@ -391,6 +404,8 @@ function wireHandDrag(el: HTMLElement, which: "head" | "tail") {
         e.preventDefault();
         e.stopPropagation();
         moved = false;
+        // The cursor's hand closes into a fist around the ruler's hand, as it does for a pan; its pointerup opens it again.
+        emitPress("drag");
         const anchor = beginGrab(which);
         {
             const ns = map.project({ lng: anchor[0], lat: anchor[1] });
@@ -412,8 +427,6 @@ function beginGrab(which: "head" | "tail"): Lnglat {
     dragAnchor = anchor;
     map?.dragPan.disable();
     (which === "head" ? headCursor : tailCursor)?.getElement().classList.add("rt-grabbed");
-    // The cursor's hand closes into a fist around the ruler's hand, as it does for a pan; its pointerup opens it again.
-    window.dispatchEvent(new CustomEvent("gc-press", { detail: { phase: "drag", x: 0, y: 0, ms: 0 } }));
     return anchor;
 }
 function endGrab(ll: Lnglat | null) {
