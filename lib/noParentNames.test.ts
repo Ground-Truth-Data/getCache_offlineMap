@@ -79,7 +79,7 @@ describe("the child names no parent", () => {
 	});
 
 	it("the check bites — a parent-named path is detected", () => {
-		const ok = 'import x from "$parent/siblings/ReTreever_where/lib/foo";';
+		const ok = 'import x from "$parent/siblings/getCache_OfflineMap/lib/foo";';
 		expect([...ok.matchAll(PARENT_AS_LOCATION)].length).toBe(0);
 
 		const bad = [
