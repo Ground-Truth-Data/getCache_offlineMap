@@ -11,7 +11,7 @@ import area from "@turf/area";
 import turfLength from "@turf/length";
 import { markerCtor } from "../shared/rendererOf";
 import { coordLabel, emit as emitPress, swallowNextClick } from "../shared/doubleTapToPin";
-import { mayAddVertex } from "$gc/drawLimit";
+import { DRAW_LIMIT_NOTE, mayAddVertex } from "$gc/drawLimit";
 import { BORDER_RUST, POLYGON_FILL, POLYGON_OUTLINE, STROKE } from "$gc/drawDials";
 import { type Lnglat, type SnapKind, type SnapRings, snapLngLat, snapRings } from "$gc/snapToShapes";
 import { formatArea, formatLength } from "$gc/units.svelte";
@@ -1152,7 +1152,7 @@ $effect(() => {
         class:measure-gliding={!!cursor}
         class:measure-below={popAnchor.below || popAnchor.beside}
         style="left:{popAnchor.totalX}px; top:{popAnchor.totalY}px;"
-    >{totalText}</div>
+    >{totalText}{#if !mayAddVertex(verts.length)} · {DRAW_LIMIT_NOTE}{/if}</div>
 {/if}
 
 <!-- Unanchorable snake: the popover carrying ✕ cannot be placed, and the user still needs a way out. -->
