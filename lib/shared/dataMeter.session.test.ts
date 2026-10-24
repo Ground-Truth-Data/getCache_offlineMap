@@ -69,8 +69,9 @@ describe("a running meter", () => {
 		expect(meter.todayTotal()).toBe(0);
 		const stop = meter.startDataMeter();
 		expect(meter.startDataMeter()()).toBeUndefined();
-		await vi.waitFor(() => expect(meter.pastDays()).toHaveLength(3));
-		expect(meter.dailyAverage()).toEqual({ bytesPerDay: Math.round(401 / 3), days: 3 });
+		// The 90-day-old row is still on disk until the first flush prunes it; the read never counts it.
+		await vi.waitFor(() => expect(meter.pastDays()).toHaveLength(2));
+		expect(meter.dailyAverage()).toEqual({ bytesPerDay: 200, days: 2 });
 		expect(meter.pastDays()[0]!.day).toBe(day(-1));
 
 		feed([
@@ -97,7 +98,7 @@ describe("a running meter", () => {
 		expect(kept).not.toContain(day(-90));
 		const snap = meter.dataSnapshot();
 		expect(snap.today).toEqual({ day: day(), total: 1650, kinds: { "map tiles": 1000, fires: 400, satellite: 250 } });
-		expect(snap.daysRecorded).toBe(3);
+		expect(snap.daysRecorded).toBe(2);
 		stop();
 		meter.noteBytes("fires", 10);
 		expect(meter.todayTotal()).toBe(1650);

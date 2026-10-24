@@ -63,8 +63,10 @@ export function todayTotal(): number {
 }
 
 /** Past days, newest first; today is still moving and NOT included. */
+/** Filtered here too: the store prunes past KEEP_DAYS only on its first flush. */
 export function pastDays(): DayBytes[] {
-	return history.filter((d) => d.day !== todayKey).sort((a, b) => (a.day < b.day ? 1 : -1));
+	const cutoff = cutoffDay();
+	return history.filter((d) => d.day !== todayKey && d.day >= cutoff).sort((a, b) => (a.day < b.day ? 1 : -1));
 }
 
 /** Averaged over the days actually recorded, not KEEP_DAYS. */
