@@ -51,14 +51,14 @@ let {
         format?: MapShareFormat,
     ) => void;
     onSavePoint?: ((lng: number, lat: number, kind: "pin" | "cachePin") => void) | undefined;
-    /** `atSelf` = seed snapped onto the blue dot (proof-of-presence); `plusCode` = snapped grid dot, null if dropped free. */
+    /** `atSelf` = seed snapped onto the blue dot (proof-of-presence); `plusCode` = snapped grid dot, null if dropped free. Resolves true when it dropped, else the refusal's words ("" when it shows its own cue). */
     onPlot?:
         | ((
               lng: number,
               lat: number,
               atSelf: boolean,
               plusCode: string | null,
-          ) => void)
+          ) => Promise<true | string>)
         | undefined;
     onActivate?: (() => void) | undefined;
     /** Blue-dot coord, or null without a fix. */
@@ -101,6 +101,8 @@ let singlePoint = $derived(
 let copied = $state(false);
 let copyFailed = $state(false);
 let copiedTimer: ReturnType<typeof setTimeout> | null = null;
+// Why the last plot tap did not drop, under the popover's buttons until the snake goes.
+let plotNote = $state("");
 let seedAtSelf = $state(false);
 let gridSnapDot = $state<{ lng: number; lat: number; plusCode: string } | null>(
     null,
@@ -694,6 +696,7 @@ function start(kind: typeof armed, seed?: Lnglat) {
     render();
     if (seedAtSelf) onSnapSelf?.();
 }
+    plotNote = "";
 export function discard() {
     fadeGen++;
     active = false;
@@ -1081,7 +1084,7 @@ function savePoint(kind: "pin" | "cachePin") {
     onSavePoint?.(p[0], p[1], kind);
     discard();
 }
-function dropPlot() {
+async function dropPlot() {
     const p = verts[0];
     if (!p) return;
     // Snap-to-self beats snap-to-grid: a plot ON YOU ignores the grid.
@@ -1089,8 +1092,10 @@ function dropPlot() {
     const lng = snap ? snap.lng : p[0];
     const lat = snap ? snap.lat : p[1];
     setGridGlow?.(null);
-    onPlot?.(lng, lat, seedAtSelf, snap?.plusCode ?? null);
-    discard();
+    plotNote = "";
+    const took = await onPlot?.(lng, lat, seedAtSelf, snap?.plusCode ?? null);
+    if (typeof took === "string" && took) plotNote = took;
+    else discard();
 }
 
 $effect(() => {
@@ -1185,6 +1190,9 @@ $effect(() => {
             </button>
             <button class="measure-btn measure-save" onclick={() => savePoint("pin")} title={m.ofmap_ui_drop_pin_title()}>
                 <img class="measure-pin-ic" src={iconPath("pin")} alt="" />
+            {#if plotNote}
+                <p class="rt-note grid-plot-note measure-plot-note" role="alert">{plotNote}</p>
+            {/if}
                 {m.ofmap_ui_pin()}
             </button>
             <button class="measure-btn measure-save" onclick={() => savePoint("cachePin")} title={m.ofmap_ui_drop_cache_title()}>
@@ -1283,6 +1291,10 @@ $effect(() => {
         /* Labels wash out over a pale satellite frame without this. */
         text-shadow:
             0 1px 1px rgba(0, 0, 0, 0.95),
+    .measure-plot-note {
+        grid-column: 1 / -1;
+        margin: 0;
+    }
             0 0 3px rgba(0, 0, 0, 0.85),
             0 0 8px rgba(0, 0, 0, 0.5);
     }
