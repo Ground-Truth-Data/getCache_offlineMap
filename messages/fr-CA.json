@@ -113,8 +113,6 @@
 	"ofmap_ui_excess": "En trop",
 	"ofmap_ui_faults": "Défauts",
 	"ofmap_ui_comments": "Commentaires",
-	"ofmap_ui_discard": "Abandonner",
-	"ofmap_ui_discard_aria": "Abandonner la mesure",
 	"ofmap_ui_at_your_location": "À votre position",
 	"ofmap_ui_copy_gps_title": "Copier le GPS dans le presse-papiers",
 	"ofmap_ui_copied": "✓ Copié!",

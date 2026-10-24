@@ -4,7 +4,6 @@ import { iconPath } from "../shared/icons";
 import { m } from "$parent/src/lib/paraglide/messages";
 import handShovelCursor from "$gc/assets/hand_shovel_cursor.webp";
 import handShovelCursorRight from "$gc/assets/hand_shovel_cursor_right.webp";
-import xCloseWhite from "$gc/assets/x_close_white.webp";
 import type { Feature } from "geojson";
 import type { Map as MapboxMap } from "mapbox-gl";
 import area from "@turf/area";
@@ -101,9 +100,9 @@ let singlePoint = $derived(
 let copied = $state(false);
 let copyFailed = $state(false);
 let copiedTimer: ReturnType<typeof setTimeout> | null = null;
+let seedAtSelf = $state(false);
 // Why the last plot tap did not drop, under the popover's buttons until the snake goes.
 let plotNote = $state("");
-let seedAtSelf = $state(false);
 let gridSnapDot = $state<{ lng: number; lat: number; plusCode: string } | null>(
     null,
 );
@@ -696,8 +695,8 @@ function start(kind: typeof armed, seed?: Lnglat) {
     render();
     if (seedAtSelf) onSnapSelf?.();
 }
-    plotNote = "";
 export function discard() {
+    plotNote = "";
     fadeGen++;
     active = false;
     armed = null;
@@ -896,7 +895,7 @@ const CHROME_STACK_PX = 150; // popover offset + height
 const HAND_DROP_PX = 34; // hands hang below the end nodes
 const VP_MARGIN = 14;
 const OFFSCREEN_HIDE = 40;
-const POP_HALF_W = 85;
+const POP_HALF_W = 42;
 const POP_GRID_W = 160; // keep in sync with .measure-grid width
 const POP_EDGE_PX = 5;
 const TOTAL_HALF_W = 72;
@@ -1017,7 +1016,7 @@ let popAnchor = $derived.by(() => {
         levelY = Math.max(...rects.filter((r) => rectsOverlap(box, r)).map((r) => r.y + r.h)) + POP_H / 2;
     }
 
-    // The ✕ Discard lives in this box, so it must always be reachable; the `cornered` pan can silently refuse.
+    // Save lives in this box, so it must always be reachable; the `cornered` pan can silently refuse.
     const topOffset = beside ? -POP_H / 2 : below ? TOTAL_OFFSET_PX : -POP_OFFSET_PX - POP_H;
     // Beside, the pill hangs under the popover, so the pair must clear the bottom together.
     const clampedY = Math.min(
@@ -1160,15 +1159,10 @@ $effect(() => {
     >{totalText}{#if !mayAddVertex(verts.length)} · {DRAW_LIMIT_NOTE}{/if}</div>
 {/if}
 
-<!-- Unanchorable snake: the popover carrying ✕ cannot be placed, and the user still needs a way out. -->
-{#if active && !popAnchor}
-    <button style="--x-white:url({xCloseWhite})" class="measure-btn measure-x measure-x-loose" onclick={discard} title={m.ofmap_ui_discard()} aria-label={m.ofmap_ui_discard_aria()}>&#x2715;</button>
-{/if}
-
 {#if active && popAnchor && (canFinish || singlePoint) && !fading}
     <div class="measure-pop" class:measure-grid={singlePoint} class:measure-at-self={singlePoint && seedAtSelf} class:measure-gliding={!!cursor} class:measure-below={popAnchor.below} class:measure-beside={popAnchor.beside} style="left:{popAnchor.popX}px; top:{popAnchor.y}px;">
         {#if singlePoint}
-            <!-- 2×2: copy · plot / pin · cache. No ✕: a tap off the node dismisses. -->
+            <!-- 2×2: copy · plot / pin · cache. A tap off the node dismisses. -->
             {#if seedAtSelf}
                 <div class="measure-self-badge">
                     <span class="measure-self-dot"></span>{m.ofmap_ui_at_your_location()}
@@ -1190,15 +1184,15 @@ $effect(() => {
             </button>
             <button class="measure-btn measure-save" onclick={() => savePoint("pin")} title={m.ofmap_ui_drop_pin_title()}>
                 <img class="measure-pin-ic" src={iconPath("pin")} alt="" />
-            {#if plotNote}
-                <p class="rt-note grid-plot-note measure-plot-note" role="alert">{plotNote}</p>
-            {/if}
                 {m.ofmap_ui_pin()}
             </button>
             <button class="measure-btn measure-save" onclick={() => savePoint("cachePin")} title={m.ofmap_ui_drop_cache_title()}>
                 <img class="measure-pin-ic" src={iconPath("cache")} alt="" />
                 {m.ofmap_ui_cache()}
             </button>
+            {#if plotNote}
+                <p class="rt-note grid-plot-note measure-plot-note" role="alert">{plotNote}</p>
+            {/if}
         {:else}
             <div class="measure-col">
                 {#if !paletteMode}
@@ -1213,15 +1207,10 @@ $effect(() => {
                     </ports.ui.SharePicker>
                 {/if}
                 <button class="measure-btn measure-save" onclick={() => persist(false)} title={m.ofmap_ui_save()}>
-                    {#if isPolygon}
-                        <img class="measure-pin-ic" src={iconPath("poly")} alt="" />
-                    {:else}
-                        <ports.ui.Icon name="share-nodes" size={13} style="flex-shrink:0" />
-                    {/if}
+                    <img class="measure-pin-ic" src={iconPath(isPolygon ? "poly" : "line")} alt="" />
                     {m.ofmap_ui_save()}
                 </button>
             </div>
-            <button style="--x-white:url({xCloseWhite})" class="measure-btn measure-x" onclick={discard} title={m.ofmap_ui_discard()} aria-label={m.ofmap_ui_discard_aria()}>&#x2715;</button>
         {/if}
     </div>
 {/if}
@@ -1261,13 +1250,6 @@ $effect(() => {
     .measure-pop.measure-below { transform: translate(-50%, 52px); }
     .measure-pop.measure-beside { transform: translate(-50%, -50%); }
 
-    .measure-x-loose {
-        position: absolute;
-        top: 14px;
-        right: 14px;
-        z-index: 18;
-    }
-
     .measure-col {
         display: flex;
         flex-direction: column;
@@ -1291,10 +1273,6 @@ $effect(() => {
         /* Labels wash out over a pale satellite frame without this. */
         text-shadow:
             0 1px 1px rgba(0, 0, 0, 0.95),
-    .measure-plot-note {
-        grid-column: 1 / -1;
-        margin: 0;
-    }
             0 0 3px rgba(0, 0, 0, 0.85),
             0 0 8px rgba(0, 0, 0, 0.5);
     }
@@ -1312,6 +1290,10 @@ $effect(() => {
         display: grid;
         grid-template-columns: 1fr 1fr;
         width: 160px;
+    }
+    .measure-plot-note {
+        grid-column: 1 / -1;
+        margin: 0;
     }
     .measure-pop.measure-grid .measure-btn {
         padding: 0 0.2rem;
@@ -1351,28 +1333,12 @@ $effect(() => {
     .measure-plot.at-self:active { background: color-mix(in srgb, #1da1f2 16%, transparent); }
     .measure-col :global(.rt-sharepick) { display: flex; }
     .measure-col :global(.rt-sharepick .measure-btn) { flex: 1; }
-    /* Red is reserved for the trash glyph; ✕ is a dismiss, nothing lost. */
     .measure-share { color: var(--color-accent-terracotta); }
     .measure-share:active { background: color-mix(in srgb, var(--color-accent-terracotta) 16%, transparent); }
     .measure-save { color: var(--color-accent); }
     .measure-save:active { background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
     .measure-plot { color: #f2f2f2; }
     .measure-plot:active { background: color-mix(in srgb, #ffffff 14%, transparent); }
-    .measure-x {
-        align-self: stretch;
-        /* image arrives as a CSS var — `$gc/` inside a component <style> is NOT resolved by Vite */
-        font-size: 0;
-        padding: 0 0.6rem;
-        min-width: 2.2rem;
-        background: var(--x-white) center / 15px 15px no-repeat;
-        color: #f2f3ea;
-    }
-    .measure-x:active {
-        background:
-            var(--x-white) center / 15px 15px no-repeat,
-            rgba(255, 255, 255, 0.14);
-    }
-
     :global(.rt-measure-grab) {
         pointer-events: auto;
         cursor: grab;
