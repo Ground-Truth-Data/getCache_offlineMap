@@ -3,7 +3,7 @@
 // photo near the camera mounts under it with a zoom fade, a far one is
 // unmounted and its blob URL revoked, and a disposed mount does nothing.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mapDouble } from "../../testing/110.6-mapDouble";
+import { mapDouble } from "$gc/mapDouble";
 
 const images = vi.hoisted(() => new Map<string, { blob: Blob; bounds: [number, number, number, number] }>());
 vi.mock("./satelliteImage", async (orig) => ({

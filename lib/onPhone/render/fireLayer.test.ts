@@ -4,7 +4,7 @@
 // with the intensity ring and the trend glyph.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { overlayVisibility } from "../../mapState/overlayVisibility.svelte";
-import { mapDouble } from "../../testing/110.6-mapDouble";
+import { mapDouble } from "$gc/mapDouble";
 
 const { FakePopup, near, places, mask } = vi.hoisted(() => {
 	class FakePopup {

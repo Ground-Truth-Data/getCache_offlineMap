@@ -5,7 +5,7 @@
 import { distance } from "$gc/units.svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { overlayVisibility } from "../../lib/mapState/overlayVisibility.svelte";
-import { mapDouble } from "../../lib/testing/110.6-mapDouble";
+import { mapDouble } from "$gc/mapDouble";
 
 const { FakePopup, cache } = vi.hoisted(() => {
 	class FakePopup {
