@@ -11,7 +11,8 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 # surviving a sync resolves on one box and nowhere else.
 rm -rf src
 (cd ../worker-local-dev && find src -type d) | while read -r d; do mkdir -p "$d"; done
-for f in $(cd ../worker-local-dev && find src -type f) wrangler.toml package.json package-lock.json tsconfig.json .gitignore; do
+# Tests are not what the Worker runs; they are run once, in worker-local-dev.
+for f in $(cd ../worker-local-dev && find src -type f ! -name '*.test.*') wrangler.toml package.json package-lock.json tsconfig.json .gitignore; do
 	cp "../worker-local-dev/$f" "$f"
 done
 

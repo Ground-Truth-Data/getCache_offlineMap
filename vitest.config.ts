@@ -37,11 +37,10 @@ export default defineConfig({
 			$rt: r("./_rapper/rt"),
 		},
 	},
-	// _rapper/ and _siblings/ carry other repos' tests; the cloud worker folders are deploy records of
-	// worker-local-dev, behind it until deployed. vitest reads this file, not vite.config.ts.
+	// _rapper/ and _siblings/ carry other repos' tests. vitest reads this file, not vite.config.ts.
 	test: {
 		silent: "passed-only",
-		exclude: [...configDefaults.exclude, "_rapper/**", "_siblings/**", "workers/worker-cloud-*/**"],
+		exclude: [...configDefaults.exclude, "_rapper/**", "_siblings/**"],
 		setupFiles: ["vitest.setup.ts"],
 	},
 });
