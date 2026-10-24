@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { paraglideVitePlugin } from "@inlang/paraglide-js";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
+import { svelteTesting } from "@testing-library/svelte/vite";
 import { configDefaults, defineConfig } from "vitest/config";
 
 const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
@@ -12,6 +13,8 @@ export default defineConfig({
 	cacheDir: "node_modules/.vite-unit",
 	plugins: [
 		svelte(),
+		// Svelte's browser build, and @testing-library's own runes module compiled rather than externalised.
+		svelteTesting(),
 		// The words compile into the vendored rapper, which is the tier a bare clone runs in.
 		paraglideVitePlugin({
 			project: "./_rapper/project.inlang",
@@ -29,6 +32,9 @@ export default defineConfig({
 			"$parent/siblings": r(".."),
 			"$parent/src/lib/paraglide": r("./_rapper/src/lib/paraglide"),
 			$parent: r("."),
+			$rig: r("./_rapper/rig"),
+			$gc: r("./_rapper/gc"),
+			$rt: r("./_rapper/rt"),
 		},
 	},
 	// _rapper/ and _siblings/ carry other repos' tests; the cloud worker folders are deploy records of
