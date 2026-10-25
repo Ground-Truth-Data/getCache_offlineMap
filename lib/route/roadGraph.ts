@@ -143,11 +143,19 @@ export class RoadGraph {
 	readonly xs: number[] = [];
 	readonly ys: number[] = [];
 	readonly adj: Edge[][] = [];
-	private readonly ids = new Map<string, number>();
+	private readonly ids = new Map<number, number>();
 	readonly mpu: number;
+	/** Numeric node keys are offsets from here: a route box is ≤ 2^20 quarter-units wide, far inside 2^25. Text keys cost seconds in a city. */
+	private bx = 0;
+	private by = 0;
 
 	constructor(lines: readonly RoadLine[], lat: number) {
 		this.mpu = metresPerUnit(lat);
+		const first = lines[0]?.pts[0];
+		if (first) {
+			this.bx = Math.round(first[0] * 4) - 2 ** 25;
+			this.by = Math.round(first[1] * 4) - 2 ** 25;
+		}
 		for (const l of lines)
 			for (let i = 1; i < l.pts.length; i++) this.link(this.node(l.pts[i - 1]), this.node(l.pts[i]), l.cost);
 		this.joinDeadEnds();
@@ -155,7 +163,7 @@ export class RoadGraph {
 
 	private node([x, y]: readonly [number, number]): number {
 		// Quarter-unit grid (~0.3 m at z13) so both sides of a seam land on one node.
-		const key = `${Math.round(x * 4)},${Math.round(y * 4)}`;
+		const key = (Math.round(x * 4) - this.bx) * 2 ** 26 + (Math.round(y * 4) - this.by);
 		let id = this.ids.get(key);
 		if (id === undefined) {
 			id = this.xs.length;
@@ -213,9 +221,10 @@ export class RoadGraph {
 
 	private joinDeadEnds(): void {
 		const segs = this.segments();
-		const cell = SNAP_M / this.mpu;
-		const grid = new Map<string, number[]>();
-		const cellOf = (x: number, y: number) => `${Math.floor(x / cell)},${Math.floor(y / cell)}`;
+		// Each segment fills every cell of its box: at SNAP_M a long diagonal road filled tens of thousands. Any cell ≥ SNAP_M finds the same joins.
+		const cell = (8 * SNAP_M) / this.mpu;
+		const grid = new Map<number, number[]>();
+		const key = (cx: number, cy: number): number => cx * 2 ** 26 + cy;
 		segs.forEach(([a, b], i) => {
 			const x0 = Math.floor(Math.min(this.xs[a], this.xs[b]) / cell);
 			const x1 = Math.floor(Math.max(this.xs[a], this.xs[b]) / cell);
@@ -223,7 +232,7 @@ export class RoadGraph {
 			const y1 = Math.floor(Math.max(this.ys[a], this.ys[b]) / cell);
 			for (let x = x0; x <= x1; x++)
 				for (let y = y0; y <= y1; y++) {
-					const k = `${x},${y}`;
+					const k = key(x, y);
 					const list = grid.get(k);
 					if (list) list.push(i);
 					else grid.set(k, [i]);
@@ -233,21 +242,26 @@ export class RoadGraph {
 		const joins: Array<{ end: number; seg: number; t: number }> = [];
 		this.adj.forEach((es, end) => {
 			if (es.length !== 1) return;
-			const own = new Set([end, es[0].to]);
-			const [cx, cy] = cellOf(this.xs[end], this.ys[end]).split(",").map(Number);
+			const next = es[0].to;
+			const cx = Math.floor(this.xs[end] / cell);
+			const cy = Math.floor(this.ys[end] / cell);
 			let best: { seg: number; t: number; d: number } | null = null;
 			for (let i = -1; i <= 1; i++)
 				for (let j = -1; j <= 1; j++)
-					for (const s of grid.get(`${cx + i},${cy + j}`) ?? []) {
+					for (const s of grid.get(key(cx + i, cy + j)) ?? []) {
 						const [a, b] = segs[s];
-						if (own.has(a) || own.has(b)) continue;
+						if (a === end || a === next || b === end || b === next) continue;
 						const [d, t] = this.project(this.xs[end], this.ys[end], a, b);
 						if (d <= SNAP_M && (!best || d < best.d)) best = { seg: s, t, d };
 					}
 			if (best) joins.push({ end, seg: best.seg, t: best.t });
 		});
 		const bySeg = new Map<number, Array<{ end: number; t: number }>>();
-		for (const j of joins) bySeg.set(j.seg, [...(bySeg.get(j.seg) ?? []), j]);
+		for (const j of joins) {
+			const list = bySeg.get(j.seg);
+			if (list) list.push(j);
+			else bySeg.set(j.seg, [j]);
+		}
 		for (const [s, list] of bySeg) {
 			const [a0, b, cost] = segs[s];
 			let a = a0;

@@ -8,7 +8,8 @@ import { tileUrl } from "../worker/tilesHost";
 import { loadMapImage } from "../shared/rendererOf";
 import targetPinUrl from "./targetPin.webp";
 import { ARRIVED_M, courseDeg, metresAlong, OFF_ROUTE_FIXES, OFF_ROUTE_M, progressOn } from "./follow";
-import { decodeRoads, findRoute, type RoadLine, type RouteResult, type TileId } from "./roadGraph";
+import type { RouteResult } from "./roadGraph";
+import type { FromWorker, ToWorker } from "./routeWorker";
 
 export const ROUTE_LAYER_IDS = {
 	src: "rt-route-geo",
@@ -29,7 +30,8 @@ const SAVED_KEY = "gc.route.v1";
 const FOLLOW_ZOOM = 16;
 /** Pixels a press may wander and still be a tap — a tapped waypoint is removed. */
 const TAP_PX = 6;
-const DECODED_CAP = 3000;
+/** A fresh line draws itself in over this long — the answer reads as arriving, not as a jump. */
+const REVEAL_MS = 700;
 
 export interface RouteLayerOptions {
 	/** The pack's tile bytes for "z/x/y"; undefined when that tile is not on the phone. */
@@ -84,7 +86,6 @@ function distanceText(km: number): string {
 }
 
 export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): RouteHandle {
-	const decoded = new Map<string, RoadLine[]>();
 	let stops: LngLat[] = [];
 	let result: RouteResult | null = null;
 	let ghost: LngLat | null = null;
@@ -189,22 +190,52 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		if (on && at) fix(at[0], at[1]);
 	}
 
-	const read = async (t: TileId): Promise<RoadLine[] | null> => {
-		const key = `${t.z}/${t.x}/${t.y}`;
-		const hit = decoded.get(key);
-		if (hit) return hit;
-		const bytes = await opts.readTile(key);
-		if (bytes === undefined) return null;
-		const lines = decodeRoads(t, bytes);
-		if (decoded.size >= DECODED_CAP) decoded.delete(decoded.keys().next().value as string);
-		decoded.set(key, lines);
-		return lines;
+	const worker = new Worker(new URL("./routeWorker.ts", import.meta.url), { type: "module" });
+	const jobs = new Map<number, { ok: (r: RouteResult) => void; fail: (e: unknown) => void }>();
+	let jobN = 0;
+	const tell = (m: ToWorker): void => worker.postMessage(m);
+	worker.onmessage = (e: MessageEvent<FromWorker>): void => {
+		const m = e.data;
+		if (m.kind === "done") {
+			jobs.get(m.job)?.ok(m.result);
+			jobs.delete(m.job);
+			return;
+		}
+		void opts.readTile(m.key).then(
+			(bytes) => tell({ kind: "tile", ask: m.ask, bytes }),
+			() => tell({ kind: "tile", ask: m.ask, bytes: undefined }),
+		);
+	};
+	worker.onerror = (e): void => {
+		for (const j of jobs.values()) j.fail(e);
+		jobs.clear();
+	};
+	const route = (s: LngLat[]): Promise<RouteResult> =>
+		new Promise((ok, fail) => {
+			const job = ++jobN;
+			jobs.set(job, { ok, fail });
+			tell({ kind: "route", job, stops: s });
+		});
+
+	/** How many of the line's points are drawn — a fresh line grows into place. */
+	let drawn = Number.POSITIVE_INFINITY;
+	const reveal = (mine: number, n: number): void => {
+		const t0 = performance.now();
+		const step = (now: number): void => {
+			if (mine !== asked) return;
+			const k = Math.min(1, (now - t0) / REVEAL_MS);
+			drawn = k < 1 ? Math.max(2, Math.ceil(k * n)) : Number.POSITIVE_INFINITY;
+			paint();
+			if (k < 1) requestAnimationFrame(step);
+		};
+		requestAnimationFrame(step);
 	};
 
 	const features = (): Feature[] => {
 		const out: Feature[] = [];
 		if (result?.ok) {
-			out.push({ type: "Feature", properties: { role: "line" }, geometry: { type: "LineString", coordinates: result.line } });
+			const line = drawn < result.line.length ? result.line.slice(0, drawn) : result.line;
+			out.push({ type: "Feature", properties: { role: "line" }, geometry: { type: "LineString", coordinates: line } });
 			for (const seg of result.offRoad)
 				out.push({ type: "Feature", properties: { role: "off" }, geometry: { type: "LineString", coordinates: seg } });
 		}
@@ -278,15 +309,31 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		(map.getSource(ROUTE_LAYER_IDS.src) as maplibregl.GeoJSONSource | undefined)?.setData({ type: "FeatureCollection", features: features() });
 	};
 
+	const fitTo = (pts: readonly LngLat[]): void => {
+		const xs = pts.map((p) => p[0]);
+		const ys = pts.map((p) => p[1]);
+		map.fitBounds([[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)]], { padding: 60, duration: 600 });
+	};
+
 	const solve = async (fit: boolean, finding = m.ofmap_route_finding()): Promise<void> => {
 		const mine = ++asked;
 		solving = true;
 		say(finding);
-		const r = await findRoute(stops, read).finally(() => {
+		// Frame the trip now; the route arrives into a view that already holds it.
+		if (fit && !following) fitTo(stops);
+		let r: RouteResult;
+		try {
+			r = await route(stops);
+		} catch (e) {
+			console.error("[route] the router worker failed", e);
+			if (mine === asked) clear();
+			return;
+		} finally {
 			if (mine === asked) solving = false;
-		});
+		}
 		if (mine !== asked) return;
 		result = r;
+		drawn = fit && r.ok && !following ? 2 : Number.POSITIVE_INFINITY;
 		from = 0;
 		along = r.ok ? metresAlong(r.line) : [];
 		if (!r.ok && following) {
@@ -298,9 +345,8 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		if (r.ok) {
 			showRoute();
 			if (fit && !following) {
-				const xs = r.line.map((p) => p[0]);
-				const ys = r.line.map((p) => p[1]);
-				map.fitBounds([[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)]], { padding: 60, duration: 600 });
+				fitTo(r.line);
+				reveal(mine, r.line.length);
 			}
 			return;
 		}
@@ -514,6 +560,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		map.off("dragstart", onDragStart);
 		map.off("styledata", paint);
 		stayAwake(false);
+		worker.terminate();
 		map.off("mousemove", onMove);
 		map.off("touchmove", onMove);
 		map.off("mouseup", onUp);
