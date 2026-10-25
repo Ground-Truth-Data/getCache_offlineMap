@@ -2,6 +2,7 @@
 
 import type * as maplibregl from "maplibre-gl";
 import { m } from "$parent/src/lib/paraglide/messages";
+import { safeEaseTo, safeFitBounds } from "$gc/safeMap";
 import { longUnit } from "$gc/units.svelte";
 import { kmBetween, type LngLat } from "../shared/kmGeo";
 import { tileUrl } from "../worker/tilesHost";
@@ -313,7 +314,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	const fitTo = (pts: readonly LngLat[]): void => {
 		const xs = pts.map((p) => p[0]);
 		const ys = pts.map((p) => p[1]);
-		map.fitBounds([[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)]], { padding: 60, duration: 600 });
+		safeFitBounds(map, [Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)], { padding: 60, duration: 600 });
 	};
 
 	/** A dashed line from here to there, its length and compass point — and why, when a road route was tried. */
@@ -410,7 +411,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		if (p.offM > OFF_ROUTE_M) {
 			me = null;
 			paint();
-			map.easeTo({ center: at, bearing, zoom, duration: 900, essential: true });
+			safeEaseTo(map, { center: at, bearing, zoom, duration: 900, essential: true });
 			if (++offFixes >= OFF_ROUTE_FIXES) reroute(at);
 			return;
 		}
@@ -427,7 +428,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		me = p.snapped;
 		showRoute(p.toGoM);
 		paint();
-		map.easeTo({ center: p.snapped, bearing, zoom, duration: 900, essential: true });
+		safeEaseTo(map, { center: p.snapped, bearing, zoom, duration: 900, essential: true });
 	}
 
 	const to = (dest: Readonly<LngLat>): void => {
