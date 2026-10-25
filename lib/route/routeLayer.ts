@@ -5,6 +5,7 @@ import { m } from "$parent/src/lib/paraglide/messages";
 import { safeEaseTo, safeFitBounds } from "$gc/safeMap";
 import { longUnit } from "$gc/units.svelte";
 import { kmBetween, type LngLat } from "../shared/kmGeo";
+import { readStoredFix } from "../shared/liveFix";
 import { tileUrl } from "../worker/tilesHost";
 import { markerCtor } from "../shared/rendererOf";
 import targetPinUrl from "./targetPin.webp";
@@ -55,9 +56,12 @@ let live: RouteHandle | null = null;
 
 export const canRoute = (): boolean => live !== null;
 
-/** Never asks for a fix: null until the phone has one. Cheap enough for every list row. */
+const reachFrom = (from: LngLat | null, at: Readonly<LngLat>): Reach | null =>
+	from ? { km: kmBetween(from, at), road: fitsRoute([from, [at[0], at[1]]]) } : null;
+
+/** Never asks for a fix: null until the phone has one. Cheap enough for every list row; off the map, the stored fix. */
 export function fromYou(at: Readonly<LngLat>): Reach | null {
-	return live?.reach(at) ?? null;
+	return live ? live.reach(at) : reachFrom(readStoredFix(), at);
 }
 
 /** "3.2 km" in the user's long unit — the one spelling every distance on the map shares. */
@@ -67,8 +71,10 @@ export function distanceText(km: number): string {
 	return `${n < 10 ? n.toFixed(1) : Math.round(n)} ${u.name}`;
 }
 
+/** Off the map (the inbox), the trip is saved for the map's restore to solve when it opens. */
 export function directionsTo(at: Readonly<LngLat>): void {
-	live?.to(at);
+	if (live) live.to(at);
+	else localStorage.setItem(SAVED_KEY, JSON.stringify({ target: null, ahead: [[at[0], at[1]]] }));
 }
 
 /** A searched place: the classic map pin, there until tapped, cleared or replaced. Never on a pin or feature already drawn. */
@@ -584,10 +590,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	};
 	handle.to = to;
 	handle.fix = fix;
-	handle.reach = (at: Readonly<LngLat>): Reach | null => {
-		const from = lastFix ?? opts.origin();
-		return from ? { km: kmBetween(from, at), road: fitsRoute([from, [at[0], at[1]]]) } : null;
-	};
+	handle.reach = (at: Readonly<LngLat>): Reach | null => reachFrom(lastFix ?? opts.origin(), at);
 	handle.mark = (at: Readonly<LngLat>) => {
 		target = [at[0], at[1]];
 		paint();
