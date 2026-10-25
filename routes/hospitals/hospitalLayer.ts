@@ -3,7 +3,7 @@
 import type * as maplibregl from "maplibre-gl";
 import hospitalPinUrl from "./hospitalPin.webp";
 import { overlayVisibility } from "../../lib/mapState/overlayVisibility.svelte";
-import { isMaplibreMap, popupCtor } from "../../lib/shared/rendererOf";
+import { isMaplibreMap, loadMapImage, popupCtor } from "../../lib/shared/rendererOf";
 import { distKm } from "../fires/fireRelevance";
 import { canRoute, directionsTo } from "../../lib/route/routeLayer";
 import {
@@ -51,30 +51,6 @@ export interface HospitalLayerOptions {
 }
 
 type Popup = maplibregl.Popup;
-
-// MapLibre's `loadImage(url)` returns a promise; Mapbox's takes a callback and ignores a missing one.
-function loadImage(
-	map: maplibregl.Map,
-	url: string,
-): Promise<HTMLImageElement | ImageBitmap> {
-	if (isMaplibreMap(map)) return map.loadImage(url).then((r) => r.data);
-	return new Promise((resolve, reject) => {
-		(
-			map as unknown as {
-				loadImage: (
-					u: string,
-					cb: (
-						err: Error | null | undefined,
-						img?: HTMLImageElement | ImageBitmap | null,
-					) => void,
-				) => void;
-			}
-		).loadImage(url, (err, img) => {
-			if (err || !img) reject(err ?? new Error("no image"));
-			else resolve(img);
-		});
-	});
-}
 
 function addLayers(map: maplibregl.Map): void {
 	if (map.getSource(HOSPITAL_LAYER_IDS.src)) return;
@@ -236,7 +212,7 @@ export function attachHospitalLayer(
 
 	const ready: Promise<void> = map.hasImage(PIN)
 		? Promise.resolve()
-		: loadImage(map, hospitalPinUrl).then(
+		: loadMapImage(map, hospitalPinUrl).then(
 				(img) => {
 					if (isLive() && !map.hasImage(PIN)) map.addImage(PIN, img);
 				},
@@ -259,7 +235,7 @@ export function attachHospitalLayer(
 	// A style swap drops every custom layer.
 	const onStyle = (): void => {
 		if (!map.hasImage(PIN)) {
-			void loadImage(map, hospitalPinUrl)
+			void loadMapImage(map, hospitalPinUrl)
 				.then((img) => {
 					if (isLive() && !map.hasImage(PIN)) map.addImage(PIN, img);
 					repaint();

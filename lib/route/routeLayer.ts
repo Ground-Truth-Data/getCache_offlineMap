@@ -5,6 +5,8 @@ import { m } from "$parent/src/lib/paraglide/messages";
 import { longUnit } from "$gc/units.svelte";
 import type { LngLat } from "../shared/kmGeo";
 import { tileUrl } from "../worker/tilesHost";
+import { loadMapImage } from "../shared/rendererOf";
+import targetPinUrl from "./targetPin.webp";
 import { ARRIVED_M, courseDeg, metresAlong, OFF_ROUTE_FIXES, OFF_ROUTE_M, progressOn } from "./follow";
 import { decodeRoads, findRoute, type RoadLine, type RouteResult, type TileId } from "./roadGraph";
 
@@ -15,9 +17,15 @@ export const ROUTE_LAYER_IDS = {
 	off: "rt-route-off",
 	via: "rt-route-via",
 	me: "rt-route-me",
+	target: "rt-route-target",
 } as const;
 
 const BLUE = "#1e6cff";
+const TARGET_IMAGE = "rt-target-pin";
+/** Screen px from the art's bottom edge up to its rust disc's centre — the disc is the point. The art is drawn at pixelRatio 2. */
+const TARGET_DISC_PX = 6.35;
+/** Survives a closed app without the database: a search target is not a record, it's where you were headed. */
+const SAVED_KEY = "gc.route.v1";
 const FOLLOW_ZOOM = 16;
 /** Pixels a press may wander and still be a tap — a tapped waypoint is removed. */
 const TAP_PX = 6;
@@ -34,6 +42,7 @@ export interface RouteHandle {
 	(): void;
 	to: (at: Readonly<LngLat>) => void;
 	fix: (lng: number, lat: number) => void;
+	mark: (at: Readonly<LngLat>) => void;
 }
 
 // One map is live at a time; its route layer is the one every "Directions" button drives.
@@ -43,6 +52,11 @@ export const canRoute = (): boolean => live !== null;
 
 export function directionsTo(at: Readonly<LngLat>): void {
 	live?.to(at);
+}
+
+/** A searched place: the classic map pin, there until tapped, cleared or replaced. Never on a pin or feature already drawn. */
+export function searchTarget(at: Readonly<LngLat>): void {
+	live?.mark(at);
 }
 
 /** Every live GPS fix; drives follow mode and the off-route check. */
@@ -87,6 +101,8 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	let me: LngLat | null = null;
 	let offFixes = 0;
 	let wake: WakeLockSentinel | null = null;
+	let target: LngLat | null = null;
+	let pinImage: Promise<void> | null = null;
 
 	const pill = document.createElement("div");
 	pill.className = "rt-route-pill";
@@ -203,6 +219,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 			out.push({ type: "Feature", properties: { role: "off" }, geometry: { type: "LineString", coordinates: [a, ghost, b] } });
 		}
 		if (following && me) out.push({ type: "Feature", properties: { role: "me" }, geometry: { type: "Point", coordinates: me } });
+		if (target && map.hasImage(TARGET_IMAGE)) out.push({ type: "Feature", properties: { role: "target" }, geometry: { type: "Point", coordinates: target } });
 		return out;
 	};
 
@@ -216,10 +233,36 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		map.addLayer({ id: ROUTE_LAYER_IDS.off, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("off"), layout: round, paint: { "line-color": BLUE, "line-width": 3, "line-dasharray": [1, 2] } });
 		map.addLayer({ id: ROUTE_LAYER_IDS.via, type: "circle", source: ROUTE_LAYER_IDS.src, filter: role("via"), paint: { "circle-radius": 8, "circle-color": "#ffffff", "circle-stroke-color": BLUE, "circle-stroke-width": 4 } });
 		map.addLayer({ id: ROUTE_LAYER_IDS.me, type: "circle", source: ROUTE_LAYER_IDS.src, filter: role("me"), paint: { "circle-radius": 10, "circle-color": BLUE, "circle-stroke-color": "#ffffff", "circle-stroke-width": 3 } });
+		map.addLayer({
+			id: ROUTE_LAYER_IDS.target,
+			type: "symbol",
+			source: ROUTE_LAYER_IDS.src,
+			filter: role("target"),
+			layout: { "icon-image": TARGET_IMAGE, "icon-anchor": "bottom", "icon-offset": [0, TARGET_DISC_PX], "icon-allow-overlap": true, "icon-ignore-placement": true },
+		});
+	};
+
+	const remember = (): void => {
+		try {
+			if (!target && !stops.length) localStorage.removeItem(SAVED_KEY);
+			else localStorage.setItem(SAVED_KEY, JSON.stringify({ target, ahead: stops.slice(1) }));
+		} catch (e) {
+			console.warn("[route] could not keep the route for next launch", e);
+		}
 	};
 
 	const paint = (): void => {
+		remember();
 		if (!map.isStyleLoaded()) return;
+		if (target && !map.hasImage(TARGET_IMAGE))
+			pinImage ??= loadMapImage(map, targetPinUrl).then(
+				(img) => {
+					pinImage = null;
+					if (!map.hasImage(TARGET_IMAGE)) map.addImage(TARGET_IMAGE, img, { pixelRatio: 2 });
+					paint();
+				},
+				(e) => console.warn("[route] target pin art failed to load", e),
+			);
 		addLayers();
 		(map.getSource(ROUTE_LAYER_IDS.src) as maplibregl.GeoJSONSource | undefined)?.setData({ type: "FeatureCollection", features: features() });
 	};
@@ -269,6 +312,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		drag = null;
 		following = false;
 		me = null;
+		target = null;
 		stayAwake(false);
 		pill.hidden = true;
 		paint();
@@ -397,9 +441,14 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		showRoute();
 		paint();
 	};
+	const onTargetTap = (): void => {
+		target = null;
+		paint();
+	};
 	const pressLayers = [ROUTE_LAYER_IDS.casing, ROUTE_LAYER_IDS.via];
 	map.on("mousedown", pressLayers, onDown);
 	map.on("touchstart", pressLayers, onDown);
+	map.on("click", ROUTE_LAYER_IDS.target, onTargetTap);
 	map.on("dragstart", onDragStart);
 	// A style swap drops every custom layer.
 	map.on("styledata", paint);
@@ -409,6 +458,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		asked++;
 		map.off("mousedown", pressLayers, onDown);
 		map.off("touchstart", pressLayers, onDown);
+		map.off("click", ROUTE_LAYER_IDS.target, onTargetTap);
 		map.off("dragstart", onDragStart);
 		map.off("styledata", paint);
 		stayAwake(false);
@@ -420,6 +470,23 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	};
 	handle.to = to;
 	handle.fix = fix;
+	handle.mark = (at: Readonly<LngLat>) => {
+		target = [at[0], at[1]];
+		paint();
+	};
 	live = handle;
+
+	// The app was closed mid-trip: put the pin back and re-solve from wherever the phone is now.
+	try {
+		const saved = JSON.parse(localStorage.getItem(SAVED_KEY) ?? "null") as { target: LngLat | null; ahead: LngLat[] } | null;
+		target = saved?.target ?? null;
+		const start = opts.origin();
+		if (saved?.ahead.length && start) {
+			stops = [start, ...saved.ahead];
+			void solve(false);
+		} else paint();
+	} catch (e) {
+		console.warn("[route] saved route unreadable", e);
+	}
 	return handle;
 }

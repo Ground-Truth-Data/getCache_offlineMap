@@ -29,6 +29,21 @@ export function markerCtor(map: unknown): typeof mapboxgl.Marker {
 		: mapbox!.Marker;
 }
 
+// MapLibre's `loadImage(url)` returns a promise; Mapbox's takes a callback and ignores a missing one.
+export function loadMapImage(map: maplibregl.Map, url: string): Promise<HTMLImageElement | ImageBitmap> {
+	if (isMaplibreMap(map)) return map.loadImage(url).then((r) => r.data);
+	return new Promise((resolve, reject) => {
+		(
+			map as unknown as {
+				loadImage: (u: string, cb: (err: Error | null | undefined, img?: HTMLImageElement | ImageBitmap | null) => void) => void;
+			}
+		).loadImage(url, (err, img) => {
+			if (err || !img) reject(err ?? new Error("no image"));
+			else resolve(img);
+		});
+	});
+}
+
 /** The `Popup` class for this map — SYNCHRONOUS. Same rationale as markerCtor. */
 export function popupCtor(map: unknown): typeof mapboxgl.Popup {
 	return isMaplibreMap(map)
