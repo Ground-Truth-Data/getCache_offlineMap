@@ -64,30 +64,35 @@ const [num, unit] = $derived(reach ? distanceText(reach.km).split(" ") : []);
 		width: 24px;
 		height: 24px;
 	}
+	/* The owner pill's size and ink, not gold: a rarely used tool must not out-shout the row it sits in. */
 	.rt-go--pill {
 		width: auto;
-		height: 34px;
-		gap: 6px;
-		padding: 0 12px 0 6px;
+		height: 1.15rem;
+		gap: 3px;
+		padding: 0 0.45rem 0 0.2rem;
 		margin-left: auto;
+		border-color: #c3c8ac;
 		border-radius: 999px;
-		background: rgba(0, 0, 0, 0.35);
-		font-family: var(--rt-font-display);
+		background: #111;
+		color: #c3c8ac;
+		font-family: var(--rt-font-body);
+		font-size: 0.7rem;
+		font-weight: 700;
+		line-height: 1;
+	}
+	.rt-go--pill.rt-go--crow {
+		border-color: #c3c8ac;
 	}
 	.rt-go--pill img {
-		width: 22px;
-		height: 22px;
+		width: 14px;
+		height: 14px;
 	}
 	.rt-go b {
-		font-weight: 400;
-		font-size: 20px;
-		line-height: 1;
-		color: #fff;
+		font-weight: inherit;
 	}
 	.rt-go small {
-		font-size: 16px;
-		line-height: 1;
-		color: #b8bba6;
+		font-size: inherit;
+		opacity: 0.75;
 	}
 	.rt-go:active {
 		transform: scale(0.95);
