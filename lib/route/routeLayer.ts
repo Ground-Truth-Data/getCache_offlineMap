@@ -459,7 +459,21 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		const c = map.getContainer();
 		const box = document.createElement("div");
 		box.className = "rt-target-ripple";
-		box.append(document.createElement("i"), document.createElement("i"), document.createElement("i"));
+		// A different splash every drop: two dark rings at a random gap, a faint one riding right behind either.
+		const rand = (lo: number, hi: number): number => lo + Math.random() * (hi - lo);
+		const second = rand(0.35, 1.1);
+		const ring = (delay: number, px: number, faint = false): HTMLElement => {
+			const i = document.createElement("i");
+			i.style.animationDelay = `${delay}s`;
+			i.style.borderWidth = `${px}px`;
+			if (faint) i.className = "faint";
+			return i;
+		};
+		box.append(
+			ring(0, rand(3.5, 5.5)),
+			ring(second, rand(3, 5)),
+			ring((Math.random() < 0.5 ? 0 : second) + rand(0.08, 0.2), rand(1.5, 2.5), true),
+		);
 		const place = (): void => {
 			const p = map.project(at);
 			box.style.transform = `translate(${p.x}px, ${p.y}px)`;
@@ -470,7 +484,9 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		const reach = Math.hypot(Math.max(p.x, c.clientWidth - p.x), Math.max(p.y, c.clientHeight - p.y));
 		box.style.setProperty("--d", `${2 * reach + 40}px`);
 		map.on("move", place);
-		box.lastElementChild?.addEventListener("animationend", () => {
+		let running = box.children.length;
+		box.addEventListener("animationend", () => {
+			if (--running) return;
 			map.off("move", place);
 			box.remove();
 		});
