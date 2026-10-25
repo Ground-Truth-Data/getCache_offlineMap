@@ -5,7 +5,7 @@ import { m } from "$parent/src/lib/paraglide/messages";
 import { longUnit } from "$gc/units.svelte";
 import type { LngLat } from "../shared/kmGeo";
 import { tileUrl } from "../worker/tilesHost";
-import { loadMapImage } from "../shared/rendererOf";
+import { markerCtor } from "../shared/rendererOf";
 import targetPinUrl from "./targetPin.webp";
 import { ARRIVED_M, courseDeg, metresAlong, OFF_ROUTE_FIXES, OFF_ROUTE_M, progressOn } from "./follow";
 import type { RouteResult } from "./roadGraph";
@@ -18,12 +18,10 @@ export const ROUTE_LAYER_IDS = {
 	off: "rt-route-off",
 	via: "rt-route-via",
 	me: "rt-route-me",
-	target: "rt-route-target",
 } as const;
 
 const BLUE = "#1e6cff";
-const TARGET_IMAGE = "rt-target-pin";
-/** Screen px from the art's bottom edge up to its rust disc's centre — the disc is the point. The art is drawn at pixelRatio 3. */
+/** Screen px from the art's bottom edge up to its rust disc's centre — the disc is the point. */
 const TARGET_DISC_PX = 1.6;
 /** Survives a closed app without the database: a search target is not a record, it's where you were headed. */
 const SAVED_KEY = "gc.route.v1";
@@ -103,7 +101,12 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	let offFixes = 0;
 	let wake: WakeLockSentinel | null = null;
 	let target: LngLat | null = null;
-	let pinImage: Promise<void> | null = null;
+	// A DOM marker, not a map layer: block labels are DOM markers, and every DOM marker sits above the canvas.
+	const pinEl = document.createElement("img");
+	pinEl.src = targetPinUrl;
+	pinEl.alt = "";
+	pinEl.className = "rt-target-pin";
+	const pin = new (markerCtor(map) as unknown as typeof maplibregl.Marker)({ element: pinEl, anchor: "bottom", offset: [0, TARGET_DISC_PX] });
 
 	const pill = document.createElement("div");
 	pill.className = "rt-route-pill";
@@ -250,7 +253,6 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 			out.push({ type: "Feature", properties: { role: "off" }, geometry: { type: "LineString", coordinates: [a, ghost, b] } });
 		}
 		if (following && me) out.push({ type: "Feature", properties: { role: "me" }, geometry: { type: "Point", coordinates: me } });
-		if (target && map.hasImage(TARGET_IMAGE)) out.push({ type: "Feature", properties: { role: "target" }, geometry: { type: "Point", coordinates: target } });
 		return out;
 	};
 
@@ -264,13 +266,6 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		map.addLayer({ id: ROUTE_LAYER_IDS.off, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("off"), layout: round, paint: { "line-color": BLUE, "line-width": 3, "line-dasharray": [1, 2] } });
 		map.addLayer({ id: ROUTE_LAYER_IDS.via, type: "circle", source: ROUTE_LAYER_IDS.src, filter: role("via"), paint: { "circle-radius": 8, "circle-color": "#ffffff", "circle-stroke-color": BLUE, "circle-stroke-width": 4 } });
 		map.addLayer({ id: ROUTE_LAYER_IDS.me, type: "circle", source: ROUTE_LAYER_IDS.src, filter: role("me"), paint: { "circle-radius": 10, "circle-color": BLUE, "circle-stroke-color": "#ffffff", "circle-stroke-width": 3 } });
-		map.addLayer({
-			id: ROUTE_LAYER_IDS.target,
-			type: "symbol",
-			source: ROUTE_LAYER_IDS.src,
-			filter: role("target"),
-			layout: { "icon-image": TARGET_IMAGE, "icon-anchor": "bottom", "icon-offset": [0, TARGET_DISC_PX], "icon-allow-overlap": true, "icon-ignore-placement": true },
-		});
 	};
 
 	const remember = (): void => {
@@ -285,6 +280,8 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	let waiting = false;
 	const paint = (): void => {
 		remember();
+		if (target) pin.setLngLat(target).addTo(map);
+		else pin.remove();
 		// Mapbox reports busy all through a flight; a dropped paint here was a pin that landed seconds late.
 		if (!map.isStyleLoaded()) {
 			if (!waiting) {
@@ -296,15 +293,6 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 			}
 			return;
 		}
-		if (target && !map.hasImage(TARGET_IMAGE))
-			pinImage ??= loadMapImage(map, targetPinUrl).then(
-				(img) => {
-					pinImage = null;
-					if (!map.hasImage(TARGET_IMAGE)) map.addImage(TARGET_IMAGE, img, { pixelRatio: 3 });
-					paint();
-				},
-				(e) => console.warn("[route] target pin art failed to load", e),
-			);
 		addLayers();
 		(map.getSource(ROUTE_LAYER_IDS.src) as maplibregl.GeoJSONSource | undefined)?.setData({ type: "FeatureCollection", features: features() });
 	};
@@ -539,14 +527,14 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		c.appendChild(box);
 	};
 
-	const onTargetTap = (): void => {
+	pinEl.addEventListener("click", (e) => {
+		e.stopPropagation();
 		target = null;
 		paint();
-	};
+	});
 	const pressLayers = [ROUTE_LAYER_IDS.casing, ROUTE_LAYER_IDS.via];
 	map.on("mousedown", pressLayers, onDown);
 	map.on("touchstart", pressLayers, onDown);
-	map.on("click", ROUTE_LAYER_IDS.target, onTargetTap);
 	map.on("dragstart", onDragStart);
 	// A style swap drops every custom layer.
 	map.on("styledata", paint);
@@ -556,7 +544,6 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		asked++;
 		map.off("mousedown", pressLayers, onDown);
 		map.off("touchstart", pressLayers, onDown);
-		map.off("click", ROUTE_LAYER_IDS.target, onTargetTap);
 		map.off("dragstart", onDragStart);
 		map.off("styledata", paint);
 		stayAwake(false);
@@ -566,6 +553,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		map.off("mouseup", onUp);
 		map.off("touchend", onUp);
 		pill.remove();
+		pin.remove();
 	};
 	handle.to = to;
 	handle.fix = fix;
