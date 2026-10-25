@@ -40,7 +40,9 @@ import { overlayVisibility } from "../../lib/mapState/overlayVisibility.svelte";
 import { dropPhoto, onPhoto, onPhotoIssue, type PhotoInfo, photoInfo, photoIssue, setPhotoNarration } from "./satellite";
 import { FOLLOW_MARGIN_KM, marginKm, moved } from "./follow";
 import { PHOTO_TILES, PLANET_TILES, installProtocol } from "./protocol";
-import { type Kept, type Region, checkRegions, keepStorage, listRegions, patchRegion, stats, touchRegions, wipe } from "./store";
+import { type Kept, type Region, checkRegions, getTile, keepStorage, listRegions, patchRegion, stats, touchRegions, wipe } from "./store";
+import { type RouteHandle, attachRouteLayer } from "../../lib/route/routeLayer";
+import { readStoredFix } from "../../lib/shared/liveFix";
 import { validLatLng } from "../../lib/shared/cameraFromUrl";
 import { PHOTO_INSERT_BEFORE, PLANET, REGIONS, buildStyle, legend } from "./style";
 import { ANCHOR_Z, boxesIntersect, parseKey, rangeBox, tileBox, tileKey } from "./tiles";
@@ -50,6 +52,7 @@ let host = $state<HTMLDivElement>();
 let map: maplibregl.Map | null = null;
 let fireHandle: FireLayerHandle | null = null;
 let hospitalHandle: HospitalLayerHandle | null = null;
+let routeHandle: RouteHandle | null = null;
 let photos: SatelliteMount | null = null;
 let regions = $state<Region[]>([]);
 let photoMeta = $state<Record<string, PhotoInfo>>({});
@@ -494,6 +497,7 @@ onMount(() => {
 		// The drawer speaks Mapbox GL types; this map is MapLibre.
 		mapForTools = m as unknown as MapboxMap;
 		fireHandle = attachFireLayer(m, { origins: () => origins(m) });
+		routeHandle = attachRouteLayer(m, { readTile: getTile, origin: readStoredFix });
 		hospitalHandle = attachHospitalLayer(m, {
 			origins: () => origins(m),
 			onShowMyLocation: () => void drawControlsRef?.requestMyLocation(),
@@ -521,7 +525,7 @@ onMount(() => {
 		canSeed: () => drawControlsRef?.canSeed() ?? true,
 	});
 	const unfollowBlobs = followBlobs();
-	if (dev) (window as unknown as { __v10?: unknown }).__v10 = { map: m, addBlob: queueBlob, refresh, fix: onUserFix };
+	if (dev) (window as unknown as { __v10?: unknown }).__v10 = { map: m, addBlob: queueBlob, refresh, fix: onUserFix, route: (at: [number, number]) => routeHandle?.to(at) };
 
 	setBlobNarration(debug);
 	setPhotoNarration(debug);
@@ -535,6 +539,8 @@ onMount(() => {
 		fireHandle = null;
 		hospitalHandle?.();
 		hospitalHandle = null;
+		routeHandle?.();
+		routeHandle = null;
 		unfollowBlobs();
 		detachTap();
 		detachCamera();

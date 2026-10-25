@@ -5,6 +5,7 @@ import hospitalPinUrl from "./hospitalPin.webp";
 import { overlayVisibility } from "../../lib/mapState/overlayVisibility.svelte";
 import { isMaplibreMap, popupCtor } from "../../lib/shared/rendererOf";
 import { distKm } from "../fires/fireRelevance";
+import { canRoute, directionsTo } from "../../lib/route/routeLayer";
 import {
 	hospitalCollection,
 	type LngLat,
@@ -124,6 +125,7 @@ export function hospitalCardHtml(opts: {
 	readonly phone?: string | null;
 	readonly fromYouKm?: number | null;
 	readonly locateButton: boolean;
+	readonly directionsButton?: boolean;
 }): string {
 	// The number copies rather than dials: in the field it goes into a text or the sat phone.
 	const phoneRow = opts.phone
@@ -137,12 +139,15 @@ export function hospitalCardHtml(opts: {
 	const locate = opts.locateButton
 		? `<button type="button" class="rt-hospital-loc">${m.ofmap_shared_hospital_my_location()}</button>`
 		: "";
+	const dir = opts.directionsButton
+		? `<button type="button" class="rt-hospital-loc rt-directions">${m.ofmap_route_directions()}</button>`
+		: "";
 	return (
 		`<div class="rt-hospital-card">` +
 		`<div class="rt-hospital-head"><img class="rt-hospital-pinimg" src="${hospitalPinUrl}" alt="" aria-hidden="true" decoding="async"/><h4>${esc(opts.name)}</h4></div>` +
 		phoneRow +
 		fromRow +
-		(locate ? `<div class="rt-hospital-actions">${locate}</div>` : "") +
+		(locate || dir ? `<div class="rt-hospital-actions">${locate}${dir}</div>` : "") +
 		`</div>`
 	);
 }
@@ -287,11 +292,16 @@ export function attachHospitalLayer(
 					phone: typeof props?.phone === "string" ? props.phone : null,
 					fromYouKm: nearestKm(at, opts.origins()),
 					locateButton: opts.onShowMyLocation !== undefined,
+					directionsButton: canRoute(),
 				}),
 			)
 			.addTo(map);
 		wireCloseButton(popup);
 		const el = popup.getElement();
+		el?.querySelector<HTMLButtonElement>(".rt-directions")?.addEventListener("click", () => {
+			popup?.remove();
+			directionsTo(at);
+		});
 		el?.querySelector<HTMLButtonElement>(".rt-hospital-loc")?.addEventListener(
 			"click",
 			() => {
