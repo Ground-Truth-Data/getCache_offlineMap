@@ -5,6 +5,7 @@ import { m } from "$parent/src/lib/paraglide/messages";
 import { longUnit } from "$gc/units.svelte";
 import type { LngLat } from "../shared/kmGeo";
 import { tileUrl } from "../worker/tilesHost";
+import { ARRIVED_M, courseDeg, metresAlong, OFF_ROUTE_FIXES, OFF_ROUTE_M, progressOn } from "./follow";
 import { decodeRoads, findRoute, type RoadLine, type RouteResult, type TileId } from "./roadGraph";
 
 export const ROUTE_LAYER_IDS = {
@@ -13,9 +14,11 @@ export const ROUTE_LAYER_IDS = {
 	line: "rt-route-line",
 	off: "rt-route-off",
 	via: "rt-route-via",
+	me: "rt-route-me",
 } as const;
 
 const BLUE = "#1e6cff";
+const FOLLOW_ZOOM = 16;
 /** Pixels a press may wander and still be a tap — a tapped waypoint is removed. */
 const TAP_PX = 6;
 const DECODED_CAP = 3000;
@@ -30,6 +33,7 @@ export interface RouteLayerOptions {
 export interface RouteHandle {
 	(): void;
 	to: (at: Readonly<LngLat>) => void;
+	fix: (lng: number, lat: number) => void;
 }
 
 // One map is live at a time; its route layer is the one every "Directions" button drives.
@@ -39,6 +43,11 @@ export const canRoute = (): boolean => live !== null;
 
 export function directionsTo(at: Readonly<LngLat>): void {
 	live?.to(at);
+}
+
+/** Every live GPS fix; drives follow mode and the off-route check. */
+export function routeFix(lng: number, lat: number): void {
+	live?.fix(lng, lat);
 }
 
 type Drag = { kind: "new"; leg: number } | { kind: "move"; stop: number };
@@ -68,23 +77,51 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	let drag: Drag | null = null;
 	let downPx: { x: number; y: number } | null = null;
 	let asked = 0;
+	let solving = false;
+	let following = false;
+	let along: number[] = [];
+	/** Segment the last on-route fix sat on — progress only looks forward from here. */
+	let from = 0;
+	let heading: number | null = null;
+	let lastFix: LngLat | null = null;
+	let me: LngLat | null = null;
+	let offFixes = 0;
+	let wake: WakeLockSentinel | null = null;
 
 	const pill = document.createElement("div");
 	pill.className = "rt-route-pill";
 	pill.hidden = true;
 	map.getContainer().appendChild(pill);
+	let pillText: Text | null = null;
+	let pillAction: string | null = null;
 
-	const say = (text: string, hint = false): void => {
+	const say = (text: string, hint = false, action?: { label: string; run: () => void }): void => {
+		// Same button as last time: swap the words only, so a fix landing mid-tap never rebuilds the button under the thumb.
+		if (pillText && !pill.hidden && (action?.label ?? null) === pillAction && !hint) {
+			pillText.data = text;
+			return;
+		}
 		pill.hidden = false;
 		pill.innerHTML = "";
+		pillAction = action?.label ?? null;
 		const body = document.createElement("div");
 		body.className = "rt-route-pill-text";
-		body.textContent = text;
+		pillText = document.createTextNode(text);
+		body.appendChild(pillText);
 		if (hint) {
 			const h = document.createElement("div");
 			h.className = "rt-route-pill-hint";
 			h.textContent = m.ofmap_route_drag_hint();
 			body.appendChild(h);
+		}
+		pill.append(body);
+		if (action) {
+			const b = document.createElement("button");
+			b.type = "button";
+			b.className = "rt-route-pill-go rt-directions";
+			b.textContent = action.label;
+			b.addEventListener("click", action.run);
+			pill.append(b);
 		}
 		const x = document.createElement("button");
 		x.type = "button";
@@ -92,8 +129,49 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		x.setAttribute("aria-label", m.ofmap_route_clear());
 		x.textContent = "✕";
 		x.addEventListener("click", clear);
-		pill.append(body, x);
+		pill.append(x);
 	};
+
+	const stayAwake = (on: boolean): void => {
+		if (!on) {
+			void wake?.release();
+			wake = null;
+			return;
+		}
+		if (wake || !("wakeLock" in navigator)) return;
+		navigator.wakeLock.request("screen").then(
+			(w) => {
+				if (following) wake = w;
+				else void w.release();
+			},
+			(e) => console.warn("[route] screen may sleep while following", e),
+		);
+	};
+
+	const showRoute = (toGoM?: number): void => {
+		if (!result?.ok) return;
+		if (following)
+			say(m.ofmap_route_to_go({ distance: distanceText((toGoM ?? along[along.length - 1]) / 1000) }), false, {
+				label: m.ofmap_route_stop_follow(),
+				run: () => setFollow(false),
+			});
+		else
+			say(m.ofmap_route_by_road({ distance: distanceText(result.km) }), true, {
+				label: m.ofmap_route_follow(),
+				run: () => setFollow(true),
+			});
+	};
+
+	function setFollow(on: boolean): void {
+		following = on;
+		offFixes = 0;
+		stayAwake(on);
+		if (!on) me = null;
+		showRoute();
+		paint();
+		const at = lastFix ?? opts.origin();
+		if (on && at) fix(at[0], at[1]);
+	}
 
 	const read = async (t: TileId): Promise<RoadLine[] | null> => {
 		const key = `${t.z}/${t.x}/${t.y}`;
@@ -124,6 +202,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 			out.push({ type: "Feature", properties: { role: "via" }, geometry: { type: "Point", coordinates: ghost } });
 			out.push({ type: "Feature", properties: { role: "off" }, geometry: { type: "LineString", coordinates: [a, ghost, b] } });
 		}
+		if (following && me) out.push({ type: "Feature", properties: { role: "me" }, geometry: { type: "Point", coordinates: me } });
 		return out;
 	};
 
@@ -136,6 +215,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		map.addLayer({ id: ROUTE_LAYER_IDS.line, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("line"), layout: round, paint: { "line-color": BLUE, "line-width": 5 } });
 		map.addLayer({ id: ROUTE_LAYER_IDS.off, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("off"), layout: round, paint: { "line-color": BLUE, "line-width": 3, "line-dasharray": [1, 2] } });
 		map.addLayer({ id: ROUTE_LAYER_IDS.via, type: "circle", source: ROUTE_LAYER_IDS.src, filter: role("via"), paint: { "circle-radius": 8, "circle-color": "#ffffff", "circle-stroke-color": BLUE, "circle-stroke-width": 4 } });
+		map.addLayer({ id: ROUTE_LAYER_IDS.me, type: "circle", source: ROUTE_LAYER_IDS.src, filter: role("me"), paint: { "circle-radius": 10, "circle-color": BLUE, "circle-stroke-color": "#ffffff", "circle-stroke-width": 3 } });
 	};
 
 	const paint = (): void => {
@@ -144,16 +224,26 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		(map.getSource(ROUTE_LAYER_IDS.src) as maplibregl.GeoJSONSource | undefined)?.setData({ type: "FeatureCollection", features: features() });
 	};
 
-	const solve = async (fit: boolean): Promise<void> => {
+	const solve = async (fit: boolean, finding = m.ofmap_route_finding()): Promise<void> => {
 		const mine = ++asked;
-		say(m.ofmap_route_finding());
-		const r = await findRoute(stops, read);
+		solving = true;
+		say(finding);
+		const r = await findRoute(stops, read).finally(() => {
+			if (mine === asked) solving = false;
+		});
 		if (mine !== asked) return;
 		result = r;
+		from = 0;
+		along = r.ok ? metresAlong(r.line) : [];
+		if (!r.ok && following) {
+			following = false;
+			me = null;
+			stayAwake(false);
+		}
 		paint();
 		if (r.ok) {
-			say(m.ofmap_route_by_road({ distance: distanceText(r.km) }), true);
-			if (fit) {
+			showRoute();
+			if (fit && !following) {
 				const xs = r.line.map((p) => p[0]);
 				const ys = r.line.map((p) => p[1]);
 				map.fitBounds([[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)]], { padding: 60, duration: 600 });
@@ -172,12 +262,57 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 
 	function clear(): void {
 		asked++;
+		solving = false;
 		stops = [];
 		result = null;
 		ghost = null;
 		drag = null;
+		following = false;
+		me = null;
+		stayAwake(false);
 		pill.hidden = true;
 		paint();
+	}
+
+	/** Re-route offline from where the truck is, through the waypoints still ahead. */
+	const reroute = (at: LngLat): void => {
+		offFixes = 0;
+		const leg = result?.ok ? Math.max(0, result.legEnds.findIndex((end) => end > from)) : 0;
+		stops = [at, ...stops.slice(leg + 1)];
+		void solve(false, m.ofmap_route_off());
+	};
+
+	function fix(lng: number, lat: number): void {
+		const at: LngLat = [lng, lat];
+		const turned = lastFix ? courseDeg(lastFix, at) : null;
+		// A small move keeps the old anchor, so a slow crawl still adds up to a heading.
+		if (turned !== null) heading = turned;
+		if (turned !== null || !lastFix) lastFix = at;
+		if (!following || !result?.ok || solving) return;
+		const bearing = heading ?? map.getBearing();
+		const zoom = Math.max(map.getZoom(), FOLLOW_ZOOM);
+		const p = progressOn(result.line, along, at, from);
+		if (p.offM > OFF_ROUTE_M) {
+			me = null;
+			paint();
+			map.easeTo({ center: at, bearing, zoom, duration: 900, essential: true });
+			if (++offFixes >= OFF_ROUTE_FIXES) reroute(at);
+			return;
+		}
+		offFixes = 0;
+		from = p.index;
+		if (p.toGoM < ARRIVED_M) {
+			following = false;
+			me = null;
+			stayAwake(false);
+			paint();
+			say(m.ofmap_route_arrived());
+			return;
+		}
+		me = p.snapped;
+		showRoute(p.toGoM);
+		paint();
+		map.easeTo({ center: p.snapped, bearing, zoom, duration: 900, essential: true });
 	}
 
 	const to = (dest: Readonly<LngLat>): void => {
@@ -253,9 +388,19 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		map.on("mouseup", onUp);
 		map.on("touchend", onUp);
 	};
+	// A hand on the map means "let me look": follow pauses, the Follow button brings it back.
+	const onDragStart = (e: { originalEvent?: Event }): void => {
+		if (!following || !e.originalEvent) return;
+		following = false;
+		me = null;
+		stayAwake(false);
+		showRoute();
+		paint();
+	};
 	const pressLayers = [ROUTE_LAYER_IDS.casing, ROUTE_LAYER_IDS.via];
 	map.on("mousedown", pressLayers, onDown);
 	map.on("touchstart", pressLayers, onDown);
+	map.on("dragstart", onDragStart);
 	// A style swap drops every custom layer.
 	map.on("styledata", paint);
 
@@ -264,7 +409,9 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		asked++;
 		map.off("mousedown", pressLayers, onDown);
 		map.off("touchstart", pressLayers, onDown);
+		map.off("dragstart", onDragStart);
 		map.off("styledata", paint);
+		stayAwake(false);
 		map.off("mousemove", onMove);
 		map.off("touchmove", onMove);
 		map.off("mouseup", onUp);
@@ -272,6 +419,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		pill.remove();
 	};
 	handle.to = to;
+	handle.fix = fix;
 	live = handle;
 	return handle;
 }
