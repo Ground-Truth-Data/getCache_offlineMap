@@ -3,8 +3,8 @@
 import type { Feature } from "geojson";
 import MapPopoverShell from "../panels/MapPopoverShell.svelte";
 import type { BlockPick, MapHostPorts, MapShareFormat } from "../shared/mapHostPorts";
-import { canRoute, directionsTo } from "../route/routeLayer";
-import { m } from "$parent/src/lib/paraglide/messages";
+import { canRoute, directionsTo, fromYou } from "../route/routeLayer";
+import RouteGo from "../route/RouteGo.svelte";
 
 let {
     ports,
@@ -56,13 +56,13 @@ const pinAt = $derived(feature.geometry?.type === "Point" ? (feature.geometry.co
         {onBlock}
         {cornerEditing}
         {onEditCorners}
+        trail={pinAt && canRoute() ? routePill : undefined}
     />
-    {#if pinAt && canRoute()}
-        <button type="button" class="rt-feature-directions rt-directions" onclick={() => {
-            if (pinAt) directionsTo(pinAt);
-            onDirections?.();
-        }}>
-            {m.ofmap_route_directions()}
-        </button>
-    {/if}
 </MapPopoverShell>
+
+{#snippet routePill()}
+    {#if pinAt}
+        {@const at = pinAt}
+        <RouteGo reach={fromYou(at)} km onGo={() => { directionsTo(at); onDirections?.(); }} />
+    {/if}
+{/snippet}

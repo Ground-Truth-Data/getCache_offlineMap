@@ -218,6 +218,13 @@ export function parseEmojiPin(raw: unknown): string | null {
     return char.length > 0 ? char : null;
 }
 
+/** The art a stored pinIcon draws as — an emoji pin shows its blank plate. */
+export function pinArt(raw: unknown): string {
+    if (parseEmojiPin(raw)) return EMOJI_PIN_PLATE;
+    if (raw === "tiles") return iconPath("tiles");
+    return pinAssetPath(parsePinKey(raw) ?? DEFAULT_PIN_KEY);
+}
+
 /** The only place this key is assembled; callers never concatenate the prefix. */
 export function emojiPinKey(char: string): string {
     return `${EMOJI_PIN_PREFIX}${char}`;

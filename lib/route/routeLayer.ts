@@ -3,12 +3,12 @@
 import type * as maplibregl from "maplibre-gl";
 import { m } from "$parent/src/lib/paraglide/messages";
 import { longUnit } from "$gc/units.svelte";
-import type { LngLat } from "../shared/kmGeo";
+import { kmBetween, type LngLat } from "../shared/kmGeo";
 import { tileUrl } from "../worker/tilesHost";
 import { markerCtor } from "../shared/rendererOf";
 import targetPinUrl from "./targetPin.webp";
 import { ARRIVED_M, courseDeg, metresAlong, OFF_ROUTE_FIXES, OFF_ROUTE_M, progressOn } from "./follow";
-import type { RouteResult } from "./roadGraph";
+import { fitsRoute, type RouteResult } from "./roadGraph";
 import type { FromWorker, ToWorker } from "./routeWorker";
 
 export const ROUTE_LAYER_IDS = {
@@ -43,12 +43,28 @@ export interface RouteHandle {
 	to: (at: Readonly<LngLat>) => void;
 	fix: (lng: number, lat: number) => void;
 	mark: (at: Readonly<LngLat>) => void;
+	reach: (at: Readonly<LngLat>) => Reach | null;
 }
+
+/** How far a place is from the last GPS fix, and whether a road route can be tried or it's a straight line. */
+export type Reach = { readonly km: number; readonly road: boolean };
 
 // One map is live at a time; its route layer is the one every "Directions" button drives.
 let live: RouteHandle | null = null;
 
 export const canRoute = (): boolean => live !== null;
+
+/** Never asks for a fix: null until the phone has one. Cheap enough for every list row. */
+export function fromYou(at: Readonly<LngLat>): Reach | null {
+	return live?.reach(at) ?? null;
+}
+
+/** "3.2 km" in the user's long unit — the one spelling every distance on the map shares. */
+export function distanceText(km: number): string {
+	const u = longUnit();
+	const n = (km * 1000) / u.metres;
+	return `${n < 10 ? n.toFixed(1) : Math.round(n)} ${u.name}`;
+}
 
 export function directionsTo(at: Readonly<LngLat>): void {
 	live?.to(at);
@@ -77,12 +93,6 @@ export async function networkTile(key: string): Promise<ArrayBuffer | undefined>
 	return r.status === 204 ? new ArrayBuffer(0) : r.arrayBuffer();
 }
 
-function distanceText(km: number): string {
-	const u = longUnit();
-	const n = (km * 1000) / u.metres;
-	return `${n < 10 ? n.toFixed(1) : Math.round(n)} ${u.name}`;
-}
-
 export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): RouteHandle {
 	let stops: LngLat[] = [];
 	let result: RouteResult | null = null;
@@ -101,6 +111,8 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	let offFixes = 0;
 	let wake: WakeLockSentinel | null = null;
 	let target: LngLat | null = null;
+	/** Past the road graph's reach: the honest answer is a straight line and a bearing. */
+	let crow: [LngLat, LngLat] | null = null;
 	// A DOM marker, not a map layer: block labels are DOM markers, and every DOM marker sits above the canvas.
 	const pinEl = document.createElement("img");
 	pinEl.src = targetPinUrl;
@@ -115,7 +127,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	let pillText: Text | null = null;
 	let pillAction: string | null = null;
 
-	const say = (text: string, hint = false, action?: { label: string; run: () => void }): void => {
+	const say = (text: string, hint?: string, action?: { label: string; run: () => void }): void => {
 		// Same button as last time: swap the words only, so a fix landing mid-tap never rebuilds the button under the thumb.
 		if (pillText && !pill.hidden && (action?.label ?? null) === pillAction && !hint) {
 			pillText.data = text;
@@ -131,7 +143,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		if (hint) {
 			const h = document.createElement("div");
 			h.className = "rt-route-pill-hint";
-			h.textContent = m.ofmap_route_drag_hint();
+			h.textContent = hint;
 			body.appendChild(h);
 		}
 		pill.append(body);
@@ -171,12 +183,12 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	const showRoute = (toGoM?: number): void => {
 		if (!result?.ok) return;
 		if (following)
-			say(m.ofmap_route_to_go({ distance: distanceText((toGoM ?? along[along.length - 1]) / 1000) }), false, {
+			say(m.ofmap_route_to_go({ distance: distanceText((toGoM ?? along[along.length - 1]) / 1000) }), undefined, {
 				label: m.ofmap_route_stop_follow(),
 				run: () => setFollow(false),
 			});
 		else
-			say(m.ofmap_route_by_road({ distance: distanceText(result.km) }), true, {
+			say(m.ofmap_route_by_road({ distance: distanceText(result.km) }), m.ofmap_route_drag_hint(), {
 				label: m.ofmap_route_follow(),
 				run: () => setFollow(true),
 			});
@@ -253,6 +265,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 			out.push({ type: "Feature", properties: { role: "off" }, geometry: { type: "LineString", coordinates: [a, ghost, b] } });
 		}
 		if (following && me) out.push({ type: "Feature", properties: { role: "me" }, geometry: { type: "Point", coordinates: me } });
+		if (crow) out.push({ type: "Feature", properties: { role: "off" }, geometry: { type: "LineString", coordinates: crow } });
 		return out;
 	};
 
@@ -303,8 +316,27 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		map.fitBounds([[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)]], { padding: 60, duration: 600 });
 	};
 
+	/** A dashed line from here to there, its length and compass point — and why, when a road route was tried. */
+	const showCrow = (why?: string): void => {
+		const a = stops[0];
+		const b = stops[stops.length - 1];
+		result = null;
+		crow = [a, b];
+		paint();
+		if (!following) fitTo(crow);
+		const deg = (Math.atan2((b[0] - a[0]) * Math.cos((a[1] * Math.PI) / 180), b[1] - a[1]) * 180) / Math.PI;
+		const points = m.ofmap_route_compass().split(" ");
+		const bearing = points[Math.round(((deg + 360) % 360) / (360 / points.length)) % points.length];
+		say(m.ofmap_route_crow({ distance: distanceText(kmBetween(a, b)), bearing }), why);
+	};
+
 	const solve = async (fit: boolean, finding = m.ofmap_route_finding()): Promise<void> => {
 		const mine = ++asked;
+		crow = null;
+		if (!fitsRoute(stops)) {
+			showCrow();
+			return;
+		}
 		solving = true;
 		say(finding);
 		// Frame the trip now; the route arrives into a view that already holds it.
@@ -338,14 +370,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 			}
 			return;
 		}
-		const distance = distanceText(r.crowKm);
-		say(
-			r.reason === "too-far"
-				? m.ofmap_route_too_far({ distance })
-				: r.missing > 0
-					? m.ofmap_route_not_downloaded({ distance })
-					: m.ofmap_route_no_road({ distance }),
-		);
+		showCrow(r.reason === "too-far" ? undefined : r.missing > 0 ? m.ofmap_route_not_downloaded() : m.ofmap_route_no_road());
 	};
 
 	function clear(): void {
@@ -353,6 +378,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		solving = false;
 		stops = [];
 		result = null;
+		crow = null;
 		ghost = null;
 		drag = null;
 		following = false;
@@ -557,6 +583,10 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	};
 	handle.to = to;
 	handle.fix = fix;
+	handle.reach = (at: Readonly<LngLat>): Reach | null => {
+		const from = lastFix ?? opts.origin();
+		return from ? { km: kmBetween(from, at), road: fitsRoute([from, [at[0], at[1]]]) } : null;
+	};
 	handle.mark = (at: Readonly<LngLat>) => {
 		target = [at[0], at[1]];
 		paint();

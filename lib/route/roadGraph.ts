@@ -50,18 +50,28 @@ export const toLngLat = (gx: number, gy: number): LngLat => [
 /** Box padding as a share of the stops' span: a road that swings wide (the island's road detours 13 km) needs the wider retry. */
 const PADS = [0.25, 0.75];
 
-/** Every z13 tile under the stops' box, padded by `share` of its span and never less than 3 km. */
-export function tilesFor(stops: readonly LngLat[], share: number): TileId[] {
+/** The z13 tile range under the stops' box, padded by `share` of its span and never less than 3 km. */
+function tileBox(stops: readonly LngLat[], share: number): { x0: number; x1: number; y0: number; y1: number } {
 	const w = stops.map(toWorld);
 	const xs = w.map((p) => p[0]);
 	const ys = w.map((p) => p[1]);
 	const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
 	const pad = Math.max(span * share, 3000 / metresPerUnit(stops[0][1]));
 	const t = (v: number) => Math.floor(v / UNITS);
+	return { x0: t(Math.min(...xs) - pad), x1: t(Math.max(...xs) + pad), y0: t(Math.min(...ys) - pad), y1: t(Math.max(...ys) + pad) };
+}
+
+export function tilesFor(stops: readonly LngLat[], share: number): TileId[] {
+	const b = tileBox(stops, share);
 	const out: TileId[] = [];
-	for (let x = t(Math.min(...xs) - pad); x <= t(Math.max(...xs) + pad); x++)
-		for (let y = t(Math.min(...ys) - pad); y <= t(Math.max(...ys) + pad); y++) out.push({ z: ROUTE_Z, x, y });
+	for (let x = b.x0; x <= b.x1; x++) for (let y = b.y0; y <= b.y1; y++) out.push({ z: ROUTE_Z, x, y });
 	return out;
+}
+
+/** Whether a road route can even be tried — counted, not built, so a list row can ask it for free. */
+export function fitsRoute(stops: readonly LngLat[]): boolean {
+	const b = tileBox(stops, PADS[0]);
+	return (b.x1 - b.x0 + 1) * (b.y1 - b.y0 + 1) <= MAX_TILES;
 }
 
 const metresPerUnit = (lat: number): number => (EARTH_M * Math.cos((lat * Math.PI) / 180)) / WORLD;

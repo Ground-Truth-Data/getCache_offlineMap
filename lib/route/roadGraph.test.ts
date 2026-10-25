@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LngLat } from "../shared/kmGeo";
-import { findRoute, type RoadLine, ROUTE_Z, type TileId, toLngLat, toWorld } from "./roadGraph";
+import { findRoute, fitsRoute, type RoadLine, ROUTE_Z, type TileId, toLngLat, toWorld } from "./roadGraph";
 
 const ORIGIN: LngLat = [136.8, -13.8];
 const [OX, OY] = toWorld(ORIGIN);
@@ -81,5 +81,10 @@ describe("findRoute", () => {
 		const r = await findRoute([ORIGIN, far], reader([]));
 		expect(r).toMatchObject({ ok: false, reason: "too-far" });
 		expect(ROUTE_Z).toBe(13);
+	});
+
+	it("knows before the tap which trips the router will refuse", () => {
+		expect(fitsRoute([ORIGIN, [ORIGIN[0] + 10, ORIGIN[1]]])).toBe(false);
+		expect(fitsRoute([ORIGIN, at(2000, 0)])).toBe(true);
 	});
 });
