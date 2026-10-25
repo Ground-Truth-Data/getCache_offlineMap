@@ -9,12 +9,15 @@ import { readStoredFix } from "../shared/liveFix";
 import { tileUrl } from "../worker/tilesHost";
 import { markerCtor } from "../shared/rendererOf";
 import targetPinUrl from "./targetPin.webp";
+import routeSignUrl from "./routeSign.svg";
+import crowLineUrl from "./crowLine.svg";
 import { ARRIVED_M, courseDeg, metresAlong, OFF_ROUTE_FIXES, OFF_ROUTE_M, progressOn } from "./follow";
 import { fitsRoute, type RouteResult } from "./roadGraph";
 import type { FromWorker, ToWorker } from "./routeWorker";
 
 export const ROUTE_LAYER_IDS = {
 	src: "rt-route-geo",
+	done: "rt-route-done",
 	casing: "rt-route-casing",
 	line: "rt-route-line",
 	off: "rt-route-off",
@@ -22,7 +25,12 @@ export const ROUTE_LAYER_IDS = {
 	me: "rt-route-me",
 } as const;
 
-const BLUE = "#1e6cff";
+const GOLD = "#F8D848";
+/** The black edge that keeps gold readable over satellite. */
+const INK = "#0b0b0b";
+/** The drag hint stops after this many routes: by then the trick is known. */
+const HINT_ROUTES = 3;
+const HINT_KEY = "gc.route.hints";
 /** Screen px from the art's bottom edge up to its rust disc's centre — the disc is the point. */
 const TARGET_DISC_PX = 1.6;
 /** Survives a closed app without the database: a search target is not a record, it's where you were headed. */
@@ -68,7 +76,7 @@ export function fromYou(at: Readonly<LngLat>): Reach | null {
 export function distanceText(km: number): string {
 	const u = longUnit();
 	const n = (km * 1000) / u.metres;
-	return `${n < 10 ? n.toFixed(1) : Math.round(n)} ${u.name}`;
+	return `${n < 10 ? n.toFixed(1) : Math.round(n).toLocaleString("en-US")} ${u.name}`;
 }
 
 /** Off the map (the inbox), the trip is saved for the map's restore to solve when it opens. */
@@ -131,44 +139,72 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	pill.className = "rt-route-pill";
 	pill.hidden = true;
 	map.getContainer().appendChild(pill);
-	let pillText: Text | null = null;
+	const words = document.createElement("b");
 	let pillAction: string | null = null;
 
+	const hintBar = document.createElement("div");
+	hintBar.className = "rt-route-hint";
+	hintBar.hidden = true;
+	const hintDo = document.createElement("b");
+	hintBar.append(hintDo, "");
+	map.getContainer().appendChild(hintBar);
+	const hintOnce = (): void => {
+		let shown = 0;
+		try {
+			shown = Number(localStorage.getItem(HINT_KEY)) || 0;
+			if (shown >= HINT_ROUTES) return;
+			localStorage.setItem(HINT_KEY, String(shown + 1));
+		} catch {
+			// codestyle-allow-swallow: storage blocked — the hint just shows again.
+		}
+		hintDo.textContent = m.ofmap_route_drag_line();
+		hintBar.lastChild!.textContent = ` ${m.ofmap_route_drag_hint()}`;
+		hintBar.hidden = false;
+	};
+
+	/** The number white and big, every other word the unit's grey. */
+	const setWords = (text: string): void => {
+		const n = /\d[\d,.]*/.exec(text);
+		const unit = (s: string): HTMLElement => Object.assign(document.createElement("span"), { className: "u", textContent: s });
+		words.replaceChildren(...(n ? [unit(text.slice(0, n.index)), n[0], unit(text.slice(n.index + n[0].length))] : [text]));
+	};
+
+	const button = (className: string, label: string, run: () => void): HTMLButtonElement => {
+		const b = document.createElement("button");
+		b.type = "button";
+		b.className = className;
+		b.setAttribute("aria-label", label);
+		b.addEventListener("click", run);
+		return b;
+	};
+
+	/** While following, the banner shrinks to a chip — live dot, distance left, stop — and gives the map back. */
 	const say = (text: string, hint?: string, action?: { label: string; run: () => void }): void => {
+		const chip = following && !!action;
 		// Same button as last time: swap the words only, so a fix landing mid-tap never rebuilds the button under the thumb.
-		if (pillText && !pill.hidden && (action?.label ?? null) === pillAction && !hint) {
-			pillText.data = text;
+		if (!pill.hidden && (action?.label ?? null) === pillAction && !hint && chip === pill.classList.contains("rt-route-chip")) {
+			setWords(text);
 			return;
 		}
 		pill.hidden = false;
-		pill.innerHTML = "";
+		pill.replaceChildren();
+		pill.classList.toggle("rt-route-chip", chip);
 		pillAction = action?.label ?? null;
+		setWords(text);
+		if (chip) {
+			const stop = button("rt-route-stop", action.label, action.run);
+			stop.append(document.createElement("i"));
+			pill.append(Object.assign(document.createElement("span"), { className: "rt-route-live" }), words, stop);
+			return;
+		}
+		const icon = Object.assign(document.createElement("img"), { src: crow ? crowLineUrl : routeSignUrl, alt: "", className: "rt-route-icon" });
 		const body = document.createElement("div");
 		body.className = "rt-route-pill-text";
-		pillText = document.createTextNode(text);
-		body.appendChild(pillText);
-		if (hint) {
-			const h = document.createElement("div");
-			h.className = "rt-route-pill-hint";
-			h.textContent = hint;
-			body.appendChild(h);
-		}
-		pill.append(body);
-		if (action) {
-			const b = document.createElement("button");
-			b.type = "button";
-			b.className = "rt-route-pill-go rt-directions";
-			b.textContent = action.label;
-			b.addEventListener("click", action.run);
-			pill.append(b);
-		}
-		const x = document.createElement("button");
-		x.type = "button";
-		x.className = "rt-route-pill-x";
-		x.setAttribute("aria-label", m.ofmap_route_clear());
-		x.textContent = "✕";
-		x.addEventListener("click", clear);
-		pill.append(x);
+		body.append(words);
+		if (hint) body.append(Object.assign(document.createElement("span"), { className: "rt-route-pill-hint", textContent: hint }));
+		pill.append(icon, body);
+		if (action) pill.append(Object.assign(button("rt-route-pill-go", action.label, action.run), { textContent: action.label }));
+		pill.append(Object.assign(button("rt-route-pill-x", m.ofmap_route_clear(), clear), { textContent: "✕" }));
 	};
 
 	const stayAwake = (on: boolean): void => {
@@ -195,7 +231,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 				run: () => setFollow(false),
 			});
 		else
-			say(m.ofmap_route_by_road({ distance: distanceText(result.km) }), m.ofmap_route_drag_hint(), {
+			say(m.ofmap_route_by_road({ distance: distanceText(result.km) }), undefined, {
 				label: m.ofmap_route_follow(),
 				run: () => setFollow(true),
 			});
@@ -203,6 +239,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 
 	function setFollow(on: boolean): void {
 		following = on;
+		hintBar.hidden = true;
 		offFixes = 0;
 		stayAwake(on);
 		if (!on) me = null;
@@ -256,7 +293,11 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	const features = (): Feature[] => {
 		const out: Feature[] = [];
 		if (result?.ok) {
-			const line = drawn < result.line.length ? result.line.slice(0, drawn) : result.line;
+			let line = drawn < result.line.length ? result.line.slice(0, drawn) : result.line;
+			if (following && me) {
+				out.push({ type: "Feature", properties: { role: "done" }, geometry: { type: "LineString", coordinates: [...line.slice(0, from + 1), me] } });
+				line = [me, ...line.slice(from + 1)];
+			}
 			out.push({ type: "Feature", properties: { role: "line" }, geometry: { type: "LineString", coordinates: line } });
 			for (const seg of result.offRoad)
 				out.push({ type: "Feature", properties: { role: "off" }, geometry: { type: "LineString", coordinates: seg } });
@@ -281,11 +322,13 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		map.addSource(ROUTE_LAYER_IDS.src, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
 		const role = (r: string) => ["==", ["get", "role"], r] as maplibregl.FilterSpecification;
 		const round = { "line-cap": "round", "line-join": "round" } as const;
-		map.addLayer({ id: ROUTE_LAYER_IDS.casing, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("line"), layout: round, paint: { "line-color": "#ffffff", "line-width": 9 } });
-		map.addLayer({ id: ROUTE_LAYER_IDS.line, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("line"), layout: round, paint: { "line-color": BLUE, "line-width": 5 } });
-		map.addLayer({ id: ROUTE_LAYER_IDS.off, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("off"), layout: round, paint: { "line-color": BLUE, "line-width": 3, "line-dasharray": [1, 2] } });
-		map.addLayer({ id: ROUTE_LAYER_IDS.via, type: "circle", source: ROUTE_LAYER_IDS.src, filter: role("via"), paint: { "circle-radius": 8, "circle-color": "#ffffff", "circle-stroke-color": BLUE, "circle-stroke-width": 4 } });
-		map.addLayer({ id: ROUTE_LAYER_IDS.me, type: "circle", source: ROUTE_LAYER_IDS.src, filter: role("me"), paint: { "circle-radius": 10, "circle-color": BLUE, "circle-stroke-color": "#ffffff", "circle-stroke-width": 3 } });
+		// Dash lengths are in line widths: 2px on, 9px off at 5px wide.
+		map.addLayer({ id: ROUTE_LAYER_IDS.done, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("done"), layout: round, paint: { "line-color": GOLD, "line-opacity": 0.3, "line-width": 5, "line-dasharray": [0.4, 1.8] } });
+		map.addLayer({ id: ROUTE_LAYER_IDS.casing, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("line"), layout: round, paint: { "line-color": INK, "line-width": 11 } });
+		map.addLayer({ id: ROUTE_LAYER_IDS.line, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("line"), layout: round, paint: { "line-color": GOLD, "line-width": 6 } });
+		map.addLayer({ id: ROUTE_LAYER_IDS.off, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("off"), layout: round, paint: { "line-color": GOLD, "line-width": 3, "line-dasharray": [1, 2] } });
+		map.addLayer({ id: ROUTE_LAYER_IDS.via, type: "circle", source: ROUTE_LAYER_IDS.src, filter: role("via"), paint: { "circle-radius": 8, "circle-color": GOLD, "circle-stroke-color": INK, "circle-stroke-width": 3 } });
+		map.addLayer({ id: ROUTE_LAYER_IDS.me, type: "circle", source: ROUTE_LAYER_IDS.src, filter: role("me"), paint: { "circle-radius": 8, "circle-color": INK, "circle-stroke-color": GOLD, "circle-stroke-width": 3 } });
 	};
 
 	const remember = (): void => {
@@ -374,6 +417,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 			if (fit && !following) {
 				fitTo(r.line);
 				reveal(mine, r.line.length);
+				hintOnce();
 			}
 			return;
 		}
@@ -393,6 +437,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		target = null;
 		stayAwake(false);
 		pill.hidden = true;
+		hintBar.hidden = true;
 		paint();
 	}
 
@@ -504,6 +549,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		const stop = Number(via?.properties?.stop);
 		drag = Number.isInteger(stop) ? { kind: "move", stop } : { kind: "new", leg: legAt([e.lngLat.lng, e.lngLat.lat]) };
 		downPx = { x: e.point.x, y: e.point.y };
+		hintBar.hidden = true;
 		ghost = [e.lngLat.lng, e.lngLat.lat];
 		map.on("mousemove", onMove);
 		map.on("touchmove", onMove);
@@ -586,6 +632,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		map.off("mouseup", onUp);
 		map.off("touchend", onUp);
 		pill.remove();
+		hintBar.remove();
 		pin.remove();
 	};
 	handle.to = to;
