@@ -1,4 +1,3 @@
-/// <reference lib="webworker" />
 // satBakeWorker.ts — the satellite compositor, off the UI thread; falls back to the main thread in satelliteImage.ts where OffscreenCanvas/convertToBlob aren't available.
 
 type TileDraw = { buf: ArrayBuffer; dx: number; dy: number; dw: number; dh: number };

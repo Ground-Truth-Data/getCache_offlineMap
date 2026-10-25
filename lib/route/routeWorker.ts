@@ -1,4 +1,3 @@
-/// <reference lib="webworker" />
 // The router off the UI thread: a city graph is a second of solid compute, and the map must keep panning through it.
 
 import type { LngLat } from "../shared/kmGeo";
