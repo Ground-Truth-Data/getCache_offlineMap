@@ -20,6 +20,7 @@ export const ROUTE_LAYER_IDS = {
 	done: "rt-route-done",
 	casing: "rt-route-casing",
 	line: "rt-route-line",
+	alt: "rt-route-alt",
 	off: "rt-route-off",
 	via: "rt-route-via",
 	me: "rt-route-me",
@@ -113,6 +114,11 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	let result: RouteResult | null = null;
 	let ghost: LngLat | null = null;
 	let drag: Drag | null = null;
+	/** The road through the ghost, solved while the finger is still down. */
+	let alt: LngLat[] | null = null;
+	let peeking = false;
+	/** Under the mouse on the line: anywhere on it can be grabbed. */
+	let hover: LngLat | null = null;
 	let downPx: { x: number; y: number } | null = null;
 	let asked = 0;
 	let solving = false;
@@ -310,8 +316,10 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 			const [a, b] =
 				drag.kind === "new" ? [stops[drag.leg], stops[drag.leg + 1]] : [stops[drag.stop - 1], stops[drag.stop + 1]];
 			out.push({ type: "Feature", properties: { role: "via" }, geometry: { type: "Point", coordinates: ghost } });
-			out.push({ type: "Feature", properties: { role: "off" }, geometry: { type: "LineString", coordinates: [a, ghost, b] } });
-		}
+			// The road answer once it's in, a straight guess until then; the route itself stays solid underneath.
+			out.push({ type: "Feature", properties: { role: alt ? "alt" : "off" }, geometry: { type: "LineString", coordinates: alt ?? [a, ghost, b] } });
+		} else if (hover)
+			out.push({ type: "Feature", properties: { role: "via" }, geometry: { type: "Point", coordinates: hover } });
 		if (following && me) out.push({ type: "Feature", properties: { role: "me" }, geometry: { type: "Point", coordinates: me } });
 		if (crow) out.push({ type: "Feature", properties: { role: "off" }, geometry: { type: "LineString", coordinates: crow } });
 		return out;
@@ -326,6 +334,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		map.addLayer({ id: ROUTE_LAYER_IDS.done, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("done"), layout: round, paint: { "line-color": GOLD, "line-opacity": 0.3, "line-width": 5, "line-dasharray": [0.4, 1.8] } });
 		map.addLayer({ id: ROUTE_LAYER_IDS.casing, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("line"), layout: round, paint: { "line-color": INK, "line-width": 11 } });
 		map.addLayer({ id: ROUTE_LAYER_IDS.line, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("line"), layout: round, paint: { "line-color": GOLD, "line-width": 6 } });
+		map.addLayer({ id: ROUTE_LAYER_IDS.alt, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("alt"), layout: round, paint: { "line-color": GOLD, "line-width": 6, "line-dasharray": [0.1, 2] } });
 		map.addLayer({ id: ROUTE_LAYER_IDS.off, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("off"), layout: round, paint: { "line-color": GOLD, "line-width": 3, "line-dasharray": [1, 2] } });
 		map.addLayer({ id: ROUTE_LAYER_IDS.via, type: "circle", source: ROUTE_LAYER_IDS.src, filter: role("via"), paint: { "circle-radius": 8, "circle-color": GOLD, "circle-stroke-color": INK, "circle-stroke-width": 3 } });
 		map.addLayer({ id: ROUTE_LAYER_IDS.me, type: "circle", source: ROUTE_LAYER_IDS.src, filter: role("me"), paint: { "circle-radius": 8, "circle-color": INK, "circle-stroke-color": GOLD, "circle-stroke-width": 3 } });
@@ -432,6 +441,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		crow = null;
 		ghost = null;
 		drag = null;
+		hover = null;
 		following = false;
 		me = null;
 		target = null;
@@ -512,8 +522,43 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	};
 
 	type PressEvent = maplibregl.MapMouseEvent | maplibregl.MapTouchEvent;
+	const trial = (): LngLat[] | null => {
+		if (!drag || !ghost) return null;
+		const s = [...stops];
+		if (drag.kind === "new") s.splice(drag.leg + 1, 0, ghost);
+		else s[drag.stop] = ghost;
+		return s;
+	};
+	/** One solve in flight at a time; when it lands, the next one asks from wherever the finger is now. */
+	const peek = (): void => {
+		const s = trial();
+		if (peeking || !s) return;
+		peeking = true;
+		const at = ghost;
+		route(s)
+			.then((r) => (alt = drag && r.ok ? r.line : null), () => (alt = null))
+			.finally(() => {
+				peeking = false;
+				paint();
+				if (drag && ghost !== at) peek();
+			});
+	};
 	const onMove = (e: PressEvent): void => {
 		ghost = [e.lngLat.lng, e.lngLat.lat];
+		paint();
+		peek();
+	};
+	const onLine = (p: { x: number; y: number }): boolean =>
+		map.queryRenderedFeatures([[p.x - 8, p.y - 8], [p.x + 8, p.y + 8]], { layers: [ROUTE_LAYER_IDS.casing] }).length > 0;
+	const onHover = (e: maplibregl.MapMouseEvent): void => {
+		if (drag || following) return;
+		hover = [e.lngLat.lng, e.lngLat.lat];
+		map.getCanvas().style.cursor = "grab";
+		paint();
+	};
+	const onLeave = (): void => {
+		hover = null;
+		map.getCanvas().style.cursor = "";
 		paint();
 	};
 	const onUp = (e: PressEvent): void => {
@@ -526,8 +571,10 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		const at = ghost;
 		drag = null;
 		ghost = null;
+		alt = null;
 		downPx = null;
-		if (!d || !at) return paint();
+		// Pulled out and put back: no node, the route as it was.
+		if (!d || !at || (d.kind === "new" && onLine(e.point))) return paint();
 		if (moved < TAP_PX) {
 			if (d.kind === "move") {
 				stops.splice(d.stop, 1);
@@ -550,6 +597,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		drag = Number.isInteger(stop) ? { kind: "move", stop } : { kind: "new", leg: legAt([e.lngLat.lng, e.lngLat.lat]) };
 		downPx = { x: e.point.x, y: e.point.y };
 		hintBar.hidden = true;
+		hover = null;
 		ghost = [e.lngLat.lng, e.lngLat.lat];
 		map.on("mousemove", onMove);
 		map.on("touchmove", onMove);
@@ -615,6 +663,8 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	map.on("mousedown", pressLayers, onDown);
 	map.on("touchstart", pressLayers, onDown);
 	map.on("dragstart", onDragStart);
+	map.on("mousemove", ROUTE_LAYER_IDS.casing, onHover);
+	map.on("mouseleave", ROUTE_LAYER_IDS.casing, onLeave);
 	// A style swap drops every custom layer.
 	map.on("styledata", paint);
 
@@ -624,6 +674,8 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		map.off("mousedown", pressLayers, onDown);
 		map.off("touchstart", pressLayers, onDown);
 		map.off("dragstart", onDragStart);
+		map.off("mousemove", ROUTE_LAYER_IDS.casing, onHover);
+		map.off("mouseleave", ROUTE_LAYER_IDS.casing, onLeave);
 		map.off("styledata", paint);
 		stayAwake(false);
 		worker.terminate();

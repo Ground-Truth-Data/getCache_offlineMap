@@ -183,6 +183,8 @@ export function attachDoubleTapToPin(
 		if (isTouchLike(oe) && oe.touches.length > 1) return cancelPress("second finger");
 		// A marker (a ruler hand, a pin) is its own handle; Mapbox still reports the press as the map's.
 		if ((oe.target as Element | null)?.closest?.(".mapboxgl-marker, .maplibregl-marker")) return;
+		// A layer that took the press (the route line, being pulled) owns it; it attaches before us, so its handler ran first.
+		if (e.defaultPrevented) return;
 		if (opts.canSeed?.() === false) return;
 		pressStart = getClientCoords(oe);
 		isTouch = isTouchLike(oe);
