@@ -22,8 +22,8 @@ export const ROUTE_LAYER_IDS = {
 
 const BLUE = "#1e6cff";
 const TARGET_IMAGE = "rt-target-pin";
-/** Screen px from the art's bottom edge up to its rust disc's centre — the disc is the point. The art is drawn at pixelRatio 2. */
-const TARGET_DISC_PX = 6.35;
+/** Screen px from the art's bottom edge up to its rust disc's centre — the disc is the point. The art is drawn at pixelRatio 3. */
+const TARGET_DISC_PX = 1.6;
 /** Survives a closed app without the database: a search target is not a record, it's where you were headed. */
 const SAVED_KEY = "gc.route.v1";
 const FOLLOW_ZOOM = 16;
@@ -251,14 +251,25 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		}
 	};
 
+	let waiting = false;
 	const paint = (): void => {
 		remember();
-		if (!map.isStyleLoaded()) return;
+		// Mapbox reports busy all through a flight; a dropped paint here was a pin that landed seconds late.
+		if (!map.isStyleLoaded()) {
+			if (!waiting) {
+				waiting = true;
+				map.once("idle", () => {
+					waiting = false;
+					paint();
+				});
+			}
+			return;
+		}
 		if (target && !map.hasImage(TARGET_IMAGE))
 			pinImage ??= loadMapImage(map, targetPinUrl).then(
 				(img) => {
 					pinImage = null;
-					if (!map.hasImage(TARGET_IMAGE)) map.addImage(TARGET_IMAGE, img, { pixelRatio: 2 });
+					if (!map.hasImage(TARGET_IMAGE)) map.addImage(TARGET_IMAGE, img, { pixelRatio: 3 });
 					paint();
 				},
 				(e) => console.warn("[route] target pin art failed to load", e),
@@ -441,6 +452,31 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		showRoute();
 		paint();
 	};
+	/** A pebble in a puddle: three rings out from the pin until they leave the screen, once. */
+	const ripple = (): void => {
+		if (!target) return;
+		const at = target;
+		const c = map.getContainer();
+		const box = document.createElement("div");
+		box.className = "rt-target-ripple";
+		box.append(document.createElement("i"), document.createElement("i"), document.createElement("i"));
+		const place = (): void => {
+			const p = map.project(at);
+			box.style.transform = `translate(${p.x}px, ${p.y}px)`;
+		};
+		place();
+		// Just past the farthest corner, so every ring spends its whole life on screen.
+		const p = map.project(at);
+		const reach = Math.hypot(Math.max(p.x, c.clientWidth - p.x), Math.max(p.y, c.clientHeight - p.y));
+		box.style.setProperty("--d", `${2 * reach + 40}px`);
+		map.on("move", place);
+		box.lastElementChild?.addEventListener("animationend", () => {
+			map.off("move", place);
+			box.remove();
+		});
+		c.appendChild(box);
+	};
+
 	const onTargetTap = (): void => {
 		target = null;
 		paint();
@@ -473,6 +509,8 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	handle.mark = (at: Readonly<LngLat>) => {
 		target = [at[0], at[1]];
 		paint();
+		// After the flight lands, so the eye is pulled to where the map stopped.
+		map.once("idle", ripple);
 	};
 	live = handle;
 
