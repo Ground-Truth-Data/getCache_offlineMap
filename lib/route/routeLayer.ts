@@ -332,9 +332,10 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		const round = { "line-cap": "round", "line-join": "round" } as const;
 		// Dash lengths are in line widths: 2px on, 9px off at 5px wide.
 		map.addLayer({ id: ROUTE_LAYER_IDS.done, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("done"), layout: round, paint: { "line-color": GOLD, "line-opacity": 0.3, "line-width": 5, "line-dasharray": [0.4, 1.8] } });
+		// Under the route: where the two share road the alternative hides, so only where it leaves shows dotted.
+		map.addLayer({ id: ROUTE_LAYER_IDS.alt, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("alt"), layout: round, paint: { "line-color": GOLD, "line-width": 6, "line-dasharray": [0.1, 2] } });
 		map.addLayer({ id: ROUTE_LAYER_IDS.casing, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("line"), layout: round, paint: { "line-color": INK, "line-width": 11 } });
 		map.addLayer({ id: ROUTE_LAYER_IDS.line, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("line"), layout: round, paint: { "line-color": GOLD, "line-width": 6 } });
-		map.addLayer({ id: ROUTE_LAYER_IDS.alt, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("alt"), layout: round, paint: { "line-color": GOLD, "line-width": 6, "line-dasharray": [0.1, 2] } });
 		map.addLayer({ id: ROUTE_LAYER_IDS.off, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("off"), layout: round, paint: { "line-color": GOLD, "line-width": 3, "line-dasharray": [1, 2] } });
 		map.addLayer({ id: ROUTE_LAYER_IDS.via, type: "circle", source: ROUTE_LAYER_IDS.src, filter: role("via"), paint: { "circle-radius": 8, "circle-color": GOLD, "circle-stroke-color": INK, "circle-stroke-width": 3 } });
 		map.addLayer({ id: ROUTE_LAYER_IDS.me, type: "circle", source: ROUTE_LAYER_IDS.src, filter: role("me"), paint: { "circle-radius": 8, "circle-color": INK, "circle-stroke-color": GOLD, "circle-stroke-width": 3 } });
