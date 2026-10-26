@@ -107,6 +107,7 @@ const EXPOSED_HEADERS = [
   "X-Radius-Km",
   "X-Tile-Source",
   "Server-Timing",
+  "Retry-After",
 ].join(", ");
 
 const CORS_HEADERS: Record<string, string> = {
@@ -124,13 +125,20 @@ const SAT_HEADERS: Record<string, string> = {
   "Cache-Control": "public, max-age=31536000, immutable",
 };
 
+/** MapTiler said no; its status and Retry-After travel on to the phone. */
+class UpstreamRefused extends Error {
+  constructor(readonly status: number, readonly retryAfter: string | null, message: string) {
+    super(message);
+  }
+}
+
 /** One MapTiler tile through the edge cache. */
 async function satelliteTile(env: Env, ctx: ExecutionContext, origin: string, z: number, x: number, y: number): Promise<ArrayBuffer> {
   const key = new Request(`${origin}/satellite/${z}/${x}/${y}.jpg?build=${SATELLITE_BUILD}`, { method: "GET" });
   const hit = await caches.default.match(key);
   if (hit) return hit.arrayBuffer();
   const upstream = await fetch(satelliteUrl(env.GC_mapTiler_key, z, x, y));
-  if (!upstream.ok) throw new Error(`MapTiler responded ${upstream.status} for ${z}/${x}/${y}`);
+  if (!upstream.ok) throw new UpstreamRefused(upstream.status, upstream.headers.get("Retry-After"), `MapTiler responded ${upstream.status} for ${z}/${x}/${y}`);
   const body = await upstream.arrayBuffer();
   ctx.waitUntil(caches.default.put(key, new Response(body, { status: 200, headers: SAT_HEADERS })));
   return body;
@@ -325,6 +333,12 @@ export default {
         body = await satelliteTile(env, ctx, url.origin, z, x, y);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        // A 429 stays a 429, so the phone waits it out instead of retrying into it.
+        if (err instanceof UpstreamRefused && err.status === 429)
+          return new Response(`Satellite fetch failed: ${message}`, {
+            status: 429,
+            headers: { ...CORS_HEADERS, "Retry-After": err.retryAfter ?? "60" },
+          });
         return new Response(`Satellite fetch failed: ${message}`, {
           status: 502,
           headers: CORS_HEADERS,
