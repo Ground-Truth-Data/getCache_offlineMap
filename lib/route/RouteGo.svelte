@@ -1,48 +1,41 @@
-<!-- The "route there" button: the sign when a road route can be tried, a dashed line when it can only be a
-     straight line, so the answer shows before the tap. `km` makes it the popover's distance pill, which looks the
-     same either way — it is metadata, not an action. -->
+<!-- The "route there" button, shown only once a road there is found and is within MAX_KM — no road, no button.
+     `km` makes it the popover's distance pill: metadata, not an action. -->
 <script lang="ts">
 import { m } from "$parent/src/lib/paraglide/messages";
-import { distanceText, type Reach } from "./routeLayer";
+import type { LngLat } from "../shared/kmGeo";
+import { distanceText, roadKm } from "./routeLayer";
 import sign from "./routeSign.svg";
 import signSm from "./routeSignSm.svg";
-import line from "./crowLine.svg";
-
-/** Past this, a route from here is no use to anyone: the pill goes. */
-const PILL_MAX_KM = 2000;
 
 let {
-	reach,
+	at,
 	km = false,
 	onGo,
 }: {
-	/** From `fromYou` — null before the first GPS fix: the sign alone, no number. */
-	reach: Reach | null;
+	at: Readonly<LngLat>;
 	km?: boolean;
-	/** Starts the route — `directionsTo` handles both the road and the straight line. */
 	onGo: () => void;
 } = $props();
-
-const road = $derived(reach?.road ?? true);
-const [num, unit] = $derived(reach ? distanceText(reach.km).split(" ") : []);
 </script>
 
-{#if !(km && reach && reach.km > PILL_MAX_KM)}
-	<button
-		type="button"
-		class="rt-go"
-		class:rt-go--pill={km}
-		class:rt-go--crow={!km && !road}
-		aria-label={m.ofmap_route_directions()}
-		onclick={(e) => {
-			e.stopPropagation();
-			onGo();
-		}}
-	>
-		<img src={km ? signSm : road ? sign : line} alt="" />
-		{#if km && num}<b>{num}</b><small>{unit}</small>{/if}
-	</button>
-{/if}
+{#await roadKm(at) then road}
+	{#if road !== null}
+		{@const [num, unit] = distanceText(road).split(" ")}
+		<button
+			type="button"
+			class="rt-go"
+			class:rt-go--pill={km}
+			aria-label={m.ofmap_route_directions()}
+			onclick={(e) => {
+				e.stopPropagation();
+				onGo();
+			}}
+		>
+			<img src={km ? signSm : sign} alt="" />
+			{#if km}<b>{num}</b><small>{unit}</small>{/if}
+		</button>
+	{/if}
+{/await}
 
 <style>
 	.rt-go {
@@ -63,44 +56,38 @@ const [num, unit] = $derived(reach ? distanceText(reach.km).split(" ") : []);
 		width: 26px;
 		height: 26px;
 	}
-	.rt-go--crow {
-		border-style: dashed;
-		border-color: color-mix(in srgb, var(--color-accent-gold) 50%, transparent);
-	}
-	.rt-go--crow img {
-		width: 24px;
-		height: 24px;
-	}
+	/* The `you` chip's box and type (IdentityPill), so the two sit level. */
 	.rt-go--pill {
 		position: relative;
 		width: auto;
-		height: 26.5px;
-		gap: 4px;
-		padding: 0 10px 0 4px;
+		height: 1.15rem;
+		gap: 3px;
+		padding: 0 0.45rem 0 0.2rem;
 		margin-left: auto;
 		border-color: rgba(248, 216, 72, 0.55);
 		border-radius: 999px;
 		background: transparent;
-		font-family: var(--rt-font-display);
+		font-family: var(--rt-font-body);
+		font-size: 0.7rem;
+		font-weight: 700;
 		line-height: 1;
 	}
 	/* 44px to the thumb; the pill itself stays small. */
 	.rt-go--pill::after {
 		content: "";
 		position: absolute;
-		inset: -9px -4px;
+		inset: -12px -4px;
 	}
 	.rt-go--pill img {
-		width: 17px;
-		height: 17px;
+		width: 0.85rem;
+		height: 0.85rem;
 	}
 	.rt-go--pill b {
-		font-weight: 400;
-		font-size: 18px;
+		font-weight: inherit;
 		color: #d8dbc6;
 	}
 	.rt-go--pill small {
-		font-size: 14px;
+		font-size: inherit;
 		color: #9a9e86;
 	}
 	.rt-go:active {

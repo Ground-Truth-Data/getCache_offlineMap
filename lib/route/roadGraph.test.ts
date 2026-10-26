@@ -1,6 +1,7 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { LngLat } from "../shared/kmGeo";
-import { findRoute, fitsRoute, type RoadLine, ROUTE_Z, type TileId, toLngLat, toWorld } from "./roadGraph";
+import { findRoute, highwaysFrom, type RoadLine, ROUTE_Z, type TileId, toLngLat, toWorld } from "./roadGraph";
 
 const ORIGIN: LngLat = [136.8, -13.8];
 const [OX, OY] = toWorld(ORIGIN);
@@ -83,8 +84,32 @@ describe("findRoute", () => {
 		expect(ROUTE_Z).toBe(13);
 	});
 
-	it("knows before the tap which trips the router will refuse", () => {
-		expect(fitsRoute([ORIGIN, [ORIGIN[0] + 10, ORIGIN[1]]])).toBe(false);
-		expect(fitsRoute([ORIGIN, at(2000, 0)])).toBe(true);
+});
+
+describe("findRoute between downloaded areas", () => {
+	const highways = highwaysFrom(new Uint8Array(readFileSync(new URL("../../../getCache/static/mobileAssets/worldBase/base/highways.bin", import.meta.url))).buffer);
+	const nothingDownloaded = async (): Promise<RoadLine[] | null> => null;
+	const VANCOUVER: LngLat = [-123.1, 49.265];
+
+	it("drives Vancouver to Kelowna over the Coquihalla, through Merritt", async () => {
+		const r = await findRoute([VANCOUVER, [-119.49, 49.885]], nothingDownloaded, highways);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.km).toBeGreaterThan(370);
+		expect(r.km).toBeLessThan(400);
+		expect(Math.max(...r.line.map(([, lat]) => lat))).toBeGreaterThan(50);
+	});
+
+	it("drives Vancouver to Penticton", async () => {
+		expect((await findRoute([VANCOUVER, [-119.59, 49.49]], nothingDownloaded, highways)).ok).toBe(true);
+	});
+
+	it("drives through a town Natural Earth draws no road across (97 meets 16 at Prince George)", async () => {
+		expect((await findRoute([VANCOUVER, [-122.75, 53.917]], nothingDownloaded, highways)).ok).toBe(true);
+	});
+
+	it("never drives across water", async () => {
+		const r = await findRoute([VANCOUVER, [-123.365, 48.428]], nothingDownloaded, highways);
+		expect(r.ok).toBe(false);
 	});
 });

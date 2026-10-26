@@ -10,9 +10,8 @@ import { tileUrl } from "../worker/tilesHost";
 import { markerCtor } from "../shared/rendererOf";
 import targetPinUrl from "./pin_search_target.webp";
 import routeSignUrl from "./routeSign.svg";
-import crowLineUrl from "./crowLine.svg";
 import { ARRIVED_M, courseDeg, metresAlong, OFF_ROUTE_FIXES, OFF_ROUTE_M, progressOn } from "./follow";
-import { fitsRoute, type RouteResult } from "./roadGraph";
+import type { RouteResult } from "./roadGraph";
 import type { FromWorker, ToWorker } from "./routeWorker";
 
 export const ROUTE_LAYER_IDS = {
@@ -54,6 +53,8 @@ export interface RouteLayerOptions {
 	readonly readTile: (key: string) => Promise<ArrayBuffer | undefined>;
 	/** Where the drive starts: the last GPS fix. */
 	readonly origin: () => LngLat | null;
+	/** Calls back when a blob lands or goes; returns the unsubscribe. */
+	readonly packChanged: (fn: () => void) => () => void;
 }
 
 export interface RouteHandle {
@@ -61,23 +62,77 @@ export interface RouteHandle {
 	to: (at: Readonly<LngLat>) => void;
 	fix: (lng: number, lat: number) => void;
 	mark: (at: Readonly<LngLat>) => void;
-	reach: (at: Readonly<LngLat>) => Reach | null;
+	here: () => LngLat | null;
 }
-
-/** How far a place is from the last GPS fix, and whether a road route can be tried or it's a straight line. */
-export type Reach = { readonly km: number; readonly road: boolean };
 
 // One map is live at a time; its route layer is the one every "Directions" button drives.
 let live: RouteHandle | null = null;
 
 export const canRoute = (): boolean => live !== null;
 
-const reachFrom = (from: LngLat | null, at: Readonly<LngLat>): Reach | null =>
-	from ? { km: kmBetween(from, at), road: fitsRoute([from, [at[0], at[1]]]) } : null;
+/** Never asks for a fix: null until the phone has one. Off the map, the stored fix. */
+const here = (): LngLat | null => (live ? live.here() : readStoredFix());
 
-/** Never asks for a fix: null until the phone has one. Cheap enough for every list row; off the map, the stored fix. */
-export function fromYou(at: Readonly<LngLat>): Reach | null {
-	return live ? live.reach(at) : reachFrom(readStoredFix(), at);
+/** As the crow flies, for sorting — cheap enough for every list row. */
+export function kmFromYou(at: Readonly<LngLat>): number | null {
+	const from = here();
+	return from ? kmBetween(from, at) : null;
+}
+
+/** The live map's pack; off the map, the network. */
+let readTile: (key: string) => Promise<ArrayBuffer | undefined> = networkTile;
+let worker: Worker | null = null;
+const jobs = new Map<number, { ok: (r: RouteResult) => void; fail: (e: unknown) => void }>();
+let jobN = 0;
+const tell = (m: ToWorker): void => worker!.postMessage(m);
+
+/** One router for the app: the map's line and every pill share its decoded tiles. */
+function route(stops: LngLat[]): Promise<RouteResult> {
+	if (!worker) {
+		worker = new Worker(new URL("./routeWorker.ts", import.meta.url), { type: "module" });
+		worker.onmessage = (e: MessageEvent<FromWorker>): void => {
+			const m = e.data;
+			if (m.kind === "done") {
+				jobs.get(m.job)?.ok(m.result);
+				jobs.delete(m.job);
+				return;
+			}
+			void readTile(m.key).then(
+				(bytes) => tell({ kind: "tile", ask: m.ask, bytes }),
+				() => tell({ kind: "tile", ask: m.ask, bytes: undefined }),
+			);
+		};
+		worker.onerror = (e): void => {
+			for (const j of jobs.values()) j.fail(e);
+			jobs.clear();
+		};
+	}
+	return new Promise((ok, fail) => {
+		const job = ++jobN;
+		jobs.set(job, { ok, fail });
+		tell({ kind: "route", job, stops });
+	});
+}
+
+const solved = new Map<string, Promise<number | null>>();
+/** Road km from the last fix, or null: no fix, no road, or past MAX_KM. Only a found road earns a Directions button. */
+export function roadKm(at: Readonly<LngLat>): Promise<number | null> {
+	const from = here();
+	if (!from) return Promise.resolve(null);
+	// ~100 m: a fix that wanders across the parking lot asks once.
+	const key = [...from, ...at].map((v) => v.toFixed(3)).join();
+	let km = solved.get(key);
+	if (!km) {
+		km = route([from, [at[0], at[1]]]).then(
+			(r) => (r.ok ? r.km : null),
+			(e) => {
+				console.error("[route] the router worker failed", e);
+				return null;
+			},
+		);
+		solved.set(key, km);
+	}
+	return km;
 }
 
 /** "3.2 km" in the user's long unit — the one spelling every distance on the map shares. */
@@ -141,8 +196,6 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	let offFixes = 0;
 	let wake: WakeLockSentinel | null = null;
 	let target: LngLat | null = null;
-	/** Past the road graph's reach: the honest answer is a straight line and a bearing. */
-	let crow: [LngLat, LngLat] | null = null;
 	// A DOM marker, not a map layer: block labels are DOM markers, and every DOM marker sits above the canvas.
 	const pinEl = document.createElement("img");
 	pinEl.src = targetPinUrl;
@@ -212,7 +265,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 			pill.append(Object.assign(document.createElement("span"), { className: "rt-route-live" }), words, stop);
 			return;
 		}
-		const icon = Object.assign(document.createElement("img"), { src: crow ? crowLineUrl : routeSignUrl, alt: "", className: "rt-route-icon" });
+		const icon = Object.assign(document.createElement("img"), { src: routeSignUrl, alt: "", className: "rt-route-icon" });
 		const body = document.createElement("div");
 		body.className = "rt-route-pill-text";
 		body.append(words);
@@ -264,33 +317,6 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		if (on && at) fix(at[0], at[1]);
 	}
 
-	const worker = new Worker(new URL("./routeWorker.ts", import.meta.url), { type: "module" });
-	const jobs = new Map<number, { ok: (r: RouteResult) => void; fail: (e: unknown) => void }>();
-	let jobN = 0;
-	const tell = (m: ToWorker): void => worker.postMessage(m);
-	worker.onmessage = (e: MessageEvent<FromWorker>): void => {
-		const m = e.data;
-		if (m.kind === "done") {
-			jobs.get(m.job)?.ok(m.result);
-			jobs.delete(m.job);
-			return;
-		}
-		void opts.readTile(m.key).then(
-			(bytes) => tell({ kind: "tile", ask: m.ask, bytes }),
-			() => tell({ kind: "tile", ask: m.ask, bytes: undefined }),
-		);
-	};
-	worker.onerror = (e): void => {
-		for (const j of jobs.values()) j.fail(e);
-		jobs.clear();
-	};
-	const route = (s: LngLat[]): Promise<RouteResult> =>
-		new Promise((ok, fail) => {
-			const job = ++jobN;
-			jobs.set(job, { ok, fail });
-			tell({ kind: "route", job, stops: s });
-		});
-
 	/** How many of the line's points are drawn — a fresh line grows into place. */
 	let drawn = Number.POSITIVE_INFINITY;
 	const reveal = (mine: number, n: number): void => {
@@ -331,7 +357,6 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		} else if (hover)
 			out.push({ type: "Feature", properties: { role: "via" }, geometry: { type: "Point", coordinates: hover } });
 		if (following && me) out.push({ type: "Feature", properties: { role: "me" }, geometry: { type: "Point", coordinates: me } });
-		if (crow) out.push({ type: "Feature", properties: { role: "off" }, geometry: { type: "LineString", coordinates: crow } });
 		return out;
 	};
 
@@ -386,89 +411,71 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		safeFitBounds(map, [Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)], { padding: 60, duration: 600 });
 	};
 
-	/** A dashed line from here to there, its length and compass point — and why, when a road route was tried. */
-	const showCrow = (why?: string): void => {
-		const a = stops[0];
-		const b = stops[stops.length - 1];
-		result = null;
-		crow = [a, b];
-		paint();
-		if (!following) fitTo(crow);
-		const deg = (Math.atan2((b[0] - a[0]) * Math.cos((a[1] * Math.PI) / 180), b[1] - a[1]) * 180) / Math.PI;
-		const points = m.ofmap_route_compass().split(" ");
-		const bearing = points[Math.round(((deg + 360) % 360) / (360 / points.length)) % points.length];
-		say(m.ofmap_route_crow({ distance: distanceText(kmBetween(a, b)), bearing }), why);
-	};
-
-	const solve = async (fit: boolean, finding = m.ofmap_route_finding()): Promise<void> => {
+	/** `next` becomes the route only once a road is found: no road, or past MAX_KM, keeps the route as it was — or none. */
+	/** `finding` null: a quiet re-solve under a route already shown. */
+	const solve = async (next: LngLat[], fit: boolean, finding: string | null = m.ofmap_route_finding()): Promise<void> => {
 		const mine = ++asked;
-		crow = null;
-		if (!fitsRoute(stops)) {
-			showCrow();
-			return;
-		}
 		solving = true;
-		say(finding);
+		if (finding) say(finding);
 		// Frame the trip now; the route arrives into a view that already holds it.
-		if (fit && !following) fitTo(stops);
-		let r: RouteResult;
+		if (fit && !following) fitTo(next);
+		let r: RouteResult | null;
 		try {
-			r = await route(stops);
+			r = await route(next);
 		} catch (e) {
 			console.error("[route] the router worker failed", e);
-			if (mine === asked) clear();
-			return;
+			r = null;
 		} finally {
 			if (mine === asked) solving = false;
 		}
 		if (mine !== asked) return;
-		result = r;
-		drawn = fit && r.ok && !following ? 2 : Number.POSITIVE_INFINITY;
-		from = 0;
-		along = r.ok ? metresAlong(r.line) : [];
-		if (!r.ok && following) {
-			following = false;
-			me = null;
-			stayAwake(false);
-		}
-		paint();
-		if (r.ok) {
-			showRoute();
-			if (fit && !following) {
-				fitTo(r.line);
-				reveal(mine, r.line.length);
-				hintOnce();
-			}
+		if (!r?.ok) {
+			if (result?.ok) showRoute();
+			else dropRoute();
 			return;
 		}
-		showCrow(r.reason === "too-far" ? undefined : r.missing > 0 ? m.ofmap_route_not_downloaded() : m.ofmap_route_no_road());
+		stops = next;
+		result = r;
+		drawn = fit && !following ? 2 : Number.POSITIVE_INFINITY;
+		from = 0;
+		along = metresAlong(r.line);
+		paint();
+		showRoute();
+		if (fit && !following) {
+			fitTo(r.line);
+			reveal(mine, r.line.length);
+			hintOnce();
+		}
 	};
 
-	function clear(): void {
+	/** The line and its pill go; a search pin stays where it was dropped. */
+	function dropRoute(): void {
 		asked++;
 		solving = false;
 		stops = [];
 		result = null;
-		crow = null;
 		ghost = null;
 		drag = null;
 		hover = null;
 		hot = null;
 		following = false;
 		me = null;
-		target = null;
 		stayAwake(false);
 		pill.hidden = true;
 		hintBar.hidden = true;
 		paint();
 	}
 
-	/** Re-route offline from where the truck is, through the waypoints still ahead. */
+	function clear(): void {
+		target = null;
+		dropRoute();
+	}
+
+	/** Re-route offline from where the truck is, through the waypoints still ahead. No road from here: the old line stays. */
 	const reroute = (at: LngLat): void => {
 		offFixes = 0;
 		const leg = result?.ok ? Math.max(0, result.legEnds.findIndex((end) => end > from)) : 0;
-		stops = [at, ...stops.slice(leg + 1)];
-		void solve(false, m.ofmap_route_off());
+		void solve([at, ...stops.slice(leg + 1)], false, m.ofmap_route_off());
 	};
 
 	function fix(lng: number, lat: number): void {
@@ -505,14 +512,11 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	}
 
 	const to = (dest: Readonly<LngLat>): void => {
-		const from = opts.origin();
-		if (!from) {
-			clear();
-			say(m.ofmap_route_no_fix());
-			return;
-		}
-		stops = [from, [dest[0], dest[1]]];
-		void solve(true);
+		// The fix the pill solved from, so the button's number is the route's.
+		const from = handle.here();
+		dropRoute();
+		if (!from) return say(m.ofmap_route_no_fix());
+		void solve([from, [dest[0], dest[1]]], true);
 	};
 
 	/** Which leg a press on the line belongs to: the leg holding the nearest vertex. */
@@ -591,16 +595,13 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		map.getCanvas().style.cursor = "";
 		// Pulled out and put back: no node, the route as it was.
 		if (!d || !at || (d.kind === "new" && onLine(e.point))) return paint();
+		paint();
+		// Dropped where no road reaches: the waypoint goes back where it was.
 		if (moved < TAP_PX) {
-			if (d.kind === "move") {
-				stops.splice(d.stop, 1);
-				return void solve(false);
-			}
-			return paint();
+			if (d.kind === "move") void solve(stops.toSpliced(d.stop, 1), false);
+			return;
 		}
-		if (d.kind === "new") stops.splice(d.leg + 1, 0, at);
-		else stops[d.stop] = at;
-		void solve(false);
+		void solve(d.kind === "new" ? stops.toSpliced(d.leg + 1, 0, at) : stops.with(d.stop, at), false);
 	};
 	const onDown = (e: PressEvent): void => {
 		if (!result?.ok || drag) return;
@@ -696,7 +697,9 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		map.off("mouseleave", pressLayers, onLeave);
 		map.off("styledata", paint);
 		stayAwake(false);
-		worker.terminate();
+		readTile = networkTile;
+		unwatchPack();
+		solved.clear();
 		map.off("mousemove", onMove);
 		map.off("touchmove", onMove);
 		map.off("mouseup", onUp);
@@ -707,7 +710,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	};
 	handle.to = to;
 	handle.fix = fix;
-	handle.reach = (at: Readonly<LngLat>): Reach | null => reachFrom(lastFix ?? opts.origin(), at);
+	handle.here = (): LngLat | null => lastFix ?? opts.origin();
 	handle.mark = (at: Readonly<LngLat>) => {
 		target = [at[0], at[1]];
 		paint();
@@ -715,16 +718,22 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		map.once("idle", ripple);
 	};
 	live = handle;
+	readTile = opts.readTile;
+	solved.clear();
+	// A blob that lands after the route was solved holds the town's real roads: solve again on them.
+	const unwatchPack = opts.packChanged(() => {
+		solved.clear();
+		worker?.postMessage({ kind: "forget" } satisfies ToWorker);
+		if (result?.ok && !drag) void solve(stops, false, null);
+	});
 
 	// The app was closed mid-trip: put the pin back and re-solve from wherever the phone is now.
 	try {
 		const saved = JSON.parse(localStorage.getItem(SAVED_KEY) ?? "null") as { target: LngLat | null; ahead: LngLat[] } | null;
 		target = saved?.target ?? null;
 		const start = opts.origin();
-		if (saved?.ahead.length && start) {
-			stops = [start, ...saved.ahead];
-			void solve(false);
-		} else paint();
+		if (saved?.ahead.length && start) void solve([start, ...saved.ahead], false);
+		else paint();
 	} catch (e) {
 		console.warn("[route] saved route unreadable", e);
 	}

@@ -40,7 +40,7 @@ import { overlayVisibility } from "../../lib/mapState/overlayVisibility.svelte";
 import { dropPhoto, onPhoto, onPhotoIssue, type PhotoInfo, photoInfo, photoIssue, setPhotoNarration } from "./satellite";
 import { FOLLOW_MARGIN_KM, marginKm, moved } from "./follow";
 import { PHOTO_TILES, PLANET_TILES, installProtocol } from "./protocol";
-import { type Kept, type Region, checkRegions, getTile, keepStorage, listRegions, patchRegion, stats, touchRegions, wipe } from "./store";
+import { type Kept, type Region, checkRegions, getTile, keepStorage, listRegions, onRegionsChanged, patchRegion, stats, touchRegions, wipe } from "./store";
 import { type RouteHandle, attachRouteLayer } from "../../lib/route/routeLayer";
 import { readStoredFix } from "../../lib/shared/liveFix";
 import { validLatLng } from "../../lib/shared/cameraFromUrl";
@@ -497,7 +497,7 @@ onMount(() => {
 		// The drawer speaks Mapbox GL types; this map is MapLibre.
 		mapForTools = m as unknown as MapboxMap;
 		fireHandle = attachFireLayer(m, { origins: () => origins(m) });
-		routeHandle = attachRouteLayer(m, { readTile: getTile, origin: readStoredFix });
+		routeHandle = attachRouteLayer(m, { readTile: getTile, origin: readStoredFix, packChanged: onRegionsChanged });
 		hospitalHandle = attachHospitalLayer(m, {
 			origins: () => origins(m),
 			onShowMyLocation: () => void drawControlsRef?.requestMyLocation(),

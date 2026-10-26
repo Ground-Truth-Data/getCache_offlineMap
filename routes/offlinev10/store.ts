@@ -366,9 +366,18 @@ export async function regionRow(id: string): Promise<Region | undefined> {
 let regionsVersion = 0;
 let regionsCache: Promise<Region[]> | null = null;
 
+const regionWatchers = new Set<() => void>();
+
 function regionsChanged(): void {
 	regionsVersion++;
 	regionsCache = null;
+	for (const fn of regionWatchers) fn();
+}
+
+/** A blob started, finished or went: whatever was read from the pack before may be stale. */
+export function onRegionsChanged(fn: () => void): () => void {
+	regionWatchers.add(fn);
+	return () => regionWatchers.delete(fn);
 }
 
 export function regionsSnapshot(): {

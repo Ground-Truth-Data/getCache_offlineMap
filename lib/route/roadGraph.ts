@@ -1,4 +1,4 @@
-/** Offline directions over the pack's z13 `roads` tiles — the same bytes the offline map draws. Pure: no map, no store. */
+/** Offline directions over the pack's z13 `roads` tiles near each stop and the world base's highways between. Pure: no map, no store. */
 
 import { VectorTile } from "@mapbox/vector-tile";
 import Pbf from "pbf";
@@ -13,8 +13,15 @@ const EARTH_M = 40_075_016.686;
 const SNAP_M = 8;
 /** A stop further than this from any road has no road route. */
 const ATTACH_M = 3000;
-/** ~250 km square of z13 tiles — past this the request is not a drive. */
-export const MAX_TILES = 2500;
+/** ~250 km square of z13 tiles: past this the highways carry the middle of the trip. */
+const MAX_TILES = 2500;
+/** Past this no road route is offered at all. */
+const MAX_KM = 999;
+/** Each stop's own z13 square reaches this far, or further to touch a highway, never past the max. */
+const LOCAL_MIN_M = 12_000;
+const LOCAL_MAX_M = 50_000;
+/** Natural Earth draws a highway up to a few hundred metres off the real road: where it enters a stop's square it joins the nearest z13 road this close. */
+const ENTRY_M = 1500;
 
 /** Relative cost per metre; null = not drivable. Bush tracks are the roads planters drive. */
 function costOf(kind: unknown, detail: unknown): number | null {
@@ -68,10 +75,24 @@ export function tilesFor(stops: readonly LngLat[], share: number): TileId[] {
 	return out;
 }
 
-/** Whether a road route can even be tried — counted, not built, so a list row can ask it for free. */
-export function fitsRoute(stops: readonly LngLat[]): boolean {
-	const b = tileBox(stops, PADS[0]);
-	return (b.x1 - b.x0 + 1) * (b.y1 - b.y0 + 1) <= MAX_TILES;
+type Box = { x0: number; y0: number; x1: number; y1: number };
+
+/** The world base's highways, junctions already joined (getCache's scripts/build-world-highways.mjs), as the lines crossing a box in world units. */
+export function highwaysFrom(buf: ArrayBuffer): (box: Box) => RoadLine[] {
+	const a = new Int32Array(buf);
+	const n = a[0];
+	const at = 2 + n;
+	const lines: RoadLine[] = [];
+	const boxes: Box[] = [];
+	for (let p = 0; p < n; p++) {
+		const pts: Array<[number, number]> = [];
+		for (let i = a[1 + p]; i < a[2 + p]; i++) pts.push(toWorld([a[at + 2 * i] / 1e5, a[at + 2 * i + 1] / 1e5]));
+		const xs = pts.map((q) => q[0]);
+		const ys = pts.map((q) => q[1]);
+		lines.push({ pts, cost: 1 });
+		boxes.push({ x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) });
+	}
+	return (b) => lines.filter((_, i) => boxes[i].x1 >= b.x0 && boxes[i].x0 <= b.x1 && boxes[i].y1 >= b.y0 && boxes[i].y0 <= b.y1);
 }
 
 const metresPerUnit = (lat: number): number => (EARTH_M * Math.cos((lat * Math.PI) / 180)) / WORLD;
@@ -100,7 +121,7 @@ export function decodeRoads(t: TileId, bytes: ArrayBuffer): RoadLine[] {
 			for (let s = 1; s < ring.length; s++) {
 				const a = ring[s - 1];
 				const b = ring[s];
-				const cut = clip(a.x, a.y, b.x, b.y, E);
+				const cut = clip(a.x, a.y, b.x, b.y, { x0: 0, y0: 0, x1: E, y1: E });
 				if (!cut) {
 					flush();
 					continue;
@@ -119,17 +140,17 @@ export function decodeRoads(t: TileId, bytes: ArrayBuffer): RoadLine[] {
 	return out;
 }
 
-/** Liang–Barsky against [0, E]²; null when the segment misses the square. */
-function clip(ax: number, ay: number, bx: number, by: number, E: number): [number, number] | null {
+/** Liang–Barsky against the box; null when the segment misses it. */
+function clip(ax: number, ay: number, bx: number, by: number, b: Box): [number, number] | null {
 	const dx = bx - ax;
 	const dy = by - ay;
 	let t0 = 0;
 	let t1 = 1;
 	for (const [p, q] of [
-		[-dx, ax],
-		[dx, E - ax],
-		[-dy, ay],
-		[dy, E - ay],
+		[-dx, ax - b.x0],
+		[dx, b.x1 - ax],
+		[-dy, ay - b.y0],
+		[dy, b.y1 - ay],
 	]) {
 		if (p === 0) {
 			if (q < 0) return null;
@@ -140,6 +161,60 @@ function clip(ax: number, ay: number, bx: number, by: number, E: number): [numbe
 		else t1 = Math.min(t1, r);
 	}
 	return t0 > t1 ? null : [t0, t1];
+}
+
+/** The lines with the box cut out of them, and each point where one crossed its edge. */
+function cutOut(lines: readonly RoadLine[], b: Box): { lines: RoadLine[]; ends: Array<[number, number]> } {
+	const out: RoadLine[] = [];
+	const ends: Array<[number, number]> = [];
+	for (const l of lines) {
+		let run: Array<readonly [number, number]> = [];
+		const flush = (): void => {
+			if (run.length > 1) out.push({ pts: run, cost: l.cost });
+			run = [];
+		};
+		for (let s = 1; s < l.pts.length; s++) {
+			const [ax, ay] = l.pts[s - 1];
+			const [bx, by] = l.pts[s];
+			const c = clip(ax, ay, bx, by, b);
+			if (!run.length) run.push(l.pts[s - 1]);
+			if (!c) {
+				run.push(l.pts[s]);
+				continue;
+			}
+			const at = (t: number): [number, number] => [ax + t * (bx - ax), ay + t * (by - ay)];
+			if (c[0] > 0) {
+				const e = at(c[0]);
+				run.push(e);
+				ends.push(e);
+			}
+			flush();
+			if (c[1] < 1) {
+				const e = at(c[1]);
+				ends.push(e);
+				run = [e, l.pts[s]];
+			}
+		}
+		flush();
+	}
+	return { lines: out, ends };
+}
+
+/** The nearest point on any of the lines, and how far it is in world units. */
+function nearest(lines: readonly RoadLine[], [px, py]: readonly [number, number]): { d: number; at: [number, number] } | null {
+	let best: { d: number; at: [number, number] } | null = null;
+	for (const l of lines)
+		for (let s = 1; s < l.pts.length; s++) {
+			const [ax, ay] = l.pts[s - 1];
+			const [bx, by] = l.pts[s];
+			const dx = bx - ax;
+			const dy = by - ay;
+			const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy || 1)));
+			const at: [number, number] = [ax + t * dx, ay + t * dy];
+			const d = Math.hypot(px - at[0], py - at[1]);
+			if (!best || d < best.d) best = { d, at };
+		}
+	return best;
 }
 
 interface Edge {
@@ -231,22 +306,24 @@ export class RoadGraph {
 
 	private joinDeadEnds(): void {
 		const segs = this.segments();
-		// Each segment fills every cell of its box: at SNAP_M a long diagonal road filled tens of thousands. Any cell ≥ SNAP_M finds the same joins.
+		// Any cell ≥ SNAP_M finds the same joins; the 3×3 search below covers an end within SNAP_M of a sampled cell.
 		const cell = (8 * SNAP_M) / this.mpu;
 		const grid = new Map<number, number[]>();
 		const key = (cx: number, cy: number): number => cx * 2 ** 26 + cy;
 		segs.forEach(([a, b], i) => {
-			const x0 = Math.floor(Math.min(this.xs[a], this.xs[b]) / cell);
-			const x1 = Math.floor(Math.max(this.xs[a], this.xs[b]) / cell);
-			const y0 = Math.floor(Math.min(this.ys[a], this.ys[b]) / cell);
-			const y1 = Math.floor(Math.max(this.ys[a], this.ys[b]) / cell);
-			for (let x = x0; x <= x1; x++)
-				for (let y = y0; y <= y1; y++) {
-					const k = key(x, y);
-					const list = grid.get(k);
-					if (list) list.push(i);
-					else grid.set(k, [i]);
-				}
+			// Only the cells it passes through, sampled every half cell: filling its box, a 50 km highway straight filled 600,000.
+			const dx = this.xs[b] - this.xs[a];
+			const dy = this.ys[b] - this.ys[a];
+			const n = Math.ceil(Math.hypot(dx, dy) / (cell / 2)) || 1;
+			let last = Number.NaN;
+			for (let s = 0; s <= n; s++) {
+				const k = key(Math.floor((this.xs[a] + (dx * s) / n) / cell), Math.floor((this.ys[a] + (dy * s) / n) / cell));
+				if (k === last) continue;
+				last = k;
+				const list = grid.get(k);
+				if (list) list.push(i);
+				else grid.set(k, [i]);
+			}
 		});
 		// Found against the original segments, applied after, so a split never invalidates a later search.
 		const joins: Array<{ end: number; seg: number; t: number }> = [];
@@ -401,22 +478,69 @@ export type RouteResult =
 
 const OFF_ROAD_DRAW_M = 15;
 
-/** Route through every stop in order. */
+/** Route through every stop in order: on z13 alone when it fits, else z13 around each stop and the highways between. */
 export async function findRoute(
 	stops: readonly LngLat[],
 	read: (t: TileId) => Promise<RoadLine[] | null>,
+	highways?: (box: Box) => RoadLine[],
 ): Promise<RouteResult> {
 	const crowKm = crowMetres(stops) / 1000;
-	let last: RouteResult = { ok: false, reason: "too-far", crowKm, missing: 0 };
-	for (const share of PADS) {
-		const tiles = tilesFor(stops, share);
-		if (tiles.length > MAX_TILES) break;
+	const tooFar: RouteResult = { ok: false, reason: "too-far", crowKm, missing: 0 };
+	if (crowKm > MAX_KM) return tooFar;
+	let last: RouteResult = tooFar;
+	const b = tileBox(stops, PADS[0]);
+	if ((b.x1 - b.x0 + 1) * (b.y1 - b.y0 + 1) > MAX_TILES) {
+		if (highways) last = await viaHighways(stops, read, highways, crowKm);
+	} else
+		for (const share of PADS) {
+			const tiles = tilesFor(stops, share);
+			if (tiles.length > MAX_TILES) break;
+			const got = await Promise.all(tiles.map(read));
+			const missing = got.filter((g) => g === null).length;
+			last = routeOver(new RoadGraph(got.flatMap((g) => g ?? []), stops[0][1]), stops) ?? { ok: false, reason: "no-road", crowKm, missing };
+			if (last.ok) break;
+		}
+	// The limit is the drive, not the crow: 900 km apart can be 1,400 km of road.
+	return last.ok && last.km > MAX_KM ? tooFar : last;
+}
+
+/** Each stop's own z13 square, the highways with those squares cut out, joined where a highway crosses a square's edge. */
+async function viaHighways(
+	stops: readonly LngLat[],
+	read: (t: TileId) => Promise<RoadLine[] | null>,
+	highways: (box: Box) => RoadLine[],
+	crowKm: number,
+): Promise<RouteResult> {
+	const mpu = metresPerUnit(stops[0][1]);
+	const w = stops.map(toWorld);
+	const xs = w.map((p) => p[0]);
+	const ys = w.map((p) => p[1]);
+	// The wide pad at once: a short join outside the box (Merritt's, at 25 %) cuts a highway that runs inside it.
+	const pad = Math.max(Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) * PADS[1], 50_000 / mpu);
+	let coarse = highways({ x0: Math.min(...xs) - pad, y0: Math.min(...ys) - pad, x1: Math.max(...xs) + pad, y1: Math.max(...ys) + pad });
+	const local: RoadLine[] = [];
+	const entries: RoadLine[] = [];
+	let missing = 0;
+	for (const p of w) {
+		const r = Math.min(Math.max((nearest(coarse, p)?.d ?? 0) * mpu + 8000, LOCAL_MIN_M), LOCAL_MAX_M) / mpu;
+		const box = { x0: p[0] - r, y0: p[1] - r, x1: p[0] + r, y1: p[1] + r };
+		const tiles: TileId[] = [];
+		for (let x = Math.floor(box.x0 / UNITS); x <= Math.floor(box.x1 / UNITS); x++)
+			for (let y = Math.floor(box.y0 / UNITS); y <= Math.floor(box.y1 / UNITS); y++) tiles.push({ z: ROUTE_Z, x, y });
 		const got = await Promise.all(tiles.map(read));
-		const missing = got.filter((g) => g === null).length;
-		last = routeOver(new RoadGraph(got.flatMap((g) => g ?? []), stops[0][1]), stops) ?? { ok: false, reason: "no-road", crowKm, missing };
-		if (last.ok) break;
+		missing += got.filter((g) => g === null).length;
+		const mine = got.flatMap((g) => g ?? []);
+		// Nothing downloaded here: the stop meets the highway itself.
+		if (!mine.length) continue;
+		const cut = cutOut(coarse, box);
+		coarse = cut.lines;
+		for (const e of cut.ends) {
+			const j = nearest(mine, e);
+			if (j && j.d * mpu <= ENTRY_M) entries.push({ pts: [e, j.at], cost: 1 });
+		}
+		local.push(...mine);
 	}
-	return last;
+	return routeOver(new RoadGraph([...coarse, ...local, ...entries], stops[0][1]), stops) ?? { ok: false, reason: "no-road", crowKm, missing };
 }
 
 function routeOver(graph: RoadGraph, stops: readonly LngLat[]): RouteResult | null {
