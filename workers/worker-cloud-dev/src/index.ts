@@ -162,7 +162,9 @@ let lastFlush = 0;
 function tally(env: Env, ctx: ExecutionContext, key: string, n: number): void {
   if (!env.SAT_CACHE) return;
   pending[key] = (pending[key] ?? 0) + n;
-  if (key.endsWith("|served")) pendingTiles++;
+  // `served` is a tile's last count; flushing on any earlier one splits a tile across two objects.
+  if (!key.endsWith("|served")) return;
+  pendingTiles++;
   if (pendingTiles >= 100 || Date.now() - lastFlush > 30_000) ctx.waitUntil(flush(env.SAT_CACHE));
 }
 
