@@ -26,21 +26,20 @@ import hospitalsPack from "./hospitalsWorld.v1.bin";
 /** Edge-cache key for /hospitals; bump on every re-bake (bakeHospitals.mjs prints it). */
 const HOSPITALS_BUILD = "v1-209173-20260907";
 
-/** Edge-cache key for /satellite; bump when the upstream tileset id changes. */
-const SATELLITE_BUILD = "satellite-v2";
-
-/** MapTiler's pyramid thins out past this outside cities; the client overzooms instead. */
-const SATELLITE_MAX_Z = 20;
+/** The imagery sources; [vars] SATELLITE_SOURCE picks one. Its name heads every cached tile's key,
+ * so a new tileset is a new name, never a stale tile. */
+const SATELLITE_SOURCES: Record<string, { maxZ: number; secret: "GC_mapTiler_key"; url: (env: Env, z: number, x: number, y: number) => string }> = {
+  // satellite-v2 is already 512px, so @2x 404s; its pyramid thins out past z20 outside cities.
+  maptiler: { maxZ: 20, secret: "GC_mapTiler_key", url: (env, z, x, y) => `https://api.maptiler.com/tiles/satellite-v2/${z}/${x}/${y}.jpg?key=${env.GC_mapTiler_key}` },
+};
 
 const SATELLITE_PATH = /^\/satellite\/(\d{1,2})\/(\d{1,7})\/(\d{1,7})\.jpg$/;
 
-/** satellite-v2 is already 512px, so @2x 404s — the client declares tileSize 512. */
-function satelliteUrl(key: string, z: number, x: number, y: number): string {
-  return `https://api.maptiler.com/tiles/satellite-v2/${z}/${x}/${y}.jpg?key=${key}`;
-}
-
 interface Env {
   TILES: R2Bucket;
+  /** Satellite tiles every phone shares, as `source/z/x/y.jpg`; bound on tiles-dev only. */
+  SAT_CACHE?: R2Bucket;
+  SATELLITE_SOURCE: string;
   PMTILES_KEY: string;
   /** Worker SECRETs (`wrangler secret put`), never [vars] — they must not reach the app bundle. */
   GC_firms_map_key: string;
@@ -106,6 +105,7 @@ const EXPOSED_HEADERS = [
   "X-Sources-Ok",
   "X-Radius-Km",
   "X-Tile-Source",
+  "X-Cache",
   "Server-Timing",
   "Retry-After",
 ].join(", ");
@@ -121,27 +121,38 @@ const CORS_HEADERS: Record<string, string> = {
 const SAT_HEADERS: Record<string, string> = {
   ...CORS_HEADERS,
   "Content-Type": "image/jpeg",
-  "X-Tile-Source": "maptiler",
   "Cache-Control": "public, max-age=31536000, immutable",
 };
 
-/** MapTiler said no; its status and Retry-After travel on to the phone. */
+/** The source said no; its status and Retry-After travel on to the phone. */
 class UpstreamRefused extends Error {
   constructor(readonly status: number, readonly retryAfter: string | null, message: string) {
     super(message);
   }
 }
 
-/** One MapTiler tile through the edge cache. */
-async function satelliteTile(env: Env, ctx: ExecutionContext, origin: string, z: number, x: number, y: number): Promise<ArrayBuffer> {
-  const key = new Request(`${origin}/satellite/${z}/${x}/${y}.jpg?build=${SATELLITE_BUILD}`, { method: "GET" });
-  const hit = await caches.default.match(key);
-  if (hit) return hit.arrayBuffer();
-  const upstream = await fetch(satelliteUrl(env.GC_mapTiler_key, z, x, y));
-  if (!upstream.ok) throw new UpstreamRefused(upstream.status, upstream.headers.get("Retry-After"), `MapTiler responded ${upstream.status} for ${z}/${x}/${y}`);
+/** One tile: this colo's edge cache, then the shared R2 copy, then the source. Only a 200 is ever kept. */
+async function satelliteTile(env: Env, ctx: ExecutionContext, origin: string, source: string, z: number, x: number, y: number): Promise<{ body: ArrayBuffer; hit: boolean }> {
+  const name = `${source}/${z}/${x}/${y}.jpg`;
+  const edge = new Request(`${origin}/satellite/${name}`, { method: "GET" });
+  const near = await caches.default.match(edge);
+  if (near) return { body: await near.arrayBuffer(), hit: true };
+  const kept = await env.SAT_CACHE?.get(name);
+  if (kept) {
+    const body = await kept.arrayBuffer();
+    ctx.waitUntil(caches.default.put(edge, new Response(body, { status: 200, headers: SAT_HEADERS })));
+    return { body, hit: true };
+  }
+  const upstream = await fetch(SATELLITE_SOURCES[source].url(env, z, x, y));
+  if (!upstream.ok) throw new UpstreamRefused(upstream.status, upstream.headers.get("Retry-After"), `${source} responded ${upstream.status} for ${z}/${x}/${y}`);
   const body = await upstream.arrayBuffer();
-  ctx.waitUntil(caches.default.put(key, new Response(body, { status: 200, headers: SAT_HEADERS })));
-  return body;
+  ctx.waitUntil(
+    Promise.all([
+      caches.default.put(edge, new Response(body, { status: 200, headers: SAT_HEADERS })),
+      env.SAT_CACHE?.put(name, body, { httpMetadata: { contentType: "image/jpeg" } }),
+    ]),
+  );
+  return { body, hit: false };
 }
 
 export default {
@@ -300,14 +311,21 @@ export default {
       });
     }
 
-    // /satellite/{z}/{x}/{y}.jpg: MapTiler imagery, key held here.
+    // /satellite/{z}/{x}/{y}.jpg: the chosen source's imagery, key held here.
     const sat = SATELLITE_PATH.exec(url.pathname);
     if (sat !== null) {
       const z = Number(sat[1]);
       const x = Number(sat[2]);
       const y = Number(sat[3]);
-      if (z > SATELLITE_MAX_Z) {
-        return new Response(`Bad Request — z must be 0..${SATELLITE_MAX_Z}`, {
+      const source = env.SATELLITE_SOURCE;
+      const from = SATELLITE_SOURCES[source];
+      // Fail loud, like /fires: a blank basemap looks merely "not loaded yet".
+      if (!from)
+        return new Response(`SATELLITE_SOURCE "${source}" is not one of: ${Object.keys(SATELLITE_SOURCES).join(", ")}`, { status: 500, headers: CORS_HEADERS });
+      if (!env[from.secret])
+        return new Response(`${from.secret} is not configured on this Worker (wrangler secret put ${from.secret})`, { status: 500, headers: CORS_HEADERS });
+      if (z > from.maxZ) {
+        return new Response(`Bad Request — z must be 0..${from.maxZ}`, {
           status: 400,
           headers: CORS_HEADERS,
         });
@@ -319,18 +337,10 @@ export default {
           headers: CORS_HEADERS,
         });
       }
-      if (!env.GC_mapTiler_key) {
-        // Fail loud, like /fires: a blank basemap looks merely "not loaded yet".
-        return new Response(
-          "GC_mapTiler_key is not configured on this Worker (wrangler secret put GC_mapTiler_key)",
-          { status: 500, headers: CORS_HEADERS },
-        );
-      }
-
-      let body: ArrayBuffer;
+      let tile: { body: ArrayBuffer; hit: boolean };
       const satStart = performance.now();
       try {
-        body = await satelliteTile(env, ctx, url.origin, z, x, y);
+        tile = await satelliteTile(env, ctx, url.origin, source, z, x, y);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         // A 429 stays a 429, so the phone waits it out instead of retrying into it.
@@ -344,9 +354,14 @@ export default {
           headers: CORS_HEADERS,
         });
       }
-      return new Response(request.method === "HEAD" ? null : body, {
+      return new Response(request.method === "HEAD" ? null : tile.body, {
         status: 200,
-        headers: { ...SAT_HEADERS, "Server-Timing": `sat;dur=${(performance.now() - satStart).toFixed(1)}` },
+        headers: {
+          ...SAT_HEADERS,
+          "X-Tile-Source": source,
+          "X-Cache": tile.hit ? "HIT" : "MISS",
+          "Server-Timing": `sat;dur=${(performance.now() - satStart).toFixed(1)}`,
+        },
       });
     }
 
