@@ -66,3 +66,32 @@ it("a map and its photo downloading together never have more than 48 requests ou
 	expect(fetchMock).toHaveBeenCalledTimes(600);
 	expect(most).toBe(48);
 });
+
+it("a photo asks MapTiler at most 6 tiles at a time", async () => {
+	let open = 0;
+	let most = 0;
+	fetchMock.mockImplementation(async () => {
+		most = Math.max(most, ++open);
+		await new Promise((r) => setTimeout(r, 1));
+		open--;
+		return new Response(new ArrayBuffer(1));
+	});
+	const { getEach } = await import("./download");
+	const urls = Array.from({ length: 165 }, (_, i) => `https://tiles.test/satellite/${i}`);
+	await getEach(urls, () => undefined, () => false, true, undefined, 6);
+	expect(fetchMock).toHaveBeenCalledTimes(165);
+	expect(most).toBe(6);
+});
+
+it("a 429 stops every lane at once, carrying its Retry-After, and is never retried", async () => {
+	fetchMock.mockImplementation(async () => new Response("slow down", { status: 429, headers: { "Retry-After": "30" } }));
+	const { getEach, RateLimited } = await import("./download");
+	const urls = Array.from({ length: 165 }, (_, i) => `https://tiles.test/satellite/${i}`);
+	const skipped = vi.fn();
+	const err = await getEach(urls, () => undefined, () => false, true, skipped, 6).catch((e) => e);
+	expect(err).toBeInstanceOf(RateLimited);
+	expect(err.ms).toBe(30_000);
+	expect(skipped).not.toHaveBeenCalled();
+	// One ask per lane already out, not 165 × 2.
+	expect(fetchMock.mock.calls.length).toBeLessThanOrEqual(6);
+});

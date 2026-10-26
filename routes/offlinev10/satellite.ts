@@ -18,7 +18,7 @@ import { passQueue } from "../../lib/shared/passQueue";
 import { sessionCap, spendBytes } from "../../lib/shared/sessionByteCap.svelte";
 import { satelliteTileUrl } from "../../lib/worker/tilesHost";
 import { onBlob } from "./blobService";
-import { getEach } from "./download";
+import { getEach, RateLimited } from "./download";
 import {
 	AreaGone,
 	claimArea,
@@ -67,23 +67,27 @@ export async function photoTiles(keys: string[], owner: string): Promise<Map<str
 	if (urls.some((u) => u === null)) throw new Error("no tiles host configured — configureTilesHost() must run before a photo bakes.");
 	noteSatelliteTiles(missing.length);
 	const got: Array<[string, ArrayBuffer]> = [];
-	await getEach(
-		urls as string[],
-		(i, b) => {
-			if (!b) return;
-			got.push([missing[i], b]);
-			have.set(missing[i], b);
-			noteBytes("satellite", b.byteLength);
-			spendBytes(b.byteLength);
-		},
-		() => sessionCap.tripped,
-		// MapTiler lacks some tiles; the bake already tolerates gaps.
-		true,
-		(e) => {
-			lastTileFailure = reasonOf(e);
-		},
-	);
-	await putPhotoTiles(got, owner);
+	try {
+		await getEach(
+			urls as string[],
+			(i, b) => {
+				if (!b) return;
+				got.push([missing[i], b]);
+				have.set(missing[i], b);
+				noteBytes("satellite", b.byteLength);
+				spendBytes(b.byteLength);
+			},
+			() => sessionCap.tripped,
+			// MapTiler lacks some tiles; the bake already tolerates gaps.
+			true,
+			(e) => {
+				lastTileFailure = reasonOf(e);
+			},
+			SAT_IN_FLIGHT,
+		);
+	} finally {
+		await putPhotoTiles(got, owner);
+	}
 	return have;
 }
 
@@ -97,6 +101,8 @@ function say(...args: unknown[]): void {
 }
 
 export const PHOTO_RETRY_MS = 60_000;
+// MapTiler rate-limits a burst; roads come from our own R2 and keep the full pool.
+const SAT_IN_FLIGHT = 6;
 export const PHOTO_SPEC = {
 	radiusKm: PHOTO_COVERAGE_RADIUS_KM,
 	sources: PHOTO_SOURCES.map(({ name, zoom, canvasPx }) => ({
@@ -195,6 +201,12 @@ async function pass(asks: readonly PhotoAsk[]): Promise<number> {
 		try {
 			img = await bakeSatelliteImage(photoKey, at, (keys) => photoTiles(keys, id), () => claimArea(id));
 		} catch (error) {
+			if (error instanceof RateLimited) {
+				pausedUntil = Date.now() + error.ms;
+				console.warn(`[offlineV10] photo: imagery host rate-limited us — pass paused ${error.ms / 1000}s`);
+				setIssue(`imagery host busy, retrying in ${Math.round(error.ms / 1000)} s`);
+				break;
+			}
 			if (error instanceof AreaGone) {
 				// `missing` is a bug: the ask names a row no blob was born with. `removed` is the area going mid-bake, not the host's fault, so no pause.
 				if (error.why === "missing") console.warn(`[offlineV10] photo: ${error.message} — the ask holds an id no blob was born with`);

@@ -87,6 +87,28 @@ describe("photo issue", () => {
 	});
 });
 
+describe("a rate-limited imagery host", () => {
+	it("pauses the pass for exactly its Retry-After, then bakes again", async () => {
+		const { RateLimited } = await import("./download");
+		vi.useFakeTimers({ toFake: ["Date"] });
+		// Past any pause the test above left.
+		vi.setSystemTime(Date.now() + 60 * 60_000);
+		h.bake.mockClear();
+		h.bake.mockRejectedValueOnce(new RateLimited(30_000, "https://tiles.test/satellite/17/1/1.jpg"));
+		h.regions = [{ id: "g", photoKey: "pg", photoCenter: [-115, 45] }];
+		const stop = startPhotoService();
+		await vi.waitFor(() => expect(photoIssue()).toBe("imagery host busy, retrying in 30 s"));
+		vi.setSystemTime(Date.now() + 29_000);
+		window.dispatchEvent(new Event("online"));
+		await new Promise((r) => setTimeout(r, 10));
+		expect(h.bake).toHaveBeenCalledTimes(1);
+		vi.setSystemTime(Date.now() + 2_000);
+		window.dispatchEvent(new Event("online"));
+		await vi.waitFor(() => expect(h.bake).toHaveBeenCalledTimes(2));
+		stop();
+	});
+});
+
 describe("dropPhoto", () => {
 	it("deletes the stored photo by its key", async () => {
 		await dropPhoto("pz");

@@ -190,13 +190,22 @@ async function fetchInto(
 	if (refused) throw refused;
 }
 
-/** One GET per tile, at most IN_FLIGHT across all callers, in `urls` order; a 204 is null, and so is a failure when `skipFailed`. `stop` runs before each fetch and may throw. */
+/** The host said to wait: no lane asks again until `ms` has passed. */
+export class RateLimited extends Error {
+	constructor(readonly ms: number, url: string) {
+		super(`rate limited for ${Math.round(ms / 1000)} s: ${url}`);
+		this.name = "RateLimited";
+	}
+}
+
+/** One GET per tile, at most `width` for this caller and IN_FLIGHT across all callers, in `urls` order; a 204 is null, and so is a failure when `skipFailed` — never a 429, which stops every lane. `stop` runs before each fetch and may throw. */
 export async function getEach(
 	urls: readonly string[],
 	onTile: (i: number, body: ArrayBuffer | null) => void,
 	stop: () => boolean = () => false,
 	skipFailed = false,
 	onSkipped?: (error: unknown) => void,
+	width = IN_FLIGHT,
 ): Promise<void> {
 	let next = 0;
 	let failed: unknown = null;
@@ -206,7 +215,7 @@ export async function getEach(
 			onTile(
 				i,
 				await getOne(urls[i]).catch((e) => {
-					if (!skipFailed) return Promise.reject(e);
+					if (!skipFailed || e instanceof RateLimited) return Promise.reject(e);
 					onSkipped?.(e);
 					return null;
 				}),
@@ -214,7 +223,7 @@ export async function getEach(
 		}
 	};
 	const lanes = await Promise.allSettled(
-		Array.from({ length: IN_FLIGHT }, () =>
+		Array.from({ length: width }, () =>
 			lane().catch((e) => {
 				failed ??= e;
 				throw e;
@@ -262,6 +271,7 @@ async function getOnce(url: string): Promise<ArrayBuffer | null> {
 		}
 		if (res.status === 204) return null;
 		if (res.ok) return res.arrayBuffer();
+		if (res.status === 429) throw new RateLimited((Number(res.headers.get("Retry-After")) || 60) * 1000, url);
 		// A cold isolate's first archive read can race; the retry lands warm.
 		if (attempt === 1) throw new Error(`tile ${url}: HTTP ${res.status} ${await res.text().catch(() => "")}`.trim());
 	}
