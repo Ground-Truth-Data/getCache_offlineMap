@@ -3,7 +3,10 @@ import { sessionCap } from "../../shared/sessionByteCap.svelte";
 import { kmBetween, kmToDegSpan } from "../../shared/kmGeo";
 import { latToTileY, lngToTileX, tileToLat, tileToLng } from "../../contract/geo";
 import { makeKeyedIdbStore } from "../store/keyedIdbStore";
-import { isBestPhotoSource, PHOTO_SOURCES, type PhotoSource } from "./photoSources";
+import { SATELLITE_SOURCES, type SatelliteSource, sourceNamed } from "../../contract/satelliteSources";
+
+/** The source whose raw tiles stay on disk for the close-up; any other's photo already holds every pixel it has. */
+export const CLOSE_UP = SATELLITE_SOURCES.maptiler;
 
 /** What one photo physically holds around its centre. */
 export const PHOTO_COVERAGE_RADIUS_KM = 2;
@@ -66,7 +69,7 @@ const idb = makeKeyedIdbStore<SatImage>({ dbName: DB_NAME, storeName: STORE });
 
 /** The one freshness test: the bake and the photo pass both ask it, so a stale photo cannot be kept by one and re-baked by the other. */
 export function isCurrentPhoto(img: SatImage | undefined): img is SatImage {
-	return !!img && img.bakeVersion === BAKE_VERSION && isBestPhotoSource(img.source);
+	return !!img && img.bakeVersion === BAKE_VERSION && !!sourceNamed(img.source);
 }
 
 export async function deleteSatImage(key: string): Promise<void> {
@@ -205,35 +208,32 @@ function scheduleBakeWorkerTeardown(): void {
 	}, BAKE_WORKER_IDLE_MS);
 }
 
-/** Bake the masked photo for a centre from `tiles`; sources are tried in registry order. Null only if none drew.
+/** Bake the masked photo for a centre from `src`'s `tiles`. Null when too few drew.
  * `beforeSave` throws to keep the photo off disk. */
 export async function bakeSatelliteImage(
 	key: string,
 	center: [number, number],
+	src: SatelliteSource,
 	tiles: PhotoTileSource,
 	beforeSave?: () => Promise<void>,
 ): Promise<SatImage | null> {
 	const existing = await idb.get(key);
-	// A stale stamp or a since-beaten source is a miss, so a sharper source reaches ground already saved
+	// A stale stamp is a miss; a photo from a source switched away from stays until it is re-baked.
 	if (isCurrentPhoto(existing)) return existing;
 	if (sessionCap.tripped) return existing ?? null;
 
 	const t0 = performance.now();
-	for (const src of PHOTO_SOURCES) {
-		const out = await bakeFrom(src, center, tiles);
-		if (out) {
-			out.ms = Math.round(performance.now() - t0);
-			await beforeSave?.();
-			await idb.put(key, out);
-			return out;
-		}
-	}
-	return existing ?? null;
+	const out = await bakeFrom(src, center, tiles);
+	if (!out) return existing ?? null;
+	out.ms = Math.round(performance.now() - t0);
+	await beforeSave?.();
+	await idb.put(key, out);
+	return out;
 }
 
 /** One source's bake. Null when fewer than 40% of the disc's tiles drew. */
 async function bakeFrom(
-	src: PhotoSource,
+	src: SatelliteSource,
 	center: [number, number],
 	tiles: PhotoTileSource,
 ): Promise<SatImage | null> {

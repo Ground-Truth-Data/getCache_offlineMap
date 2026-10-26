@@ -25,7 +25,7 @@ afterEach(() => {
 describe("the session byte cap", () => {
 	it("stops a bake before it asks for a single tile", async () => {
 		const { sessionCap, spendBytes, SESSION_BYTE_CAP } = await import("../../shared/sessionByteCap.svelte");
-		const { bakeSatelliteImage } = await import("./satelliteImage");
+		const { CLOSE_UP, bakeSatelliteImage } = await import("./satelliteImage");
 		vi.spyOn(console, "error").mockImplementation(() => undefined);
 		spendBytes(SESSION_BYTE_CAP + 1);
 		expect(sessionCap.tripped).toBe(true);

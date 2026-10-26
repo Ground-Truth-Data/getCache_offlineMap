@@ -26,8 +26,6 @@ remote = true
 # bucket — a mismatch silently reads as "no tiles".
 [vars]
 PMTILES_KEY = "planet.pmtiles"
-# Which imagery /satellite serves (a key of SATELLITE_SOURCES in src/index.ts); switching providers is this line.
-SATELLITE_SOURCE = "maptiler"
 
 [env.dev]
 name = "offline-tiles-dev"
@@ -39,13 +37,12 @@ routes = [
 binding = "TILES"
 bucket_name = "offline-tiles"
 
-# Satellite tiles every phone shares; tiles-prod has no binding, so it keeps only the edge cache.
+# Satellite tiles every phone shares, plus Squirrel's counts and source switch; tiles-prod has no binding: edge cache only, default source.
 [[env.dev.r2_buckets]]
 binding = "SAT_CACHE"
 bucket_name = "gc-satellite-cache"
 
 [env.dev.vars]
 PMTILES_KEY = "planet.pmtiles"
-SATELLITE_SOURCE = "maptiler"
 
 # ⚠️ a staging Worker (offline-tiles-staging) may still exist in Cloudflare — deleting config never tears down a live Worker.

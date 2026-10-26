@@ -3,12 +3,13 @@
  * is a green field with a pin on it; the photo is the frame of reference.
  */
 
-import { PHOTO_SOURCES } from "../../lib/onPhone/satellite/photoSources";
+import { DEFAULT_SOURCE, SATELLITE_SOURCES, type SatelliteSource, sourceOf } from "../../lib/contract/satelliteSources";
 import {
 	PHOTO_COVERAGE_RADIUS_KM,
 	bakeSatelliteImage,
 	deleteSatImage,
 	getSatImageByKey,
+	CLOSE_UP,
 	isCurrentPhoto,
 	satImageMeta,
 } from "../../lib/onPhone/satellite/satelliteImage";
@@ -16,7 +17,7 @@ import { noteSatelliteTiles } from "../../lib/onPhone/store/downloadGuard";
 import { noteBytes } from "../../lib/shared/dataMeter.svelte";
 import { passQueue } from "../../lib/shared/passQueue";
 import { sessionCap, spendBytes } from "../../lib/shared/sessionByteCap.svelte";
-import { satelliteTileUrl } from "../../lib/worker/tilesHost";
+import { satelliteTileUrl, squirrelUrl } from "../../lib/worker/tilesHost";
 import { onBlob } from "./blobService";
 import { getEach, RateLimited } from "./download";
 import {
@@ -57,13 +58,14 @@ const reasonOf = (e: unknown): string =>
 		.replace(/ for \d+\/\d+\/\d+$/, "")
 		.trim() || "tile request failed";
 
-/** A photo's tiles: disk first, the rest one GET each, written under `owner`'s row before they are drawn. */
-export async function photoTiles(keys: string[], owner: string): Promise<Map<string, ArrayBuffer>> {
+/** A photo's tiles from `source`: disk first, the rest one GET each. Only the close-up source's are kept, under `owner`'s row, before they are drawn. */
+export async function photoTiles(keys: string[], owner: string, source: string = DEFAULT_SOURCE): Promise<Map<string, ArrayBuffer>> {
+	const keep = sourceOf(source) === CLOSE_UP;
 	lastTileFailure = null;
-	const have = await getPhotoTiles(keys);
+	const have = keep ? await getPhotoTiles(keys) : new Map<string, ArrayBuffer>();
 	const missing = keys.filter((k) => !have.has(k));
 	if (missing.length === 0 || (typeof navigator !== "undefined" && navigator.onLine === false)) return have;
-	const urls = missing.map((k) => satelliteTileUrl(...(k.split("/").map(Number) as [number, number, number])));
+	const urls = missing.map((k) => satelliteTileUrl(source, ...(k.split("/").map(Number) as [number, number, number])));
 	if (urls.some((u) => u === null)) throw new Error("no tiles host configured — configureTilesHost() must run before a photo bakes.");
 	noteSatelliteTiles(missing.length);
 	const got: Array<[string, ArrayBuffer]> = [];
@@ -86,7 +88,7 @@ export async function photoTiles(keys: string[], owner: string): Promise<Map<str
 			SAT_IN_FLIGHT,
 		);
 	} finally {
-		await putPhotoTiles(got, owner);
+		if (keep) await putPhotoTiles(got, owner);
 	}
 	return have;
 }
@@ -105,7 +107,7 @@ export const PHOTO_RETRY_MS = 60_000;
 const SAT_IN_FLIGHT = 6;
 export const PHOTO_SPEC = {
 	radiusKm: PHOTO_COVERAGE_RADIUS_KM,
-	sources: PHOTO_SOURCES.map(({ name, zoom, canvasPx }) => ({
+	sources: Object.values(SATELLITE_SOURCES).map(({ name, zoom, canvasPx }) => ({
 		name,
 		zoom,
 		canvasPx,
@@ -123,7 +125,7 @@ export interface PhotoInfo {
 	closeUp: CloseUp;
 }
 
-const WORLD = PHOTO_SOURCES[0];
+const WORLD = SATELLITE_SOURCES[DEFAULT_SOURCE];
 
 /** Metadata per photo key, never the pixels; the total is reported to the tile store's budget. */
 export async function photoInfo(): Promise<Record<string, PhotoInfo>> {
@@ -191,6 +193,16 @@ async function pass(asks: readonly PhotoAsk[]): Promise<number> {
 		say(`[offlineV10] photo: paused ${Math.ceil((pausedUntil - Date.now()) / 1000)}s more, pass skipped`);
 		return 0;
 	}
+	let active: [string, SatelliteSource];
+	try {
+		active = await activeSource();
+	} catch (error) {
+		pausedUntil = Date.now() + PHOTO_RETRY_MS;
+		console.warn(`[offlineV10] photo: no satellite source — pass paused ${PHOTO_RETRY_MS / 1000}s`, error);
+		setIssue(reasonOf(error));
+		return 0;
+	}
+	const [sid, src] = active;
 	let landed = 0;
 	for (const { id, photoKey, at } of asks) {
 		if (isCurrentPhoto(await getSatImageByKey(photoKey))) {
@@ -199,7 +211,7 @@ async function pass(asks: readonly PhotoAsk[]): Promise<number> {
 		}
 		let img: Awaited<ReturnType<typeof bakeSatelliteImage>> = null;
 		try {
-			img = await bakeSatelliteImage(photoKey, at, (keys) => photoTiles(keys, id), () => claimArea(id));
+			img = await bakeSatelliteImage(photoKey, at, src, (keys) => photoTiles(keys, id, sid), () => claimArea(id));
 		} catch (error) {
 			if (error instanceof RateLimited) {
 				pausedUntil = Date.now() + error.ms;
@@ -228,6 +240,18 @@ async function pass(asks: readonly PhotoAsk[]): Promise<number> {
 		for (const fn of listeners) fn();
 	}
 	return landed;
+}
+
+/** The source the Worker says photos bake from; asked once a pass, so a switch on /app/squirrel lands on the next one. */
+async function activeSource(): Promise<[string, SatelliteSource]> {
+	const url = squirrelUrl("/active");
+	if (!url) throw new Error("no tiles host configured — configureTilesHost() must run before a photo bakes.");
+	const res = await fetch(url);
+	if (!res.ok) throw new Error(`HTTP ${res.status} the Worker would not say which satellite source is on`);
+	const { active } = (await res.json()) as { active: string };
+	const src = sourceOf(active);
+	if (!src) throw new Error(`the Worker serves satellite source "${active}", which this build does not know`);
+	return [active, src];
 }
 
 export async function bakeAllPhotos(): Promise<number> {

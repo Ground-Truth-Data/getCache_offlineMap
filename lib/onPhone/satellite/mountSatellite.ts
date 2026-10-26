@@ -7,7 +7,8 @@ import {
     type Bounds,
 } from "./satelliteImage";
 import { kmToDegSpan } from "../../shared/kmGeo";
-import { PHOTO_SOURCES } from "./photoSources";
+import { sourceNamed } from "../../contract/satelliteSources";
+import { CLOSE_UP } from "./satelliteImage";
 
 /** A blob's photo as its record names it: the stored key and the exact centre, never rebuilt from each other. */
 export interface PhotoSite {
@@ -28,6 +29,8 @@ export interface SatelliteMount {
     ): Promise<number>;
     unmount(key: string): void;
     mounted(): ReadonlySet<string>;
+    /** Each mounted photo's source attribution, once; the map must show them while those photos are up. */
+    attributions(): string[];
     dispose(): void;
 }
 
@@ -103,8 +106,9 @@ export function createSatelliteMount(
     let disposed = false;
     // createObjectURL pins the blob in memory until revoked.
     const satUrls = new Map<string, string>();
+    const sourceOf = new Map<string, string | undefined>();
 
-    const z = PHOTO_SOURCES[0].zoom;
+    const z = CLOSE_UP.zoom;
     map.addSource(SAT_CLOSE_ID, { type: "raster", tiles: [closeUpTiles], tileSize: 512, minzoom: z, maxzoom: z });
     map.addLayer(
         { id: SAT_CLOSE_LAYER, type: "raster", source: SAT_CLOSE_ID, paint: { "raster-fade-duration": SAT_FADE_MS } },
@@ -183,6 +187,7 @@ export function createSatelliteMount(
         if (map.getLayer(`${id}-l`)) map.removeLayer(`${id}-l`);
         if (map.getSource(id)) map.removeSource(id);
         mountedSat.delete(key);
+        sourceOf.delete(key);
         const u = satUrls.get(key);
         if (u) {
             URL.revokeObjectURL(u);
@@ -194,7 +199,10 @@ export function createSatelliteMount(
         async display({ key }: PhotoSite): Promise<void> {
             if (disposed || mountedSat.has(key)) return;
             const img = await getSatImageByKey(key);
-            if (img && !disposed) mountSat(key, img.blob, img.bounds);
+            if (img && !disposed) {
+                sourceOf.set(key, img.source);
+                mountSat(key, img.blob, img.bounds);
+            }
         },
         closeUpChanged(): void {
             if (!disposed) (map.getSource(SAT_CLOSE_ID) as maplibregl.RasterTileSource | undefined)?.setTiles([closeUpTiles]);
@@ -216,6 +224,7 @@ export function createSatelliteMount(
         },
         unmount,
         mounted: () => mountedSat,
+        attributions: () => [...new Set([...sourceOf.values()].map((n) => sourceNamed(n)?.attribution).filter((a): a is string => !!a))],
         dispose(): void {
             disposed = true;
             for (const u of satUrls.values()) URL.revokeObjectURL(u);

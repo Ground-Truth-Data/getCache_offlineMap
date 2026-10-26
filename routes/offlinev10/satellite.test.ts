@@ -12,6 +12,7 @@ let probeTiles = false;
 vi.mock(
 	"../../lib/onPhone/satellite/satelliteImage",
 	() => ({
+		CLOSE_UP: {},
 		PHOTO_COVERAGE_RADIUS_KM: 2,
 		getSatImageByKey: async (k: string) => onDisk.get(k),
 		isCurrentPhoto: (img?: { source?: string }) => !!img && img.source !== "USGS",
@@ -24,6 +25,7 @@ vi.mock(
 		bakeSatelliteImage: async (
 			key: string,
 			center: [number, number],
+			_src: unknown,
 			_tiles: (keys: string[]) => Promise<unknown>,
 			beforeSave?: () => Promise<void>,
 		) => {
@@ -76,6 +78,11 @@ const { PHOTO_RETRY_MS, bakePhotos, dropPhoto, photoInfo, photoIssue, setPhotoNa
 const { configureTilesDevHost } = await import("../../lib/worker/tilesHost");
 configureTilesDevHost("https://tiles.test");
 
+// Every pass first asks the Worker which source is on.
+const squirrel = (other: (url: string) => Promise<unknown> = async () => new Response(null, { status: 404 })) =>
+	vi.fn(async (url: string) => (String(url).endsWith("/squirrel/active") ? new Response(JSON.stringify({ active: "maptiler" })) : other(url)));
+
+
 /** A pin's coordinates are full-precision floats, as a GPS fix or a map tap delivers them. */
 const PIN: [number, number] = [136.4721487975096, -14.117754653776629];
 const PENTICTON: [number, number] = [-119.5937, 49.4991];
@@ -96,6 +103,7 @@ const photo = () => ({
 });
 
 beforeEach(() => {
+	vi.stubGlobal("fetch", squirrel());
 	onDisk.clear();
 	rows.clear();
 	regions = [];
@@ -222,19 +230,19 @@ describe("the photo pass", () => {
 		vi.useFakeTimers();
 		vi.advanceTimersByTime(PHOTO_RETRY_MS + 1);
 		vi.spyOn(console, "warn").mockImplementation(() => undefined);
-		vi.stubGlobal("fetch", async () => ({
+		vi.stubGlobal("fetch", squirrel(async () => ({
 			ok: false,
 			status: 502,
 			headers: new Headers(),
 			text: async () => "Satellite fetch failed: MapTiler responded 429 for 17/1/2",
-		}));
+		})));
 		live(PENTICTON);
 		probeTiles = true;
 		bakeResult = () => null;
 		await bakePhotos([askOf(PENTICTON)]);
 		expect(photoIssue()).toBe("Satellite fetch failed: MapTiler responded 429");
 		probeTiles = false;
-		vi.unstubAllGlobals();
+		vi.stubGlobal("fetch", squirrel());
 		vi.advanceTimersByTime(PHOTO_RETRY_MS + 1);
 		bakeResult = photo;
 		await bakePhotos([askOf(PENTICTON)]);

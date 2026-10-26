@@ -1,7 +1,7 @@
 /** Which photo a new blob uses: the nearest existing photo CENTRE within the reuse radius, else its own. */
 import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { PHOTO_COVERAGE_RADIUS_KM, PHOTO_EDGE_MARGIN_KM, PHOTO_REUSE_KM, photoTilesFor, satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
+import { CLOSE_UP, PHOTO_COVERAGE_RADIUS_KM, PHOTO_EDGE_MARGIN_KM, PHOTO_REUSE_KM, photoTilesFor, satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
 import { kmToDegSpan } from "../../lib/shared/kmGeo";
 const dropped: string[] = [];
 vi.mock("../../lib/onPhone/satellite/satelliteImage", async (orig) => ({
@@ -11,7 +11,6 @@ vi.mock("../../lib/onPhone/satellite/satelliteImage", async (orig) => ({
 	},
 }));
 
-import { PHOTO_SOURCES } from "../../lib/onPhone/satellite/photoSources";
 import { setBudgetMb } from "./budget";
 import { allTileKeys, choosePhoto, deleteRegion, PHOTO_PREFIX, photoTileBytes, putPhotoTiles, putRegion, type Region, regionId, wipe } from "./store";
 import { regionRange } from "./tiles";
@@ -109,7 +108,7 @@ describe("removing every user of a photo at once", () => {
 });
 
 describe("what a blob's close-up put on the phone", () => {
-	const Z = PHOTO_SOURCES[0].zoom;
+	const Z = CLOSE_UP.zoom;
 	const tilesOf = (c: [number, number]) => photoTilesFor(c, Z).map((t) => `${Z}/${t.x}/${t.y}`);
 
 	beforeEach(async () => {

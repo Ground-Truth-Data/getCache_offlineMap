@@ -13,7 +13,7 @@ vi.mock("../store/keyedIdbStore", () => ({
 	}),
 }));
 
-const { bakeSatelliteImage } = await import("./satelliteImage");
+const { CLOSE_UP, bakeSatelliteImage } = await import("./satelliteImage");
 
 /** Nice, France: MapTiler z17 is the sharpest row, ~300 tiles across 2 km. */
 const PIN: [number, number] = [7.2, 43.68];
@@ -53,26 +53,26 @@ afterEach(() => {
 
 describe("what one pin's photo costs", () => {
 	it("one ask of the tile source, and not one fetch of its own", async () => {
-		expect(await bakeSatelliteImage(KEY, PIN, source)).not.toBeNull();
+		expect(await bakeSatelliteImage(KEY, PIN, CLOSE_UP, source)).not.toBeNull();
 		expect(asked).toHaveLength(1);
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
 	it("the disc stays inside the tile ceiling", async () => {
-		await bakeSatelliteImage(KEY, PIN, source);
+		await bakeSatelliteImage(KEY, PIN, CLOSE_UP, source);
 		expect(asked[0].length).toBeGreaterThan(100);
 		expect(asked[0].length).toBeLessThanOrEqual(MAX_TILES_PER_PIN);
 	});
 
 	it("the same spot again costs nothing", async () => {
-		await bakeSatelliteImage(KEY, PIN, source);
+		await bakeSatelliteImage(KEY, PIN, CLOSE_UP, source);
 		asked.length = 0;
-		await bakeSatelliteImage(KEY, PIN, source);
+		await bakeSatelliteImage(KEY, PIN, CLOSE_UP, source);
 		expect(asked).toHaveLength(0);
 	});
 
 	it("a disc the source can mostly not supply is no photo, so the pass retries", async () => {
 		const thin = async (keys: string[]) => new Map(keys.slice(0, 10).map((k) => [k, new ArrayBuffer(8)]));
-		expect(await bakeSatelliteImage(KEY, PIN, thin)).toBeNull();
+		expect(await bakeSatelliteImage(KEY, PIN, CLOSE_UP, thin)).toBeNull();
 	});
 });

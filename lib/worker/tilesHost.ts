@@ -70,10 +70,16 @@ export function tileUrl(z: number, x: number, y: number): string | null {
 	return h === null ? null : `${h}/${z}/${x}/${y}.pbf`;
 }
 
-/** Through our Worker, never MapTiler direct: the key stays on the Worker. */
-export function satelliteTileUrl(z: number, x: number, y: number): string | null {
+/** Through our Worker, never the source direct: keys stay on the Worker, and it counts and caches every tile. */
+export function satelliteTileUrl(source: string, z: number, x: number, y: number): string | null {
 	const h = tilesHost();
-	return h === null ? null : `${h}/satellite/${z}/${x}/${y}.jpg`;
+	return h === null ? null : `${h}/satellite/${source}/${z}/${x}/${y}.jpg`;
+}
+
+/** The Worker's Squirrel: which source photos bake from, and what each served. */
+export function squirrelUrl(path: "" | "/active" = ""): string | null {
+	const h = tilesHost();
+	return h === null ? null : `${h}/squirrel${path}`;
 }
 
 export function hospitalsUrl(

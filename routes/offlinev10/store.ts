@@ -1,9 +1,8 @@
 /** The tile store: one IndexedDB store keyed `z/x/y`, one copy per tile
  * however many blobs cover it; a second store lists the blobs. */
 
-import { deleteSatImage, PHOTO_REUSE_KM, photoTilesFor, type RawTile, satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
+import { CLOSE_UP, deleteSatImage, PHOTO_REUSE_KM, photoTilesFor, type RawTile, satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
 import { kmBetween } from "../../lib/shared/kmGeo";
-import { PHOTO_SOURCES } from "../../lib/onPhone/satellite/photoSources";
 import { BudgetError, budgetBytes } from "./budget";
 import type { Place } from "./places";
 import {
@@ -260,7 +259,7 @@ export async function getPhotoTiles(keys: readonly string[]): Promise<Map<string
 /** The photo tiles under a blob's photo, wherever it is centred; none for a follow-me blob. */
 function photoKeysOf(r: Region): string[] {
 	if (!r.photoCenter) return [];
-	const z = PHOTO_SOURCES[0].zoom;
+	const z = CLOSE_UP.zoom;
 	return photoTilesFor(r.photoCenter, z).map((t) => `${PHOTO_PREFIX}${z}/${t.x}/${t.y}`);
 }
 

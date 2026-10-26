@@ -1,8 +1,7 @@
 /** The close-up's raw tiles live in the road store: a deleted blob takes the ones no other pin's disc still covers. */
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { photoTilesFor, satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
-import { PHOTO_SOURCES } from "../../lib/onPhone/satellite/photoSources";
+import { CLOSE_UP, photoTilesFor, satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
 import { configureTilesDevHost } from "../../lib/worker/tilesHost";
 import { setBudgetMb } from "./budget";
 import { photoTiles } from "./satellite";
@@ -12,7 +11,7 @@ import { regionRange } from "./tiles";
 vi.mock("./blobService", () => ({ onBlob: () => () => undefined }));
 configureTilesDevHost("https://tiles.test");
 
-const Z = PHOTO_SOURCES[0].zoom;
+const Z = CLOSE_UP.zoom;
 
 function region(id: string, lng: number, lat: number): Region {
 	return { id, lng, lat, range: regionRange(lng, lat), at: 1, tiles: 1, fetched: 1, bytes: 0, ms: 1, photoKey: satImageKey([lng, lat]), photoCenter: [lng, lat] };
@@ -63,7 +62,7 @@ describe("photo close-up tiles", () => {
 });
 
 describe("what a photo's tiles cost on the wire", () => {
-	// The Worker's /satellite/{z}/{x}/{y}.jpg: every tile 7 bytes.
+	// The Worker's /satellite/{source}/{z}/{x}/{y}.jpg: every tile 7 bytes.
 	const fetchMock = vi.fn(async (_url: string) => ({ ok: true, status: 200, headers: new Headers(), arrayBuffer: async () => new ArrayBuffer(7) }));
 	beforeEach(() => {
 		fetchMock.mockClear();
@@ -86,13 +85,24 @@ describe("what a photo's tiles cost on the wire", () => {
 
 		await putRegion(C);
 		const got = await photoTiles(keysOf(C), C.id);
-		const asked = fetchMock.mock.calls.map((c) => /satellite\/(\d+\/\d+\/\d+)\.jpg/.exec(c[0])?.[1]);
+		const asked = fetchMock.mock.calls.map((c) => /satellite\/maptiler\/(\d+\/\d+\/\d+)\.jpg/.exec(c[0])?.[1]);
 		expect(asked.sort()).toEqual([...missing].sort());
 		expect(got.size).toBe(keysOf(C).length);
 
 		fetchMock.mockClear();
 		await photoTiles(keysOf(C), C.id);
 		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("another source's tiles come from its own route and are never kept: only the close-up source's are", async () => {
+		const D = region("d", -70.1, 46.2);
+		await putRegion(D);
+		const keys = keysOf(D).slice(0, 3);
+		expect((await photoTiles(keys, D.id, "sentinel")).size).toBe(3);
+		expect(fetchMock.mock.calls.every((c) => c[0].includes("/satellite/sentinel/"))).toBe(true);
+		fetchMock.mockClear();
+		await photoTiles(keys, D.id, "sentinel");
+		expect(fetchMock).toHaveBeenCalledTimes(3);
 	});
 
 	it("a photo for an area whose row is gone fetches, but lands no tile", async () => {

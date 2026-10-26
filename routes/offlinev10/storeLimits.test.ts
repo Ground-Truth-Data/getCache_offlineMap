@@ -301,7 +301,9 @@ describe("offline areas are an LRU cache of the 16 MB test budget", () => {
 		configureTilesDevHost("https://tiles.test");
 		// The tests above unstub every global, the file's window included.
 		vi.stubGlobal("window", new EventTarget());
-		vi.stubGlobal("fetch", async () => new Response(new ArrayBuffer(10)));
+		vi.stubGlobal("fetch", async (url: string) =>
+			String(url).endsWith("/squirrel/active") ? new Response(JSON.stringify({ active: "maptiler" })) : new Response(new ArrayBuffer(10)),
+		);
 		baked.length = 0;
 	});
 	afterEach(async () => {

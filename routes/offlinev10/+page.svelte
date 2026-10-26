@@ -53,6 +53,7 @@ let fireHandle: FireLayerHandle | null = null;
 let hospitalHandle: HospitalLayerHandle | null = null;
 let routeHandle: RouteHandle | null = null;
 let photos: SatelliteMount | null = null;
+let credits = $state<string[]>([]);
 let regions = $state<Region[]>([]);
 let photoMeta = $state<Record<string, PhotoInfo>>({});
 let photoProblem = $state<string | null>(null);
@@ -219,6 +220,7 @@ function reconcilePhotos(): void {
 		)
 		.then(() => {
 			if (map === m) enforceOff(m);
+			credits = photos?.attributions() ?? [];
 		});
 }
 
@@ -340,7 +342,7 @@ function followBlobs(): () => void {
 				light = "err";
 				failure = `could not refresh after removal: ${err instanceof Error ? err.message : String(err)}`;
 			});
-		} else {
+		} else if (e.kind === "failed") {
 			light = "err";
 			busy = false;
 			progress = null;
@@ -547,6 +549,9 @@ onMount(() => {
 	class:draw-active-pin={armKind === "pin"}
 >
 	<div class="map-canvas" bind:this={host}></div>
+	{#if credits.length}
+		<p class="photo-credits">{credits.join(" · ")}</p>
+	{/if}
 
 	<MapTopControls ports={mapPorts} bind:mapOnly crowMode="offline" onCrowToggle={() => goto(onlineUrl())} />
 
@@ -613,4 +618,16 @@ onMount(() => {
 
 <style>
 .map-canvas { background: #34373d; }
+.photo-credits {
+	position: absolute;
+	left: 8px;
+	right: 8px;
+	bottom: calc(env(safe-area-inset-bottom) + 4px);
+	z-index: 2;
+	margin: 0;
+	font-size: 10px;
+	color: rgb(255 255 255 / 0.85);
+	text-shadow: 0 0 2px #000;
+	pointer-events: none;
+}
 </style>

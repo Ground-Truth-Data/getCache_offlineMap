@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
 	regions: [] as Array<{ id: string; photoKey?: string; photoCenter?: [number, number] }>,
 }));
 vi.mock("../../lib/onPhone/satellite/satelliteImage", () => ({
+	CLOSE_UP: {},
 	PHOTO_COVERAGE_RADIUS_KM: 2,
 	bakeSatelliteImage: h.bake,
 	deleteSatImage: h.drop,
@@ -29,15 +30,26 @@ vi.mock("./store", () => ({
 	regionsSnapshot: () => ({ version: 1, regions: Promise.resolve(h.regions) }),
 }));
 
+
+// Every pass first asks the Worker which source is on.
+const squirrel = (other: (url: string) => Promise<unknown> = async () => new Response(null, { status: 404 })) =>
+	vi.fn(async (url: string) => (String(url).endsWith("/squirrel/active") ? new Response(JSON.stringify({ active: "maptiler" })) : other(url)));
+
+import { configureTilesDevHost } from "../../lib/worker/tilesHost";
+configureTilesDevHost("https://tiles.test");
 import { dropPhoto, onPhoto, onPhotoIssue, photoIssue, startPhotoService } from "./satellite";
 
 beforeEach(() => {
 	h.bake.mockClear();
+	vi.stubGlobal("fetch", squirrel());
 	vi.spyOn(console, "warn").mockImplementation(() => {});
 	vi.spyOn(console, "info").mockImplementation(() => {});
 	vi.spyOn(console, "log").mockImplementation(() => {});
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+	vi.useRealTimers();
+	vi.unstubAllGlobals();
+});
 
 describe("startPhotoService", () => {
 	it("bakes at start, on a blob's start and on coming online; one start owns shutdown", async () => {

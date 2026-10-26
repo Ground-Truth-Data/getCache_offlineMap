@@ -4,7 +4,7 @@ import { kindOf } from "./dataMeter.svelte";
 /**
  * The buckets are the whole point of the meter: a row that says "satellite" must
  * actually hold satellite bytes. These pin the URL shapes against the real
- * builders in tilesHost.ts and photoSources.ts — the assumption that satellite
+ * builders in tilesHost.ts and lib/contract/satelliteSources.ts — the assumption that satellite
  * comes from api.mapbox.com was wrong, and it would have reported the heaviest
  * feature as zero.
  */
