@@ -38,7 +38,7 @@ secrets/
 # scratch (~100 MB) stays out.
 workers/.bake-cache/
 
-# gitEr/dressChild.sh writes both, wiped and regenerated on every run. A
+# gitEr/syncRapper.sh writes both, wiped and regenerated on every run. A
 # committed _rapper/ drifted from rapper and had to be hand-synced.
 _rapper/
 _siblings/
