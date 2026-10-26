@@ -8,7 +8,7 @@ import { kmBetween, type LngLat } from "../shared/kmGeo";
 import { readStoredFix } from "../shared/liveFix";
 import { tileUrl } from "../worker/tilesHost";
 import { markerCtor } from "../shared/rendererOf";
-import targetPinUrl from "./targetPin.webp";
+import targetPinUrl from "./pin_search_target.webp";
 import routeSignUrl from "./routeSign.svg";
 import crowLineUrl from "./crowLine.svg";
 import { ARRIVED_M, courseDeg, metresAlong, OFF_ROUTE_FIXES, OFF_ROUTE_M, progressOn } from "./follow";
