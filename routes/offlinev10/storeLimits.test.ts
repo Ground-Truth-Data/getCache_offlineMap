@@ -108,6 +108,12 @@ describe("the 1 GB wall refuses, it never evicts", () => {
 		setBudgetMb(1024);
 		await expect(roomFor(...SPOTS[1])).resolves.toBeUndefined();
 	});
+
+	// Many maps with many pins each is normal: bytes are the only wall, never a count of areas.
+	it("takes area 1,201 when the bytes fit", async () => {
+		for (let i = 0; i < 1200; i++) await putRegion(region(`p${i}`, i, -136 + (i % 40) * 0.05, -14 + Math.floor(i / 40) * 0.05));
+		await expect(roomFor(...SPOTS[0])).resolves.toBeUndefined();
+	});
 });
 
 describe("an area unopened for 12 months removes itself", () => {

@@ -68,9 +68,10 @@ hit in minutes; a shipped build never reads the override.
 
 Nothing is ever evicted to make room: `roomFor` (`download.ts`) refuses an
 area before its first fetch when its missing tiles, at the average size
-fetched so far, would cross the line, or when there are already
-`BLOB_COUNT_CAP` (1000) areas. The refusal is the area's red line on the blobs dock and nothing
-else: no sheet interrupts the planter.
+fetched so far, would cross the line. Bytes are the only wall; there is no
+cap on the number of areas, since many maps with many pins each is normal.
+The refusal is the area's red line on the blobs dock and nothing else: no
+sheet interrupts the planter.
 The map marks each area it shows (`lastOpened`, from z8); at boot the engine
 removes areas unopened for `STALE_AREA_MONTHS` (12). A removed area keeps its
 row with `removed` set and its tiles freed, so its pin is not fetched straight

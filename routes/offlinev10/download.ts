@@ -8,7 +8,7 @@
 import { noteBytes } from "../../lib/shared/dataMeter.svelte";
 import { sessionCap, spendBytes } from "../../lib/shared/sessionByteCap.svelte";
 import { tileUrl } from "../../lib/worker/tilesHost";
-import { BLOB_COUNT_CAP, BudgetError, budgetBytes, fullMessage } from "./budget";
+import { BudgetError, budgetBytes } from "./budget";
 import { nearestPlace } from "./places";
 import {
 	AreaGone,
@@ -52,11 +52,9 @@ export interface DownloadOpts {
 
 /** Refuses before a byte is fetched when the area would not fit: its missing tiles at the
  * average size of the tiles already fetched. The store's wall still catches a bad guess, and
- * the download then takes back what it wrote. A repair adds no area, so only bytes count. */
-export async function roomFor(lng: number, lat: number, repair = false): Promise<void> {
+ * the download then takes back what it wrote. Bytes are the only wall, never a count of areas. */
+export async function roomFor(lng: number, lat: number): Promise<void> {
 	const regions = await listRegions();
-	if (!repair && regions.length >= BLOB_COUNT_CAP)
-		throw new BudgetError(0, 0, 0, fullMessage(`${BLOB_COUNT_CAP} areas`));
 	let tiles = 0;
 	let bytes = 0;
 	for (const r of regions)

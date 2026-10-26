@@ -123,7 +123,7 @@ async function drain(): Promise<void> {
 async function download({ at, id, photo, pin, keep }: Ask): Promise<void> {
 	try {
 		// Before "start": a refused area must not get its photo baked either.
-		await roomFor(at[0], at[1], !!keep);
+		await roomFor(at[0], at[1]);
 	} catch (error) {
 		emit({ kind: "failed", at, error });
 		return;
