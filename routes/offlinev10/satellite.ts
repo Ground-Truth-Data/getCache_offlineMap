@@ -3,7 +3,7 @@
  * is a green field with a pin on it; the photo is the frame of reference.
  */
 
-import { DEFAULT_SOURCE, SATELLITE_SOURCES, type SatelliteSource, sourceOf } from "../../lib/contract/satelliteSources";
+import { DEFAULT_SOURCE, SATELLITE_SOURCES, type SatelliteSource, sourceAt, sourceOf } from "../../lib/contract/satelliteSources";
 import {
 	PHOTO_COVERAGE_RADIUS_KM,
 	bakeSatelliteImage,
@@ -202,9 +202,10 @@ async function pass(asks: readonly PhotoAsk[]): Promise<number> {
 		setIssue(reasonOf(error));
 		return 0;
 	}
-	const [sid, src] = active;
 	let landed = 0;
 	for (const { id, photoKey, at } of asks) {
+		const sid = sourceAt(at, active[0]);
+		const src = sid === active[0] ? active[1] : sourceOf(sid)!;
 		if (isCurrentPhoto(await getSatImageByKey(photoKey))) {
 			say(`[offlineV10] photo: ${id} already has its photo`);
 			continue;

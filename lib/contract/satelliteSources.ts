@@ -22,6 +22,8 @@ export interface SatelliteSource {
 	cacheToR2: boolean;
 	/** what the source charges per 1,000 tiles fetched from it */
 	usdPer1000: number;
+	/** where it has imagery, [w, s, e, n]; a source with any wins there over the switched-on one */
+	covers?: readonly (readonly [number, number, number, number])[];
 }
 
 export const SATELLITE_SOURCES = {
@@ -57,6 +59,37 @@ export const SATELLITE_SOURCES = {
 		cacheToR2: false,
 		usdPer1000: 0,
 	},
+	usgs: {
+		name: "USGS National Map imagery",
+		tileUrl: (_key, z, x, y) => `https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/${z}/${y}/${x}`,
+		// It lists LODs to 23 but 404s past 16.
+		maxZ: 16,
+		zoom: 16,
+		// 256px tiles at z16 are 864px across the disc; a little over keeps edges soft.
+		canvasPx: 1024,
+		quality: 0.9,
+		attribution: "USGS The National Map: Orthoimagery",
+		licence: "US public domain: \"Map services and data downloaded from The National Map are free and in the public domain.\"",
+		cacheToR2: true,
+		usdPer1000: 0,
+		// Kept inside the border: past it USGS answers 404 or blank, and a pin there would bake nothing.
+		covers: [
+			[-124.4, 32.75, -67.0, 41.3],
+			[-104.0, 29.8, -93.5, 32.75],
+			[-93.5, 30.5, -75.0, 32.75],
+			[-97.3, 24.5, -79.9, 30.5],
+			[-124.7, 41.3, -95.2, 48.95],
+			[-95.2, 41.3, -89.6, 48.0],
+			[-89.6, 41.3, -84.8, 46.3],
+			[-84.8, 41.3, -83.2, 45.8],
+			[-80.5, 41.3, -73.5, 42.5],
+			[-76.0, 42.5, -73.5, 44.0],
+			[-73.5, 41.3, -67.8, 44.95],
+			[-168.0, 54.5, -141.1, 71.5],
+			[-160.3, 18.9, -154.7, 22.3],
+			[-67.3, 17.9, -65.2, 18.6],
+		],
+	},
 } satisfies Record<string, SatelliteSource>;
 
 export type SourceId = keyof typeof SATELLITE_SOURCES;
@@ -66,6 +99,13 @@ export const DEFAULT_SOURCE: SourceId = "maptiler";
 
 export function sourceOf(id: string): SatelliteSource | undefined {
 	return (SATELLITE_SOURCES as Record<string, SatelliteSource>)[id];
+}
+
+/** The source a photo at `at` bakes from: one that covers the spot, else the switched-on one. */
+export function sourceAt([lng, lat]: [number, number], active: string): string {
+	for (const [id, s] of Object.entries(SATELLITE_SOURCES) as [string, SatelliteSource][])
+		if (s.covers?.some(([w, so, e, n]) => lng >= w && lng <= e && lat >= so && lat <= n)) return id;
+	return active;
 }
 
 /** The source a photo names on disk, by its stored name. */
