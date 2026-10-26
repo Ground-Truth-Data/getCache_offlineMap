@@ -28,7 +28,18 @@ export type BlobEvent =
 	| { kind: "progress"; progress: Progress }
 	| { kind: "landed"; region: Region }
 	| { kind: "failed"; at: [number, number]; error: unknown }
-	| { kind: "removed"; id: string };
+	| { kind: "removed"; id: string }
+	| { kind: "waiting"; sets: WaitingSet[] };
+
+export type Spot = { at: [number, number]; photo: boolean };
+
+/** A big import with pins on screen that were never saved: `here` on screen, `all` across the set. */
+export interface WaitingSet {
+	key: string;
+	name: string;
+	here: Spot[];
+	all: Spot[];
+}
 
 export interface InFlight {
 	at: [number, number];
@@ -199,7 +210,11 @@ let shown: Box | null = null;
  * is missing a piece. Zoomed out past a region's own zoom, nothing is "seen". */
 export async function viewing(box: Box, zoom: number): Promise<void> {
 	shown = zoom >= ANCHOR_Z - 2 ? box : null;
-	if (!shown) return;
+	if (!shown) return emit({ kind: "waiting", sets: [] });
+	return look(shown);
+}
+
+async function look(box: Box): Promise<void> {
 	const rows = await listRegions();
 	const touched = new Set(await touchRegions(rows.filter((r) => boxesIntersect(rangeBox(r.range), box)).map((r) => r.id)));
 	// Checked when its hourly touch is due, so panning does not scan the store.
@@ -208,9 +223,29 @@ export async function viewing(box: Box, zoom: number): Promise<void> {
 		for (const r of rows)
 			if (touched.has(r.id) && ((missing[r.id] ?? 0) > 0 || (r.photoKey && !isCurrentPhoto(await getSatImageByKey(r.photoKey))))) void repairBlob(r);
 	}
+	// Any row, a removed one included, means the planter once had this pin saved.
+	const saved = new Set(rows.map((r) => r.id));
+	const sets = new Map<string, WaitingSet>();
 	for (const p of host?.places() ?? [])
-		for (const [lng, lat] of p.anchors)
-			if (lng >= box.w && lng <= box.e && lat >= box.s && lat <= box.n) void queueBlob(lng, lat, { photo: !p.corridor, pin: true, revive: true });
+		for (const at of p.anchors) {
+			const here = at[0] >= box.w && at[0] <= box.e && at[1] >= box.s && at[1] <= box.n;
+			const id = regionId(at[0], at[1]);
+			if (!p.set || saved.has(id) || queued.has(id)) {
+				if (here) void queueBlob(at[0], at[1], { photo: !p.corridor, pin: true, revive: true });
+				continue;
+			}
+			let s = sets.get(p.set.key);
+			if (!s) sets.set(p.set.key, (s = { ...p.set, here: [], all: [] }));
+			const spot = { at, photo: !p.corridor };
+			s.all.push(spot);
+			if (here) s.here.push(spot);
+		}
+	emit({ kind: "waiting", sets: [...sets.values()].filter((s) => s.here.length) });
+}
+
+/** The planter chose these pins of a big import. */
+export function saveSpots(spots: readonly Spot[]): void {
+	for (const { at, photo } of spots) void queueBlob(at[0], at[1], { photo, pin: true, revive: true });
 }
 
 async function removeBlob(id: string): Promise<void> {
@@ -259,7 +294,7 @@ export function startBlobService(ports: HostPorts): () => void {
 		for (const p of ports.places()) {
 			for (const [lng, lat] of p.anchors) {
 				now.add(regionId(lng, lat));
-				void queueBlob(lng, lat, { photo: !p.corridor, pin: true });
+				if (!p.set) void queueBlob(lng, lat, { photo: !p.corridor, pin: true });
 			}
 		}
 		return now;
@@ -267,6 +302,8 @@ export function startBlobService(ports: HostPorts): () => void {
 	const off = ports.onPlacesChanged(() => {
 		const now = reconcile();
 		if (!now) return;
+		// The map's first look can land before the pins load, and an import lands under a still camera.
+		if (shown) void look(shown);
 		// Only a place change deletes; a reconnect never does.
 		const before = seen ?? pinAreas().then((rows) => new Set(rows.map((r) => r.id)));
 		seen = Promise.resolve(now);

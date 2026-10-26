@@ -5,6 +5,8 @@ export interface HostPlace {
 	anchors: [number, number][];
 	/** Lines/corridors bake along their length rather than as a single disc. */
 	corridor: boolean;
+	/** An import too big to fetch unasked: the planter saves one pin or the whole set, after seeing its size. Absent = fetched on its own. */
+	set?: { key: string; name: string };
 }
 
 export interface HostPorts {

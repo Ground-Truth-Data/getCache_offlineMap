@@ -79,6 +79,15 @@ says so (`PinFullNotice.svelte`) until the next blob lands. Bytes are the only
 wall; there is no cap on the number of areas, since many maps with many pins
 each is normal.
 
+**An import of more than 20 features waits for the planter.** The host marks
+each feature of such an import with its `set` (`hostPorts.ts`); the engine
+fetches none of them on its own. When some are on screen, `viewing` emits
+`waiting`, and `ImportSetNotice.svelte` offers the pins on screen or the
+whole set, each with its size from `estimateBytes` (`download.ts`); a set
+bigger than the budget cannot be saved whole. A pin once saved has a row, and
+from then on it is any other pin. Hand-dropped pins and imports of 20 or fewer
+download on their own.
+
 An evicted area keeps its row with `removed` set and its tiles and photo
 freed, so the engine does not fetch it straight back and push out the next one;
 it comes back when its pin is on screen. At boot the engine also removes areas
