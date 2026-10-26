@@ -87,7 +87,7 @@ attached to a stand-in produce confident wrong answers.
 | Fires | NASA FIRMS — VIIRS on NOAA-20, NOAA-21 and Suomi-NPP, last 48 h, proxied through the Worker's `/fires` route so the API key stays a Worker secret | yes — `attachFireLayer` (`lib/onPhone/render/fireLayer.ts`) | 500 km (`lib/shared/fireContract.ts`) |
 | Hospitals | the Worker's `/hospitals` route, from the world list bundled in the Worker | yes | 500 km |
 
-A phone holds at most 1 GB of offline preview data (`routes/offlinev10/budget.ts`).
+A phone holds at most 1 GB of offline preview data (`routes/offlinev10/budget.ts`); a new area that will not fit evicts the least recently opened, never the open map's or one under a week old.
 
 ## THE ONE RULE
 

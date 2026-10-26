@@ -5,6 +5,8 @@ export interface HostPlace {
 	anchors: [number, number][];
 	/** Lines/corridors bake along their length rather than as a single disc. */
 	corridor: boolean;
+	/** On the map open now: its areas are never evicted to make room. */
+	open: boolean;
 }
 
 export interface HostPorts {

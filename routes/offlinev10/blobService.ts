@@ -4,7 +4,7 @@
  * its own row and photo, fetching nothing. A deleted pin takes its blob, even one deleted while the engine was not watching. */
 
 import type { HostPorts } from "../../lib/shared/hostPorts";
-import { BudgetError, isStale } from "./budget";
+import { BudgetError, FRESH_AREA_DAYS, isStale } from "./budget";
 import { downloadRegion, type Progress, roomFor } from "./download";
 import {
 	AreaGone,
@@ -123,7 +123,7 @@ async function drain(): Promise<void> {
 async function download({ at, id, photo, pin, keep }: Ask): Promise<void> {
 	try {
 		// Before "start": a refused area must not get its photo baked either.
-		await roomFor(at[0], at[1]);
+		await makeRoom(at, id);
 	} catch (error) {
 		emit({ kind: "failed", at, error });
 		return;
@@ -154,12 +154,30 @@ async function download({ at, id, photo, pin, keep }: Ask): Promise<void> {
 		// Its row went mid-download: whoever removed it already said so.
 		if (error instanceof AreaGone) emit({ kind: "removed", id });
 		else {
-			// A full phone is an answer, not a fault: the host tells the person.
+			// A full phone is an answer, not a fault: its red line on the dock says so.
 			if (!(error instanceof BudgetError)) console.error("[offlineV10] download failed", error);
 			emit({ kind: "failed", at, error });
 		}
 	} finally {
 		current = null;
+	}
+}
+
+/** Removes the least recently opened areas until this one fits, never the open map's or one under
+ * FRESH_AREA_DAYS old; refuses only when nothing else may go. */
+async function makeRoom(at: [number, number], id: string, now = Date.now()): Promise<void> {
+	const open = new Set(host?.places().filter((p) => p.open).flatMap((p) => p.anchors.map(([lng, lat]) => regionId(lng, lat))));
+	const victims = (await listRegions())
+		.filter((r) => r.id !== id && !open.has(r.id) && now - r.at > FRESH_AREA_DAYS * 86_400_000)
+		.sort((a, b) => (a.lastOpened ?? a.at) - (b.lastOpened ?? b.at));
+	for (;;) {
+		try {
+			return await roomFor(at[0], at[1]);
+		} catch (error) {
+			const victim = victims.shift();
+			if (!(error instanceof BudgetError) || !victim) throw error;
+			await removeArea(victim);
+		}
 	}
 }
 
@@ -187,6 +205,7 @@ export async function removeStaleAreas(now = Date.now()): Promise<Region[]> {
 }
 
 let stop: (() => void) | null = null;
+let host: HostPorts | null = null;
 
 /** Every pin earns its blob. A corridor bakes at each anchor with NO photo —
  * a photo per anchor is what makes long geometry expensive. */
@@ -195,6 +214,7 @@ export function startBlobService(ports: HostPorts): () => void {
 		return () => {
 			/* the first start's stop owns shutdown */
 		};
+	host = ports;
 	say("[offlineV10] blob engine on — every pin earns a blob");
 	void removeStaleAreas().catch((e) => console.error("[offlineV10] stale sweep failed", e));
 	// A spot that leaves this set was deleted or moved. Until the first ready read it is the pin-born rows on
@@ -228,6 +248,7 @@ export function startBlobService(ports: HostPorts): () => void {
 		off();
 		window.removeEventListener("online", online);
 		stop = null;
+		host = null;
 	};
 	return stop;
 }

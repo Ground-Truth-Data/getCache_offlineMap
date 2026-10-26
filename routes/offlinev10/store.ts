@@ -214,7 +214,7 @@ async function putNow(entries: Array<[string, ArrayBuffer]>, owner: string): Pro
 	const adding = entries.reduce((a, [, b]) => a + b.byteLength, 0);
 	const used = await usedBytes();
 	const budget = budgetBytes();
-	// Refuse, never evict: what is on disk is what someone chose to keep.
+	// The last wall, for a bad guess: eviction happened before the download, in makeRoom.
 	if (used + adding > budget) throw new BudgetError(used, budget, adding);
 	const db = await open();
 	const tx = db.transaction([TILES, REGIONS], "readwrite");

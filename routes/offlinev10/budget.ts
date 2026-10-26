@@ -3,6 +3,8 @@
 export const OFFLINE_TILES_BYTES = 1_073_741_824;
 /** An area the map has not shown for this long removes itself at boot; tiles can always be fetched again. */
 export const STALE_AREA_MONTHS = 12;
+/** An area downloaded this recently is never evicted to make room for another. */
+export const FRESH_AREA_DAYS = 7;
 export const BUDGET_MB = OFFLINE_TILES_BYTES / 1048576;
 /** The dev CONFIG card cycles through these so the wall can be hit in minutes. */
 export const BUDGET_PRESETS_MB = [BUDGET_MB, 256, 64, 16] as const;

@@ -3,7 +3,7 @@ import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { HostPorts } from "../../lib/shared/hostPorts";
 import { configureTilesDevHost } from "../../lib/worker/tilesHost";
-import { removeArea, removeStaleAreas, startBlobService } from "./blobService";
+import { queueBlob, removeArea, removeStaleAreas, startBlobService } from "./blobService";
 import { BudgetError, isStale, OFFLINE_TILES_BYTES, setBudgetMb, STALE_AREA_MONTHS } from "./budget";
 import { downloadRegion, roomFor } from "./download";
 import { satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
@@ -74,7 +74,7 @@ async function orphanTiles(): Promise<string[]> {
 	});
 }
 
-describe("the 1 GB wall refuses, it never evicts", () => {
+describe("the 1 GB wall", () => {
 	it("is 1 GB and 12 months", () => {
 		expect(OFFLINE_TILES_BYTES).toBe(1_073_741_824);
 		expect(STALE_AREA_MONTHS).toBe(12);
@@ -253,6 +253,42 @@ describe("an area lives and dies with its pin", () => {
 		await expect(download(at)).rejects.toThrow("HTTP 500");
 		expect(await regionKnown(regionId(...at))).toBe(false);
 		expect(photosDropped).toEqual([satImageKey(at)]);
+		vi.unstubAllGlobals();
+	});
+});
+
+describe("a new area that will not fit evicts the least recently opened", () => {
+	it("removes the oldest area, never the open map's or one under a week old, and lands the new one", async () => {
+		configureTilesDevHost("https://tiles.test");
+		// The tests above unstub every global, the file's window included.
+		vi.stubGlobal("window", new EventTarget());
+		vi.stubGlobal("fetch", async () => new Response(new ArrayBuffer(10)));
+		setBudgetMb(4);
+		const now = Date.now();
+		const far = (i: number): [number, number] => [-130 + i * 2, 60];
+		// ~1 MB an area so far, so the new one is guessed at ~1 MB.
+		const fill = [
+			region(regionId(...far(0)), now - 90 * DAY, ...far(0), { lastOpened: now - 90 * DAY }),
+			region("fresh", now - 3 * DAY, ...far(1)),
+			region("oldest", now - 60 * DAY, ...far(2), { lastOpened: now - 50 * DAY }),
+			region("older", now - 60 * DAY, ...far(3), { lastOpened: now - 20 * DAY }),
+		].map((r) => ({ ...r, fetched: rangeTiles(r.range).length, newBytes: MB }));
+		for (const r of fill) {
+			await putRegion(r);
+			await putTiles([[ownTile(r), new ArrayBuffer(MB)]], r.id);
+		}
+		const ports = {
+			places: () => [{ anchors: [far(0)], corridor: false, open: true }],
+			ready: () => true,
+			onPlacesChanged: () => () => undefined,
+		} as unknown as HostPorts;
+		const stop = startBlobService(ports);
+		const at = SPOTS[0];
+		await queueBlob(...at, { photo: false });
+		await vi.waitFor(async () => expect(await regionKnown(regionId(...at))).toBe(true), SWEEP);
+		await vi.waitFor(async () => expect((await listRegions()).map((r) => r.id).sort()).toEqual(["fresh", "older", regionId(...far(0)), regionId(...at)].sort()), SWEEP);
+		expect(await usedBytes()).toBeLessThanOrEqual(4 * MB);
+		stop();
 		vi.unstubAllGlobals();
 	});
 });
