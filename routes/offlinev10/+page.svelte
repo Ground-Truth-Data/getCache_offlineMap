@@ -10,6 +10,7 @@ import MapLegend from "../../lib/mapUi/MapLegend.svelte";
 import { attachCameraPersistence, loadCamera, MAP_HOME_CENTER } from "../../lib/mapState/mapViewport";
 import { attachDoubleTapToPin } from "../../lib/shared/doubleTapToPin";
 import { FIRE_LAYER_ID_LIST, type FireLayerHandle, attachFireLayer } from "../../lib/onPhone/render/fireLayer";
+import PhotoCredits from "../../lib/mapUi/PhotoCredits.svelte";
 import { SAT_CLOSE_LAYER, type SatelliteMount, createSatelliteMount, satLayerId } from "../../lib/onPhone/satellite/mountSatellite";
 import { NiceScaleBarControl } from "$gc/mapScaleBar";
 import { safeFlyTo } from "$gc/safeMap";
@@ -549,9 +550,7 @@ onMount(() => {
 	class:draw-active-pin={armKind === "pin"}
 >
 	<div class="map-canvas" bind:this={host}></div>
-	{#if credits.length}
-		<p class="photo-credits">{credits.join(" · ")}</p>
-	{/if}
+	<PhotoCredits {credits} />
 
 	<MapTopControls ports={mapPorts} bind:mapOnly crowMode="offline" onCrowToggle={() => goto(onlineUrl())} />
 
@@ -618,16 +617,4 @@ onMount(() => {
 
 <style>
 .map-canvas { background: #34373d; }
-.photo-credits {
-	position: absolute;
-	left: 8px;
-	right: 8px;
-	bottom: calc(env(safe-area-inset-bottom) + 4px);
-	z-index: 2;
-	margin: 0;
-	font-size: 10px;
-	color: rgb(255 255 255 / 0.85);
-	text-shadow: 0 0 2px #000;
-	pointer-events: none;
-}
 </style>

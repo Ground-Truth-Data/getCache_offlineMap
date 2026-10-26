@@ -100,7 +100,8 @@ export function photoCullPlan(
 export function createSatelliteMount(
     map: maplibregl.Map,
     insertBefore: string,
-    closeUpTiles: string,
+    /** null on a map that cannot read the photo tile protocol: photos only, no close-up. */
+    closeUpTiles: string | null,
 ): SatelliteMount {
     const mountedSat = new Set<string>();
     let disposed = false;
@@ -108,12 +109,14 @@ export function createSatelliteMount(
     const satUrls = new Map<string, string>();
     const sourceOf = new Map<string, string | undefined>();
 
-    const z = CLOSE_UP.zoom;
-    map.addSource(SAT_CLOSE_ID, { type: "raster", tiles: [closeUpTiles], tileSize: 512, minzoom: z, maxzoom: z });
-    map.addLayer(
-        { id: SAT_CLOSE_LAYER, type: "raster", source: SAT_CLOSE_ID, paint: { "raster-fade-duration": SAT_FADE_MS } },
-        map.getLayer(insertBefore) ? insertBefore : undefined,
-    );
+    if (closeUpTiles) {
+        const z = CLOSE_UP.zoom;
+        map.addSource(SAT_CLOSE_ID, { type: "raster", tiles: [closeUpTiles], tileSize: 512, minzoom: z, maxzoom: z });
+        map.addLayer(
+            { id: SAT_CLOSE_LAYER, type: "raster", source: SAT_CLOSE_ID, paint: { "raster-fade-duration": SAT_FADE_MS } },
+            map.getLayer(insertBefore) ? insertBefore : undefined,
+        );
+    }
 
     const mountSat = (key: string, blob: Blob, bounds: Bounds): void => {
         if (disposed) return;
@@ -177,7 +180,7 @@ export function createSatelliteMount(
                     ],
                 },
             } as mapboxgl.LayerSpecification,
-            map.getLayer(SAT_CLOSE_LAYER) ? SAT_CLOSE_LAYER : undefined,
+            map.getLayer(SAT_CLOSE_LAYER) ? SAT_CLOSE_LAYER : map.getLayer(insertBefore) ? insertBefore : undefined,
         );
         mountedSat.add(key);
     };
@@ -205,7 +208,7 @@ export function createSatelliteMount(
             }
         },
         closeUpChanged(): void {
-            if (!disposed) (map.getSource(SAT_CLOSE_ID) as maplibregl.RasterTileSource | undefined)?.setTiles([closeUpTiles]);
+            if (!disposed && closeUpTiles) (map.getSource(SAT_CLOSE_ID) as maplibregl.RasterTileSource | undefined)?.setTiles([closeUpTiles]);
         },
         async reconcile(
             camera: Bounds,
