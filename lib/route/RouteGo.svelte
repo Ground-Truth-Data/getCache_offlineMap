@@ -1,10 +1,15 @@
 <!-- The "route there" button: the sign when a road route can be tried, a dashed line when it can only be a
-     straight line, so the answer shows before the tap. `km` puts the distance inside it (the popover pill). -->
+     straight line, so the answer shows before the tap. `km` makes it the popover's distance pill, which looks the
+     same either way — it is metadata, not an action. -->
 <script lang="ts">
 import { m } from "$parent/src/lib/paraglide/messages";
 import { distanceText, type Reach } from "./routeLayer";
 import sign from "./routeSign.svg";
+import signSm from "./routeSignSm.svg";
 import line from "./crowLine.svg";
+
+/** Past this, a route from here is no use to anyone: the pill goes. */
+const PILL_MAX_KM = 2000;
 
 let {
 	reach,
@@ -22,20 +27,22 @@ const road = $derived(reach?.road ?? true);
 const [num, unit] = $derived(reach ? distanceText(reach.km).split(" ") : []);
 </script>
 
-<button
-	type="button"
-	class="rt-go"
-	class:rt-go--pill={km}
-	class:rt-go--crow={!road}
-	aria-label={m.ofmap_route_directions()}
-	onclick={(e) => {
-		e.stopPropagation();
-		onGo();
-	}}
->
-	<img src={road ? sign : line} alt="" />
-	{#if km && num}<b>{num}</b><small>{unit}</small>{/if}
-</button>
+{#if !(km && reach && reach.km > PILL_MAX_KM)}
+	<button
+		type="button"
+		class="rt-go"
+		class:rt-go--pill={km}
+		class:rt-go--crow={!km && !road}
+		aria-label={m.ofmap_route_directions()}
+		onclick={(e) => {
+			e.stopPropagation();
+			onGo();
+		}}
+	>
+		<img src={km ? signSm : road ? sign : line} alt="" />
+		{#if km && num}<b>{num}</b><small>{unit}</small>{/if}
+	</button>
+{/if}
 
 <style>
 	.rt-go {
@@ -64,35 +71,37 @@ const [num, unit] = $derived(reach ? distanceText(reach.km).split(" ") : []);
 		width: 24px;
 		height: 24px;
 	}
-	/* The owner pill's size and ink, not gold: a rarely used tool must not out-shout the row it sits in. */
 	.rt-go--pill {
+		position: relative;
 		width: auto;
-		height: 1.15rem;
-		gap: 3px;
-		padding: 0 0.45rem 0 0.2rem;
+		height: 26.5px;
+		gap: 4px;
+		padding: 0 10px 0 4px;
 		margin-left: auto;
-		border-color: #c3c8ac;
+		border-color: rgba(248, 216, 72, 0.55);
 		border-radius: 999px;
-		background: #111;
-		color: #c3c8ac;
-		font-family: var(--rt-font-body);
-		font-size: 0.7rem;
-		font-weight: 700;
+		background: transparent;
+		font-family: var(--rt-font-display);
 		line-height: 1;
 	}
-	.rt-go--pill.rt-go--crow {
-		border-color: #c3c8ac;
+	/* 44px to the thumb; the pill itself stays small. */
+	.rt-go--pill::after {
+		content: "";
+		position: absolute;
+		inset: -9px -4px;
 	}
 	.rt-go--pill img {
-		width: 14px;
-		height: 14px;
+		width: 17px;
+		height: 17px;
 	}
-	.rt-go b {
-		font-weight: inherit;
+	.rt-go--pill b {
+		font-weight: 400;
+		font-size: 18px;
+		color: #d8dbc6;
 	}
-	.rt-go small {
-		font-size: inherit;
-		opacity: 0.75;
+	.rt-go--pill small {
+		font-size: 14px;
+		color: #9a9e86;
 	}
 	.rt-go:active {
 		transform: scale(0.95);

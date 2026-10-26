@@ -29,6 +29,13 @@ export const ROUTE_LAYER_IDS = {
 const GOLD = "#F8D848";
 /** The black edge that keeps gold readable over satellite. */
 const INK = "#0b0b0b";
+const RUST = "#c97a4a";
+const HAND_PATHS =
+	"<rect x='6' y='6' width='16' height='11' stroke='none'/><path d='M18 11V6a2 2 0 0 0-4 0'/><path d='M14 10V4a2 2 0 0 0-4 0v2'/><path d='M10 10.5V6a2 2 0 0 0-4 0v8'/><path d='M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15'/>";
+/** Over a waypoint: an open white hand edged in rust — this one moves, it doesn't add. */
+const HAND_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
+	`<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 24 24' fill='#fff' stroke='${RUST}' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'>${HAND_PATHS}</svg>`,
+)}") 16 16, grab`;
 /** The drag hint stops after this many routes: by then the trick is known. */
 const HINT_ROUTES = 3;
 const HINT_KEY = "gc.route.hints";
@@ -97,7 +104,7 @@ export function routeFix(lng: number, lat: number): void {
 }
 
 type Drag = { kind: "new"; leg: number } | { kind: "move"; stop: number };
-type Feature = GeoJSON.Feature<GeoJSON.Geometry, { role: string; stop?: number }>;
+type Feature = GeoJSON.Feature<GeoJSON.Geometry, { role: string; stop?: number; hot?: boolean }>;
 
 /** The tiles Worker's bytes for "z/x/y" — the online map's reader for tiles the pack lacks. A 204 is an empty tile. */
 export async function networkTile(key: string): Promise<ArrayBuffer | undefined> {
@@ -119,6 +126,8 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	let peeking = false;
 	/** Under the mouse on the line: anywhere on it can be grabbed. */
 	let hover: LngLat | null = null;
+	/** The waypoint under the mouse: it glows rust and no second node is offered on top of it. */
+	let hot: number | null = null;
 	let downPx: { x: number; y: number } | null = null;
 	let asked = 0;
 	let solving = false;
@@ -307,11 +316,12 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 			out.push({ type: "Feature", properties: { role: "line" }, geometry: { type: "LineString", coordinates: line } });
 			for (const seg of result.offRoad)
 				out.push({ type: "Feature", properties: { role: "off" }, geometry: { type: "LineString", coordinates: seg } });
+			// A waypoint lives on its line: none while solving, none on a straight-line answer. The one being moved is drawn by its ghost alone.
+			stops.forEach((s, i) => {
+				if (i > 0 && i < stops.length - 1 && !(drag?.kind === "move" && drag.stop === i && ghost))
+					out.push({ type: "Feature", properties: { role: "via", stop: i, hot: i === hot }, geometry: { type: "Point", coordinates: s } });
+			});
 		}
-		stops.forEach((s, i) => {
-			if (i > 0 && i < stops.length - 1)
-				out.push({ type: "Feature", properties: { role: "via", stop: i }, geometry: { type: "Point", coordinates: s } });
-		});
 		if (ghost && drag) {
 			const [a, b] =
 				drag.kind === "new" ? [stops[drag.leg], stops[drag.leg + 1]] : [stops[drag.stop - 1], stops[drag.stop + 1]];
@@ -337,7 +347,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		map.addLayer({ id: ROUTE_LAYER_IDS.casing, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("line"), layout: round, paint: { "line-color": INK, "line-width": 11 } });
 		map.addLayer({ id: ROUTE_LAYER_IDS.line, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("line"), layout: round, paint: { "line-color": GOLD, "line-width": 6 } });
 		map.addLayer({ id: ROUTE_LAYER_IDS.off, type: "line", source: ROUTE_LAYER_IDS.src, filter: role("off"), layout: round, paint: { "line-color": GOLD, "line-width": 3, "line-dasharray": [1, 2] } });
-		map.addLayer({ id: ROUTE_LAYER_IDS.via, type: "circle", source: ROUTE_LAYER_IDS.src, filter: role("via"), paint: { "circle-radius": 8, "circle-color": GOLD, "circle-stroke-color": INK, "circle-stroke-width": 3 } });
+		map.addLayer({ id: ROUTE_LAYER_IDS.via, type: "circle", source: ROUTE_LAYER_IDS.src, filter: role("via"), paint: { "circle-radius": ["case", ["boolean", ["get", "hot"], false], 10, 8], "circle-color": GOLD, "circle-stroke-color": ["case", ["boolean", ["get", "hot"], false], RUST, INK], "circle-stroke-width": 3 } });
 		map.addLayer({ id: ROUTE_LAYER_IDS.me, type: "circle", source: ROUTE_LAYER_IDS.src, filter: role("me"), paint: { "circle-radius": 8, "circle-color": INK, "circle-stroke-color": GOLD, "circle-stroke-width": 3 } });
 	};
 
@@ -443,6 +453,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		ghost = null;
 		drag = null;
 		hover = null;
+		hot = null;
 		following = false;
 		me = null;
 		target = null;
@@ -553,12 +564,15 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		map.queryRenderedFeatures([[p.x - 8, p.y - 8], [p.x + 8, p.y + 8]], { layers: [ROUTE_LAYER_IDS.casing] }).length > 0;
 	const onHover = (e: maplibregl.MapMouseEvent): void => {
 		if (drag || following) return;
-		hover = [e.lngLat.lng, e.lngLat.lat];
-		map.getCanvas().style.cursor = "grab";
+		const stop = map.queryRenderedFeatures(e.point, { layers: [ROUTE_LAYER_IDS.via] }).find((f) => Number.isInteger(f.properties?.stop))?.properties?.stop;
+		hot = stop ?? null;
+		hover = hot === null ? [e.lngLat.lng, e.lngLat.lat] : null;
+		map.getCanvas().style.cursor = hot === null ? "grab" : HAND_CURSOR;
 		paint();
 	};
 	const onLeave = (): void => {
 		hover = null;
+		hot = null;
 		map.getCanvas().style.cursor = "";
 		paint();
 	};
@@ -574,6 +588,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		ghost = null;
 		alt = null;
 		downPx = null;
+		map.getCanvas().style.cursor = "";
 		// Pulled out and put back: no node, the route as it was.
 		if (!d || !at || (d.kind === "new" && onLine(e.point))) return paint();
 		if (moved < TAP_PX) {
@@ -599,6 +614,8 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		downPx = { x: e.point.x, y: e.point.y };
 		hintBar.hidden = true;
 		hover = null;
+		hot = null;
+		map.getCanvas().style.cursor = "grabbing";
 		ghost = [e.lngLat.lng, e.lngLat.lat];
 		map.on("mousemove", onMove);
 		map.on("touchmove", onMove);
@@ -664,8 +681,8 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	map.on("mousedown", pressLayers, onDown);
 	map.on("touchstart", pressLayers, onDown);
 	map.on("dragstart", onDragStart);
-	map.on("mousemove", ROUTE_LAYER_IDS.casing, onHover);
-	map.on("mouseleave", ROUTE_LAYER_IDS.casing, onLeave);
+	map.on("mousemove", pressLayers, onHover);
+	map.on("mouseleave", pressLayers, onLeave);
 	// A style swap drops every custom layer.
 	map.on("styledata", paint);
 
@@ -675,8 +692,8 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		map.off("mousedown", pressLayers, onDown);
 		map.off("touchstart", pressLayers, onDown);
 		map.off("dragstart", onDragStart);
-		map.off("mousemove", ROUTE_LAYER_IDS.casing, onHover);
-		map.off("mouseleave", ROUTE_LAYER_IDS.casing, onLeave);
+		map.off("mousemove", pressLayers, onHover);
+		map.off("mouseleave", pressLayers, onLeave);
 		map.off("styledata", paint);
 		stayAwake(false);
 		worker.terminate();
