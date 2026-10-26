@@ -23,7 +23,7 @@ What it stands on (bucket, Worker, phone, libraries) and the laws it obeys:
 🗜️ **The gold border is where the detail ends.** Inside it every zoom to z13 is on disk; outside it only the wider parent tiles are.
 🗜️ Airplane mode changes nothing above z8 inside a blob.
 🗜️ Stock parts only: MapLibre, the Protomaps dark style, IndexedDB keyed by tile address.
-🗜️ A phone holds at most 1 GB of offline preview data, tiles and photos together (`budget.ts`); a new area evicts the least recently opened.
+🗜️ A phone holds at most 1 GB of offline preview data, tiles and photos together (`budget.ts`), as an LRU cache: what is on screen stays, the least recently seen goes.
 🗜️ Green means every tile of the blob is on disk, never "the download finished".
 
 ## What a blob is
@@ -66,19 +66,23 @@ the blobs dock until the next download starts. In dev the CONFIG card cycles
 the budget through 1024 / 256 / 64 / 16 MB (sessionStorage) so the wall can be
 hit in minutes; a shipped build never reads the override.
 
-A new area that will not fit evicts old ones, silently. Before its first
-fetch `makeRoom` (`blobService.ts`) asks `roomFor` (`download.ts`) whether its
-missing tiles, at the average size fetched so far, cross the line; while they
-do, it removes the least recently opened area (`lastOpened`, else `at`) and
-asks again. It never evicts an area of the map open now (`HostPlace.open`) or
-one downloaded in the last `FRESH_AREA_DAYS` (7). Only when nothing else may
-go is the new area refused — its red line on the blobs dock and nothing else.
-Bytes are the only wall; there is no cap on the number of areas, since many
-maps with many pins each is normal.
-The map marks each area it shows (`lastOpened`, from z8); at boot the engine
-removes areas unopened for `STALE_AREA_MONTHS` (12). A removed area keeps its
-row with `removed` set and its tiles freed, so its pin is not fetched straight
-back; `listRegions` never returns it.
+**The 1 GB is an LRU cache.** Every area carries `lastOpened` (absent = its
+download time, `at`). `viewing` (`blobService.ts`), called by both maps on every
+`moveend` from z8, puts the areas on screen at the top of the stack, and fetches
+again the blob of every pin on screen that was evicted, never fetched, or is
+missing tiles or its photo. A new area that will not fit evicts from the bottom:
+`makeRoom` asks `roomFor` (`download.ts`) whether its missing tiles, at the
+average size fetched so far, cross the line, and while they do removes the
+least recently touched area. Nothing on screen is ever evicted. Only when the
+areas on screen alone fill the budget is the pin refused, and the online map
+says so (`PinFullNotice.svelte`) until the next blob lands. Bytes are the only
+wall; there is no cap on the number of areas, since many maps with many pins
+each is normal.
+
+An evicted area keeps its row with `removed` set and its tiles and photo
+freed, so the engine does not fetch it straight back and push out the next one;
+it comes back when its pin is on screen. At boot the engine also removes areas
+unopened for `STALE_AREA_MONTHS` (12). `listRegions` never returns a removed row.
 
 **The whole-blob check** (`checkRegions` in `store.ts`): every tile of a blob
 is a row, an empty tile (204 from the Worker) as a 0-byte row, so "whole" is a

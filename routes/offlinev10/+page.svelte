@@ -16,8 +16,7 @@ import { safeFlyTo } from "$gc/safeMap";
 import { mapboxLocale } from "$gc/mapboxLocale";
 import EphemeralDock from "$rig/dev/EphemeralDock.svelte";
 import type { Component } from "svelte";
-import { soloFireOrigins, soloHostPorts, soloMapPorts } from "../../lib/shared/soloPorts";
-import type { HostPorts } from "../../lib/shared/hostPorts";
+import { soloFireOrigins, soloMapPorts } from "../../lib/shared/soloPorts";
 import type { MapDrawControlsExports, MapHostPorts } from "../../lib/shared/mapHostPorts";
 import type { Map as MapboxMap } from "mapbox-gl";
 import * as maplibregl from "maplibre-gl";
@@ -30,7 +29,7 @@ import BlobsDock from "./BlobsDock.svelte";
 import ConfigDock, { type LayerRow, type Light } from "./ConfigDock.svelte";
 import DataDock from "./DataDock.svelte";
 import SessionDock from "./SessionDock.svelte";
-import { blobBusy, blobInFlight, onBlob, queueBlob, removeArea, repairBlob, setBlobNarration } from "./blobService";
+import { blobBusy, blobInFlight, onBlob, queueBlob, removeArea, repairBlob, setBlobNarration, viewing } from "./blobService";
 import { budgetMb as readBudgetMb, setBudgetMb } from "./budget";
 import { nearestPlace } from "./places";
 import type { Progress } from "./download";
@@ -40,12 +39,12 @@ import { overlayVisibility } from "../../lib/mapState/overlayVisibility.svelte";
 import { dropPhoto, onPhoto, onPhotoIssue, type PhotoInfo, photoInfo, photoIssue, setPhotoNarration } from "./satellite";
 import { FOLLOW_MARGIN_KM, marginKm, moved } from "./follow";
 import { PHOTO_TILES, PLANET_TILES, installProtocol } from "./protocol";
-import { type Kept, type Region, checkRegions, getTile, keepStorage, listRegions, onRegionsChanged, patchRegion, stats, touchRegions, wipe } from "./store";
+import { type Kept, type Region, checkRegions, getTile, keepStorage, listRegions, onRegionsChanged, patchRegion, stats, wipe } from "./store";
 import { type RouteHandle, attachRouteLayer } from "../../lib/route/routeLayer";
 import { readStoredFix } from "../../lib/shared/liveFix";
 import { validLatLng } from "../../lib/shared/cameraFromUrl";
 import { PHOTO_INSERT_BEFORE, PLANET, REGIONS, buildStyle, legend } from "./style";
-import { ANCHOR_Z, boxesIntersect, parseKey, rangeBox, tileBox, tileKey } from "./tiles";
+import { ANCHOR_Z, parseKey, rangeBox, tileBox, tileKey } from "./tiles";
 import { type WorkerTarget, getWorkerTarget, setWorkerTarget } from "../../lib/worker/tilesHost";
 
 let host = $state<HTMLDivElement>();
@@ -107,13 +106,11 @@ let measureEvent = $state<{ lng: number; lat: number; n: number } | null>(null);
 /** The host's doors — every one optional, since a host with no Get Cache app behind it supplies none. */
 let {
 	mapPorts = soloMapPorts(),
-	places = soloHostPorts(),
 	MapDrawControls,
 	fireOrigins = soloFireOrigins,
 	debug = false,
 }: {
 	mapPorts?: MapHostPorts;
-	places?: HostPorts;
 	/** The tool drawer lives in a PRIVATE repo, so the host hands it in. */
 	MapDrawControls?: Component<Record<string, unknown>, MapDrawControlsExports>;
 	/** The points the fire and hospital walls are measured from. */
@@ -352,21 +349,11 @@ function followBlobs(): () => void {
 	});
 }
 
-/** An area on screen close enough to read was opened, which keeps it off the stale sweep. */
+/** What is on screen tops the offline LRU stack and gets its blobs back. */
 function touchInView(): void {
-	if (!map || map.getZoom() < ANCHOR_Z - 2) return;
-	const b = map.getBounds();
-	const view = { w: b.getWest(), e: b.getEast(), s: b.getSouth(), n: b.getNorth() };
-	void touchRegions(regions.filter((r) => boxesIntersect(rangeBox(r.range), view)).map((r) => r.id));
-}
-
-/** Every place whose pin is on screen and has no blob yet. */
-function blobsForPinsInView(): void {
 	if (!map) return;
 	const b = map.getBounds();
-	for (const p of places.places())
-		for (const [lng, lat] of p.anchors)
-			if (lng >= b.getWest() && lng <= b.getEast() && lat >= b.getSouth() && lat <= b.getNorth()) void queueBlob(lng, lat, { pin: true });
+	void viewing({ w: b.getWest(), e: b.getEast(), s: b.getSouth(), n: b.getNorth() }, map.getZoom());
 }
 
 /** Follow me: queue the blob around the person when less than FOLLOW_MARGIN_KM
@@ -614,7 +601,7 @@ onMount(() => {
 			{photoProblem}
 			follow={fix ? { at: fix, margin: margin ?? Number.NEGATIVE_INFINITY } : null}
 			onAddHere={() => { const c = map?.getCenter(); if (c) void queueBlob(c.lng, c.lat); }}
-			onAddForPins={blobsForPinsInView}
+			onAddForPins={touchInView}
 			onDelete={removeBlob}
 			onWipe={wipeAll}
 			onFly={(r) => { if (map) safeFlyTo(map, { center: [r.lng, r.lat], zoom: 11 }); }}

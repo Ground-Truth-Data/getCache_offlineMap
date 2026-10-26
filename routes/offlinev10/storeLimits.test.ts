@@ -1,10 +1,11 @@
 /** The 1 GB wall and the 12-month sweep, against the real store on a fake IndexedDB. */
 import "fake-indexeddb/auto";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HostPorts } from "../../lib/shared/hostPorts";
 import { configureTilesDevHost } from "../../lib/worker/tilesHost";
-import { queueBlob, removeArea, removeStaleAreas, startBlobService } from "./blobService";
-import { BudgetError, isStale, OFFLINE_TILES_BYTES, setBudgetMb, STALE_AREA_MONTHS } from "./budget";
+import { blobBusy, onBlob, removeArea, removeStaleAreas, startBlobService, viewing } from "./blobService";
+import { startPhotoService } from "./satellite";
+import { BudgetError, fullMessage, isStale, OFFLINE_TILES_BYTES, setBudgetMb, STALE_AREA_MONTHS } from "./budget";
 import { downloadRegion, roomFor } from "./download";
 import { satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
 import {
@@ -20,6 +21,7 @@ import {
 	regionKnown,
 	touchRegions,
 	allTileKeys,
+	checkRegions,
 	usedBytes,
 	wipe,
 } from "./store";
@@ -31,9 +33,12 @@ const SWEEP = { timeout: 10_000 };
 vi.stubGlobal("window", new EventTarget());
 vi.mock("./places", () => ({ nearestPlace: async () => null }));
 const photosDropped = vi.hoisted(() => [] as string[]);
+// The photo's pixels come from MapTiler through a canvas; here the bake only records what it was asked for.
+const baked = vi.hoisted(() => [] as string[]);
 vi.mock("../../lib/onPhone/satellite/satelliteImage", async (orig) => ({
 	...(await orig<typeof import("../../lib/onPhone/satellite/satelliteImage")>()),
 	deleteSatImage: async (k: string) => void photosDropped.push(k),
+	bakeSatelliteImage: async (k: string) => (baked.push(k), { blob: new Blob(["x"]) }),
 }));
 
 const MB = 1048576;
@@ -89,13 +94,13 @@ describe("the 1 GB wall", () => {
 		}
 		const err = await putTiles([["3/0/0", new ArrayBuffer(2 * MB)]], "b0").catch((e) => e);
 		expect(err).toBeInstanceOf(BudgetError);
-		expect(err.message).toBe("Offline areas are limited to 4 MB. Delete a pin you no longer need to make room.");
+		expect(err.message).toBe("This pin's offline map didn't fit: the areas on screen fill all 4 MB. Zoom in on the pin to save it.");
 		expect((await listRegions()).map((r) => r.id).sort()).toEqual(["b0", "b1", "b2"]);
 		expect(await usedBytes()).toBe(3 * MB);
 	});
 
 	it("says 1 GB at the shipped budget", () => {
-		expect(new BudgetError(0, 0, 0).message).toBe("Offline areas are limited to 1 GB. Delete a pin you no longer need to make room.");
+		expect(new BudgetError(0, 0, 0).message).toBe("This pin's offline map didn't fit: the areas on screen fill all 1 GB. Zoom in on the pin to save it.");
 	});
 
 	it("refuses an area before a byte is fetched when the guess does not fit", async () => {
@@ -257,39 +262,108 @@ describe("an area lives and dies with its pin", () => {
 	});
 });
 
-describe("a new area that will not fit evicts the least recently opened", () => {
-	it("removes the oldest area, never the open map's or one under a week old, and lands the new one", async () => {
+// The LRU stack: the newest-touched areas keep their blobs, the bottom ones lose theirs, and a pin
+// that comes back into view goes back on top. A real store, a fake network of 10-byte tiles.
+describe("offline areas are an LRU cache of the 16 MB test budget", () => {
+	const far = (i: number): [number, number] => [-130 + i * 2, 60];
+	const view = ([lng, lat]: [number, number]) => ({ w: lng - 0.01, e: lng + 0.01, s: lat - 0.01, n: lat + 0.01 });
+	const ids = async () => (await listRegions()).map((r) => r.id).sort();
+	let stop = (): void => undefined;
+
+	/** Four whole 4 MB areas touched oldest first, every one a pin; a new area is guessed at ~4 MB. */
+	async function fillToBudget(): Promise<string[]> {
+		setBudgetMb(16);
+		const now = Date.now();
+		const fill = [0, 1, 2, 3].map((i) => {
+			const r = region(regionId(...far(i)), now - (40 - i) * DAY, ...far(i), { lastOpened: now - (30 - i) * DAY, pin: true });
+			return { ...r, fetched: rangeTiles(r.range).length, newBytes: 4 * MB };
+		});
+		for (const r of fill) {
+			await putRegion(r);
+			const keys = rangeTiles(r.range).map(tileKey).filter((k) => k !== ownTile(r));
+			await putTiles([[ownTile(r), new ArrayBuffer(4 * MB - keys.length * 10)], ...keys.map((k): [string, ArrayBuffer] => [k, new ArrayBuffer(10)])], r.id);
+		}
+		expect(await usedBytes()).toBe(16 * MB);
+		return fill.map((r) => r.id);
+	}
+
+	/** The host's pins: the four that filled the budget plus any dropped since. */
+	function host(extra: [number, number][] = []): HostPorts {
+		const pins = [0, 1, 2, 3].map(far).concat(extra);
+		return {
+			places: () => pins.map((a) => ({ anchors: [a], corridor: false })),
+			ready: () => true,
+			onPlacesChanged: (fn: () => void) => (fn(), () => undefined),
+		};
+	}
+
+	beforeEach(() => {
 		configureTilesDevHost("https://tiles.test");
 		// The tests above unstub every global, the file's window included.
 		vi.stubGlobal("window", new EventTarget());
 		vi.stubGlobal("fetch", async () => new Response(new ArrayBuffer(10)));
-		setBudgetMb(4);
-		const now = Date.now();
-		const far = (i: number): [number, number] => [-130 + i * 2, 60];
-		// ~1 MB an area so far, so the new one is guessed at ~1 MB.
-		const fill = [
-			region(regionId(...far(0)), now - 90 * DAY, ...far(0), { lastOpened: now - 90 * DAY }),
-			region("fresh", now - 3 * DAY, ...far(1)),
-			region("oldest", now - 60 * DAY, ...far(2), { lastOpened: now - 50 * DAY }),
-			region("older", now - 60 * DAY, ...far(3), { lastOpened: now - 20 * DAY }),
-		].map((r) => ({ ...r, fetched: rangeTiles(r.range).length, newBytes: MB }));
-		for (const r of fill) {
-			await putRegion(r);
-			await putTiles([[ownTile(r), new ArrayBuffer(MB)]], r.id);
-		}
-		const ports = {
-			places: () => [{ anchors: [far(0)], corridor: false, open: true }],
-			ready: () => true,
-			onPlacesChanged: () => () => undefined,
-		} as unknown as HostPorts;
-		const stop = startBlobService(ports);
-		const at = SPOTS[0];
-		await queueBlob(...at, { photo: false });
-		await vi.waitFor(async () => expect(await regionKnown(regionId(...at))).toBe(true), SWEEP);
-		await vi.waitFor(async () => expect((await listRegions()).map((r) => r.id).sort()).toEqual(["fresh", "older", regionId(...far(0)), regionId(...at)].sort()), SWEEP);
-		expect(await usedBytes()).toBeLessThanOrEqual(4 * MB);
+		baked.length = 0;
+	});
+	afterEach(async () => {
+		// The queue is the module's: a download still in it would land in the next test's store.
+		await vi.waitFor(() => expect(blobBusy()).toBe(false), SWEEP);
 		stop();
 		vi.unstubAllGlobals();
+	});
+
+	it("A: a dropped pin stores its blob, its satellite photo asked for as its tiles start", async () => {
+		const at = far(5);
+		const stopPhotos = startPhotoService();
+		stop = startBlobService(host([at]));
+		await vi.waitFor(async () => expect(await regionKnown(regionId(...at))).toBe(true), SWEEP);
+		expect((await checkRegions())[regionId(...at)]).toBe(0);
+		expect(await orphanTiles()).toEqual([]);
+		await vi.waitFor(() => expect(baked).toContain(satImageKey(at)), SWEEP);
+		stopPhotos();
+	});
+
+	it("B: a pin dropped on a full budget evicts the least recently touched area and lands", async () => {
+		const [oldest, ...rest] = await fillToBudget();
+		const at = far(5);
+		stop = startBlobService(host([at]));
+		await vi.waitFor(async () => expect(await ids()).toEqual([...rest, regionId(...at)].sort()), SWEEP);
+		expect(await usedBytes()).toBeLessThanOrEqual(16 * MB);
+		// The evicted pin keeps its row as removed, so the reconcile does not fetch it straight back.
+		expect(await regionKnown(oldest)).toBe(true);
+	});
+
+	it("C: an evicted area that comes back into view downloads again and goes to the top", async () => {
+		const [oldest] = await fillToBudget();
+		const at = far(5);
+		stop = startBlobService(host([at]));
+		await vi.waitFor(async () => expect(await ids()).not.toContain(oldest), SWEEP);
+		await viewing(view(far(0)), 12);
+		await vi.waitFor(async () => expect((await listRegions())[0].id).toBe(oldest), SWEEP);
+		expect(await usedBytes()).toBeLessThanOrEqual(16 * MB);
+	});
+
+	it("D: an area on the visible map is never evicted, however old", async () => {
+		const [oldest, second, ...rest] = await fillToBudget();
+		await viewing(view(far(0)), 12);
+		const at = far(5);
+		stop = startBlobService(host([at]));
+		await vi.waitFor(async () => expect(await ids()).toEqual([oldest, ...rest, regionId(...at)].sort()), SWEEP);
+		expect(await ids()).not.toContain(second);
+	});
+
+	it("E: a pin that cannot fit fails loud with the words the map shows", async () => {
+		await fillToBudget();
+		// The whole stack is on screen: nothing may go.
+		await viewing({ w: -131, e: -123, s: 59, n: 61 }, 12);
+		const failed: unknown[] = [];
+		const off = onBlob((e) => e.kind === "failed" && failed.push(e.error));
+		const at = far(5);
+		stop = startBlobService(host([at]));
+		await vi.waitFor(() => expect(failed).toHaveLength(1), SWEEP);
+		expect(failed[0]).toBeInstanceOf(BudgetError);
+		expect((failed[0] as Error).message).toBe(fullMessage());
+		expect(await ids()).toHaveLength(4);
+		off();
 	});
 });
 

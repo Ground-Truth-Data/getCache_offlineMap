@@ -507,24 +507,25 @@ export async function deleteRegion(id: string, keepRow = false): Promise<number 
 	return doomed.length;
 }
 
-/** Marks the areas the map just showed; a write only when the mark is an hour old, so panning costs nothing. */
-export async function touchRegions(ids: readonly string[], now = Date.now()): Promise<void> {
-	if (ids.length === 0) return;
+/** Marks the areas the map just showed and returns those it marked; a write only when the mark is an hour old, so panning costs nothing. */
+export async function touchRegions(ids: readonly string[], now = Date.now()): Promise<string[]> {
+	if (ids.length === 0) return [];
 	const want = new Set(ids);
 	const db = await open();
 	const tx = db.transaction(REGIONS, "readwrite");
 	const st = tx.objectStore(REGIONS);
 	const req = st.getAll() as IDBRequest<Region[]>;
-	let wrote = false;
+	const wrote: string[] = [];
 	req.onsuccess = () => {
 		for (const r of req.result)
 			if (want.has(r.id) && !r.removed && now - (r.lastOpened ?? 0) > 3_600_000) {
 				st.put({ ...r, lastOpened: now });
-				wrote = true;
+				wrote.push(r.id);
 			}
 	};
 	await done(tx);
-	if (wrote) regionsChanged();
+	if (wrote.length) regionsChanged();
+	return wrote;
 }
 
 

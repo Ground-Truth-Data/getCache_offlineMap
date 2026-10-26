@@ -4,10 +4,12 @@
  * its own row and photo, fetching nothing. A deleted pin takes its blob, even one deleted while the engine was not watching. */
 
 import type { HostPorts } from "../../lib/shared/hostPorts";
-import { BudgetError, FRESH_AREA_DAYS, isStale } from "./budget";
+import { getSatImageByKey, isCurrentPhoto } from "../../lib/onPhone/satellite/satelliteImage";
+import { BudgetError, isStale } from "./budget";
 import { downloadRegion, type Progress, roomFor } from "./download";
 import {
 	AreaGone,
+	checkRegions,
 	deleteRegion,
 	keepStorage,
 	listRegions,
@@ -16,7 +18,10 @@ import {
 	type Region,
 	regionId,
 	regionKnown,
+	regionRow,
+	touchRegions,
 } from "./store";
+import { ANCHOR_Z, type Box, boxesIntersect, rangeBox } from "./tiles";
 
 export type BlobEvent =
 	| { kind: "start"; at: [number, number]; id: string; photoKey?: string; photoCenter?: [number, number] }
@@ -40,6 +45,8 @@ interface Ask {
 	pin?: boolean;
 	/** the row being repaired: its missing tiles are fetched and the row keeps its place */
 	keep?: Region;
+	/** back in view: a removed row is fetched again rather than left alone */
+	revive?: boolean;
 }
 
 // The only account of what the engine pulled; off unless the debug route turns it on.
@@ -76,22 +83,26 @@ export function blobInFlight(): InFlight | null {
 	return current;
 }
 
-// A removed area's row stays, so its pin is not fetched straight back.
+// A removed area's row stays, so its pin is not fetched straight back — until it is back in view.
 const onDisk = regionKnown;
+const whole = async (id: string): Promise<boolean> => {
+	const r = await regionRow(id);
+	return !!r && !r.removed && !r.filling;
+};
 
-/** True when actually queued; false when disk or the queue already has this spot. `photo: false` for a blob with no pin; `pin` for one that goes with its pin. */
+/** True when actually queued; false when disk or the queue already has this spot. `photo: false` for a blob with no pin; `pin` for one that goes with its pin; `revive` fetches a removed one again. */
 export async function queueBlob(
 	lng: number,
 	lat: number,
-	opts: { photo?: boolean; pin?: boolean } = {},
+	opts: { photo?: boolean; pin?: boolean; revive?: boolean } = {},
 ): Promise<boolean> {
 	const id = regionId(lng, lat);
 	if (queued.has(id)) return false;
-	if (await onDisk(id)) return false;
+	if (await (opts.revive ? whole : onDisk)(id)) return false;
 	// A second ask for the same spot can land during the await.
 	if (queued.has(id)) return false;
 	queued.add(id);
-	queue.push({ at: [lng, lat], id, photo: opts.photo !== false, pin: opts.pin });
+	queue.push({ at: [lng, lat], id, photo: opts.photo !== false, pin: opts.pin, revive: opts.revive });
 	void drain();
 	return true;
 }
@@ -112,7 +123,7 @@ async function drain(): Promise<void> {
 	try {
 		while (queue.length) {
 			const ask = queue.shift() as Ask;
-			if (ask.keep || !(await onDisk(ask.id))) await download(ask);
+			if (ask.keep || !(await (ask.revive ? whole : onDisk)(ask.id))) await download(ask);
 			queued.delete(ask.id);
 		}
 	} finally {
@@ -163,12 +174,11 @@ async function download({ at, id, photo, pin, keep }: Ask): Promise<void> {
 	}
 }
 
-/** Removes the least recently opened areas until this one fits, never the open map's or one under
- * FRESH_AREA_DAYS old; refuses only when nothing else may go. */
-async function makeRoom(at: [number, number], id: string, now = Date.now()): Promise<void> {
-	const open = new Set(host?.places().filter((p) => p.open).flatMap((p) => p.anchors.map(([lng, lat]) => regionId(lng, lat))));
+/** The LRU stack: removes the least recently touched areas until this one fits, never one on the
+ * visible map; refuses only when nothing else may go. */
+async function makeRoom(at: [number, number], id: string): Promise<void> {
 	const victims = (await listRegions())
-		.filter((r) => r.id !== id && !open.has(r.id) && now - r.at > FRESH_AREA_DAYS * 86_400_000)
+		.filter((r) => r.id !== id && !(shown && boxesIntersect(rangeBox(r.range), shown)))
 		.sort((a, b) => (a.lastOpened ?? a.at) - (b.lastOpened ?? b.at));
 	for (;;) {
 		try {
@@ -179,6 +189,28 @@ async function makeRoom(at: [number, number], id: string, now = Date.now()): Pro
 			await removeArea(victim);
 		}
 	}
+}
+
+// What the map shows; an area under it is never evicted.
+let shown: Box | null = null;
+
+/** The map just showed this box. Areas under it go to the top of the stack, and every pin on it
+ * gets its whole blob — roads, water and photo — fetched again if it was evicted, never fetched or
+ * is missing a piece. Zoomed out past a region's own zoom, nothing is "seen". */
+export async function viewing(box: Box, zoom: number): Promise<void> {
+	shown = zoom >= ANCHOR_Z - 2 ? box : null;
+	if (!shown) return;
+	const rows = await listRegions();
+	const touched = new Set(await touchRegions(rows.filter((r) => boxesIntersect(rangeBox(r.range), box)).map((r) => r.id)));
+	// Checked when its hourly touch is due, so panning does not scan the store.
+	if (touched.size) {
+		const missing = await checkRegions();
+		for (const r of rows)
+			if (touched.has(r.id) && ((missing[r.id] ?? 0) > 0 || (r.photoKey && !isCurrentPhoto(await getSatImageByKey(r.photoKey))))) void repairBlob(r);
+	}
+	for (const p of host?.places() ?? [])
+		for (const [lng, lat] of p.anchors)
+			if (lng >= box.w && lng <= box.e && lat >= box.s && lat <= box.n) void queueBlob(lng, lat, { photo: !p.corridor, pin: true, revive: true });
 }
 
 async function removeBlob(id: string): Promise<void> {
@@ -249,6 +281,7 @@ export function startBlobService(ports: HostPorts): () => void {
 		window.removeEventListener("online", online);
 		stop = null;
 		host = null;
+		shown = null;
 	};
 	return stop;
 }
