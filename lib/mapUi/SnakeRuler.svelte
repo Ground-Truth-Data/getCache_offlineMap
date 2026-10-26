@@ -494,6 +494,8 @@ export const tour = {
         if (active && map) beginGrab(which);
     },
     hover,
+    /** The hand's sprite, so the teaching hand can close its fist on the handle. */
+    hand: (which: "head" | "tail") => (which === "head" ? headCursor : tailCursor)?.getElement() ?? null,
     drop: (lng: number, lat: number) => endGrab([lng, lat]),
     fade: tourFade,
     discard,
