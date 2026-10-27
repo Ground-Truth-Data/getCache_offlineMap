@@ -13,6 +13,16 @@ export function configureTilesDevHost(host: string): void {
 	configuredDevHost = host.trim().replace(/\/+$/, "") || null;
 }
 
+// The web mostly can't tell Wi-Fi from cellular; native can, and says so through configureWifiCheck.
+let wifiCheck = async (): Promise<boolean> => (navigator as { connection?: { type?: string } }).connection?.type !== "cellular";
+
+export function configureWifiCheck(fn: () => Promise<boolean>): void {
+	wifiCheck = fn;
+}
+
+/** May a big download (the 55 MB highways file) come down now? A crew's data plan can't carry it. */
+export const onWifi = (): Promise<boolean> => wifiCheck();
+
 export function isTilesHostConfigured(): boolean {
 	return configuredHost !== null;
 }
