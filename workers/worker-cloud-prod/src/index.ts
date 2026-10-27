@@ -11,6 +11,7 @@ import {
   fetchFires,
   MAX_RADIUS_KM,
 } from "../../../lib/worker/firesWorker";
+import { mergeFires } from "../../../lib/worker/fireMerge";
 import { coverOf, DEFAULT_SOURCE, SATELLITE_SOURCES, type SatelliteSource, sourceOf } from "../../../lib/contract/satelliteSources";
 import {
   cellKeysForDisc,
@@ -33,12 +34,22 @@ interface Env {
   TILES: R2Bucket;
   /** Satellite tiles every phone shares as `source/z/x/y.jpg`, Squirrel's counts and its source switch; bound on tiles-dev only. */
   SAT_CACHE?: R2Bucket;
+  /** "on" where Squirrel may flip switches (tiles-dev); unset, every /squirrel POST is refused. */
+  SQUIRREL_WRITES?: string;
+  /** Source ids never kept in SAT_CACHE, whatever a switch says — a licence that covers dev but not prod. */
+  R2_NEVER?: string;
   PMTILES_KEY: string;
   /** Worker SECRETs (`wrangler secret put`), never [vars] — they must not reach the app bundle. */
   GC_firms_map_key: string;
   GC_mapTiler_key: string;
   GC_esri_key: string;
+  PUBLIC_GC_RT_mapbox_token: string;
+  /** The Fly import tiler (../importTiler) and the key it checks. */
+  GC_importTiler_url: string;
+  GC_importTiler_key: string;
 }
+
+const IMPORT_MAX_BYTES = 64 * 1024 * 1024;
 
 class R2Source implements Source {
   constructor(
@@ -90,7 +101,7 @@ function hospitalsIndex(): ReturnType<typeof parseHospitalsPack> {
 
 /** Edge-cache key for /fires; bump whenever a change alters what a correct response
  *  looks like — a TTL expires stale data, never incomplete data. */
-const FIRE_ANSWER_VERSION = 3;
+const FIRE_ANSWER_VERSION = 4;
 
 // Every X-* response header must be listed here: cross-origin JS reads an
 // unexposed header as null, silently. Add new ones at the same time.
@@ -117,6 +128,8 @@ const SAT_HEADERS: Record<string, string> = {
   "Content-Type": "image/jpeg",
   "Cache-Control": "public, max-age=31536000, immutable",
 };
+// Esri's and Mapbox's terms let a browser hold a streamed tile for a day at most, never a year.
+const LIVE_CACHE_CONTROL = "public, max-age=86400";
 
 /** The source said no; its status and Retry-After travel on to the phone. */
 class UpstreamRefused extends Error {
@@ -128,12 +141,12 @@ class UpstreamRefused extends Error {
 type Tier = "edge" | "r2" | "upstream";
 
 /** One tile: this colo's edge cache, then the shared R2 copy, then the source. Only a 200 is ever kept. */
-async function satelliteTile(env: Env, ctx: ExecutionContext, origin: string, id: string, src: SatelliteSource, z: number, x: number, y: number): Promise<{ body: ArrayBuffer; tier: Tier }> {
+async function satelliteTile(env: Env, ctx: ExecutionContext, origin: string, id: string, src: SatelliteSource, keep: boolean, z: number, x: number, y: number): Promise<{ body: ArrayBuffer; tier: Tier }> {
   const name = `${id}/${z}/${x}/${y}.jpg`;
   const edge = new Request(`${origin}/satellite/${name}`, { method: "GET" });
   const near = src.live ? undefined : await caches.default.match(edge);
   if (near) return { body: await near.arrayBuffer(), tier: "edge" };
-  const bucket = src.cacheToR2 ? env.SAT_CACHE : undefined;
+  const bucket = keep ? env.SAT_CACHE : undefined;
   const kept = await bucket?.get(name);
   if (kept) {
     const body = await kept.arrayBuffer();
@@ -182,6 +195,35 @@ const ACTIVE_KEY = "_squirrel/active";
 async function activeSource(env: Env): Promise<string> {
   const set = await env.SAT_CACHE?.get(ACTIVE_KEY);
   return set ? await set.text() : DEFAULT_SOURCE;
+}
+
+// Squirrel's switches, each `_squirrel/<switch>/<id>` = "on" or "off"; a cache switch never written is the source's cacheToR2.
+// Re-read each minute, so a switch reaches every isolate within one.
+const SWITCHABLE = {
+  standby: (src: SatelliteSource) => !!src.standby,
+  // A live source's licence forbids keeping it, so it has no cache switch.
+  cache: (src: SatelliteSource) => !src.live,
+};
+type Switches = { standby: string[]; cache: Record<string, boolean> };
+let switched = { at: 0, now: { standby: [], cache: {} } as Switches };
+
+async function switches(env: Env): Promise<Switches> {
+  const all = Object.entries(SATELLITE_SOURCES) as [string, SatelliteSource][];
+  const bucket = env.SAT_CACHE;
+  if (!bucket) return { standby: [], cache: Object.fromEntries(all.map(([id]) => [id, false])) };
+  const never = (env.R2_NEVER ?? "").split(",").map((id) => id.trim());
+  if (Date.now() - switched.at > 60_000) {
+    const says = (sw: string, id: string) => bucket.get(`_squirrel/${sw}/${id}`).then((o) => o?.text() ?? null);
+    const [standby, cache] = await Promise.all([Promise.all(all.map(([id, s]) => (s.standby ? says("standby", id) : null))), Promise.all(all.map(([id, s]) => (s.live ? null : says("cache", id))))]);
+    switched = {
+      at: Date.now(),
+      now: {
+        standby: all.filter((_, i) => standby[i] === "on").map(([id]) => id),
+        cache: Object.fromEntries(all.map(([id, s], i) => [id, !s.live && (cache[i] === null ? s.cacheToR2 : cache[i] === "on")])),
+      },
+    };
+  }
+  return { ...switched.now, cache: Object.fromEntries(Object.entries(switched.now.cache).map(([id, on]) => [id, on && !never.includes(id)])) };
 }
 
 /** Every count file under `prefix`, summed into today, this month and all time, per `source|z|tier` key. */
@@ -233,8 +275,34 @@ export default {
 
     // /squirrel: which source the photos bake from, and what each one served. A POST of a source id switches it;
     // text/plain, so a browser sends it without a preflight. Only a Worker with the bucket keeps either.
-    if (url.pathname === "/squirrel" || url.pathname === "/squirrel/active") {
+    // A POST of "on" or "off" to /squirrel/standby/<id> or /squirrel/cache/<id> flips that switch.
+    const switchPath = /^\/squirrel\/(standby|cache)\/([a-z0-9-]+)$/.exec(url.pathname);
+    const forget = /^\/squirrel\/forget\/([a-z0-9-]+)$/.exec(url.pathname);
+    if (url.pathname === "/squirrel" || url.pathname === "/squirrel/active" || switchPath || forget) {
       const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json", "Cache-Control": "no-store" } });
+      // Unauthenticated and CORS-open, so only the Worker Squirrel drives may take a switch.
+      if (request.method === "POST" && env.SQUIRREL_WRITES !== "on") return json({ error: "this Worker's switches are not writable" }, 403);
+      // Squirrel's hand test drops the tiles it fetched, from R2 and this colo's edge, so its next run starts at MISS.
+      if (forget) {
+        if (request.method !== "POST") return json({ error: "POST z/x/y lines" }, 405);
+        if (!sourceOf(forget[1])) return json({ error: `no satellite source "${forget[1]}"` }, 400);
+        const names = (await request.text()).split("\n").filter((l) => /^\d{1,2}\/\d{1,7}\/\d{1,7}$/.test(l)).slice(0, 100).map((l) => `${forget[1]}/${l}.jpg`);
+        const [, edge] = await Promise.all([env.SAT_CACHE?.delete(names), Promise.all(names.map((n) => caches.default.delete(new Request(`${url.origin}/satellite/${n}`, { method: "GET" }))))]);
+        return json({ r2: env.SAT_CACHE ? names.length : 0, edge: edge.filter(Boolean).length });
+      }
+      if (switchPath) {
+        const sw = switchPath[1] as keyof typeof SWITCHABLE;
+        const id = switchPath[2];
+        if (request.method !== "POST") return json({ error: "POST on or off" }, 405);
+        if (!env.SAT_CACHE) return json({ error: "this Worker has no bucket to keep a switch in" }, 409);
+        const src = sourceOf(id);
+        if (!src || !SWITCHABLE[sw](src)) return json({ error: `"${id}" has no ${sw} switch` }, 400);
+        const on = (await request.text()).trim();
+        if (on !== "on" && on !== "off") return json({ error: `send "on" or "off", not "${on}"` }, 400);
+        await env.SAT_CACHE.put(`_squirrel/${sw}/${id}`, on);
+        switched.at = 0;
+        return json(await switches(env));
+      }
       if (request.method === "POST") {
         const id = (await request.text()).trim();
         if (!env.SAT_CACHE) return json({ error: "this Worker has no bucket to keep a switch in" }, 409);
@@ -243,10 +311,28 @@ export default {
         await env.SAT_CACHE.put(ACTIVE_KEY, id);
         return json({ active: id });
       }
-      const active = await activeSource(env);
-      if (url.pathname === "/squirrel/active") return json({ active });
+      const [active, sw] = await Promise.all([activeSource(env), switches(env)]);
+      if (url.pathname === "/squirrel/active") return json({ active, ...sw });
       if (env.SAT_CACHE) await flush(env.SAT_CACHE);
-      return json({ active, counts: env.SAT_CACHE ? await squirrelCounts(env.SAT_CACHE) : null });
+      return json({ active, ...sw, counts: env.SAT_CACHE ? await squirrelCounts(env.SAT_CACHE) : null });
+    }
+
+    // POST /imports: an import too big for a GeoJSON source, as text/plain so the browser skips the preflight.
+    // Tiled once on Fly and kept under its content hash, so the same file twice is one job; the phone then fetches the name whole.
+    if (url.pathname === "/imports" && request.method === "POST") {
+      if (!env.GC_importTiler_key || !env.GC_importTiler_url)
+        return new Response("GC_importTiler_url / GC_importTiler_key are not configured on this Worker", { status: 500, headers: CORS_HEADERS });
+      const body = await request.arrayBuffer();
+      if (body.byteLength > IMPORT_MAX_BYTES)
+        return new Response(`Payload Too Large — imports stop at ${IMPORT_MAX_BYTES / 1024 / 1024} MB`, { status: 413, headers: CORS_HEADERS });
+      const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", body))].map((b) => b.toString(16).padStart(2, "0")).join("");
+      const name = `imports/${hash}.pmtiles`;
+      if (!(await env.TILES.head(name))) {
+        const tiled = await fetch(`${env.GC_importTiler_url}/tile`, { method: "POST", headers: { Authorization: `Bearer ${env.GC_importTiler_key}` }, body });
+        if (!tiled.ok) return new Response(`import tiler → ${tiled.status}: ${await tiled.text()}`, { status: 502, headers: CORS_HEADERS });
+        await env.TILES.put(name, await tiled.arrayBuffer());
+      }
+      return new Response(JSON.stringify({ name }), { headers: { ...CORS_HEADERS, "Content-Type": "application/json" } });
     }
 
     if (request.method !== "GET" && request.method !== "HEAD") {
@@ -296,9 +382,14 @@ export default {
       let body: string;
       let sourcesOk: number;
       let fetchedAt: number;
+      let servedKm: number;
       try {
-        const r = await fetchFires(env.GC_firms_map_key, lng, lat, km);
-        body = JSON.stringify(r.collection);
+        // From the snapped centre, so every phone sharing this cached answer gets the same one.
+        const [cx, cy] = [Number(snap(lng)), Number(snap(lat))];
+        const r = await fetchFires(env.GC_firms_map_key, cx, cy, km);
+        const merged = mergeFires(r.collection, cx, cy, km);
+        body = JSON.stringify(merged.collection);
+        servedKm = merged.radiusKm;
         sourcesOk = r.sourcesOk;
         fetchedAt = r.fetchedAt;
       } catch (err) {
@@ -317,7 +408,7 @@ export default {
         "Cache-Control": "public, max-age=3600",
         "X-Fetched-At": String(fetchedAt),
         "X-Sources-Ok": String(sourcesOk),
-        "Access-Control-Expose-Headers": "X-Fetched-At, X-Sources-Ok",
+        "X-Radius-Km": String(servedKm),
       };
       ctx.waitUntil(
         fireEdge.put(fireCacheKey, new Response(body, { status: 200, headers: fireHeaders })),
@@ -400,9 +491,9 @@ export default {
       });
     }
 
-    // /highways-vN.pmtiles: the world's highways (getCache's build-world-highways.mjs), whole; each phone fetches it once.
-    // A rebuild is a new N, so each name is immutable.
-    const highways = /^\/(highways-v\d+\.pmtiles)$/.exec(url.pathname);
+    // /highways-vN.pmtiles (getCache's build-world-highways.mjs) and /imports/<sha256>.pmtiles, whole; each phone fetches one once.
+    // A rebuild is a new N and an import is named by its content, so each name is immutable.
+    const highways = /^\/(highways-v\d+\.pmtiles|imports\/[0-9a-f]{64}\.pmtiles)$/.exec(url.pathname);
     if (highways) {
       const object = await env.TILES.get(highways[1]);
       if (!object) return new Response(`${highways[1]} is not in the bucket`, { status: 404, headers: CORS_HEADERS });
@@ -419,6 +510,9 @@ export default {
       // Fail loud, like /fires: a blank basemap looks merely "not loaded yet".
       if (!src)
         return new Response(`Not Found — no satellite source "${id}"; there are: ${Object.keys(SATELLITE_SOURCES).join(", ")}`, { status: 404, headers: CORS_HEADERS });
+      const sw = await switches(env);
+      if (src.standby && !sw.standby.includes(id))
+        return new Response(`Not Found — ${id} is a standby source and is switched off on /app/squirrel`, { status: 404, headers: CORS_HEADERS });
       if (src.secret && !env[src.secret])
         return new Response(`${src.secret} is not configured on this Worker (wrangler secret put ${src.secret})`, { status: 500, headers: CORS_HEADERS });
       const span = 2 ** z;
@@ -432,7 +526,7 @@ export default {
       let tile: { body: ArrayBuffer; tier: Tier };
       const satStart = performance.now();
       try {
-        tile = await satelliteTile(env, ctx, url.origin, id, src, z, x, y);
+        tile = await satelliteTile(env, ctx, url.origin, id, src, sw.cache[id], z, x, y);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         // A 429 stays a 429, so the phone waits it out instead of retrying into it.
@@ -452,6 +546,7 @@ export default {
         status: 200,
         headers: {
           ...SAT_HEADERS,
+          ...(src.live && { "Cache-Control": LIVE_CACHE_CONTROL }),
           "X-Tile-Source": id,
           "X-Cache": tile.tier === "upstream" ? "MISS" : "HIT",
           "Server-Timing": `sat;dur=${(performance.now() - satStart).toFixed(1)}`,
