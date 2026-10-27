@@ -9,9 +9,9 @@ and this page is fixed.
 
 | Where | Source | Zooms | Kept | Cost |
 |---|---|---|---|---|
-| Browsing, zoomed out (below z13) | Sentinel | 0–15 | Edge cache only | Free |
-| Browsing z13+, outside pins and outside the US | Esri | 13–18 | Never | Free to 2M tiles a month |
-| Browsing z13+ in the US | USGS | 13–16 | R2 | Free |
+| Browsing, zoomed out (below z12) | Sentinel | 0–15 | R2 | Free |
+| Browsing z12+, outside pins and outside the US | Esri | 12–18 | Never | Free to 2M tiles a month |
+| Browsing z12+ in the US | USGS | 12–16 | R2 | Free |
 | Pin blobs (the baked photo and its close-up) | MapTiler | 17 | R2, and on the phone | $0.15 per 1,000 |
 | Pin blobs in the US | USGS | 16 | R2, and on the phone | Free |
 | Standby, off | Mapbox satellite | 13–18 | Never | $0.25 per 1,000 past 750k |
@@ -85,7 +85,7 @@ that is mounted.
 | MapTiler photos at z17 | `lib/contract/satelliteSources.ts:47` |
 | MapTiler is the default photo source | `lib/contract/satelliteSources.ts:147` |
 | A covering source wins (USGS first) | `lib/contract/satelliteSources.ts:154` (`sourceAt`), `:159` (`coverOf`) |
-| Sentinel below, sharp from z13 | `lib/onPhone/satellite/onlineImagery.ts:18` (`SHARP_FROM_Z`), `:69` (Sentinel layer) |
+| Sentinel below, sharp from z12 | `lib/onPhone/satellite/onlineImagery.ts:18` (`SHARP_FROM_Z`), `:69` (Sentinel layer) |
 | Esri (or a standby source that is on) is the one live layer | `lib/onPhone/satellite/onlineImagery.ts:35` |
 | No Esri tile inside a photo or USGS cover | `lib/onPhone/satellite/onlineImagery.ts:51` |
 | Worker: covered tile → 404 for a live source | `workers/worker-local-dev/src/index.ts:499` |

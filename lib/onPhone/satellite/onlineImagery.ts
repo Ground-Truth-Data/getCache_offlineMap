@@ -14,8 +14,8 @@ const MAPBOX_IMAGERY = "satellite";
 const SENTINEL = "gc-sentinel";
 /** Streamed past SHARP_FROM_Z: Esri, or a standby source while Squirrel has it switched on. */
 const LIVE = (Object.entries(SATELLITE_SOURCES) as [string, SatelliteSource][]).filter(([, s]) => s.live);
-/** Sentinel's 10 m pixels hold until here; past it a sharper source takes over where one covers. */
-const SHARP_FROM_Z = 13;
+/** Sentinel looks rough from here in; a sharper source takes over where one covers. */
+const SHARP_FROM_Z = 12;
 const FORCED = "gc-forced";
 const FORCED_KEY = "gc-forced-imagery";
 
