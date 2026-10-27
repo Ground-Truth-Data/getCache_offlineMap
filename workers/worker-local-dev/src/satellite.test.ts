@@ -13,8 +13,10 @@ const bucket = {
     const v = kept.get(k);
     return v === undefined ? null : { etag: String(v), arrayBuffer: async () => v, text: async () => String(v), json: async () => JSON.parse(String(v)) };
   },
-  put: async (k: string, v: ArrayBuffer | string, o?: { onlyIf?: { etagMatches?: string } }) => {
-    if (o?.onlyIf?.etagMatches !== undefined && String(kept.get(k)) !== o.onlyIf.etagMatches) return null;
+  put: async (k: string, v: ArrayBuffer | string, o?: { onlyIf?: { etagMatches?: string } | Headers }) => {
+    if (o?.onlyIf instanceof Headers) {
+      if (o.onlyIf.get("If-None-Match") === "*" && kept.has(k)) return null;
+    } else if (o?.onlyIf?.etagMatches !== undefined && String(kept.get(k)) !== o.onlyIf.etagMatches) return null;
     kept.set(k, v);
     return {};
   },
@@ -124,24 +126,25 @@ describe("esri: streamed only, and stopped at 90% of its free tier", () => {
     vi.setSystemTime((clock += 6 * 60_000));
   });
   afterEach(() => vi.useRealTimers());
-  const month = () => `_squirrel/month/${new Date().toISOString().slice(0, 7)}.json`;
-  const spentThisMonth = (n: number) => kept.set(month(), JSON.stringify({ esri: n }));
-  const countFile = (n: number, i = 1) => kept.set(`_squirrel/counts/${new Date().toISOString().slice(0, 10)}/i-${i}.json`, JSON.stringify({ "esri|17|upstream": n }));
+  const month = () => `_squirrel/total/month/${new Date().toISOString().slice(0, 7)}.json`;
+  const spentThisMonth = (n: number) => kept.set(month(), JSON.stringify({ "esri|17|upstream": n }));
+  const total = (key: string) => JSON.parse(String(kept.get(key)));
 
-  it("reads the month's running total, never the count files, once one exists", async () => {
+  it("reads the month's running total and never lists the bucket, however many tiles it counted", async () => {
     spentThisMonth(1_800_000);
     const list = vi.spyOn(bucket, "list");
     expect((await call(outside)).status).toBe(404);
+    expect((await call("/squirrel")).status).toBe(200);
     expect(list).not.toHaveBeenCalled();
     list.mockRestore();
   });
 
-  it("seeds the total from the count files once, then adds each flush's upstream tiles to it", async () => {
-    countFile(1_000);
-    countFile(500, 2);
+  it("starts a new day's, month's and all-time total at zero and adds each flush to all three", async () => {
+    kept.set("_squirrel/total/all.json", JSON.stringify({ "esri|17|upstream": 40 }));
     expect((await call(outside)).status).toBe(200);
-    // The tile flushed after the seed, so it lands on top: 1,500 seeded + 1.
-    expect(JSON.parse(String(kept.get(month())))).toEqual({ esri: 1_501 });
+    expect(total(month())).toEqual({ "esri|14|upstream": 1, "esri|served": 1 });
+    expect(total(`_squirrel/total/day/${new Date().toISOString().slice(0, 10)}.json`)).toEqual(total(month()));
+    expect(total("_squirrel/total/all.json")).toEqual({ "esri|17|upstream": 40, "esri|14|upstream": 1, "esri|served": 1 });
   });
 
   it("adds again when another Worker wrote the total between its read and its write", async () => {
@@ -149,12 +152,23 @@ describe("esri: streamed only, and stopped at 90% of its free tier", () => {
     const put = bucket.put;
     let raced = false;
     vi.spyOn(bucket, "put").mockImplementation(async (k, v, o) => {
-      if (k === month() && !raced) (raced = true), kept.set(k, JSON.stringify({ esri: 20 }));
+      if (k === month() && !raced) (raced = true), kept.set(k, JSON.stringify({ "esri|17|upstream": 20 }));
       return put(k, v, o);
     });
     expect((await call(outside)).status).toBe(200);
-    await call("/squirrel");
-    expect(JSON.parse(String(kept.get(month())))).toEqual({ esri: 21 });
+    expect(total(month())).toEqual({ "esri|17|upstream": 20, "esri|14|upstream": 1, "esri|served": 1 });
+    vi.mocked(bucket.put).mockRestore();
+  });
+
+  it("never overwrites a total another Worker created first", async () => {
+    const put = bucket.put;
+    let raced = false;
+    vi.spyOn(bucket, "put").mockImplementation(async (k, v, o) => {
+      if (k === month() && !raced) (raced = true), kept.set(k, JSON.stringify({ "esri|17|upstream": 7 }));
+      return put(k, v, o);
+    });
+    expect((await call(outside)).status).toBe(200);
+    expect(total(month())).toEqual({ "esri|17|upstream": 7, "esri|14|upstream": 1, "esri|served": 1 });
     vi.mocked(bucket.put).mockRestore();
   });
 
@@ -295,7 +309,7 @@ describe("mapbox: a standby source, off until Squirrel switches it on", () => {
 
   it("stops at 90% of its 750k free tiles", async () => {
     await flip("on");
-    kept.set(`_squirrel/month/${new Date().toISOString().slice(0, 7)}.json`, JSON.stringify({ mapbox: 675_000 }));
+    kept.set(`_squirrel/total/month/${new Date().toISOString().slice(0, 7)}.json`, JSON.stringify({ "mapbox|17|upstream": 675_000 }));
     const res = await call(outside);
     expect(res.status).toBe(404);
     expect(await res.text()).toMatch(/90% of its free tier/);
@@ -329,6 +343,7 @@ describe("/squirrel", () => {
       "sentinel|stored|bytes": 1000,
     });
     expect(counts.month).toEqual(counts.today);
+    expect(counts.all).toEqual(counts.today);
   });
 
   it("switches the active source, refusing one it does not know", async () => {
@@ -346,7 +361,7 @@ describe("/squirrel", () => {
       expect((await call("/squirrel/cache/sentinel", env(), { method: "POST", body: "on", headers })).status).toBe(401);
       expect((await call("/squirrel/standby/mapbox", env(), { method: "POST", body: "on", headers })).status).toBe(401);
     }
-    expect([...kept.keys()].filter((k) => !k.startsWith("_squirrel/counts/"))).toEqual([]);
+    expect([...kept.keys()].filter((k) => !k.startsWith("_squirrel/total/"))).toEqual([]);
   });
 
   it("serves the default source and no counts on a Worker without the bucket", async () => {

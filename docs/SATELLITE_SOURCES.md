@@ -105,7 +105,8 @@ Bucket `gc-satellite-cache`, bound as `SAT_CACHE` (`workers/worker-cloud-dev/wra
 | Key | What |
 |---|---|
 | `<source>/<z>/<x>/<y>.jpg` | One tile, only from a source whose cache switch is on, only a 200. Locked indefinitely per source prefix in both buckets: never deleted, never overwritten |
-| `_squirrel/counts/<YYYY-MM-DD>/<isolate>-<ms>.json` | Squirrel's tile counts, one object per 100 tiles or 30 s |
+| `_squirrel/total/day/<YYYY-MM-DD>.json`, `_squirrel/total/month/<YYYY-MM>.json`, `_squirrel/total/all.json` | Squirrel's running tile counts per `source\|z\|tier`, added to every 100 tiles or 30 s; the meter reads the month's |
+| `_squirrel/counts/<YYYY-MM-DD>/<isolate>-<ms>.json` | The old per-flush counts, written until 27 Oct 2026 and summed into the totals; nothing reads them |
 | `_squirrel/active` | The source photos bake from; absent means MapTiler |
 | `_squirrel/standby/<source>` | `on` or `off` for a standby source |
 | `_squirrel/cache/<source>` | `on` or `off`: keep its tiles in R2; absent means the source's `cacheToR2` |
