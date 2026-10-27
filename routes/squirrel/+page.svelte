@@ -376,8 +376,8 @@ async function testCache(id: string, src: SatelliteSource): Promise<void> {
 
 async function forgetTiles(id: string, src: SatelliteSource): Promise<void> {
 	const res = await post(`/forget/${id}`, testTiles(src).zxy.join("\n"));
-	const said = res.ok ? ((await res.json()) as { r2: number; edge: number }) : null;
-	forgot = { ...forgot, [id]: said ? `dropped ${said.r2} from R2 · ${said.edge} from the edge` : `HTTP ${res.status} ${await res.text()}` };
+	const said = res.ok ? ((await res.json()) as { edge: number }) : null;
+	forgot = { ...forgot, [id]: said ? `dropped ${said.edge} from the edge; R2 keeps them` : `HTTP ${res.status} ${await res.text()}` };
 	const { [id]: _, ...rest } = probes;
 	probes = rest;
 }
@@ -549,7 +549,7 @@ function toBody(node: HTMLElement) {
 							</div>
 							<div class="hcell">
 								{#if src.live}<span class="dim small">nothing kept</span>
-								{:else}<button class="refresh" onclick={() => forgetTiles(id, src)}>delete test tiles</button>{#if forgot[id]}<span class="dim small">{forgot[id]}</span>{/if}{/if}
+								{:else}<button class="refresh" onclick={() => forgetTiles(id, src)}>drop from edge</button>{#if forgot[id]}<span class="dim small">{forgot[id]}</span>{/if}{/if}
 							</div>
 						{/if}
 					{/each}

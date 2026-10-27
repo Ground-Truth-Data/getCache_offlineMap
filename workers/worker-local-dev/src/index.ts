@@ -164,10 +164,8 @@ async function satelliteTile(env: Env, ctx: ExecutionContext, origin: string, id
   return { body, tier: "upstream" };
 }
 
-// Squirrel's counts: summed in this isolate, written as one small R2 object per 100 tiles or 30 s,
-// so counting costs one write per hundred tiles. A count still in an isolate when it dies is lost.
-// Named at first flush: Workers refuse random values at global scope.
-let isolate: string | null = null;
+// Squirrel's counts: summed in this isolate, added to the running totals per 100 tiles or 30 s.
+// A count still in an isolate when it dies is lost.
 let pending: Record<string, number> = {};
 let pendingTiles = 0;
 let lastFlush = 0;
@@ -187,33 +185,32 @@ async function flush(bucket: R2Bucket): Promise<void> {
   pendingTiles = 0;
   lastFlush = Date.now();
   if (!Object.keys(out).length) return;
-  const day = new Date().toISOString().slice(0, 10);
-  await Promise.all([bucket.put(`_squirrel/counts/${day}/${(isolate ??= crypto.randomUUID())}-${lastFlush}.json`, JSON.stringify(out)), addToMonth(bucket, day.slice(0, 7), upstreamOf(out))]);
+  await Promise.all(Object.values(totalKeys()).map((key) => addTo(bucket, key, out)));
 }
 
-const monthKey = (month: string) => `_squirrel/month/${month}.json`;
+/** Squirrel's running totals per `source|z|tier` key: today's, this month's and all time. A period with none yet starts at zero. */
+const totalKeys = (now = new Date().toISOString()) => ({
+  today: `_squirrel/total/day/${now.slice(0, 10)}.json`,
+  month: `_squirrel/total/month/${now.slice(0, 7)}.json`,
+  all: "_squirrel/total/all.json",
+});
 
-/** Adds upstream tiles to the month's running total. Dev and prod write it at once, so a lost race re-reads and adds again.
- * No total yet: the meter seeds one from the count files, this flush's among them. */
-async function addToMonth(bucket: R2Bucket, month: string, add: Record<string, number>): Promise<void> {
-  if (!Object.keys(add).length) return;
+/** Dev and prod add to the same totals at once, so each write names what it read, and a lost race reads and adds again. */
+async function addTo(bucket: R2Bucket, key: string, add: Record<string, number>): Promise<void> {
   for (let tries = 0; tries < 8; tries++) {
-    const now = await bucket.get(monthKey(month));
-    if (!now) return;
-    const tiles = await now.json<Record<string, number>>();
-    for (const [id, n] of Object.entries(add)) tiles[id] = (tiles[id] ?? 0) + n;
-    if (await bucket.put(monthKey(month), JSON.stringify(tiles), { onlyIf: { etagMatches: now.etag } })) return;
+    const now = await bucket.get(key);
+    const counts = now ? await now.json<Record<string, number>>() : {};
+    for (const [k, n] of Object.entries(add)) counts[k] = (counts[k] ?? 0) + n;
+    if (await bucket.put(key, JSON.stringify(counts), { onlyIf: now ? { etagMatches: now.etag } : new Headers({ "If-None-Match": "*" }) })) return;
   }
-  throw new Error(`the ${month} free-tier total lost 8 races in a row; ${JSON.stringify(add)} went uncounted`);
+  throw new Error(`${key} lost 8 races in a row; ${JSON.stringify(add)} went uncounted`);
 }
 
-/** The month's upstream tiles per source: one read, or once a month the sum of every count file. */
-async function monthTotal(bucket: R2Bucket, month: string): Promise<Record<string, number>> {
-  const kept = await bucket.get(monthKey(month));
-  if (kept) return kept.json<Record<string, number>>();
-  const tiles = upstreamOf((await squirrelCounts(bucket, `_squirrel/counts/${month}`)).month);
-  await bucket.put(monthKey(month), JSON.stringify(tiles));
-  return tiles;
+async function totals(bucket: R2Bucket): Promise<Record<"today" | "month" | "all", Record<string, number>>> {
+  const keys = totalKeys();
+  const read = (key: string) => bucket.get(key).then((o) => o?.json<Record<string, number>>() ?? {});
+  const [today, month, all] = await Promise.all([read(keys.today), read(keys.month), read(keys.all)]);
+  return { today, month, all };
 }
 
 const ACTIVE_KEY = "_squirrel/active";
@@ -278,22 +275,6 @@ async function squirrelAdmin(request: Request): Promise<string | null> {
   return email && user.email_confirmed_at && SQUIRREL_ADMINS.includes(email) ? email : null;
 }
 
-/** Every count file under `prefix`, summed into today, this month and all time, per `source|z|tier` key. */
-async function squirrelCounts(bucket: R2Bucket, prefix = "_squirrel/counts/"): Promise<Record<"today" | "month" | "all", Record<string, number>>> {
-  const today = new Date().toISOString().slice(0, 10);
-  const out = { today: {} as Record<string, number>, month: {} as Record<string, number>, all: {} as Record<string, number> };
-  let cursor: string | undefined;
-  do {
-    const page = await bucket.list({ prefix, cursor });
-    const bodies = await Promise.all(page.objects.map(async (o) => [o.key.split("/")[2], await (await bucket.get(o.key))?.json<Record<string, number>>()] as const));
-    for (const [day, counts] of bodies)
-      for (const [k, n] of Object.entries(counts ?? {}))
-        for (const into of [out.all, ...(day.slice(0, 7) === today.slice(0, 7) ? [out.month] : []), ...(day === today ? [out.today] : [])]) into[k] = (into[k] ?? 0) + n;
-    cursor = page.truncated ? page.cursor : undefined;
-  } while (cursor);
-  return out;
-}
-
 function upstreamOf(counts: Record<string, number>): Record<string, number> {
   const out: Record<string, number> = {};
   for (const [k, n] of Object.entries(counts)) if (k.endsWith("|upstream")) out[k.split("|")[0]] = (out[k.split("|")[0]] ?? 0) + n;
@@ -309,7 +290,8 @@ async function freeTierSpent(env: Env, id: string, src: SatelliteSource): Promis
   // No bucket, no meter: a metered source is refused rather than run blind.
   if (!env.METER) return true;
   const month = new Date().toISOString().slice(0, 7);
-  if (spent.month !== month || Date.now() - spent.at > 60_000) spent = { month, at: Date.now(), tiles: await monthTotal(env.METER, month) };
+  if (spent.month !== month || Date.now() - spent.at > 60_000)
+    spent = { month, at: Date.now(), tiles: upstreamOf((await env.METER.get(totalKeys().month).then((o) => o?.json<Record<string, number>>())) ?? {}) };
   return (spent.tiles[id] ?? 0) + (upstreamOf(pending)[id] ?? 0) >= 0.9 * src.freeTilesPerMonth;
 }
 
@@ -333,13 +315,13 @@ export default {
       const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json", "Cache-Control": "no-store" } });
       // CORS-open, so a write must carry an admin's Supabase sign-in.
       if (request.method === "POST" && !(await squirrelAdmin(request).catch(() => null))) return json({ error: "sign in as Chris on Get Cache to flip Squirrel's switches" }, 401);
-      // Squirrel's hand test drops the tiles it fetched, from R2 and this colo's edge, so its next run starts at MISS.
+      // Squirrel's hand test drops the tiles it fetched from this colo's edge, never R2: R2's tiles are collected data, locked.
       if (forget) {
         if (request.method !== "POST") return json({ error: "POST z/x/y lines" }, 405);
         if (!sourceOf(forget[1])) return json({ error: `no satellite source "${forget[1]}"` }, 400);
         const names = (await request.text()).split("\n").filter((l) => /^\d{1,2}\/\d{1,7}\/\d{1,7}$/.test(l)).slice(0, 100).map((l) => `${forget[1]}/${l}.jpg`);
-        const [, edge] = await Promise.all([env.SAT_CACHE?.delete(names), Promise.all(names.map((n) => caches.default.delete(new Request(`${url.origin}/satellite/${n}`, { method: "GET" }))))]);
-        return json({ r2: env.SAT_CACHE ? names.length : 0, edge: edge.filter(Boolean).length });
+        const edge = await Promise.all(names.map((n) => caches.default.delete(new Request(`${url.origin}/satellite/${n}`, { method: "GET" }))));
+        return json({ edge: edge.filter(Boolean).length });
       }
       if (switchPath) {
         const sw = switchPath[1] as keyof typeof SWITCHABLE;
@@ -365,7 +347,7 @@ export default {
       const [active, sw] = await Promise.all([activeSource(env), switches(env)]);
       if (url.pathname === "/squirrel/active") return json({ active, ...sw });
       if (env.METER) await flush(env.METER);
-      return json({ active, ...sw, counts: env.METER ? await squirrelCounts(env.METER) : null });
+      return json({ active, ...sw, counts: env.METER ? await totals(env.METER) : null });
     }
 
     // POST /imports: an import too big for a GeoJSON source, as text/plain so the browser skips the preflight.
