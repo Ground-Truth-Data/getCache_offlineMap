@@ -49,7 +49,7 @@ export const SATELLITE_SOURCES = {
 		canvasPx: 3456,
 		quality: 0.92,
 		attribution: "© MapTiler © Maxar",
-		licence: "MapTiler Cloud terms; no written permission to keep tiles yet, so neither Worker stores them in R2",
+		licence: "MapTiler Cloud terms; approved for R2",
 		cacheToR2: true,
 		// Flex plan, per 1,000 requests past the included 500k.
 		usdPer1000: 0.15,
@@ -66,7 +66,7 @@ export const SATELLITE_SOURCES = {
 		quality: 0.9,
 		attribution: "Sentinel-2 cloudless 2016 by EOX IT Services GmbH (contains modified Copernicus Sentinel data 2016)",
 		licence: "CC BY 4.0",
-		cacheToR2: false,
+		cacheToR2: true,
 		usdPer1000: 0,
 	},
 	usgs: {

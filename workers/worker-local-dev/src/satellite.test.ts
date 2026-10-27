@@ -20,10 +20,31 @@ const bucket = {
   },
   list: async ({ prefix }: { prefix: string }) => ({ objects: [...kept.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key })), truncated: false }),
 };
-const env = (more = {}) => ({ GC_mapTiler_key: "k", GC_esri_key: "e", PUBLIC_GC_RT_mapbox_token: "m", SAT_CACHE: bucket, METER: bucket, SQUIRREL_WRITES: "on", ...more }) as never;
+const env = (more = {}) => ({ GC_mapTiler_key: "k", GC_esri_key: "e", PUBLIC_GC_RT_mapbox_token: "m", SAT_CACHE: bucket, METER: bucket, ...more }) as never;
 const ctx = { waitUntil: (p: Promise<unknown>) => void waits.push(p), passThroughOnException() {} } as never;
+
+// A Supabase access token is header.payload.signature; the Worker reads only `iss`, then asks that project who it is.
+const DEV_AUTH = "https://cjqvdoaeymnfoalxforc.supabase.co/auth/v1";
+const tokenFrom = (iss: string, who: string) => `h.${btoa(JSON.stringify({ iss })).replace(/=+$/, "")}.${who}`;
+const signedIn = (token: string) => ({ Authorization: `Bearer ${token}`, apikey: "anon" });
+const CHRIS = signedIn(tokenFrom(DEV_AUTH, "chris"));
+const STRANGER = signedIn(tokenFrom(DEV_AUTH, "stranger"));
+const USERS: Record<string, { email: string; email_confirmed_at: string }> = {
+  chris: { email: "chris@groundtruth.app", email_confirmed_at: "2026-01-01" },
+  stranger: { email: "someone@example.com", email_confirmed_at: "2026-01-01" },
+};
+/** Stubs the sources' fetch; Supabase's /user answers for the token's last segment. */
+const stubFetch = (impl: (u: string, i?: RequestInit) => Promise<Response>) =>
+  vi.stubGlobal("fetch", async (u: string, i?: RequestInit) => {
+    if (!String(u).startsWith(`${DEV_AUTH}/user`)) return impl(u, i);
+    const who = new Headers(i?.headers).get("Authorization")?.split(".").pop() ?? "";
+    return USERS[who] ? Response.json(USERS[who]) : new Response("invalid JWT", { status: 401 });
+  });
+
+/** A POST signs in as Chris unless `init` names its own headers. */
 const call = async (path: string, e = env(), init?: RequestInit) => {
-  const res = await worker.fetch(new Request(`https://tiles.test${path}`, init), e, ctx);
+  const signed = init?.method === "POST" && !init.headers ? { ...init, headers: CHRIS } : init;
+  const res = await worker.fetch(new Request(`https://tiles.test${path}`, signed), e, ctx);
   await Promise.all(waits);
   return res;
 };
@@ -46,7 +67,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe("/satellite through the shared R2 cache", () => {
   it("fetches a miss from the source, keeps it under source/z/x/y, and serves the next ask from R2", async () => {
     const source = vi.fn(async () => new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
-    vi.stubGlobal("fetch", source);
+    stubFetch(source);
     const first = await ask();
     expect(first.headers.get("X-Cache")).toBe("MISS");
     expect(tiles()).toEqual(["maptiler/14/2627/5718.jpg"]);
@@ -58,28 +79,17 @@ describe("/satellite through the shared R2 cache", () => {
     expect(first.headers.get("Access-Control-Expose-Headers")).toContain("X-Cache");
   });
 
-  it("never keeps a source named in R2_NEVER, even switched on, and still keeps the rest", async () => {
-    vi.stubGlobal("fetch", async () => new Response(new Uint8Array([7]), { status: 200 }));
-    const prod = env({ R2_NEVER: "maptiler", SQUIRREL_WRITES: undefined });
-    kept.set("_squirrel/cache/maptiler", "on");
-    expect((await ask("maptiler", prod)).headers.get("X-Cache")).toBe("MISS");
-    expect((await ask("maptiler", prod)).headers.get("X-Cache")).toBe("MISS");
-    await ask("usgs", prod);
-    expect(tiles()).toEqual(["usgs/14/2627/5718.jpg"]);
-    expect(await (await call("/squirrel/active", prod)).json()).toMatchObject({ cache: { maptiler: false, usgs: true } });
-  });
-
-  it("keeps nothing for a source whose cacheToR2 is off, and asks EOX by row then column", async () => {
+  it("keeps Sentinel too, asking EOX by row then column", async () => {
     const source = vi.fn(async (_u: string) => new Response(new Uint8Array([9]), { status: 200 }));
-    vi.stubGlobal("fetch", source);
+    stubFetch(source);
     expect((await ask("sentinel")).headers.get("X-Cache")).toBe("MISS");
-    expect((await ask("sentinel")).headers.get("X-Cache")).toBe("MISS");
-    expect(tiles()).toEqual([]);
+    expect((await ask("sentinel")).headers.get("X-Cache")).toBe("HIT");
+    expect(tiles()).toEqual(["sentinel/14/2627/5718.jpg"]);
     expect(source.mock.calls[0][0]).toBe("https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/14/5718/2627.jpg");
   });
 
   it("passes a 429 through with the source's Retry-After and keeps nothing", async () => {
-    vi.stubGlobal("fetch", async () => new Response("slow down", { status: 429, headers: { "Retry-After": "30" } }));
+    stubFetch(async () => new Response("slow down", { status: 429, headers: { "Retry-After": "30" } }));
     const res = await ask();
     expect(res.status).toBe(429);
     expect(res.headers.get("Retry-After")).toBe("30");
@@ -88,9 +98,9 @@ describe("/satellite through the shared R2 cache", () => {
   });
 
   it("says 60 s when the source names no wait, and any other refusal is a 502 kept nowhere", async () => {
-    vi.stubGlobal("fetch", async () => new Response("", { status: 429 }));
+    stubFetch(async () => new Response("", { status: 429 }));
     expect((await ask()).headers.get("Retry-After")).toBe("60");
-    vi.stubGlobal("fetch", async () => new Response("", { status: 500 }));
+    stubFetch(async () => new Response("", { status: 500 }));
     expect((await ask()).status).toBe(502);
     expect(tiles()).toEqual([]);
   });
@@ -108,7 +118,7 @@ describe("esri: streamed only, and stopped at 90% of its free tier", () => {
   let asked: number;
   beforeEach(() => {
     asked = 0;
-    vi.stubGlobal("fetch", async () => (asked++, new Response(new Uint8Array(1000), { status: 200 })));
+    stubFetch(async () => (asked++, new Response(new Uint8Array(1000), { status: 200 })));
     // The meter re-reads the counts every 5 min; each test starts past that.
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime((clock += 6 * 60_000));
@@ -169,7 +179,7 @@ describe("esri: streamed only, and stopped at 90% of its free tier", () => {
     const prodTiles = { ...bucket, get: async () => null, put: async () => {}, list: async () => ({ objects: [], truncated: false }) };
     vi.setSystemTime((clock += 6 * 60_000));
     spentThisMonth(1_800_000);
-    const res = await call(outside, env({ SAT_CACHE: prodTiles, SQUIRREL_WRITES: undefined }));
+    const res = await call(outside, env({ SAT_CACHE: prodTiles }));
     expect(res.status).toBe(404);
     expect(await res.text()).toMatch(/90% of its free tier/);
     expect(asked).toBe(0);
@@ -203,7 +213,7 @@ describe("esri: streamed only, and stopped at 90% of its free tier", () => {
 describe("the cache switch: Squirrel decides what R2 keeps", () => {
   // The switches are re-read each minute; each test starts past that, with none written.
   beforeEach(() => {
-    vi.stubGlobal("fetch", async () => new Response(new Uint8Array([7]), { status: 200 }));
+    stubFetch(async () => new Response(new Uint8Array([7]), { status: 200 }));
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime((clock += 6 * 60_000));
   });
@@ -211,13 +221,30 @@ describe("the cache switch: Squirrel decides what R2 keeps", () => {
   const setCache = (id: string, to: string) => call(`/squirrel/cache/${id}`, env(), { method: "POST", body: to });
 
   it("follows cacheToR2 until switched, then keeps what the switch says", async () => {
-    expect(await (await call("/squirrel/active")).json()).toMatchObject({ cache: { maptiler: true, sentinel: false, usgs: true, esri: false, mapbox: false } });
-    expect(await (await setCache("sentinel", "on")).json()).toMatchObject({ cache: { sentinel: true } });
+    expect(await (await call("/squirrel/active")).json()).toMatchObject({ cache: { maptiler: true, sentinel: true, usgs: true, esri: false, mapbox: false } });
+    expect(await (await setCache("sentinel", "off")).json()).toMatchObject({ cache: { sentinel: false } });
+    await ask("sentinel");
+    expect(tiles()).toEqual([]);
+    await setCache("sentinel", "on");
     await ask("sentinel");
     expect(tiles()).toEqual(["sentinel/14/2627/5718.jpg"]);
     await setCache("maptiler", "off");
     await ask("maptiler");
     expect(tiles()).toEqual(["sentinel/14/2627/5718.jpg"]);
+  });
+
+  it("stores what the toggle says, flip by flip, and nothing overrides it", async () => {
+    const at = (x: number) => call(`/satellite/maptiler/14/${x}/5718.jpg`);
+    expect((await at(1)).headers.get("X-Cache")).toBe("MISS");
+    expect((await at(1)).headers.get("X-Cache")).toBe("HIT");
+    await setCache("maptiler", "off");
+    expect((await at(2)).headers.get("X-Cache")).toBe("MISS");
+    expect((await at(2)).headers.get("X-Cache")).toBe("MISS");
+    await setCache("maptiler", "on");
+    expect((await at(3)).headers.get("X-Cache")).toBe("MISS");
+    expect((await at(3)).headers.get("X-Cache")).toBe("HIT");
+    expect(tiles()).toEqual(["maptiler/14/1/5718.jpg", "maptiler/14/3/5718.jpg"]);
+    expect(await (await call("/squirrel/active")).json()).toMatchObject({ overrides: {} });
   });
 
   it("has no switch for a source whose licence forbids keeping it", async () => {
@@ -238,7 +265,7 @@ describe("mapbox: a standby source, off until Squirrel switches it on", () => {
   const flip = (to: string) => call("/squirrel/standby/mapbox", env(), { method: "POST", body: to });
   beforeEach(() => {
     asked = [];
-    vi.stubGlobal("fetch", async (u: string) => (asked.push(u), new Response(new Uint8Array(1000), { status: 200 })));
+    stubFetch(async (u: string) => (asked.push(u), new Response(new Uint8Array(1000), { status: 200 })));
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime((clock += 6 * 60_000));
   });
@@ -284,7 +311,7 @@ describe("mapbox: a standby source, off until Squirrel switches it on", () => {
 
 describe("/squirrel", () => {
   it("counts each tile by source, zoom and where it came from, and what R2 holds", async () => {
-    vi.stubGlobal("fetch", async () => new Response(new Uint8Array(1000), { status: 200 }));
+    stubFetch(async () => new Response(new Uint8Array(1000), { status: 200 }));
     await ask();
     await ask();
     await ask("sentinel");
@@ -298,25 +325,34 @@ describe("/squirrel", () => {
       "maptiler|stored|bytes": 1000,
       "sentinel|14|upstream": 1,
       "sentinel|served": 1,
+      "sentinel|stored|tiles": 1,
+      "sentinel|stored|bytes": 1000,
     });
     expect(counts.month).toEqual(counts.today);
   });
 
   it("switches the active source, refusing one it does not know", async () => {
+    stubFetch(async () => new Response(null, { status: 500 }));
     expect((await call("/squirrel/active", env(), { method: "POST", body: "bing" })).status).toBe(400);
     expect((await call("/squirrel/active", env(), { method: "POST", body: "sentinel" })).status).toBe(200);
     expect(await (await call("/squirrel/active")).json()).toMatchObject({ active: "sentinel", standby: [] });
   });
 
-  it("refuses every switch on a Worker that takes no writes, so tiles-prod can't be switched from outside", async () => {
-    const prod = env({ SQUIRREL_WRITES: undefined });
-    expect((await call("/squirrel/active", prod, { method: "POST", body: "sentinel" })).status).toBe(403);
-    expect((await call("/squirrel/cache/sentinel", prod, { method: "POST", body: "on" })).status).toBe(403);
-    expect((await call("/squirrel/standby/mapbox", prod, { method: "POST", body: "on" })).status).toBe(403);
+  it("refuses every switch to anyone but Chris, so nobody else can flip tiles-prod", async () => {
+    stubFetch(async () => new Response(null, { status: 500 }));
+    const elsewhere = signedIn(tokenFrom("https://evil.supabase.co/auth/v1", "chris"));
+    for (const headers of [{}, STRANGER, elsewhere, signedIn("not-a-jwt")]) {
+      expect((await call("/squirrel/active", env(), { method: "POST", body: "sentinel", headers })).status).toBe(401);
+      expect((await call("/squirrel/cache/sentinel", env(), { method: "POST", body: "on", headers })).status).toBe(401);
+      expect((await call("/squirrel/standby/mapbox", env(), { method: "POST", body: "on", headers })).status).toBe(401);
+    }
     expect([...kept.keys()].filter((k) => !k.startsWith("_squirrel/counts/"))).toEqual([]);
   });
 
   it("serves the default source and no counts on a Worker without the bucket", async () => {
-    expect(await (await call("/squirrel", env({ SAT_CACHE: undefined, METER: undefined }))).json()).toEqual({ active: "maptiler", standby: [], cache: { maptiler: false, sentinel: false, usgs: false, esri: false, mapbox: false }, counts: null });
+    expect(await (await call("/squirrel", env({ SAT_CACHE: undefined, METER: undefined }))).json()).toEqual({ active: "maptiler", standby: [], cache: { maptiler: false, sentinel: false, usgs: false, esri: false, mapbox: false },
+      overrides: { maptiler: "this Worker has no R2 bucket, so it keeps nothing", sentinel: "this Worker has no R2 bucket, so it keeps nothing", usgs: "this Worker has no R2 bucket, so it keeps nothing" },
+      counts: null,
+    });
   });
 });

@@ -21,8 +21,8 @@ and this page is fixed.
 
 - EOX `s2cloudless_3857`, the 2016 mosaic: 10 m pixels, 256 px tiles to z15.
 - It is drawn under everything, so it shows wherever a sharper source answers 404.
-- CC BY 4.0, so caching is allowed. By default it is kept in the edge cache only (`cacheToR2: false`); Squirrel's
-  cache switch can turn R2 on.
+- CC BY 4.0, so caching is allowed, and R2 keeps it (`cacheToR2: true`) until Squirrel's cache switch says
+  otherwise.
 - EOX's later years are non-commercial; only the unyeared (2016) layer may be used.
 
 ### Esri — zoomed in, outside pins, outside the US
@@ -50,8 +50,7 @@ and this page is fixed.
 - `satellite-v2`, already 512 px tiles. Photos bake at **z17** into a 3,456 px canvas across a 2 km
   radius (~350 tiles per pin at 49° N). The raw tiles stay on the phone for the close-up.
 - It is the default photo source; Squirrel can switch the photo source to another bakeable one.
-- Saved on the phone, never in R2: MapTiler has given no written permission to keep its tiles, so
-  both Workers name it in `R2_NEVER`.
+- Approved for R2: both Workers keep its tiles while its cache switch is on.
 - Inside USGS cover, a pin's photo bakes from USGS at z16 instead, on purpose: `sourceAt` takes the
   covering source first. USGS is free and public domain, and z16 is its sharpest zoom.
 
@@ -93,7 +92,8 @@ that is mounted.
 | Worker: standby switched off → 404 | `workers/worker-local-dev/src/index.ts:491` |
 | Worker: 90% of the free tier → 404 | `workers/worker-local-dev/src/index.ts:257` (`freeTierSpent`), `:526` |
 | Worker: edge → R2 → upstream; R2 only when the cache switch says keep | `workers/worker-local-dev/src/index.ts:137` |
-| Squirrel's photo-source switch; standby and cache switches (a live source has no cache switch) | `workers/worker-local-dev/src/index.ts:188`, `:195` |
+| Squirrel's photo-source switch; standby and cache switches (a live source has no cache switch) | `workers/worker-local-dev/src/index.ts:237` (`switches`) |
+| Only Chris's Supabase sign-in flips a switch, on either Worker | `workers/worker-local-dev/src/index.ts:267` (`squirrelAdmin`) |
 | A photo's tiles counted by X-Cache: disk, hit, upstream | `routes/offlinev10/satellite.ts:70`, `:82` |
 | Mounted photos' attributions | `lib/onPhone/satellite/mountSatellite.ts:230` |
 | Photo coverage radius (2 km) | `lib/onPhone/satellite/satelliteImage.ts:12` |

@@ -4,9 +4,9 @@ import { DEFAULT_SOURCE, SATELLITE_SOURCES, type SatelliteSource, sourceAt, sour
 const all = Object.entries(SATELLITE_SOURCES) as [string, SatelliteSource][];
 
 describe("the satellite sources", () => {
-	it("default to MapTiler, and only MapTiler and USGS keep their tiles in R2", () => {
+	it("default to MapTiler, and only MapTiler, Sentinel and USGS keep their tiles in R2", () => {
 		expect(DEFAULT_SOURCE).toBe("maptiler");
-		expect(all.filter(([, s]) => s.cacheToR2).map(([id]) => id)).toEqual(["maptiler", "usgs"]);
+		expect(all.filter(([, s]) => s.cacheToR2).map(([id]) => id)).toEqual(["maptiler", "sentinel", "usgs"]);
 	});
 
 	it("each name its attribution and licence, and is found again by the name a photo stores", () => {

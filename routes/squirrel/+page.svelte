@@ -4,14 +4,14 @@ import { SATELLITE_SOURCES, type SatelliteSource, type SourceId, sourceOf } from
 import { loadCamera, MAP_HOME_CENTER } from "../../lib/mapState/mapViewport";
 import { forcedImagery, forceImagery } from "../../lib/onPhone/satellite/onlineImagery";
 import { photoTilesFor } from "../../lib/onPhone/satellite/satelliteImage";
-import { satelliteTileUrl, squirrelUrl } from "../../lib/worker/tilesHost";
+import { type WorkerTarget, getWorkerTarget, satelliteTileUrl, setWorkerTarget, squirrelUrl } from "../../lib/worker/tilesHost";
 import { placeLabel } from "../offlinev10/places";
 import { type BlobPart, type PhotoInfo, blobParts, photoInfo } from "../offlinev10/satellite";
 import { type Region, listRegions } from "../offlinev10/store";
 import { rangeBox } from "../offlinev10/tiles";
 
 type Counts = Record<string, number>;
-type Answer = { active: string; standby: string[]; cache: Record<string, boolean>; counts: { today: Counts; month: Counts; all: Counts } | null };
+type Answer = { active: string; standby: string[]; cache: Record<string, boolean>; overrides: Record<string, string>; counts: { today: Counts; month: Counts; all: Counts } | null };
 type Lic = "ok" | "tos";
 type Row = {
 	id: string;
@@ -28,6 +28,8 @@ type Row = {
 	stops?: boolean;
 	/** why the toggle cannot be switched on */
 	lock: string | null;
+	/** the Worker ignores this row's toggle, and says why */
+	override: string | null;
 	z: string | null;
 	today: number | null;
 	month: number | null;
@@ -75,6 +77,19 @@ const LOOK: Record<string, { sub: string; lic: Lic; licText: string; lock?: stri
 const BC_COLOR = "oklch(0.74 0.10 190)";
 const ROADS_COLOR = "#f3f1e9";
 
+/** The host's sign-in: the Worker takes a switch only from Chris. */
+let { auth }: { auth?: () => Promise<Record<string, string>> } = $props();
+const post = async (path: Parameters<typeof squirrelUrl>[0], body: string) =>
+	fetch(squirrelUrl(path) ?? "", { method: "POST", body, headers: (await auth?.()) ?? {} });
+
+let target = $state(getWorkerTarget());
+function aim(t: WorkerTarget): void {
+	setWorkerTarget(t);
+	target = t;
+	answer = null;
+	void load();
+}
+
 let answer = $state<Answer | null>(null);
 let failure = $state<string | null>(null);
 let regions = $state<Region[]>([]);
@@ -103,10 +118,10 @@ $effect(() => void load());
 async function flip(sw: "standby" | "cache", id: string, on: boolean): Promise<void> {
 	failure = null;
 	try {
-		const res = await fetch(squirrelUrl(`/${sw}/${id}`) ?? "", { method: "POST", body: on ? "on" : "off" });
+		const res = await post(`/${sw}/${id}`, on ? "on" : "off");
 		if (!res.ok) throw new Error(`HTTP ${res.status} ${await res.text()}`);
-		const { standby, cache } = (await res.json()) as Pick<Answer, "standby" | "cache">;
-		if (answer) answer = { ...answer, standby, cache };
+		const { standby, cache, overrides } = (await res.json()) as Pick<Answer, "standby" | "cache" | "overrides">;
+		if (answer) answer = { ...answer, standby, cache, overrides };
 	} catch (e) {
 		failure = String(e instanceof Error ? e.message : e);
 	}
@@ -158,6 +173,7 @@ function sourceRow(id: string, src: SatelliteSource): Row {
 		standby: src.standby ? (answer ? answer.standby.includes(id) : null) : undefined,
 		stops: !!src.freeTilesPerMonth,
 		lock: look.lock ?? null,
+		override: answer?.overrides[id] ?? null,
 		z: zs.length ? `z${Math.min(...zs)}–${Math.max(...zs)}` : c ? "none" : null,
 		today: c ? (c.today[`${id}|served`] ?? 0) : null,
 		month,
@@ -189,6 +205,7 @@ const rows = $derived<Row[]>([
 		licence: 'BC Imagery WMS: "cannot be cascaded through another Web Map Service without the express written permission of the Province"',
 		cache: false,
 		lock: "stopped: needs the Province's written permission",
+		override: null,
 		price: "free",
 		unit: "",
 		free: null,
@@ -204,6 +221,7 @@ const rows = $derived<Row[]>([
 		licence: "Mapbox ToS: no caching of map data outside the SDK",
 		cache: false,
 		lock: "Mapbox ToS: no caching outside the SDK",
+		override: null,
 		price: "$5→2.50",
 		unit: "/1k loads",
 		free: MAPBOX_LOADS.free,
@@ -357,7 +375,7 @@ async function testCache(id: string, src: SatelliteSource): Promise<void> {
 }
 
 async function forgetTiles(id: string, src: SatelliteSource): Promise<void> {
-	const res = await fetch(squirrelUrl(`/forget/${id}`) ?? "", { method: "POST", body: testTiles(src).zxy.join("\n") });
+	const res = await post(`/forget/${id}`, testTiles(src).zxy.join("\n"));
 	const said = res.ok ? ((await res.json()) as { r2: number; edge: number }) : null;
 	forgot = { ...forgot, [id]: said ? `dropped ${said.r2} from R2 · ${said.edge} from the edge` : `HTTP ${res.status} ${await res.text()}` };
 	const { [id]: _, ...rest } = probes;
@@ -373,7 +391,7 @@ async function copyLog(): Promise<void> {
 		at: new Date().toISOString(),
 		worker: { host, failure, active: answer?.active ?? null, standby: answer?.standby ?? null },
 		forcedOnThisBrowser: forced,
-		sources: rows.map(({ id, cache, standby, lock, z, today, month, up, hits, tiles, gb, free, mtd }) => ({ id, cache, standby, lock, z, today, month, upstream: up, hits, r2Tiles: tiles, r2Gb: gb, freeTier: free, usdMonthToDate: mtd })),
+		sources: rows.map(({ id, cache, standby, lock, override, z, today, month, up, hits, tiles, gb, free, mtd }) => ({ id, cache, standby, lock, override, z, today, month, upstream: up, hits, r2Tiles: tiles, r2Gb: gb, freeTier: free, usdMonthToDate: mtd })),
 		handTest: probes,
 		deleted: forgot,
 	};
@@ -411,6 +429,9 @@ function toBody(node: HTMLElement) {
 		{#if failure}<span class="statuspill bad" title={failure}>✕ worker · {host}</span>
 		{:else if answer}<span class="statuspill" class:bad={!answer.counts}>{answer.counts ? "✓" : "✕"} worker up · {host}{answer.counts ? "" : " · no bucket"}</span>
 		{:else}<span class="statuspill dimpill">asking {host}…</span>{/if}
+		<select class="refresh" value={target} aria-label="which Worker Squirrel reads and switches" onchange={(e) => aim(e.currentTarget.value as WorkerTarget)}>
+			<option value="worker-cloud-dev">tiles-dev</option><option value="worker-cloud-prod">tiles-prod</option><option value="worker-local-dev">local</option>
+		</select>
 		<button class="refresh" onclick={copyLog}>{copied ? "copied ✓" : "copy debug log"}</button>
 		<button class="refresh" onclick={load}>refresh</button>
 	</div>
@@ -436,6 +457,7 @@ function toBody(node: HTMLElement) {
 							{#if s.standby !== undefined}<label class="standby"><button class="tog" class:on={s.standby} disabled={s.standby === null} aria-label="standby {s.name}" onclick={() => flip("standby", s.id, !s.standby)}></button><span class:grn={s.standby} class:dim={!s.standby}>{s.standby ? "ON · streaming" : s.standby === null ? "—" : "OFF"}</span></label>{/if}</span></div>
 						<div>
 							<button class="tog" class:on={s.cache} class:locked={!!s.lock} disabled={!!s.lock || !answer} aria-label="cache {s.name} in R2" title={s.lock ?? `R2 ${s.cache ? "keeps" : "skips"} ${s.name}; the Worker follows within a minute`} onclick={() => flip("cache", s.id, !s.cache)}></button>
+							{#if s.override}<span class="why red" role="alert">overridden: {s.override}</span>{/if}
 						</div>
 						<div class="lic-cell">
 							<span class="lic {s.lic}" title={s.licence}>{s.lic === "ok" ? "✓" : "×"} {s.licText}</span>
