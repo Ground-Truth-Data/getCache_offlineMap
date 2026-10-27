@@ -25,7 +25,7 @@ import {
 import hospitalsPack from "./hospitalsWorld.v1.bin";
 
 /** Edge-cache key for /hospitals; bump on every re-bake (bakeHospitals.mjs prints it). */
-const HOSPITALS_BUILD = "v1-209173-20260907-cap250";
+const HOSPITALS_BUILD = "v1-58331-20261027";
 
 const SATELLITE_PATH = /^\/satellite\/([a-z0-9-]+)\/(\d{1,2})\/(\d{1,7})\/(\d{1,7})\.jpg$/;
 

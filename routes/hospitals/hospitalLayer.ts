@@ -68,6 +68,8 @@ function addLayers(map: maplibregl.Map): void {
 		cluster: true,
 		clusterRadius: 120,
 		clusterMaxZoom: 11,
+		// A cluster with no ER in it must not wear the ER pin.
+		clusterProperties: { ers: ["+", ["case", ["==", ["get", "emergency"], "yes"], 1, 0]] },
 	});
 	map.addLayer({
 		id: HOSPITAL_LAYER_IDS.cluster,
@@ -76,7 +78,7 @@ function addLayers(map: maplibregl.Map): void {
 		filter: ["has", "point_count"],
 		minzoom: MIN_ZOOM,
 		layout: {
-			"icon-image": PIN,
+			"icon-image": ["case", [">", ["get", "ers"], 0], PIN, PIN_UNCONFIRMED],
 			"icon-size": PIN_SIZE,
 			"icon-allow-overlap": true,
 			"icon-anchor": "bottom",
