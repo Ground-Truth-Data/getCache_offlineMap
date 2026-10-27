@@ -1,7 +1,8 @@
 /**
  * The hospitals both maps paint from. Same law as fires: measured from the user's anchors, never
- * the camera; past HOSPITAL_RADIUS_KM from every anchor nothing renders. The radius is one number,
- * the disc the Worker is asked for and the wall. One disc per anchor, stored verbatim, parsed on paint.
+ * the camera; past HOSPITAL_RADIUS_KM from every anchor nothing renders. That is the disc the Worker
+ * is asked for and the wall; a city's disc comes back smaller, its nearest 250. One disc per anchor,
+ * stored verbatim, parsed on paint.
  */
 
 import { distKm } from "../fires/fireRelevance";
@@ -119,13 +120,11 @@ export async function deleteDisc(key: string): Promise<void> {
 }
 
 export function isFresh(disc: HospitalDisc, now = Date.now()): boolean {
-	return (
-		now - disc.fetchedAt < HOSPITAL_TTL_MS &&
-		disc.radiusKm >= HOSPITAL_RADIUS_KM
-	);
+	return now - disc.fetchedAt < HOSPITAL_TTL_MS;
 }
 
-/** A disc only counts when the whole wall around `at` fits inside it. */
+/** A disc only counts when the whole wall around `at` fits inside it. A city's disc is
+ * smaller than the wall (the Worker sends the nearest 250), and is the wall for its own centre. */
 export function coveredBy(
 	at: LngLat,
 	discs: readonly HospitalDisc[],
@@ -134,7 +133,7 @@ export function coveredBy(
 	return discs.some(
 		(d) =>
 			isFresh(d, now) &&
-			distKm(at, [d.lng, d.lat]) + HOSPITAL_RADIUS_KM <= d.radiusKm,
+			distKm(at, [d.lng, d.lat]) + Math.min(HOSPITAL_RADIUS_KM, d.radiusKm) <= d.radiusKm,
 	);
 }
 

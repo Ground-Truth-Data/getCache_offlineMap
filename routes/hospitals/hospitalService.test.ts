@@ -55,6 +55,14 @@ describe("the hospital pass", () => {
 	});
 
 
+	it("a city's capped disc (nearest 250, 30 km) covers its anchor: no refetch on the next pass", async () => {
+		const fetch = vi.fn(async (_url: string) => new Response(body, { status: 200, headers: { "X-Radius-Km": "30" } }));
+		vi.stubGlobal("fetch", fetch);
+		expect(await refreshHospitals([KELOWNA])).toBe(1);
+		expect(await refreshHospitals([KELOWNA])).toBe(0);
+		expect(fetch).toHaveBeenCalledTimes(1);
+	});
+
 	it("⛔ THE TRACTOR BUG: an anchor asked for mid-pass still gets its disc", async () => {
 		let release!: () => void;
 		const held = new Promise<void>((r) => {

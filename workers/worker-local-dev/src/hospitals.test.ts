@@ -37,14 +37,24 @@ describe("hospitalsCollection", () => {
 	const near: HospitalEntry = [-122.7, 53.9, "UHNBC", "yes"];
 	const far: HospitalEntry = [-79.4, 43.7, "Toronto General"];
 
+	it("a dense disc keeps only the nearest 250 and says how far they reach", () => {
+		const ring = (km: number, i: number): HospitalEntry => [anchor[0], anchor[1] + km / 111.2, `H${i}`];
+		const { fc, radiusKm } = hospitalsCollection([Array.from({ length: 400 }, (_, i) => ring(1 + i * 0.1, i))], anchor[0], anchor[1]);
+		expect(fc.features).toHaveLength(250);
+		expect(fc.features.at(-1)?.properties.name).toBe("H249");
+		expect(radiusKm).toBeGreaterThan(25.8);
+		expect(radiusKm).toBeLessThanOrEqual(26);
+	});
+
 	it("keeps within-radius, drops beyond-radius", () => {
-		const fc = hospitalsCollection([[near, far]], anchor[0], anchor[1]);
+		const { fc, radiusKm } = hospitalsCollection([[near, far]], anchor[0], anchor[1]);
+		expect(radiusKm).toBe(HOSPITAL_RADIUS_KM);
 		expect(fc.features.map((f) => f.properties.name)).toEqual(["UHNBC"]);
 	});
 
 	it("carries the emergency tag through raw, and omits it when untagged", () => {
 		const untagged: HospitalEntry = [-122.8, 53.95, "Clinic"];
-		const fc = hospitalsCollection([[near, untagged]], anchor[0], anchor[1]);
+		const { fc } = hospitalsCollection([[near, untagged]], anchor[0], anchor[1]);
 		expect(fc.features[0].properties.emergency).toBe("yes");
 		expect("emergency" in fc.features[1].properties).toBe(false);
 	});
@@ -52,7 +62,7 @@ describe("hospitalsCollection", () => {
 	it("rides phone through, and never turns a null emergency into a property", () => {
 		const full: HospitalEntry = [-122.7, 53.9, "UHNBC", "yes", "250-565-2000"];
 		const phoneOnly: HospitalEntry = [-122.8, 53.95, "Lakes", null, "250-692-2400"];
-		const fc = hospitalsCollection([[full, phoneOnly]], anchor[0], anchor[1]);
+		const { fc } = hospitalsCollection([[full, phoneOnly]], anchor[0], anchor[1]);
 		expect(fc.features[0].properties).toEqual({
 			name: "UHNBC",
 			emergency: "yes",

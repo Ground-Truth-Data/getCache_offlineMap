@@ -102,27 +102,38 @@ interface HospitalFeature {
   properties: { name: string; emergency?: string; phone?: string };
 }
 
-/** Every hospital within the radius. `emergency` is omitted when unknown, so the
+/** No GeoJSON source on the phone holds more than this; a city's disc shrinks to fit. */
+export const HOSPITAL_MAX_COUNT = 250;
+
+/** Every hospital within `radiusKm`: the asked radius, or less where more than
+ *  HOSPITAL_MAX_COUNT sit inside it. `emergency` is omitted when unknown, so the
  *  UI may badge on it but must never filter to ER-only. */
 export function hospitalsCollection(
   cellArrays: HospitalEntry[][],
   lng: number,
   lat: number,
   km: number = HOSPITAL_RADIUS_KM,
-): { type: "FeatureCollection"; features: HospitalFeature[] } {
-  const features: HospitalFeature[] = [];
-  for (const entries of cellArrays) {
+): { fc: { type: "FeatureCollection"; features: HospitalFeature[] }; radiusKm: number } {
+  const near: [number, HospitalEntry][] = [];
+  for (const entries of cellArrays)
     for (const e of entries) {
-      if (haversineKm(lat, lng, e[1], e[0]) > km) continue;
-      const properties: HospitalFeature["properties"] = { name: e[2] };
-      if (e.length > 3 && typeof e[3] === "string") properties.emergency = e[3];
-      if (e.length > 4 && typeof e[4] === "string") properties.phone = e[4];
-      features.push({
-        type: "Feature",
-        geometry: { type: "Point", coordinates: [e[0], e[1]] },
-        properties,
-      });
+      const d = haversineKm(lat, lng, e[1], e[0]);
+      if (d <= km) near.push([d, e]);
     }
+  near.sort((a, b) => a[0] - b[0]);
+  // Cut below the first hospital left out, so the disc holds everything inside its radius.
+  const radiusKm = near.length > HOSPITAL_MAX_COUNT ? Math.floor(near[HOSPITAL_MAX_COUNT][0] * 10) / 10 : km;
+  const features: HospitalFeature[] = [];
+  for (const [d, e] of near) {
+    if (d > radiusKm) break;
+    const properties: HospitalFeature["properties"] = { name: e[2] };
+    if (e.length > 3 && typeof e[3] === "string") properties.emergency = e[3];
+    if (e.length > 4 && typeof e[4] === "string") properties.phone = e[4];
+    features.push({
+      type: "Feature",
+      geometry: { type: "Point", coordinates: [e[0], e[1]] },
+      properties,
+    });
   }
-  return { type: "FeatureCollection", features };
+  return { fc: { type: "FeatureCollection", features }, radiusKm };
 }
