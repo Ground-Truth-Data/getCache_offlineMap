@@ -27,6 +27,12 @@ const FLOOR_GAP = 8;
 
 let el = $state<HTMLDivElement | null>(null);
 
+// No map canvas (the v2preview page stages the shell alone) means no tab bar to clear.
+function floorReserve(): number {
+	const canvas = typeof document === "undefined" ? null : document.querySelector<HTMLElement>(".maplibregl-canvas");
+	return canvas ? containerHeight - readFloorY(canvas) + FLOOR_GAP : FLOOR_GAP;
+}
+
 // Measured, not hardcoded: safe-area insets move the crow tile.
 function crowExclusion(): { left: number; top: number; bottom: number } | null {
 	if (typeof document === "undefined") return null;
@@ -48,7 +54,7 @@ const geom = $derived(
 		isPoint,
 		wide,
 		topReserve: TOP_RESERVE,
-		bottomReserve: containerHeight - readFloorY(document.querySelector(".maplibregl-canvas") as HTMLElement) + FLOOR_GAP,
+		bottomReserve: floorReserve(),
 		crow: crowExclusion(),
 	}),
 );
