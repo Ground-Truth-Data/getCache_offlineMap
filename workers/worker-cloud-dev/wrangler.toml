@@ -22,6 +22,12 @@ binding = "TILES"
 bucket_name = "offline-tiles"
 remote = true
 
+# Prod's own satellite cache and meter. Its switches stay at their defaults: no SQUIRREL_WRITES here, so no
+# one can flip what every shipped phone bakes, and testing Squirrel on tiles-dev never reaches prod.
+[[r2_buckets]]
+binding = "SAT_CACHE"
+bucket_name = "gc-satellite-cache-prod"
+
 # ⚠️ PMTILES_KEY must match the uploaded object key in the
 # bucket — a mismatch silently reads as "no tiles".
 [vars]
@@ -37,12 +43,13 @@ routes = [
 binding = "TILES"
 bucket_name = "offline-tiles"
 
-# Satellite tiles every phone shares, plus Squirrel's counts and source switch; tiles-prod has no binding: edge cache only, default source.
+# Satellite tiles every phone shares, plus Squirrel's counts and switches.
 [[env.dev.r2_buckets]]
 binding = "SAT_CACHE"
 bucket_name = "gc-satellite-cache"
 
 [env.dev.vars]
 PMTILES_KEY = "planet.pmtiles"
+SQUIRREL_WRITES = "on"
 
 # ⚠️ a staging Worker (offline-tiles-staging) may still exist in Cloudflare — deleting config never tears down a live Worker.
