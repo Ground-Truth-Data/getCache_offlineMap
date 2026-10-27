@@ -8,7 +8,7 @@ export interface SatelliteSource {
 	color: string;
 	/** the Worker's request; `key` is the Worker secret named by `secret` */
 	tileUrl: (key: string, z: number, x: number, y: number) => string;
-	secret?: "GC_mapTiler_key" | "GC_esri_key";
+	secret?: "GC_mapTiler_key" | "GC_esri_key" | "PUBLIC_GC_RT_mapbox_token";
 	/** past this the source has nothing sharper; the Worker refuses */
 	maxZ: number;
 	/** the zoom a photo is baked from */
@@ -28,6 +28,8 @@ export interface SatelliteSource {
 	covers?: readonly (readonly [number, number, number, number])[];
 	/** streamed only: never kept at the edge, in R2 or in a photo, and never the switched-on source */
 	live?: true;
+	/** off until switched on from /app/squirrel; while on, the online map streams it in Esri's place */
+	standby?: true;
 	/** what it gives free each month; the Worker stops serving it at 90% of this */
 	freeTilesPerMonth?: number;
 }
@@ -116,6 +118,26 @@ export const SATELLITE_SOURCES = {
 		live: true,
 		usdPer1000: 0.15,
 		freeTilesPerMonth: 2_000_000,
+	},
+	mapbox: {
+		name: "Mapbox Satellite",
+		color: "oklch(0.72 0.12 10)",
+		tileUrl: (key, z, x, y) => `https://api.mapbox.com/v4/mapbox.satellite/${z}/${x}/${y}.jpg90?access_token=${key}`,
+		secret: "PUBLIC_GC_RT_mapbox_token",
+		// Like Esri: past 18 the map stretches z18 rather than bill four tiles for each.
+		maxZ: 18,
+		// Never baked (`live`); these only satisfy the shape.
+		zoom: 17,
+		canvasPx: 3456,
+		quality: 0.9,
+		attribution: "© Mapbox © Maxar",
+		licence: "Mapbox ToS: stream only, no caching outside the SDK",
+		cacheToR2: false,
+		live: true,
+		standby: true,
+		// Raster Tiles API, past the 750k free; $0.20 from 2M, $0.15 from 4M.
+		usdPer1000: 0.25,
+		freeTilesPerMonth: 750_000,
 	},
 } satisfies Record<string, SatelliteSource>;
 

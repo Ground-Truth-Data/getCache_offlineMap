@@ -9,7 +9,7 @@ import { type Region, listRegions } from "../offlinev10/store";
 import { rangeBox } from "../offlinev10/tiles";
 
 type Counts = Record<string, number>;
-type Answer = { active: string; counts: { today: Counts; month: Counts; all: Counts } | null };
+type Answer = { active: string; standby: string[]; counts: { today: Counts; month: Counts; all: Counts } | null };
 type Lic = "ok" | "tos";
 type Row = {
 	id: string;
@@ -20,6 +20,10 @@ type Row = {
 	licText: string;
 	licence: string;
 	cache: boolean;
+	/** a standby source's switch: on, off, or unknown until the Worker answers */
+	standby?: boolean | null;
+	/** the Worker stops it at 90% of its free tier */
+	stops?: boolean;
 	/** why the toggle cannot be switched on */
 	lock: string | null;
 	z: string | null;
@@ -57,9 +61,9 @@ const LOOK: Record<string, { sub: string; lic: Lic; licText: string; lock?: stri
 	sentinel: { sub: "cloudless 2016 · online map", lic: "ok", licText: "CC BY 4.0" },
 	esri: { sub: "World Imagery · streamed", lic: "tos", licText: "ToS forbids", lock: 'Esri E204 §3.2c: "may not … store Data"' },
 	usgs: { sub: "ImageryOnly · US", lic: "ok", licText: "public domain" },
+	mapbox: { sub: "satellite · standby", lic: "tos", licText: "stream only", lock: "Mapbox ToS: no caching outside the SDK" },
 };
 const BC_COLOR = "oklch(0.74 0.10 190)";
-const MAPBOX_COLOR = "oklch(0.72 0.12 10)";
 const ROADS_COLOR = "#f3f1e9";
 
 let answer = $state<Answer | null>(null);
@@ -87,6 +91,18 @@ async function load(): Promise<void> {
 
 $effect(() => void load());
 
+async function flip(id: string, on: boolean): Promise<void> {
+	failure = null;
+	try {
+		const res = await fetch(squirrelUrl(`/standby/${id}`) ?? "", { method: "POST", body: on ? "on" : "off" });
+		if (!res.ok) throw new Error(`HTTP ${res.status} ${await res.text()}`);
+		const { standby } = (await res.json()) as { standby: string[] };
+		if (answer) answer = { ...answer, standby };
+	} catch (e) {
+		failure = String(e instanceof Error ? e.message : e);
+	}
+}
+
 /** `source|z|tier` counts for one source, summed over the tiers named. */
 const tiers = (c: Counts | undefined, id: string, ...want: string[]) =>
 	Object.entries(c ?? {}).reduce((n, [k, v]) => {
@@ -111,7 +127,7 @@ function sourceRow(id: string, src: SatelliteSource): Row {
 	let proj = HIT_RATES.map(() => 0);
 	let projNote: string | undefined;
 	let projTiles: number | undefined;
-	if (src.live) projNote = `stops at ${k(0.9 * (free ?? 0))}, then falls back to Sentinel`;
+	if (src.live) projNote = src.standby && !answer?.standby.includes(id) ? "off: Esri streams instead" : `stops at ${k(0.9 * (free ?? 0))}, then falls back to Sentinel`;
 	else if (src.usdPer1000 > 0) {
 		const perPin = photoTilesFor([-120, 50], src.zoom).length;
 		const asked = USERS * PINS_PER_USER * perPin;
@@ -121,13 +137,15 @@ function sourceRow(id: string, src: SatelliteSource): Row {
 	}
 	return {
 		id,
-		name: src.name.replace(/ (cloudless 2016|National Map imagery|World Imagery)$/, ""),
+		name: src.name.replace(/ (cloudless 2016|National Map imagery|World Imagery|Satellite)$/, ""),
 		sub: look.sub,
 		color: src.color,
 		lic: look.lic,
 		licText: look.licText,
 		licence: `${src.licence} · ${src.attribution}`,
 		cache: src.cacheToR2,
+		standby: src.standby ? (answer ? answer.standby.includes(id) : null) : undefined,
+		stops: !!src.freeTilesPerMonth,
 		lock: look.lock ?? null,
 		z: zs.length ? `z${Math.min(...zs)}–${Math.max(...zs)}` : c ? "none" : null,
 		today: c ? (c.today[`${id}|served`] ?? 0) : null,
@@ -166,10 +184,10 @@ const rows = $derived<Row[]>([
 	},
 	{
 		...blank,
-		id: "mapbox",
+		id: "mapbox-loads",
 		name: "Mapbox map loads",
 		sub: "online map · billed per load",
-		color: MAPBOX_COLOR,
+		color: SATELLITE_SOURCES.mapbox.color,
 		lic: "tos",
 		licText: "ToS forbids",
 		licence: "Mapbox ToS: no caching of map data outside the SDK",
@@ -326,7 +344,8 @@ function toBody(node: HTMLElement) {
 					{/each}
 
 					{#each rows as s (s.id)}
-						<div class="first" title={s.licence}><span class="dot big" style="background:{s.color}"></span><span class="srcname"><b>{s.name}</b><i>{s.sub}</i></span></div>
+						<div class="first" title={s.licence}><span class="dot big" style="background:{s.color}"></span><span class="srcname"><b>{s.name}</b><i>{s.sub}</i>
+							{#if s.standby !== undefined}<label class="standby"><button class="tog" class:on={s.standby} disabled={s.standby === null} aria-label="standby {s.name}" onclick={() => flip(s.id, !s.standby)}></button><span class:grn={s.standby} class:dim={!s.standby}>{s.standby ? "ON · streaming" : s.standby === null ? "—" : "OFF"}</span></label>{/if}</span></div>
 						<div>
 							<button class="tog" class:on={s.cache} class:locked={!!s.lock} disabled title={s.lock ?? `cacheToR2 = ${s.cache} in satelliteSources.ts; switching from here is not wired yet`}></button>
 						</div>
@@ -354,16 +373,13 @@ function toBody(node: HTMLElement) {
 							{:else}
 								{@const used = s.up}
 								<div class="free">
-									<div class="track">{#if used !== null}<i style="width:{Math.min(used / s.free, 1) * 100}%;background:{freeTone(used / s.free)}"></i>{/if}{#if s.lock && s.id === "esri"}<b class="stop" title="the Worker refuses past 90%"></b>{/if}</div>
+									<div class="track">{#if used !== null}<i style="width:{Math.min(used / s.free, 1) * 100}%;background:{freeTone(used / s.free)}"></i>{/if}{#if s.stops}<b class="stop" title="the Worker refuses past 90%"></b>{/if}</div>
 									<div class="lab">{#if used === null}<span class="dim">—</span>{:else}<span class="b" style="color:{freeTone(used / s.free)}">{((used / s.free) * 100).toFixed(1)}%</span>{/if}<span>of {k(s.free)}{s.id === "maptiler" ? " incl." : ""}</span></div>
 								</div>
 							{/if}
 						</div>
 						<div class="r last proj-cell">{@render byHit(s.proj, "num b")}{#if s.projNote}<span class="why dim">{s.projNote}</span>{/if}</div>
 					{/each}
-
-					<div class="first removed"><span class="dot big" style="background:{MAPBOX_COLOR};opacity:.4"></span><span class="srcname"><b class="dim">Mapbox</b><i>satellite</i></span></div>
-					<div class="removed rest"><span class="tag gone">removed</span><span class="dim small">no longer a satellite source; the map-loads row above is the real Mapbox cost</span></div>
 
 					<div class="first r2row"><span class="dot big" style="background:var(--text)"></span><span class="srcname"><b>R2 bucket</b><i>storage · reads · writes</i></span></div>
 					<div class="r2row dim">—</div><div class="r2row"><span class="lic ok">list price</span></div><div class="r2row"></div><div class="r2row"></div><div class="r2row"></div>
@@ -418,7 +434,7 @@ function toBody(node: HTMLElement) {
 							{#each stored as s (s.id)}
 								<span class="sw" style="background:{s.color}"></span><span>{s.name}</span><span class="dim r">{k(s.tiles ?? 0)}</span><span class="num r">{(s.gb ?? 0).toFixed(3)} GB</span><span class="dim r">— km²</span>
 							{/each}
-							{#each rows.filter((r) => !stored.includes(r) && r.id !== "mapbox") as s (s.id)}
+							{#each rows.filter((r) => !stored.includes(r) && r.id !== "mapbox-loads") as s (s.id)}
 								<span class="sw" style="background:{s.color};opacity:.35"></span><span class="dim">{s.name}</span><span class="dim r">0</span><span class="small r" class:red={!s.cache} class:dim={s.cache}>{s.cache ? "nothing yet" : "not stored"}</span><span></span>
 							{/each}
 						</div>
@@ -586,6 +602,8 @@ function toBody(node: HTMLElement) {
 .tog::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: var(--muted2); }
 .tog.on { background: rgba(127, 191, 106, 0.18); border-color: rgba(127, 191, 106, 0.55); }
 .tog.on::after { left: 17px; background: var(--green); }
+.standby { display: flex; align-items: center; gap: 6px; margin-top: 3px; font-size: 10px; font-weight: 700; }
+.standby .tog { cursor: pointer; }
 .tog.locked { border-color: rgba(226, 85, 63, 0.45); }
 .tog.locked::before { content: "🔒"; position: absolute; right: -17px; top: 1px; font-size: 10px; }
 .lic-cell { flex-direction: column; align-items: flex-start !important; justify-content: center; gap: 3px; }
@@ -602,10 +620,7 @@ function toBody(node: HTMLElement) {
 .free .track i { position: absolute; left: 0; top: 0; bottom: 0; }
 .free .track .stop { position: absolute; left: 90%; top: -1px; bottom: -1px; width: 2px; background: var(--red); }
 .free .lab { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
-.removed > *, .removed .srcname { opacity: 0.75; }
-.removed.rest { grid-column: span 14; gap: 10px; }
 .tag { font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 5px; border: 1px solid; width: max-content; }
-.tag.gone { color: var(--muted); border-color: var(--border2); text-transform: uppercase; letter-spacing: 0.08em; }
 .tag.r2 { color: var(--green); border-color: rgba(127, 191, 106, 0.4); }
 .r2row { background: rgba(255, 255, 255, 0.015); }
 .tot { border-bottom: none !important; border-top: 1px solid var(--border2); background: var(--panel2); font-weight: 700; }

@@ -87,7 +87,7 @@ export function satelliteTileUrl(source: string, z: number, x: number, y: number
 }
 
 /** The Worker's Squirrel: which source photos bake from, and what each served. */
-export function squirrelUrl(path: "" | "/active" = ""): string | null {
+export function squirrelUrl(path: "" | "/active" | `/standby/${string}` = ""): string | null {
 	const h = tilesHost();
 	return h === null ? null : `${h}/squirrel${path}`;
 }

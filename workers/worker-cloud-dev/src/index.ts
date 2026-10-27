@@ -38,6 +38,7 @@ interface Env {
   GC_firms_map_key: string;
   GC_mapTiler_key: string;
   GC_esri_key: string;
+  PUBLIC_GC_RT_mapbox_token: string;
 }
 
 class R2Source implements Source {
@@ -184,6 +185,21 @@ async function activeSource(env: Env): Promise<string> {
   return set ? await set.text() : DEFAULT_SOURCE;
 }
 
+// A standby source is on while `_squirrel/standby/<id>` says "on"; re-read each minute, so a switch reaches every isolate within one.
+const STANDBY_PREFIX = "_squirrel/standby/";
+let standby = { at: 0, on: [] as string[] };
+
+async function standbyOn(env: Env): Promise<string[]> {
+  const bucket = env.SAT_CACHE;
+  if (!bucket) return [];
+  if (Date.now() - standby.at > 60_000) {
+    const ids = Object.keys(SATELLITE_SOURCES).filter((id) => sourceOf(id)?.standby);
+    const says = await Promise.all(ids.map(async (id) => (await (await bucket.get(STANDBY_PREFIX + id))?.text()) === "on"));
+    standby = { at: Date.now(), on: ids.filter((_, i) => says[i]) };
+  }
+  return standby.on;
+}
+
 /** Every count file under `prefix`, summed into today, this month and all time, per `source|z|tier` key. */
 async function squirrelCounts(bucket: R2Bucket, prefix = "_squirrel/counts/"): Promise<Record<"today" | "month" | "all", Record<string, number>>> {
   const today = new Date().toISOString().slice(0, 10);
@@ -233,8 +249,21 @@ export default {
 
     // /squirrel: which source the photos bake from, and what each one served. A POST of a source id switches it;
     // text/plain, so a browser sends it without a preflight. Only a Worker with the bucket keeps either.
-    if (url.pathname === "/squirrel" || url.pathname === "/squirrel/active") {
+    // A POST of "on" or "off" to /squirrel/standby/<id> switches a standby source.
+    const standbyPath = /^\/squirrel\/standby\/([a-z0-9-]+)$/.exec(url.pathname);
+    if (url.pathname === "/squirrel" || url.pathname === "/squirrel/active" || standbyPath) {
       const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json", "Cache-Control": "no-store" } });
+      if (standbyPath) {
+        const id = standbyPath[1];
+        if (request.method !== "POST") return json({ error: "POST on or off" }, 405);
+        if (!env.SAT_CACHE) return json({ error: "this Worker has no bucket to keep a switch in" }, 409);
+        if (!sourceOf(id)?.standby) return json({ error: `"${id}" is not a standby source` }, 400);
+        const on = (await request.text()).trim();
+        if (on !== "on" && on !== "off") return json({ error: `send "on" or "off", not "${on}"` }, 400);
+        await env.SAT_CACHE.put(STANDBY_PREFIX + id, on);
+        standby.at = 0;
+        return json({ standby: await standbyOn(env) });
+      }
       if (request.method === "POST") {
         const id = (await request.text()).trim();
         if (!env.SAT_CACHE) return json({ error: "this Worker has no bucket to keep a switch in" }, 409);
@@ -243,10 +272,10 @@ export default {
         await env.SAT_CACHE.put(ACTIVE_KEY, id);
         return json({ active: id });
       }
-      const active = await activeSource(env);
-      if (url.pathname === "/squirrel/active") return json({ active });
+      const [active, on] = await Promise.all([activeSource(env), standbyOn(env)]);
+      if (url.pathname === "/squirrel/active") return json({ active, standby: on });
       if (env.SAT_CACHE) await flush(env.SAT_CACHE);
-      return json({ active, counts: env.SAT_CACHE ? await squirrelCounts(env.SAT_CACHE) : null });
+      return json({ active, standby: on, counts: env.SAT_CACHE ? await squirrelCounts(env.SAT_CACHE) : null });
     }
 
     if (request.method !== "GET" && request.method !== "HEAD") {
@@ -427,6 +456,8 @@ export default {
       // A 404 here lets the map draw what lies under this layer.
       const under = src.live ? coverOf(tileLng(x, z), tileLat(y + 1, z), tileLng(x + 1, z), tileLat(y, z)) : undefined;
       if (under) return new Response(`Not Found — ${under} covers this tile, so ${id} is never asked for it`, { status: 404, headers: CORS_HEADERS });
+      if (src.standby && !(await standbyOn(env)).includes(id))
+        return new Response(`Not Found — ${id} is a standby source and is switched off on /app/squirrel`, { status: 404, headers: CORS_HEADERS });
       if (await freeTierSpent(env, id, src))
         return new Response(`Not Found — ${id} has served 90% of its free tier this month; it stops until the month resets`, { status: 404, headers: CORS_HEADERS });
       let tile: { body: ArrayBuffer; tier: Tier };
