@@ -32,6 +32,8 @@ bucket_name = "gc-satellite-cache-prod"
 # bucket — a mismatch silently reads as "no tiles".
 [vars]
 PMTILES_KEY = "planet.pmtiles"
+# No written permission from MapTiler to keep its tiles on prod; USGS and the rest still cache.
+R2_NEVER = "maptiler"
 
 [env.dev]
 name = "offline-tiles-dev"

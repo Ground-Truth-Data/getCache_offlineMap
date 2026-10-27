@@ -11,6 +11,7 @@ import {
   fetchFires,
   MAX_RADIUS_KM,
 } from "../../../lib/worker/firesWorker";
+import { mergeFires } from "../../../lib/worker/fireMerge";
 import { coverOf, DEFAULT_SOURCE, SATELLITE_SOURCES, type SatelliteSource, sourceOf } from "../../../lib/contract/satelliteSources";
 import {
   cellKeysForDisc,
@@ -35,6 +36,8 @@ interface Env {
   SAT_CACHE?: R2Bucket;
   /** "on" where Squirrel may flip switches (tiles-dev); unset, every /squirrel POST is refused. */
   SQUIRREL_WRITES?: string;
+  /** Source ids never kept in SAT_CACHE, whatever a switch says — a licence that covers dev but not prod. */
+  R2_NEVER?: string;
   PMTILES_KEY: string;
   /** Worker SECRETs (`wrangler secret put`), never [vars] — they must not reach the app bundle. */
   GC_firms_map_key: string;
@@ -98,7 +101,7 @@ function hospitalsIndex(): ReturnType<typeof parseHospitalsPack> {
 
 /** Edge-cache key for /fires; bump whenever a change alters what a correct response
  *  looks like — a TTL expires stale data, never incomplete data. */
-const FIRE_ANSWER_VERSION = 3;
+const FIRE_ANSWER_VERSION = 4;
 
 // Every X-* response header must be listed here: cross-origin JS reads an
 // unexposed header as null, silently. Add new ones at the same time.
@@ -125,6 +128,8 @@ const SAT_HEADERS: Record<string, string> = {
   "Content-Type": "image/jpeg",
   "Cache-Control": "public, max-age=31536000, immutable",
 };
+// Esri's and Mapbox's terms let a browser hold a streamed tile for a day at most, never a year.
+const LIVE_CACHE_CONTROL = "public, max-age=86400";
 
 /** The source said no; its status and Retry-After travel on to the phone. */
 class UpstreamRefused extends Error {
@@ -206,6 +211,7 @@ async function switches(env: Env): Promise<Switches> {
   const all = Object.entries(SATELLITE_SOURCES) as [string, SatelliteSource][];
   const bucket = env.SAT_CACHE;
   if (!bucket) return { standby: [], cache: Object.fromEntries(all.map(([id]) => [id, false])) };
+  const never = (env.R2_NEVER ?? "").split(",").map((id) => id.trim());
   if (Date.now() - switched.at > 60_000) {
     const says = (sw: string, id: string) => bucket.get(`_squirrel/${sw}/${id}`).then((o) => o?.text() ?? null);
     const [standby, cache] = await Promise.all([Promise.all(all.map(([id, s]) => (s.standby ? says("standby", id) : null))), Promise.all(all.map(([id, s]) => (s.live ? null : says("cache", id))))]);
@@ -217,7 +223,7 @@ async function switches(env: Env): Promise<Switches> {
       },
     };
   }
-  return switched.now;
+  return { ...switched.now, cache: Object.fromEntries(Object.entries(switched.now.cache).map(([id, on]) => [id, on && !never.includes(id)])) };
 }
 
 /** Every count file under `prefix`, summed into today, this month and all time, per `source|z|tier` key. */
@@ -271,10 +277,19 @@ export default {
     // text/plain, so a browser sends it without a preflight. Only a Worker with the bucket keeps either.
     // A POST of "on" or "off" to /squirrel/standby/<id> or /squirrel/cache/<id> flips that switch.
     const switchPath = /^\/squirrel\/(standby|cache)\/([a-z0-9-]+)$/.exec(url.pathname);
-    if (url.pathname === "/squirrel" || url.pathname === "/squirrel/active" || switchPath) {
+    const forget = /^\/squirrel\/forget\/([a-z0-9-]+)$/.exec(url.pathname);
+    if (url.pathname === "/squirrel" || url.pathname === "/squirrel/active" || switchPath || forget) {
       const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json", "Cache-Control": "no-store" } });
       // Unauthenticated and CORS-open, so only the Worker Squirrel drives may take a switch.
       if (request.method === "POST" && env.SQUIRREL_WRITES !== "on") return json({ error: "this Worker's switches are not writable" }, 403);
+      // Squirrel's hand test drops the tiles it fetched, from R2 and this colo's edge, so its next run starts at MISS.
+      if (forget) {
+        if (request.method !== "POST") return json({ error: "POST z/x/y lines" }, 405);
+        if (!sourceOf(forget[1])) return json({ error: `no satellite source "${forget[1]}"` }, 400);
+        const names = (await request.text()).split("\n").filter((l) => /^\d{1,2}\/\d{1,7}\/\d{1,7}$/.test(l)).slice(0, 100).map((l) => `${forget[1]}/${l}.jpg`);
+        const [, edge] = await Promise.all([env.SAT_CACHE?.delete(names), Promise.all(names.map((n) => caches.default.delete(new Request(`${url.origin}/satellite/${n}`, { method: "GET" }))))]);
+        return json({ r2: env.SAT_CACHE ? names.length : 0, edge: edge.filter(Boolean).length });
+      }
       if (switchPath) {
         const sw = switchPath[1] as keyof typeof SWITCHABLE;
         const id = switchPath[2];
@@ -367,9 +382,14 @@ export default {
       let body: string;
       let sourcesOk: number;
       let fetchedAt: number;
+      let servedKm: number;
       try {
-        const r = await fetchFires(env.GC_firms_map_key, lng, lat, km);
-        body = JSON.stringify(r.collection);
+        // From the snapped centre, so every phone sharing this cached answer gets the same one.
+        const [cx, cy] = [Number(snap(lng)), Number(snap(lat))];
+        const r = await fetchFires(env.GC_firms_map_key, cx, cy, km);
+        const merged = mergeFires(r.collection, cx, cy, km);
+        body = JSON.stringify(merged.collection);
+        servedKm = merged.radiusKm;
         sourcesOk = r.sourcesOk;
         fetchedAt = r.fetchedAt;
       } catch (err) {
@@ -388,7 +408,7 @@ export default {
         "Cache-Control": "public, max-age=3600",
         "X-Fetched-At": String(fetchedAt),
         "X-Sources-Ok": String(sourcesOk),
-        "Access-Control-Expose-Headers": "X-Fetched-At, X-Sources-Ok",
+        "X-Radius-Km": String(servedKm),
       };
       ctx.waitUntil(
         fireEdge.put(fireCacheKey, new Response(body, { status: 200, headers: fireHeaders })),
@@ -526,6 +546,7 @@ export default {
         status: 200,
         headers: {
           ...SAT_HEADERS,
+          ...(src.live && { "Cache-Control": LIVE_CACHE_CONTROL }),
           "X-Tile-Source": id,
           "X-Cache": tile.tier === "upstream" ? "MISS" : "HIT",
           "Server-Timing": `sat;dur=${(performance.now() - satStart).toFixed(1)}`,
