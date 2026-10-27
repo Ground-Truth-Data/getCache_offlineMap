@@ -60,9 +60,9 @@ class R2Source implements Source {
   }
 
   async getBytes(offset: number, length: number): Promise<RangeResponse> {
-    const object = await this.bucket.get(this.key, {
-      range: { offset, length },
-    });
+    const get = () => this.bucket.get(this.key, { range: { offset, length } });
+    // R2's 10001 "internal error, please try again" is transient: one retry, then it surfaces as the 500.
+    const object = await get().catch((err) => (String(err).includes("(10001)") ? get() : Promise.reject(err)));
     if (object === null) {
       throw new Error(`PMTiles archive not found in R2: ${this.key}`);
     }
