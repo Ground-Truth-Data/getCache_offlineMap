@@ -136,6 +136,12 @@ describe("esri: streamed only, and stopped at 90% of its free tier", () => {
     expect(put).not.toHaveBeenCalled();
   });
 
+  it("lets the browser hold it a day at most, while a keepable source's tile is held a year", async () => {
+    expect((await call(outside)).headers.get("Cache-Control")).toBe("public, max-age=86400");
+    expect((await ask("sentinel")).headers.get("Cache-Control")).toBe("public, max-age=31536000, immutable");
+    expect((await ask("usgs")).headers.get("Cache-Control")).toBe("public, max-age=31536000, immutable");
+  });
+
   it("is never asked for a tile USGS covers", async () => {
     // Seattle.
     expect((await call("/satellite/esri/14/2627/5718.jpg")).status).toBe(404);

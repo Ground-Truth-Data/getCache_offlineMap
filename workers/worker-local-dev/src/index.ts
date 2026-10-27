@@ -128,6 +128,8 @@ const SAT_HEADERS: Record<string, string> = {
   "Content-Type": "image/jpeg",
   "Cache-Control": "public, max-age=31536000, immutable",
 };
+// Esri's and Mapbox's terms let a browser hold a streamed tile for a day at most, never a year.
+const LIVE_CACHE_CONTROL = "public, max-age=86400";
 
 /** The source said no; its status and Retry-After travel on to the phone. */
 class UpstreamRefused extends Error {
@@ -535,6 +537,7 @@ export default {
         status: 200,
         headers: {
           ...SAT_HEADERS,
+          ...(src.live && { "Cache-Control": LIVE_CACHE_CONTROL }),
           "X-Tile-Source": id,
           "X-Cache": tile.tier === "upstream" ? "MISS" : "HIT",
           "Server-Timing": `sat;dur=${(performance.now() - satStart).toFixed(1)}`,
