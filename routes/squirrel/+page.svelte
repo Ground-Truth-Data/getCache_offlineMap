@@ -1,8 +1,10 @@
 <!-- Squirrel: every imagery source side by side: what it served, pulled upstream, kept in R2 and costs. Dev only. Numbers are the Worker's counts and this browser's blobs; "—" means nothing measures it yet. -->
 <script lang="ts">
-import { SATELLITE_SOURCES, type SatelliteSource, type SourceId } from "../../lib/contract/satelliteSources";
+import { SATELLITE_SOURCES, type SatelliteSource, type SourceId, sourceOf } from "../../lib/contract/satelliteSources";
+import { loadCamera, MAP_HOME_CENTER } from "../../lib/mapState/mapViewport";
+import { forcedImagery, forceImagery } from "../../lib/onPhone/satellite/onlineImagery";
 import { photoTilesFor } from "../../lib/onPhone/satellite/satelliteImage";
-import { squirrelUrl } from "../../lib/worker/tilesHost";
+import { satelliteTileUrl, squirrelUrl } from "../../lib/worker/tilesHost";
 import { placeLabel } from "../offlinev10/places";
 import { type BlobPart, type PhotoInfo, blobParts, photoInfo } from "../offlinev10/satellite";
 import { type Region, listRegions } from "../offlinev10/store";
@@ -308,6 +310,61 @@ const freeTone = (p: number) => (p > 1 ? "var(--red)" : p > 0.7 ? "var(--amber)"
 const host = $derived(squirrelUrl()?.replace(/^https?:\/\//, "").replace(/\/squirrel$/, "") ?? "no tiles host");
 const today = new Date();
 
+// Hand test: force one source onto the online map, and fetch ten tiles through the Worker twice.
+const HAND = ["sentinel", "esri", "usgs", "bc", "maptiler", "mapbox"];
+const TEST_Z = 15;
+type Probe = { at: [number, number]; tiles: { zxy: string; first: string; second: string }[]; note: string | null };
+let forced = $state(forcedImagery());
+let probes = $state<Record<string, Probe | "running">>({});
+let forgot = $state<Record<string, string>>({});
+
+function setForced(id: string): void {
+	forced = forced === id ? null : id;
+	forceImagery(forced);
+}
+
+/** Ten tiles around the online map's last centre, moved into the source's coverage when it has one and the centre is outside it. */
+function testTiles(src: SatelliteSource): { at: [number, number]; zxy: string[] } {
+	let [lng, lat] = loadCamera()?.center ?? MAP_HOME_CENTER;
+	if (src.covers && !src.covers.some(([w, s, e, n]) => lng >= w && lng <= e && lat >= s && lat <= n)) {
+		const [w, s, e, n] = src.covers[0];
+		[lng, lat] = [(w + e) / 2, (s + n) / 2];
+	}
+	const span = 2 ** TEST_Z;
+	const cx = Math.floor(((lng + 180) / 360) * span);
+	const cy = Math.floor(((1 - Math.asinh(Math.tan((lat * Math.PI) / 180)) / Math.PI) / 2) * span);
+	return { at: [lng, lat], zxy: Array.from({ length: 10 }, (_, i) => `${TEST_Z}/${cx - 2 + (i % 5)}/${cy - 1 + Math.floor(i / 5)}`) };
+}
+
+/** The Worker's X-Cache, or its status and reason. no-store: the browser would otherwise answer the second pass itself. */
+async function probe(id: string, zxy: string): Promise<string> {
+	const [z, x, y] = zxy.split("/").map(Number);
+	const res = await fetch(satelliteTileUrl(id, z, x, y) ?? "", { cache: "no-store" });
+	return res.ok ? (res.headers.get("X-Cache") ?? "no X-Cache") : `${res.status} ${await res.text()}`;
+}
+
+async function testCache(id: string, src: SatelliteSource): Promise<void> {
+	const { at, zxy } = testTiles(src);
+	probes = { ...probes, [id]: "running" };
+	try {
+		const first = await Promise.all(zxy.map((t) => probe(id, t)));
+		const second = await Promise.all(zxy.map((t) => probe(id, t)));
+		const note = [...first, ...second].find((r) => r !== "HIT" && r !== "MISS") ?? null;
+		probes = { ...probes, [id]: { at, tiles: zxy.map((t, i) => ({ zxy: t, first: first[i], second: second[i] })), note } };
+	} catch (e) {
+		probes = { ...probes, [id]: { at, tiles: [], note: String(e instanceof Error ? e.message : e) } };
+	}
+}
+
+async function forgetTiles(id: string, src: SatelliteSource): Promise<void> {
+	const res = await fetch(squirrelUrl(`/forget/${id}`) ?? "", { method: "POST", body: testTiles(src).zxy.join("\n") });
+	const said = res.ok ? ((await res.json()) as { r2: number; edge: number }) : null;
+	forgot = { ...forgot, [id]: said ? `dropped ${said.r2} from R2 · ${said.edge} from the edge` : `HTTP ${res.status} ${await res.text()}` };
+	const { [id]: _, ...rest } = probes;
+	probes = rest;
+}
+const short = (r: string) => (r === "HIT" || r === "MISS" ? r : r.split(" ")[0]);
+
 // A desktop dashboard: it leaves the phone frame for <body>, as SideCard does.
 function toBody(node: HTMLElement) {
 	document.body.appendChild(node);
@@ -416,7 +473,47 @@ function toBody(node: HTMLElement) {
 				<span>hit rate = edge + R2 hits ÷ served</span>
 				<span>month to date = max(0, upstream − free) ÷ 1000 × $/1k</span>
 				<span>counts land every 100 tiles or 30 s</span>
-				<span>no delete here: R2 tiles go only by script</span>
+				<span>the only delete here is the hand test's own tiles</span>
+			</div>
+		</div>
+
+		<div class="card">
+			<div class="cardhead">
+				<span class="dot" style="background:var(--amber)"></span><span class="title">HAND TEST</span>
+				<span class="hnote">force the online map to one source · 10 tiles at z{TEST_Z} around its last centre, fetched twice through {host}</span>
+			</div>
+			<div class="scroll">
+				<div class="hgrid">
+					<div class="hd">source</div><div class="hd">force map</div><div class="hd">cache test</div><div class="hd">10 tiles · 1st → 2nd</div><div class="hd">test tiles</div>
+					{#each HAND as id (id)}
+						{@const src = sourceOf(id)}
+						{@const p = probes[id]}
+						<div><span class="dot big" style="background:{src?.color ?? BC_COLOR}"></span><b>{src?.name ?? "BC Imagery"}</b></div>
+						{#if !src}
+							<div><button class="tog locked" disabled aria-label="force BC"></button></div>
+							<div class="red small" style="grid-column:span 3">not wired: needs the Province's written permission</div>
+						{:else}
+							<div class="hcell">
+								<button class="tog" class:on={forced === id} aria-label="force the online map to {src.name}" onclick={() => setForced(id)}></button>
+								<span class="small" class:grn={forced === id} class:dim={forced !== id}>{forced === id ? "forced" : "off"}</span>
+								{#if src.standby && answer && !answer.standby.includes(id)}<span class="amb small">standby OFF: the Worker 404s it</span>{/if}
+							</div>
+							<div><button class="refresh" disabled={p === "running"} onclick={() => testCache(id, src)}>{p === "running" ? "testing…" : "test cache"}</button></div>
+							<div class="hcell">
+								{#if p && p !== "running"}
+									<span class="chips">{#each p.tiles as t (t.zxy)}<span class="chip" title={t.zxy}><i class={short(t.first)}>{short(t.first)}</i>→<i class={short(t.second)}>{short(t.second)}</i></span>{/each}</span>
+									<span class="dim small">at {ll(p.at[1])}, {ll(p.at[0])}</span>
+									{#if src.live}<span class="amb small">live only — not cached</span>{/if}
+									{#if p.note}<span class="red small" title={p.note}>{p.note.slice(0, 140)}</span>{/if}
+								{:else if src.live}<span class="amb small">live only — not cached</span>{/if}
+							</div>
+							<div class="hcell">
+								{#if src.live}<span class="dim small">nothing kept</span>
+								{:else}<button class="refresh" onclick={() => forgetTiles(id, src)}>delete test tiles</button>{#if forgot[id]}<span class="dim small">{forgot[id]}</span>{/if}{/if}
+							</div>
+						{/if}
+					{/each}
+				</div>
 			</div>
 		</div>
 
@@ -652,6 +749,16 @@ function toBody(node: HTMLElement) {
 .hitrow { display: flex; align-items: baseline; gap: 6px; }
 .hitrow i { font-style: normal; font-size: 9.5px; color: var(--muted2); }
 .bigproj { font-size: 15px; font-weight: 800; color: var(--gold); }
+.hgrid { display: grid; grid-template-columns: 220px 230px 130px 1fr 300px; min-width: 1100px; }
+.hgrid .refresh { white-space: nowrap; }
+.hgrid > div { padding: 10px 14px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+.hgrid > .hd { border-top: 0; }
+.hcell { flex-wrap: wrap; }
+.chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.chip { font-family: var(--mono); font-size: 10px; border: 1px solid var(--border2); border-radius: 5px; padding: 2px 4px; color: var(--muted2); }
+.chip i { font-style: normal; color: var(--red); }
+.chip i.MISS { color: var(--amber); }
+.chip i.HIT { color: var(--green); }
 .foot { padding: 10px 18px; font-family: var(--mono); font-size: 10.5px; color: var(--muted2); display: flex; gap: 18px; flex-wrap: wrap; border-top: 1px solid var(--border); }
 
 .inv { display: grid; grid-template-columns: 210px minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1.1fr); min-width: 1100px; }

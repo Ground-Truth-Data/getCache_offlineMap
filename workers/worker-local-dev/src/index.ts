@@ -277,10 +277,19 @@ export default {
     // text/plain, so a browser sends it without a preflight. Only a Worker with the bucket keeps either.
     // A POST of "on" or "off" to /squirrel/standby/<id> or /squirrel/cache/<id> flips that switch.
     const switchPath = /^\/squirrel\/(standby|cache)\/([a-z0-9-]+)$/.exec(url.pathname);
-    if (url.pathname === "/squirrel" || url.pathname === "/squirrel/active" || switchPath) {
+    const forget = /^\/squirrel\/forget\/([a-z0-9-]+)$/.exec(url.pathname);
+    if (url.pathname === "/squirrel" || url.pathname === "/squirrel/active" || switchPath || forget) {
       const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json", "Cache-Control": "no-store" } });
       // Unauthenticated and CORS-open, so only the Worker Squirrel drives may take a switch.
       if (request.method === "POST" && env.SQUIRREL_WRITES !== "on") return json({ error: "this Worker's switches are not writable" }, 403);
+      // Squirrel's hand test drops the tiles it fetched, from R2 and this colo's edge, so its next run starts at MISS.
+      if (forget) {
+        if (request.method !== "POST") return json({ error: "POST z/x/y lines" }, 405);
+        if (!sourceOf(forget[1])) return json({ error: `no satellite source "${forget[1]}"` }, 400);
+        const names = (await request.text()).split("\n").filter((l) => /^\d{1,2}\/\d{1,7}\/\d{1,7}$/.test(l)).slice(0, 100).map((l) => `${forget[1]}/${l}.jpg`);
+        const [, edge] = await Promise.all([env.SAT_CACHE?.delete(names), Promise.all(names.map((n) => caches.default.delete(new Request(`${url.origin}/satellite/${n}`, { method: "GET" }))))]);
+        return json({ r2: env.SAT_CACHE ? names.length : 0, edge: edge.filter(Boolean).length });
+      }
       if (switchPath) {
         const sw = switchPath[1] as keyof typeof SWITCHABLE;
         const id = switchPath[2];
