@@ -13,7 +13,7 @@ type TapMap = {
 	off(type: string, listener: (e: any) => void): unknown;
 };
 
-// The click after a long-press fires as a real tap unless swallowed at DOM capture. Window listener, not module state, so HMR duplication can't fork the flag.
+// The click after a long-press or a hand drag fires as a real tap unless swallowed at DOM capture. Window listener, not module state, so HMR duplication can't fork the flag.
 // iOS yields no click after a long press, so the next pointerdown disarms it — never a timer, which a fast second tap beats and loses its click to.
 export function swallowNextClick(): void {
 	const kill = (e: MouseEvent) => {
@@ -180,8 +180,8 @@ export function attachDoubleTapToPin(
 		const oe = e.originalEvent;
 		if (oe instanceof MouseEvent && oe.button !== 0) return;
 		if (isTouchLike(oe) && oe.touches.length > 1) return cancelPress("second finger");
-		// A marker (a pin) is its own handle; Mapbox still reports the press as the map's.
-		if ((oe.target as Element | null)?.closest?.(".mapboxgl-marker, .maplibregl-marker")) return;
+		// A marker (a pin) is its own handle; MapLibre still reports the press as the map's.
+		if ((oe.target as Element | null)?.closest?.(".maplibregl-marker")) return;
 		// A layer that took the press (the route line, being pulled) owns it; it attaches before us, so its handler ran first.
 		if (e.defaultPrevented) return;
 		if (opts.canSeed?.() === false) return;
