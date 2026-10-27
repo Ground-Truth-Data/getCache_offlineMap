@@ -1,5 +1,5 @@
-// The online map's imagery: Sentinel through our Worker where Mapbox's own satellite was, and the
-// phone's baked photos over it wherever it holds one. Every satellite pixel is then a source Squirrel counts.
+// The online map's imagery: Sentinel through our Worker where Mapbox's own satellite was, live imagery over it,
+// and the phone's baked photos only while offline. Every satellite pixel is then a source Squirrel counts.
 import type * as maplibregl from "maplibre-gl";
 import { coverOf, SATELLITE_SOURCES, type SatelliteSource, sourceOf } from "../../contract/satelliteSources";
 import { squirrelUrl, tilesHost } from "../../worker/tilesHost";
@@ -54,13 +54,15 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 		if (!mount) return;
 		const b = map.getBounds();
 		const sites = new Map<string, { key: string; center: [number, number] }>();
-		for (const r of await listRegions())
-			if (!r.removed && r.photoKey && r.photoCenter) sites.set(r.photoKey, { key: r.photoKey, center: r.photoCenter });
+		// Online, live imagery is the picture and a photo is never drawn; it is for when the network is gone.
+		if (!navigator.onLine)
+			for (const r of await listRegions())
+				if (!r.removed && r.photoKey && r.photoCenter) sites.set(r.photoKey, { key: r.photoKey, center: r.photoCenter });
 		await mount.reconcile([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], [...sites.values()], map.getZoom());
 		if (mount !== photos) return;
 		onCredits(mount.attributions());
-		// Esri bills per tile, so it asks for none while the whole view is inside one photo or a sharper source's cover;
-		// the square inside a photo's disc keeps the corners honest.
+		// Esri bills per tile, so it asks for none while the whole view is inside a sharper source's cover, or offline
+		// inside one photo; the square inside a photo's disc keeps the corners honest.
 		const inside = !!coverOf(b.getWest(), b.getSouth(), b.getEast(), b.getNorth()) || [...sites.values()].some(({ center: [lng, lat] }) => {
 			const { dLat, dLng } = kmToDegSpan(PHOTO_COVERAGE_RADIUS_KM / Math.SQRT2, lat);
 			return b.getWest() >= lng - dLng && b.getEast() <= lng + dLng && b.getSouth() >= lat - dLat && b.getNorth() <= lat + dLat;
@@ -144,6 +146,8 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 	map.on("style.load", swap);
 	map.on("moveend", moved);
 	addEventListener("storage", forcedElsewhere);
+	addEventListener("online", moved);
+	addEventListener("offline", moved);
 	const offRegions = onRegionsChanged(moved);
 	const offPhoto = onPhoto(moved);
 	if (map.isStyleLoaded()) swap();
@@ -151,6 +155,8 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 		map.off("style.load", swap);
 		map.off("moveend", moved);
 		removeEventListener("storage", forcedElsewhere);
+		removeEventListener("online", moved);
+		removeEventListener("offline", moved);
 		offRegions();
 		offPhoto();
 		photos?.dispose();

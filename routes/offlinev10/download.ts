@@ -291,7 +291,8 @@ export const resetWireStats = () => {
 async function getOnce(url: string): Promise<Got> {
 	for (let attempt = 0; ; attempt++) {
 		const t0 = performance.now();
-		const res = await fetch(url);
+		// Every caller is a background download (packs, photo bakes): the page's own tiles go first.
+		const res = await fetch(url, { priority: "low" });
 		if (res.ok) {
 			wire.n++;
 			wire.rtt += performance.now() - t0;
