@@ -418,6 +418,13 @@ const short = (r: string) => (r === "HIT" || r === "MISS" ? r : r.split(" ")[0])
 
 // What the page shows, as text an AI can read instead of a screenshot.
 let copied = $state(false);
+let reportEl = $state<HTMLElement>();
+let reportCopied = $state(false);
+async function copyReport(): Promise<void> {
+	await navigator.clipboard.writeText((reportEl?.innerText ?? "").replace(/\s*copy\s*$/m, ""));
+	reportCopied = true;
+	setTimeout(() => (reportCopied = false), 1500);
+}
 async function copyLog(): Promise<void> {
 	const log = {
 		page: "/app/squirrel",
@@ -474,14 +481,14 @@ function toBody(node: HTMLElement) {
 		<div class="card search">
 			<input class="find" placeholder="Search a GPS point (49.2418, -123.1126) or paste a map URL" aria-label="find what the offline map draws at a point" bind:value={find} />
 			{#if at}
-				<div class="report">
-					<p class="where">{at[1]}, {at[2]}</p>
+				<div class="report" bind:this={reportEl}>
+					<p class="where">{at[1]}, {at[2]} <button class="refresh" onclick={copyReport}>{reportCopied ? "copied ✓" : "copy"}</button></p>
 					{#each here as p, i (p.key)}
 						{@const owner = p.blobs[p.blobs.length - 1]}
-						<div class="hit" class:first={i === 0}>
-							<p class="big">{i === 0 ? "Offline imagery here:" : "Also covers it:"} <b>{p.info?.source ?? "photo not baked"}</b>{#if p.info} · z{p.info.zoom} · {(p.info.bytes / 1048576).toFixed(1)} MB{/if}</p>
+						<div class="cover" class:first={i === 0}>
+							<p class="big">{i === 0 ? "Offline imagery here:" : "Also covers it:"} <b>{p.info?.source ?? "photo not baked"}</b>{p.info ? ` · z${p.info.zoom} · ${(p.info.bytes / 1048576).toFixed(1)} MB` : ""}</p>
 							{#if p.info}<p>credit: {sourceNamed(p.info.source)?.attribution ?? "—"}</p>{/if}
-							{#if p.info?.wire}<p>tiles: <span class="grn">{p.info.wire.hit} from R2</span> · <span class:amb={p.info.wire.miss > 0}>{p.info.wire.miss} upstream</span>{#if p.info.wire.disk} · {p.info.wire.disk} already on the phone{/if}</p>{/if}
+							{#if p.info?.wire}<p>tiles: <span class="grn">{p.info.wire.hit} from R2</span> · <span class:amb={p.info.wire.miss > 0}>{p.info.wire.miss} upstream</span>{p.info.wire.disk ? ` · ${p.info.wire.disk} already on the phone` : ""}</p>{/if}
 							<p>photo <code>{p.key}</code> · {p.km.toFixed(2)} km from its centre · first saved by blob <button class="link" onclick={() => openBlob(owner.id)}><code>{owner.id}</code></button> {owner.place ? placeLabel(owner.place) : ""} · {when(owner.at)}{p.blobs.length > 1 ? ` · used by ${p.blobs.length} blobs` : ""}</p>
 						</div>
 					{:else}
@@ -791,11 +798,11 @@ function toBody(node: HTMLElement) {
 .title { font-weight: 800; font-size: 14px; letter-spacing: 0.06em; color: var(--gold); }
 .search { padding: 16px 18px; }
 .find { width: 100%; box-sizing: border-box; font-family: var(--mono); font-size: 18px; padding: 12px 16px; border-radius: 10px; border: 1px solid var(--gold); background: var(--panel3); color: var(--text); }
-.report { margin-top: 14px; font-family: var(--mono); font-size: 14px; display: flex; flex-direction: column; gap: 10px; }
+.report { margin-top: 14px; font-family: var(--mono); font-size: 14px; display: flex; flex-direction: column; gap: 10px; text-align: left; user-select: text; -webkit-user-select: text; }
 .report p { margin: 0; }
 .where { color: var(--muted); }
-.hit { display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; border-left: 3px solid var(--border2); }
-.hit.first { border-left-color: var(--gold); }
+.cover { display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; border-left: 3px solid var(--border2); }
+.cover.first { border-left-color: var(--gold); }
 .big { font-family: var(--sans); font-size: 20px; }
 .link { all: unset; cursor: pointer; text-decoration: underline; color: var(--gold); }
 .hnote { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
