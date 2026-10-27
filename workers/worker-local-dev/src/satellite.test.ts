@@ -53,6 +53,17 @@ describe("/satellite through the shared R2 cache", () => {
     expect(first.headers.get("Access-Control-Expose-Headers")).toContain("X-Cache");
   });
 
+  it("never keeps a source named in R2_NEVER, even switched on, and still keeps the rest", async () => {
+    vi.stubGlobal("fetch", async () => new Response(new Uint8Array([7]), { status: 200 }));
+    const prod = env({ R2_NEVER: "maptiler", SQUIRREL_WRITES: undefined });
+    kept.set("_squirrel/cache/maptiler", "on");
+    expect((await ask("maptiler", prod)).headers.get("X-Cache")).toBe("MISS");
+    expect((await ask("maptiler", prod)).headers.get("X-Cache")).toBe("MISS");
+    await ask("usgs", prod);
+    expect(tiles()).toEqual(["usgs/14/2627/5718.jpg"]);
+    expect(await (await call("/squirrel/active", prod)).json()).toMatchObject({ cache: { maptiler: false, usgs: true } });
+  });
+
   it("keeps nothing for a source whose cacheToR2 is off, and asks EOX by row then column", async () => {
     const source = vi.fn(async (_u: string) => new Response(new Uint8Array([9]), { status: 200 }));
     vi.stubGlobal("fetch", source);

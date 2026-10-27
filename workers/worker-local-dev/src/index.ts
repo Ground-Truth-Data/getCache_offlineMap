@@ -35,6 +35,8 @@ interface Env {
   SAT_CACHE?: R2Bucket;
   /** "on" where Squirrel may flip switches (tiles-dev); unset, every /squirrel POST is refused. */
   SQUIRREL_WRITES?: string;
+  /** Source ids never kept in SAT_CACHE, whatever a switch says — a licence that covers dev but not prod. */
+  R2_NEVER?: string;
   PMTILES_KEY: string;
   /** Worker SECRETs (`wrangler secret put`), never [vars] — they must not reach the app bundle. */
   GC_firms_map_key: string;
@@ -206,6 +208,7 @@ async function switches(env: Env): Promise<Switches> {
   const all = Object.entries(SATELLITE_SOURCES) as [string, SatelliteSource][];
   const bucket = env.SAT_CACHE;
   if (!bucket) return { standby: [], cache: Object.fromEntries(all.map(([id]) => [id, false])) };
+  const never = (env.R2_NEVER ?? "").split(",").map((id) => id.trim());
   if (Date.now() - switched.at > 60_000) {
     const says = (sw: string, id: string) => bucket.get(`_squirrel/${sw}/${id}`).then((o) => o?.text() ?? null);
     const [standby, cache] = await Promise.all([Promise.all(all.map(([id, s]) => (s.standby ? says("standby", id) : null))), Promise.all(all.map(([id, s]) => (s.live ? null : says("cache", id))))]);
@@ -217,7 +220,7 @@ async function switches(env: Env): Promise<Switches> {
       },
     };
   }
-  return switched.now;
+  return { ...switched.now, cache: Object.fromEntries(Object.entries(switched.now.cache).map(([id, on]) => [id, on && !never.includes(id)])) };
 }
 
 /** Every count file under `prefix`, summed into today, this month and all time, per `source|z|tier` key. */
