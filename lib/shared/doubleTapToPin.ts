@@ -44,11 +44,11 @@ export const emit = (phase: "arm" | "drag" | "end" | "aim" | "drop", x = 0, y = 
 export const coordLabel = (lng: number, lat: number) => `${lat.toFixed(5)}°, ${lng.toFixed(5)}°`;
 
 export interface DoubleTapToPinOpts {
-	/** The ruler's first node, or with the ruler out, its next corner. */
+	/** Plant the first ruler node at the tap so it's immediately grabbable. */
 	onMeasureSeed?: (lng: number, lat: number) => void;
 	/** The tap here opens or dismisses something, so the hand stays hidden unless the press becomes a drag or a hold. */
 	claimsTap?: (point: { x: number; y: number }) => boolean;
-	/** False while another tool owns the map (a palette tool armed, corners being edited): a press then only pans, with no hold and no count. */
+	/** False while another tool owns the map (a ruler open, a palette tool armed, corners being edited): a press then only pans, with no hold and no count. */
 	canSeed?: () => boolean;
 }
 
@@ -105,7 +105,8 @@ export function attachDoubleTapToPin(
 		return [(p.x - r.left) * s, (p.y - r.top) * s];
 	};
 
-	// A finger left down after the seed does nothing: the next corner or a pan needs a fresh press.
+	// A finger left down after the seed does nothing: the hand under it is the ruler's, and a pan
+	// needs a fresh press.
 	let lockTimer: ReturnType<typeof setTimeout> | null = null;
 	const lock = () => {
 		lockTimer = null;
@@ -180,7 +181,7 @@ export function attachDoubleTapToPin(
 		const oe = e.originalEvent;
 		if (oe instanceof MouseEvent && oe.button !== 0) return;
 		if (isTouchLike(oe) && oe.touches.length > 1) return cancelPress("second finger");
-		// A marker (a pin) is its own handle; MapLibre still reports the press as the map's.
+		// A marker (a ruler hand, a pin) is its own handle; MapLibre still reports the press as the map's.
 		if ((oe.target as Element | null)?.closest?.(".maplibregl-marker")) return;
 		// A layer that took the press (the route line, being pulled) owns it; it attaches before us, so its handler ran first.
 		if (e.defaultPrevented) return;

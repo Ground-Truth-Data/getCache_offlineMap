@@ -155,5 +155,6 @@
 	"ofmap_v10_layer_photo": "photo",
 	"ofmap_v10_place_at": "at {name}",
 	"ofmap_v10_place_from": "{km} km {bearing} of {name}",
-	"ofmap_v10_compass_west": "W"
+	"ofmap_v10_compass_west": "W",
+	"ofmap_ui_map_marker": "Map marker"
 }
