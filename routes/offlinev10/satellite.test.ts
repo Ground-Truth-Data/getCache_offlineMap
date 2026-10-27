@@ -71,7 +71,7 @@ vi.mock("./store", () => ({
 	getPhotoTiles: async () => new Map(),
 	photoTileBytes: async () => new Map(),
 }));
-vi.mock("./blobService", () => ({ onBlob: () => () => undefined }));
+vi.mock("./blobService", () => ({ onBlob: () => () => undefined, photoIds: () => ({ has: () => true }) }));
 
 const { PHOTO_RETRY_MS, bakePhotos, dropPhoto, photoInfo, photoIssue, setPhotoNarration } =
 	await import("./satellite");

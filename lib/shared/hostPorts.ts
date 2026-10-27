@@ -3,8 +3,8 @@
 export interface HostPlace {
 	/** [lng, lat]. A point has one; a line has many. */
 	anchors: [number, number][];
-	/** Lines/corridors bake along their length rather than as a single disc. */
-	corridor: boolean;
+	/** Bakes a satellite photo at its anchor. Pins only: the photo source bills per tile, and a shape's anchors would each take one. */
+	photo: boolean;
 	/** An import too big to fetch unasked: the planter saves one pin or the whole set, after seeing its size. Absent = fetched on its own. */
 	set?: { key: string; name: string };
 }

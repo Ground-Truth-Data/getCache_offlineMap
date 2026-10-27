@@ -176,7 +176,7 @@ describe("a removed area's row leaves with its pin", () => {
 		await putRegion(r);
 		await putTiles([[ownTile(r), new ArrayBuffer(1024)]], r.id);
 		await removeArea(r);
-		const pins = [{ anchors: [at], lastTouchedAt: new Date().toISOString(), corridor: false }];
+		const pins = [{ anchors: [at], lastTouchedAt: new Date().toISOString(), photo: true }];
 		let changed = (): void => undefined;
 		const ports = {
 			places: () => pins,
@@ -291,7 +291,7 @@ describe("offline areas are an LRU cache of the 16 MB test budget", () => {
 	function host(extra: [number, number][] = []): HostPorts {
 		const pins = [0, 1, 2, 3].map(far).concat(extra);
 		return {
-			places: () => pins.map((a) => ({ anchors: [a], corridor: false })),
+			places: () => pins.map((a) => ({ anchors: [a], photo: true })),
 			ready: () => true,
 			onPlacesChanged: (fn: () => void) => (fn(), () => undefined),
 		};
@@ -374,7 +374,7 @@ describe("offline areas are an LRU cache of the 16 MB test budget", () => {
 		const at = far(5);
 		const ports = host([at]);
 		const hand = ports.places;
-		ports.places = () => [...hand(), ...imported.map((a) => ({ anchors: [a], corridor: false, set }))];
+		ports.places = () => [...hand(), ...imported.map((a) => ({ anchors: [a], photo: true, set }))];
 		stop = startBlobService(ports);
 		await vi.waitFor(async () => expect(await ids()).toContain(regionId(...at)), SWEEP);
 		await vi.waitFor(() => expect(blobBusy()).toBe(false), SWEEP);

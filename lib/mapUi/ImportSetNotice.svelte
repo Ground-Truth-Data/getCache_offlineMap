@@ -8,6 +8,14 @@ import FancyButton from "$gc/FancyButton.svelte";
 let set = $state<WaitingSet | null>(null);
 let sizes = $state<{ here: number; all: number } | null>(null);
 let asked = 0;
+// The whole set's size doesn't move when the map does; only "on screen" is re-asked on a pan.
+const allSizes = new Map<string, Promise<number>>();
+const allOf = (s: WaitingSet): Promise<number> => {
+	const key = `${s.key}:${s.all.length}`;
+	let size = allSizes.get(key);
+	if (!size) allSizes.set(key, (size = estimateBytes(s.all)));
+	return size;
+};
 
 $effect(() =>
 	onBlob((e) => {
@@ -19,7 +27,7 @@ $effect(() =>
 		sizes = null;
 		const ask = ++asked;
 		if (next)
-			void Promise.all([estimateBytes(next.here), estimateBytes(next.all)]).then(([here, all]) => {
+			void Promise.all([estimateBytes(next.here), allOf(next)]).then(([here, all]) => {
 				if (ask === asked) sizes = { here, all };
 			});
 	}),

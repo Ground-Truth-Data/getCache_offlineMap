@@ -6,7 +6,7 @@ describe("a blob's size on disk", () => {
 		expect(blobBytes(3_145_728, 1_153_434)).toBe(4_299_162);
 	});
 
-	it("a corridor has no photo to add", () => {
+	it("a blob with no photo has no photo to add", () => {
 		expect(blobBytes(3_145_728)).toBe(3_145_728);
 		expect(blobBytes(3_145_728, undefined)).toBe(3_145_728);
 	});

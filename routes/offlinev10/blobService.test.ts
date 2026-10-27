@@ -116,14 +116,14 @@ beforeEach(async () => {
 describe("blob service", () => {
 	it("every pin earns a blob, however old, and a new one queues behind it", async () => {
 		const list = [
-			{ anchors: [PENTICTON], lastTouchedAt: ago(), corridor: false },
+			{ anchors: [PENTICTON], lastTouchedAt: ago(), photo: true },
 		];
 		const { ports, changed, listening } = fakePorts(() => list);
 		const stop = startBlobService(ports);
 		expect(keepAsked).toBe(0);
 		await tick();
 		expect(downloads).toEqual([PENTICTON]);
-		list.push({ anchors: [SPOKANE], lastTouchedAt: soon(), corridor: false });
+		list.push({ anchors: [SPOKANE], lastTouchedAt: soon(), photo: true });
 		changed();
 		release?.();
 		await tick();
@@ -136,12 +136,12 @@ describe("blob service", () => {
 		expect(listening()).toBe(false);
 	});
 
-	it("a corridor bakes every anchor, roads only — no photo", async () => {
+	it("a shape bakes every anchor, roads only — no photo", async () => {
 		const list = [
 			{
 				anchors: [PENTICTON, SPOKANE],
 				lastTouchedAt: soon(),
-				corridor: true,
+				photo: false,
 			},
 		];
 		const { ports } = fakePorts(() => list);
@@ -159,8 +159,8 @@ describe("blob service", () => {
 		stop();
 	});
 
-	it("a corridor drawn before the page opened still bakes, roads only", async () => {
-		const list = [{ anchors: [PENTICTON], lastTouchedAt: ago(), corridor: true }];
+	it("a shape drawn before the page opened still bakes, roads only", async () => {
+		const list = [{ anchors: [PENTICTON], lastTouchedAt: ago(), photo: false }];
 		const { ports, listening } = fakePorts(() => list);
 		const stop = startBlobService(ports);
 		expect(listening()).toBe(true);
@@ -173,8 +173,8 @@ describe("blob service", () => {
 		stop();
 	});
 
-	it("an old pin takes a PHOTO, where a corridor of the same age does not", async () => {
-		const list = [{ anchors: [PENTICTON], lastTouchedAt: ago(), corridor: false }];
+	it("an old pin takes a PHOTO, where a shape of the same age does not", async () => {
+		const list = [{ anchors: [PENTICTON], lastTouchedAt: ago(), photo: true }];
 		const { ports, listening } = fakePorts(() => list);
 		const stop = startBlobService(ports);
 		expect(listening()).toBe(true);
@@ -213,8 +213,8 @@ describe("blob service", () => {
 		const events: string[] = [];
 		const off = onBlob((e) => events.push(e.kind));
 		const list = [
-			{ anchors: [PENTICTON], lastTouchedAt: ago(), corridor: false },
-			{ anchors: [SPOKANE], lastTouchedAt: soon(), corridor: false },
+			{ anchors: [PENTICTON], lastTouchedAt: ago(), photo: true },
+			{ anchors: [SPOKANE], lastTouchedAt: soon(), photo: true },
 		];
 		const { ports, changed } = fakePorts(() => list);
 		const stop = startBlobService(ports);
@@ -271,12 +271,12 @@ describe("blob service", () => {
 		failNext = true;
 		const events: string[] = [];
 		const off = onBlob((e) => events.push(e.kind));
-		const list = [{ anchors: [PENTICTON], lastTouchedAt: soon(), corridor: false }];
+		const list = [{ anchors: [PENTICTON], lastTouchedAt: soon(), photo: true }];
 		const { ports } = fakePorts(() => list);
 		const stop = startBlobService(ports);
 		await tick();
 		await tick();
-		expect(events).toEqual(["start", "failed"]);
+		expect(events).toEqual(["pins", "start", "failed"]);
 		expect(blobBusy()).toBe(false);
 		window.dispatchEvent(new Event("online"));
 		await tick();
@@ -290,7 +290,7 @@ describe("blob service", () => {
 		await tick();
 		expect(downloads.length).toBe(2);
 		expect(disk.length).toBe(1);
-		expect(events).toEqual(["start", "failed", "start", "landed"]);
+		expect(events).toEqual(["pins", "start", "failed", "start", "landed"]);
 		stop();
 		window.dispatchEvent(new Event("online"));
 		await tick();

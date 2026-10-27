@@ -29,7 +29,8 @@ export type BlobEvent =
 	| { kind: "landed"; region: Region }
 	| { kind: "failed"; at: [number, number]; error: unknown }
 	| { kind: "removed"; id: string }
-	| { kind: "waiting"; sets: WaitingSet[] };
+	| { kind: "waiting"; sets: WaitingSet[] }
+	| { kind: "pins" };
 
 export type Spot = { at: [number, number]; photo: boolean };
 
@@ -220,8 +221,9 @@ async function look(box: Box): Promise<void> {
 	// Checked when its hourly touch is due, so panning does not scan the store.
 	if (touched.size) {
 		const missing = await checkRegions();
+		const pins = photoIds();
 		for (const r of rows)
-			if (touched.has(r.id) && ((missing[r.id] ?? 0) > 0 || (r.photoKey && !isCurrentPhoto(await getSatImageByKey(r.photoKey))))) void repairBlob(r);
+			if (touched.has(r.id) && ((missing[r.id] ?? 0) > 0 || (r.photoKey && pins?.has(r.id) && !isCurrentPhoto(await getSatImageByKey(r.photoKey))))) void repairBlob(r);
 	}
 	// Any row, a removed one included, means the planter once had this pin saved.
 	const saved = new Set(rows.map((r) => r.id));
@@ -231,12 +233,13 @@ async function look(box: Box): Promise<void> {
 			const here = at[0] >= box.w && at[0] <= box.e && at[1] >= box.s && at[1] <= box.n;
 			const id = regionId(at[0], at[1]);
 			if (!p.set || saved.has(id) || queued.has(id)) {
-				if (here) void queueBlob(at[0], at[1], { photo: !p.corridor, pin: true, revive: true });
+				if (here) void queueBlob(at[0], at[1], { photo: p.photo, pin: true, revive: true });
 				continue;
 			}
 			let s = sets.get(p.set.key);
 			if (!s) sets.set(p.set.key, (s = { ...p.set, here: [], all: [] }));
-			const spot = { at, photo: !p.corridor };
+			// A plain pair: the host's anchors can be reactive proxies, and the size estimate reads each one hundreds of times.
+			const spot = { at: [at[0], at[1]] as [number, number], photo: p.photo };
 			s.all.push(spot);
 			if (here) s.here.push(spot);
 		}
@@ -274,8 +277,15 @@ export async function removeStaleAreas(now = Date.now()): Promise<Region[]> {
 let stop: (() => void) | null = null;
 let host: HostPorts | null = null;
 
-/** Every pin earns its blob. A corridor bakes at each anchor with NO photo —
- * a photo per anchor is what makes long geometry expensive. */
+/** The blobs a photo may bake for: a pin the host lists now. Null until the host has read its maps. */
+export function photoIds(): Set<string> | null {
+	if (!host?.ready()) return null;
+	const ids = new Set<string>();
+	for (const p of host.places()) if (p.photo) for (const [lng, lat] of p.anchors) ids.add(regionId(lng, lat));
+	return ids;
+}
+
+/** Every place earns a blob at each anchor; only a pin's also bakes a photo. */
 export function startBlobService(ports: HostPorts): () => void {
 	if (stop)
 		return () => {
@@ -294,7 +304,7 @@ export function startBlobService(ports: HostPorts): () => void {
 		for (const p of ports.places()) {
 			for (const [lng, lat] of p.anchors) {
 				now.add(regionId(lng, lat));
-				if (!p.set) void queueBlob(lng, lat, { photo: !p.corridor, pin: true });
+				if (!p.set) void queueBlob(lng, lat, { photo: p.photo, pin: true });
 			}
 		}
 		return now;
@@ -302,6 +312,7 @@ export function startBlobService(ports: HostPorts): () => void {
 	const off = ports.onPlacesChanged(() => {
 		const now = reconcile();
 		if (!now) return;
+		emit({ kind: "pins" });
 		// The map's first look can land before the pins load, and an import lands under a still camera.
 		if (shown) void look(shown);
 		// Only a place change deletes; a reconnect never does.

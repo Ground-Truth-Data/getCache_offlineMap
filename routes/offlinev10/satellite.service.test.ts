@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({
 	drop: vi.fn(async () => {}),
 	blob: null as null | ((e: { kind: string; id: string; photoKey?: string; photoCenter?: [number, number] }) => void),
 	regions: [] as Array<{ id: string; photoKey?: string; photoCenter?: [number, number] }>,
+	notPins: new Set<string>(),
 }));
 vi.mock("../../lib/onPhone/satellite/satelliteImage", () => ({
 	CLOSE_UP: {},
@@ -19,7 +20,10 @@ vi.mock("../../lib/onPhone/satellite/satelliteImage", () => ({
 	isCurrentPhoto: () => false,
 	satImageMeta: async () => [],
 }));
-vi.mock("./blobService", () => ({ onBlob: (fn: typeof h.blob) => ((h.blob = fn), () => void (h.blob = null)) }));
+vi.mock("./blobService", () => ({
+	onBlob: (fn: typeof h.blob) => ((h.blob = fn), () => void (h.blob = null)),
+	photoIds: () => ({ has: (id: string) => !h.notPins.has(id) }),
+}));
 vi.mock("./store", () => ({
 	AreaGone: class extends Error {},
 	claimArea: async () => {},
@@ -52,12 +56,17 @@ afterEach(() => {
 });
 
 describe("startPhotoService", () => {
-	it("bakes at start, on a blob's start and on coming online; one start owns shutdown", async () => {
-		h.regions = [{ id: "a", photoKey: "pa", photoCenter: [-119, 49] }, { id: "follow" }];
+	it("bakes once the pins are known, on a blob's start and on coming online; one start owns shutdown", async () => {
+		// "shape" was born with a photo under the old rule; it is no pin now, so it never bakes.
+		h.notPins = new Set(["shape"]);
+		h.regions = [{ id: "a", photoKey: "pa", photoCenter: [-119, 49] }, { id: "shape", photoKey: "ps", photoCenter: [-119, 48] }, { id: "follow" }];
 		const landed = vi.fn();
 		const offLanded = onPhoto(landed);
 		const stop = startPhotoService();
 		startPhotoService()();
+		await new Promise((r) => setTimeout(r, 10));
+		expect(h.bake).not.toHaveBeenCalled();
+		h.blob!({ kind: "pins", id: "" });
 		await vi.waitFor(() => expect(landed).toHaveBeenCalledTimes(1));
 		expect(h.bake.mock.calls.map((c) => (c as unknown[])[0])).toEqual(["pa"]);
 
@@ -88,6 +97,7 @@ describe("photo issue", () => {
 		h.regions = [{ id: "f", photoKey: "pf", photoCenter: [-116, 46] }];
 		vi.useFakeTimers({ toFake: ["Date"] });
 		const stop = startPhotoService();
+		h.blob!({ kind: "pins", id: "" });
 		await vi.waitFor(() => expect(photoIssue()).toBe("no imagery came back"));
 		expect(heard).toHaveBeenCalledTimes(1);
 		vi.setSystemTime(Date.now() + 10 * 60_000);
@@ -109,6 +119,7 @@ describe("a rate-limited imagery host", () => {
 		h.bake.mockRejectedValueOnce(new RateLimited(30_000, "https://tiles.test/satellite/17/1/1.jpg"));
 		h.regions = [{ id: "g", photoKey: "pg", photoCenter: [-115, 45] }];
 		const stop = startPhotoService();
+		h.blob!({ kind: "pins", id: "" });
 		await vi.waitFor(() => expect(photoIssue()).toBe("imagery host busy, retrying in 30 s"));
 		vi.setSystemTime(Date.now() + 29_000);
 		window.dispatchEvent(new Event("online"));

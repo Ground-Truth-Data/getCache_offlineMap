@@ -18,7 +18,7 @@ import { noteBytes } from "../../lib/shared/dataMeter.svelte";
 import { passQueue } from "../../lib/shared/passQueue";
 import { sessionCap, spendBytes } from "../../lib/shared/sessionByteCap.svelte";
 import { satelliteTileUrl, squirrelUrl } from "../../lib/worker/tilesHost";
-import { onBlob } from "./blobService";
+import { onBlob, photoIds } from "./blobService";
 import { getEach, RateLimited } from "./download";
 import {
 	AreaGone,
@@ -180,8 +180,11 @@ const askQueue = passQueue<string>((ids) => pass(ids.map((id) => asked.get(id) a
 
 /** Bake a photo for every ask without one; returns how many landed. */
 export function bakePhotos(asks: readonly PhotoAsk[]): Promise<number> {
-	for (const a of asks) asked.set(a.id, a);
-	return askQueue(asks.map((a) => a.id));
+	// The one road to a billed photo tile. A row from before only-pins-bake still names a photo; it never gets one.
+	const pins = photoIds();
+	const wanted = asks.filter((a) => pins?.has(a.id));
+	for (const a of wanted) asked.set(a.id, a);
+	return askQueue(wanted.map((a) => a.id));
 }
 
 async function pass(asks: readonly PhotoAsk[]): Promise<number> {
@@ -277,6 +280,8 @@ export function startPhotoService(): () => void {
 		});
 	};
 	const offBlob = onBlob((e) => {
+		// Not at boot: until the host lists its pins, every ask would be dropped.
+		if (e.kind === "pins") all();
 		// Beside the tiles, not after them: neither needs the other.
 		if (e.kind === "start" && e.photoKey && e.photoCenter)
 			bakePhotos([{ id: e.id, photoKey: e.photoKey, at: e.photoCenter }]).catch((err) => {
@@ -284,7 +289,6 @@ export function startPhotoService(): () => void {
 			});
 	});
 	window.addEventListener("online", all);
-	all();
 	stop = () => {
 		offBlob();
 		window.removeEventListener("online", all);
