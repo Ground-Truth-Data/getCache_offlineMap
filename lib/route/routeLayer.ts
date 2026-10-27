@@ -11,7 +11,7 @@ import { markerCtor } from "../shared/rendererOf";
 import targetPinUrl from "./pin_search_target.webp";
 import routeSignUrl from "./routeSign.svg";
 import { ARRIVED_M, courseDeg, metresAlong, OFF_ROUTE_FIXES, OFF_ROUTE_M, progressOn } from "./follow";
-import type { RouteResult } from "./roadGraph";
+import { gapReader, type RouteResult } from "./roadGraph";
 import type { FromWorker, ToWorker } from "./routeWorker";
 
 export const ROUTE_LAYER_IDS = {
@@ -81,6 +81,7 @@ export function kmFromYou(at: Readonly<LngLat>): number | null {
 
 /** The live map's pack; off the map, the network. */
 let readTile: (key: string) => Promise<ArrayBuffer | undefined> = networkTile;
+const pack = gapReader((key) => readTile(key));
 let worker: Worker | null = null;
 const jobs = new Map<number, { ok: (r: RouteResult) => void; fail: (e: unknown) => void }>();
 let jobN = 0;
@@ -97,7 +98,7 @@ function route(stops: LngLat[]): Promise<RouteResult> {
 				jobs.delete(m.job);
 				return;
 			}
-			void readTile(m.key).then(
+			void pack.read(m.key).then(
 				(bytes) => tell({ kind: "tile", ask: m.ask, bytes }),
 				() => tell({ kind: "tile", ask: m.ask, bytes: undefined }),
 			);
@@ -434,6 +435,8 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 			else dropRoute();
 			return;
 		}
+		// Same road as before: nothing redraws.
+		if (next === stops && result?.ok && r.km === result.km && r.line.length === result.line.length) return;
 		stops = next;
 		result = r;
 		drawn = fit && !following ? 2 : Number.POSITIVE_INFINITY;
@@ -720,10 +723,10 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	live = handle;
 	readTile = opts.readTile;
 	solved.clear();
-	// A blob that lands after the route was solved holds the town's real roads: solve again on them.
-	const unwatchPack = opts.packChanged(() => {
+	// A blob holding a tile the router went without: solve again on its real roads, quietly.
+	const unwatchPack = opts.packChanged(async () => {
+		if (!(await pack.gained())) return;
 		solved.clear();
-		worker?.postMessage({ kind: "forget" } satisfies ToWorker);
 		if (result?.ok && !drag) void solve(stops, false, null);
 	});
 

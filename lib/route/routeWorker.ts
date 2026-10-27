@@ -5,8 +5,7 @@ import { decodeRoads, findRoute, highwaysFrom, type RoadLine, type TileId } from
 
 export type ToWorker =
 	| { kind: "route"; job: number; stops: LngLat[] }
-	| { kind: "tile"; ask: number; bytes: ArrayBuffer | undefined }
-	| { kind: "forget" };
+	| { kind: "tile"; ask: number; bytes: ArrayBuffer | undefined };
 export type FromWorker =
 	| { kind: "done"; job: number; result: Awaited<ReturnType<typeof findRoute>> }
 	| { kind: "tile"; ask: number; key: string };
@@ -48,7 +47,6 @@ const read = async (t: TileId): Promise<RoadLine[] | null> => {
 
 self.onmessage = async (e: MessageEvent<ToWorker>): Promise<void> => {
 	const m = e.data;
-	if (m.kind === "forget") return decoded.clear();
 	if (m.kind === "tile") {
 		asked.get(m.ask)?.(m.bytes);
 		asked.delete(m.ask);

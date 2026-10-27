@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { LngLat } from "../shared/kmGeo";
-import { findRoute, highwaysFrom, type RoadLine, ROUTE_Z, type TileId, toLngLat, toWorld } from "./roadGraph";
+import { findRoute, gapReader, highwaysFrom, type RoadLine, ROUTE_Z, type TileId, toLngLat, toWorld } from "./roadGraph";
 
 const ORIGIN: LngLat = [136.8, -13.8];
 const [OX, OY] = toWorld(ORIGIN);
@@ -84,6 +84,32 @@ describe("findRoute", () => {
 		expect(ROUTE_Z).toBe(13);
 	});
 
+});
+
+describe("a blob that lands after the route is drawn", () => {
+	// The only road to the stop lives in the stop's own tile, which the blob brings.
+	const main = road(1, [0, 0], [2000, 0]);
+	const side = road(1, [1000, 6000], [1000, 0]);
+	const pack = new Map<string, RoadLine[]>();
+	const tileOf = (l: RoadLine) => `${ROUTE_Z}/${Math.floor(l.pts[0][0] / 4096)}/${Math.floor(l.pts[0][1] / 4096)}`;
+	const gaps = gapReader(async (key: string) => pack.get(key));
+	const read = async (t: TileId) => (await gaps.read(`${t.z}/${t.x}/${t.y}`)) ?? [];
+	const trip = [at(0, 0), at(1000, 6000)];
+
+	it("re-solves onto the blob's roads, and only when the blob held a tile the route asked for", async () => {
+		pack.set(tileOf(main), [main]);
+		expect((await findRoute(trip, read)).ok).toBe(false);
+		expect(await gaps.gained()).toBe(false);
+
+		pack.set("13/0/0", []);
+		expect(await gaps.gained()).toBe(false);
+
+		pack.set(tileOf(side), [side]);
+		expect(await gaps.gained()).toBe(true);
+		const r = await findRoute(trip, read);
+		expect(r.ok && r.km).toBeCloseTo(7, 0);
+		expect(await gaps.gained()).toBe(false);
+	});
 });
 
 describe("findRoute between downloaded areas", () => {

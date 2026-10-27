@@ -23,6 +23,25 @@ const LOCAL_MAX_M = 50_000;
 /** Natural Earth draws a highway up to a few hundred metres off the real road: where it enters a stop's square it joins the nearest z13 road this close. */
 const ENTRY_M = 1500;
 
+/** A tile reader that remembers the tiles it was asked for and didn't have: those are the only ones a new blob can improve a route with. */
+export function gapReader<T>(read: (key: string) => Promise<T | undefined>) {
+	const gaps = new Set<string>();
+	return {
+		read: async (key: string): Promise<T | undefined> => {
+			const got = await read(key);
+			if (got === undefined) gaps.add(key);
+			else gaps.delete(key);
+			return got;
+		},
+		/** True once any remembered gap now reads — each filled gap is forgotten. */
+		gained: async (): Promise<boolean> => {
+			const filled = (await Promise.all([...gaps].map(async (k) => ((await read(k)) === undefined ? null : k)))).filter((k) => k !== null);
+			for (const k of filled) gaps.delete(k);
+			return filled.length > 0;
+		},
+	};
+}
+
 /** Relative cost per metre; null = not drivable. Bush tracks are the roads planters drive. */
 function costOf(kind: unknown, detail: unknown): number | null {
 	if (kind === "highway") return 1;
