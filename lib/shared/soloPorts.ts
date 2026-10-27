@@ -43,7 +43,6 @@ export function soloMapPorts(): MapHostPorts {
 				return false;
 			}
 		},
-		reportSwallowed: (scope, err) => console.warn(`[${scope}]`, err),
 		overlayPortal: () => {},
 		createEyeToggle: () => ({
 			srcFor: () => "",

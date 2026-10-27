@@ -210,7 +210,7 @@ async function commitEdits(
 ): Promise<void> {
 	for (const { r, fields } of edits) {
 		const outcome = await q.updateActivePlot(r.id, fields).catch((e) => {
-			ports.ui.reportSwallowed("PlotMapPopoverV2:commit", e, { plotNo: r.plotNo ?? 0, mapFeatureKey });
+			console.warn("[PlotMapPopoverV2:commit]", e, { plotNo: r.plotNo ?? 0, mapFeatureKey });
 			return "missing" as const;
 		});
 		if (outcome === "missing") {
@@ -218,8 +218,8 @@ async function commitEdits(
 			r.committed = false;
 			if (!missingReported.has(r.id)) {
 				missingReported.add(r.id);
-				ports.ui.reportSwallowed(
-					"PlotMapPopoverV2:commit",
+				console.warn(
+					"[PlotMapPopoverV2:commit]",
 					new Error(
 						`updateActivePlot: no ACTIVE row ${r.id} (plot #${r.plotNo}) — the committed count was NOT persisted`,
 					),
@@ -235,7 +235,7 @@ $effect(() => {
 	if (!hydrated || !q704) return;
 	void q704
 		.setActiveSpeciesChoices([...block.speciesChoices])
-		.catch((e) => ports.ui.reportSwallowed("PlotMapPopoverV2:species", e, {}));
+		.catch((e) => console.warn("[PlotMapPopoverV2:species]", e));
 });
 
 // The unfinished-plot gate lives in the HOST so X and tap-outside share ONE gate.
