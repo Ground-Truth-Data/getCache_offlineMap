@@ -29,18 +29,9 @@ export type BlobEvent =
 	| { kind: "landed"; region: Region }
 	| { kind: "failed"; at: [number, number]; error: unknown }
 	| { kind: "removed"; id: string }
-	| { kind: "waiting"; sets: WaitingSet[] }
 	| { kind: "pins" };
 
 export type Spot = { at: [number, number]; photo: boolean };
-
-/** A big import with pins on screen that were never saved: `here` on screen, `all` across the set. */
-export interface WaitingSet {
-	key: string;
-	name: string;
-	here: Spot[];
-	all: Spot[];
-}
 
 export interface InFlight {
 	at: [number, number];
@@ -214,8 +205,7 @@ const lastSeen = (r: Region): number => seenAt.get(r.id) ?? r.lastOpened ?? r.at
  * is missing a piece. Zoomed out past a region's own zoom, nothing is "seen". */
 export async function viewing(box: Box, zoom: number): Promise<void> {
 	shown = zoom >= ANCHOR_Z - 2 ? box : null;
-	if (!shown) return emit({ kind: "waiting", sets: [] });
-	return look(shown);
+	if (shown) return look(shown);
 }
 
 async function look(box: Box): Promise<void> {
@@ -225,33 +215,24 @@ async function look(box: Box): Promise<void> {
 	const touched = new Set(await touchRegions(onScreen));
 	// Checked when its hourly touch is due, so panning does not scan the store.
 	if (touched.size) {
-		const missing = await checkRegions();
+		const missing = await checkRegions([...touched]);
 		const pins = photoIds();
 		for (const r of rows)
 			if (touched.has(r.id) && ((missing[r.id] ?? 0) > 0 || (r.photoKey && pins?.has(r.id) && !isCurrentPhoto(await getSatImageByKey(r.photoKey))))) void repairBlob(r);
 	}
 	// Any row, a removed one included, means the planter once had this pin saved.
 	const saved = new Set(rows.map((r) => r.id));
-	const sets = new Map<string, WaitingSet>();
 	for (const p of host?.places() ?? [])
 		for (const at of p.anchors) {
-			const here = at[0] >= box.w && at[0] <= box.e && at[1] >= box.s && at[1] <= box.n;
+			if (at[0] < box.w || at[0] > box.e || at[1] < box.s || at[1] > box.n) continue;
 			const id = regionId(at[0], at[1]);
-			if (!p.set || saved.has(id) || queued.has(id)) {
-				if (here) void queueBlob(at[0], at[1], { photo: p.photo, pin: true, revive: true });
-				continue;
-			}
-			let s = sets.get(p.set.key);
-			if (!s) sets.set(p.set.key, (s = { ...p.set, here: [], all: [] }));
-			// A plain pair: the host's anchors can be reactive proxies, and the size estimate reads each one hundreds of times.
-			const spot = { at: [at[0], at[1]] as [number, number], photo: p.photo };
-			s.all.push(spot);
-			if (here) s.here.push(spot);
+			// An import's pin waits until it is opened: a big import on screen would burst the imagery host.
+			if (p.set && !saved.has(id) && !queued.has(id)) continue;
+			void queueBlob(at[0], at[1], { photo: p.photo, pin: true, revive: true });
 		}
-	emit({ kind: "waiting", sets: [...sets.values()].filter((s) => s.here.length) });
 }
 
-/** The planter chose these pins of a big import. */
+/** The planter opened these pins. */
 export function saveSpots(spots: readonly Spot[]): void {
 	for (const { at, photo } of spots) void queueBlob(at[0], at[1], { photo, pin: true, revive: true });
 }

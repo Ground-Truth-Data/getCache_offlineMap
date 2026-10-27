@@ -409,16 +409,33 @@ export async function patchRegion(id: string, patch: Partial<Omit<Region, "id">>
 	regionsChanged();
 }
 
-/** Per blob, its tiles not on disk (zero is whole) — an empty tile is a 0-byte row, so this is a set difference. */
-export async function checkRegions(): Promise<Record<string, number>> {
-	const [regions, have] = await Promise.all([listRegions(), allTileKeys()]);
+/** Per blob, its tiles not on disk (zero is whole) — an empty tile is a 0-byte row, so this is a set difference.
+ * Given ids, only those blobs, read column by column: the map checks the few on screen, never the whole store. */
+export async function checkRegions(ids?: readonly string[]): Promise<Record<string, number>> {
+	const all = await listRegions();
+	const regions = ids ? all.filter((r) => ids.includes(r.id)) : all;
+	const have = ids ? await keysUnder(regions) : await allTileKeys();
 	const out: Record<string, number> = {};
 	for (const r of regions) out[r.id] = missingKeys(r.range, have).length;
 	await healRegionBytes(regions);
 	return out;
 }
 
-/** Sizes every `bytes: 0` blob in one cursor pass. */
+/** One request per `z/x/` column under these blobs — keys sort by column, so it reads just those tiles. */
+function columnsUnder(regions: readonly Region[]): IDBKeyRange[] {
+	const cols = new Set<string>();
+	for (const r of regions) for (const t of rangeTiles(r.range)) cols.add(`${t.z}/${t.x}/`);
+	return [...cols].map((c) => IDBKeyRange.bound(c, `${c}￿`));
+}
+
+async function keysUnder(regions: readonly Region[]): Promise<Set<string>> {
+	const db = await open();
+	const st = db.transaction(TILES, "readonly").objectStore(TILES);
+	const keys = await Promise.all(columnsUnder(regions).map((c) => result(st.getAllKeys(c))));
+	return new Set(keys.flat() as string[]);
+}
+
+/** Sizes every `bytes: 0` blob, reading only its own columns. */
 async function healRegionBytes(regions: readonly Region[]): Promise<void> {
 	const stale = regions.filter((r) => r.bytes === 0 && r.tiles > 0);
 	if (stale.length === 0) return;
@@ -433,21 +450,25 @@ async function healRegionBytes(regions: readonly Region[]): Promise<void> {
 	const sized = new Map<string, number>(stale.map((r) => [r.id, 0]));
 	const db = await open();
 	const st = db.transaction(TILES, "readonly").objectStore(TILES);
-	await new Promise<void>((resolve, reject) => {
-		const req = st.openCursor();
-		req.onsuccess = () => {
-			const cur = req.result;
-			if (!cur) return resolve();
-			const mine = owners.get(cur.key as string);
-			if (mine) {
-				const n = (cur.value as ArrayBuffer).byteLength;
-				for (const r of mine)
-					sized.set(r.id, (sized.get(r.id) as number) + n);
-			}
-			cur.continue();
-		};
-		req.onerror = () => reject(req.error);
-	});
+	await Promise.all(
+		columnsUnder(stale).map(
+			(c) =>
+				new Promise<void>((resolve, reject) => {
+					const req = st.openCursor(c);
+					req.onsuccess = () => {
+						const cur = req.result;
+						if (!cur) return resolve();
+						const mine = owners.get(cur.key as string);
+						if (mine) {
+							const n = (cur.value as ArrayBuffer).byteLength;
+							for (const r of mine) sized.set(r.id, (sized.get(r.id) as number) + n);
+						}
+						cur.continue();
+					};
+					req.onerror = () => reject(req.error);
+				}),
+		),
+	);
 	for (const r of stale) {
 		const n = sized.get(r.id) as number;
 		if (n > 0) await patchRegion(r.id, { bytes: n });

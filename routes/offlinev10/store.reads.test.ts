@@ -65,6 +65,16 @@ describe("reads", () => {
 		expect(rows.map((r) => [r.id, r.bytes])).toEqual([["b", 99], ["a", 21]]);
 	});
 
+	it("checkRegions given ids judges and sizes only those blobs, as the whole check would", async () => {
+		const far = regionRange(-76.17, 45.06);
+		await putRegion(row("a"));
+		await putRegion(row("c", { range: far, tiles: rangeTiles(far).length, at: 2 }));
+		await putTiles(keys.slice(0, 5).map((k) => [k, buf(3)] as [string, ArrayBuffer]), "a");
+		expect(await checkRegions(["a"])).toEqual({ a: keys.length - 5 });
+		expect((await listRegions()).map((r) => [r.id, r.bytes])).toEqual([["c", 0], ["a", 15]]);
+		expect((await checkRegions())["a"]).toBe(keys.length - 5);
+	});
+
 	it("regionsSnapshot caches the list until a row changes, and bumps its version then", async () => {
 		await putRegion(row("a"));
 		const one = regionsSnapshot();
