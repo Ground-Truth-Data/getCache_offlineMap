@@ -57,8 +57,6 @@
 	"ofmap_route_directions": "Directions",
 	"ofmap_route_finding": "Finding a road route…",
 	"ofmap_route_by_road": "{distance} by road",
-	"ofmap_route_drag_line": "drag the line",
-	"ofmap_route_drag_hint": "onto the road you know",
 	"ofmap_route_no_fix": "Turn on My location to get directions",
 	"ofmap_route_clear": "Clear route",
 	"ofmap_route_follow": "Follow",

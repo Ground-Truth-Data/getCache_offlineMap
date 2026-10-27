@@ -3,10 +3,10 @@ import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HostPorts } from "../../lib/shared/hostPorts";
 import { configureTilesDevHost } from "../../lib/worker/tilesHost";
-import { blobBusy, onBlob, removeArea, removeStaleAreas, saveSpots, startBlobService, viewing, type WaitingSet } from "./blobService";
+import { blobBusy, onBlob, removeArea, removeStaleAreas, saveSpots, startBlobService, viewing } from "./blobService";
 import { startPhotoService } from "./satellite";
 import { BudgetError, fullMessage, isStale, OFFLINE_TILES_BYTES, setBudgetMb, STALE_AREA_MONTHS } from "./budget";
-import { downloadRegion, estimateBytes, roomFor } from "./download";
+import { downloadRegion, roomFor } from "./download";
 import { satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
 import {
 	AreaGone,
@@ -380,7 +380,7 @@ describe("offline areas are an LRU cache of the 16 MB test budget", () => {
 		off();
 	});
 
-	it("F: an import of 21 waits for the planter, who sees its size and saves one pin", async () => {
+	it("F: an import's pins wait until one is opened, and opening saves only that one", async () => {
 		const set = { key: "groote", name: "Groote" };
 		const imported = Array.from({ length: 21 }, (_, i) => far(10 + i));
 		const at = far(5);
@@ -392,21 +392,14 @@ describe("offline areas are an LRU cache of the 16 MB test budget", () => {
 		await vi.waitFor(() => expect(blobBusy()).toBe(false), SWEEP);
 		expect(await ids()).toEqual([...[0, 1, 2, 3].map((i) => regionId(...far(i))), regionId(...at)].sort());
 
-		const waiting: WaitingSet[][] = [];
-		const off = onBlob((e) => e.kind === "waiting" && waiting.push(e.sets));
 		await viewing(view(imported[0]), 12);
-		expect(waiting.at(-1)).toEqual([{ ...set, here: [{ at: imported[0], photo: true }], all: imported.map((a) => ({ at: a, photo: true })) }]);
-		const one = await estimateBytes(waiting.at(-1)![0].here);
-		expect(one).toBeGreaterThan(0);
-		expect(await estimateBytes(waiting.at(-1)![0].all)).toBeGreaterThan(one);
+		await vi.waitFor(() => expect(blobBusy()).toBe(false), SWEEP);
+		expect(await ids()).not.toContain(regionId(...imported[0]));
 
-		saveSpots(waiting.at(-1)![0].here);
+		saveSpots([{ at: imported[0], photo: true }]);
 		await vi.waitFor(async () => expect(await ids()).toContain(regionId(...imported[0])), SWEEP);
 		await vi.waitFor(() => expect(blobBusy()).toBe(false), SWEEP);
 		expect(await ids()).not.toContain(regionId(...imported[1]));
-		await viewing(view(imported[0]), 12);
-		expect(waiting.at(-1)).toEqual([]);
-		off();
 	});
 
 	it("G: a 10,000-pin import fetches nothing from MapTiler, browsed or not", async () => {

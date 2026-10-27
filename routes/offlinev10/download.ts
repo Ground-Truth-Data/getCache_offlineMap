@@ -5,8 +5,6 @@
  * unnamed; a failed one removes the row and every tile only it covered.
  */
 
-import { PHOTO_REUSE_KM, satImageMeta } from "../../lib/onPhone/satellite/satelliteImage";
-import { kmBetween } from "../../lib/shared/kmGeo";
 import { noteBytes } from "../../lib/shared/dataMeter.svelte";
 import { sessionCap, spendBytes } from "../../lib/shared/sessionByteCap.svelte";
 import { tileUrl } from "../../lib/worker/tilesHost";
@@ -72,27 +70,6 @@ async function tileAverage(): Promise<number | null> {
 			bytes += r.newBytes;
 		}
 	return tiles > 0 ? bytes / tiles : null;
-}
-
-// Before anything is on disk: a z13 road tile measured 3.1 KB (780 tiles, 2.4 MB), and a guess for a photo.
-const FIRST_TILE_BYTES = 3_100;
-const FIRST_PHOTO_BYTES = 2_000_000;
-
-/** What saving these spots would add: their tiles not on disk, and a photo for each spot no stored or earlier one covers. */
-export async function estimateBytes(spots: readonly { at: [number, number]; photo: boolean }[]): Promise<number> {
-	const have = await allTileKeys();
-	const missing = new Set<string>();
-	for (const { at } of spots) for (const t of rangeTiles(regionRange(at[0], at[1]))) if (!have.has(tileKey(t))) missing.add(tileKey(t));
-	const centres = (await listRegions()).filter((r) => !r.removed && r.photoCenter).map((r) => r.photoCenter as [number, number]);
-	let photos = 0;
-	for (const { at, photo } of spots)
-		if (photo && !centres.some((c) => kmBetween(at, c) <= PHOTO_REUSE_KM)) {
-			centres.push(at);
-			photos++;
-		}
-	const shots = await satImageMeta();
-	const photoBytes = shots.length ? shots.reduce((n, s) => n + s.bytes, 0) / shots.length : FIRST_PHOTO_BYTES;
-	return Math.round(missing.size * ((await tileAverage()) ?? FIRST_TILE_BYTES) + photos * photoBytes);
 }
 
 export async function downloadRegion(

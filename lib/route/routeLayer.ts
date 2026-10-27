@@ -36,9 +36,6 @@ const HAND_PATHS =
 const HAND_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
 	`<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 24 24' fill='#fff' stroke='${RUST}' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'>${HAND_PATHS}</svg>`,
 )}") 16 16, grab`;
-/** The drag hint stops after this many routes: by then the trick is known. */
-const HINT_ROUTES = 3;
-const HINT_KEY = "gc.route.hints";
 /** Screen px from the art's bottom edge up to its rust disc's centre — the disc is the point. */
 const TARGET_DISC_PX = 1.6;
 /** Survives a closed app without the database: a search target is not a record, it's where you were headed. */
@@ -219,25 +216,6 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	const words = document.createElement("b");
 	let pillAction: string | null = null;
 
-	const hintBar = document.createElement("div");
-	hintBar.className = "rt-route-hint";
-	hintBar.hidden = true;
-	const hintDo = document.createElement("b");
-	hintBar.append(hintDo, "");
-	map.getContainer().appendChild(hintBar);
-	const hintOnce = (): void => {
-		let shown = 0;
-		try {
-			shown = Number(localStorage.getItem(HINT_KEY)) || 0;
-			if (shown >= HINT_ROUTES) return;
-			localStorage.setItem(HINT_KEY, String(shown + 1));
-		} catch {
-			// codestyle-allow-swallow: storage blocked — the hint just shows again.
-		}
-		hintDo.textContent = m.ofmap_route_drag_line();
-		hintBar.lastChild!.textContent = ` ${m.ofmap_route_drag_hint()}`;
-		hintBar.hidden = false;
-	};
 
 	/** The number white and big, every other word the unit's grey. */
 	const setWords = (text: string): void => {
@@ -316,7 +294,6 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 
 	function setFollow(on: boolean): void {
 		following = on;
-		hintBar.hidden = true;
 		offFixes = 0;
 		stayAwake(on);
 		if (!on) me = null;
@@ -456,7 +433,6 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		if (fit && !following) {
 			fitTo(r.line);
 			reveal(mine, r.line.length);
-			hintOnce();
 		}
 	};
 
@@ -475,7 +451,6 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		me = null;
 		stayAwake(false);
 		pill.hidden = true;
-		hintBar.hidden = true;
 		paint();
 	}
 
@@ -631,7 +606,6 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		const stop = Number(via?.properties?.stop);
 		drag = Number.isInteger(stop) ? { kind: "move", stop } : { kind: "new", leg: legAt([e.lngLat.lng, e.lngLat.lat]) };
 		downPx = { x: e.point.x, y: e.point.y };
-		hintBar.hidden = true;
 		hover = null;
 		hot = null;
 		map.getCanvas().style.cursor = "grabbing";
@@ -723,7 +697,6 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		map.off("mouseup", onUp);
 		map.off("touchend", onUp);
 		pill.remove();
-		hintBar.remove();
 		pin.remove();
 	};
 	handle.to = to;

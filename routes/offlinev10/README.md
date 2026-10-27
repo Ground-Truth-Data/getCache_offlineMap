@@ -74,17 +74,15 @@ missing tiles or its photo. A new area that will not fit evicts from the bottom:
 `makeRoom` asks `roomFor` (`download.ts`) whether its missing tiles, at the
 average size fetched so far, cross the line, and while they do removes the
 least recently touched area. Nothing on screen is ever evicted. Only when the
-areas on screen alone fill the budget is the pin refused, and the online map
-says so (`PinFullNotice.svelte`) until the next blob lands. Bytes are the only
+areas on screen alone fill the budget is the pin refused, emitted as `failed`
+with its `BudgetError`; nothing pops up over the map. Bytes are the only
 wall; there is no cap on the number of areas, since many maps with many pins
 each is normal.
 
 **An import of more than 20 features waits for the planter.** The host marks
 each feature of such an import with its `set` (`hostPorts.ts`); the engine
-fetches none of them on its own. When some are on screen, `viewing` emits
-`waiting`, and `ImportSetNotice.svelte` offers the pins on screen or the
-whole set, each with its size from `estimateBytes` (`download.ts`); a set
-bigger than the budget cannot be saved whole. A pin once saved has a row, and
+fetches none of them on its own, and nothing offers them over the map: a pin
+is saved when the planter opens it (`saveSpots`). A pin once saved has a row, and
 from then on it is any other pin. Hand-dropped pins and imports of 20 or fewer
 download on their own.
 
