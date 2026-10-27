@@ -365,6 +365,23 @@ async function forgetTiles(id: string, src: SatelliteSource): Promise<void> {
 }
 const short = (r: string) => (r === "HIT" || r === "MISS" ? r : r.split(" ")[0]);
 
+// What the page shows, as text an AI can read instead of a screenshot.
+let copied = $state(false);
+async function copyLog(): Promise<void> {
+	const log = {
+		page: "/app/squirrel",
+		at: new Date().toISOString(),
+		worker: { host, failure, active: answer?.active ?? null, standby: answer?.standby ?? null },
+		forcedOnThisBrowser: forced,
+		sources: rows.map(({ id, cache, standby, lock, z, today, month, up, hits, tiles, gb, free, mtd }) => ({ id, cache, standby, lock, z, today, month, upstream: up, hits, r2Tiles: tiles, r2Gb: gb, freeTier: free, usdMonthToDate: mtd })),
+		handTest: probes,
+		deleted: forgot,
+	};
+	await navigator.clipboard.writeText(JSON.stringify(log, null, 1));
+	copied = true;
+	setTimeout(() => (copied = false), 1500);
+}
+
 // A desktop dashboard: it leaves the phone frame for <body>, as SideCard does.
 function toBody(node: HTMLElement) {
 	document.body.appendChild(node);
@@ -394,6 +411,7 @@ function toBody(node: HTMLElement) {
 		{#if failure}<span class="statuspill bad" title={failure}>✕ worker · {host}</span>
 		{:else if answer}<span class="statuspill" class:bad={!answer.counts}>{answer.counts ? "✓" : "✕"} worker up · {host}{answer.counts ? "" : " · no bucket"}</span>
 		{:else}<span class="statuspill dimpill">asking {host}…</span>{/if}
+		<button class="refresh" onclick={copyLog}>{copied ? "copied ✓" : "copy debug log"}</button>
 		<button class="refresh" onclick={load}>refresh</button>
 	</div>
 	{#if failure}<p class="fail" role="alert">{failure}</p>{/if}

@@ -7,12 +7,17 @@ import worker from "./index";
 
 let kept: Map<string, ArrayBuffer | string>;
 let waits: Promise<unknown>[];
+// The etag is the value itself: a put that names a stale one is refused, as R2 refuses it.
 const bucket = {
   get: async (k: string) => {
     const v = kept.get(k);
-    return v === undefined ? null : { arrayBuffer: async () => v, text: async () => String(v), json: async () => JSON.parse(String(v)) };
+    return v === undefined ? null : { etag: String(v), arrayBuffer: async () => v, text: async () => String(v), json: async () => JSON.parse(String(v)) };
   },
-  put: async (k: string, v: ArrayBuffer | string) => void kept.set(k, v),
+  put: async (k: string, v: ArrayBuffer | string, o?: { onlyIf?: { etagMatches?: string } }) => {
+    if (o?.onlyIf?.etagMatches !== undefined && String(kept.get(k)) !== o.onlyIf.etagMatches) return null;
+    kept.set(k, v);
+    return {};
+  },
   list: async ({ prefix }: { prefix: string }) => ({ objects: [...kept.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key })), truncated: false }),
 };
 const env = (more = {}) => ({ GC_mapTiler_key: "k", GC_esri_key: "e", PUBLIC_GC_RT_mapbox_token: "m", SAT_CACHE: bucket, METER: bucket, SQUIRREL_WRITES: "on", ...more }) as never;
@@ -109,7 +114,39 @@ describe("esri: streamed only, and stopped at 90% of its free tier", () => {
     vi.setSystemTime((clock += 6 * 60_000));
   });
   afterEach(() => vi.useRealTimers());
-  const spentThisMonth = (n: number) => kept.set(`_squirrel/counts/${new Date().toISOString().slice(0, 10)}/i-1.json`, JSON.stringify({ "esri|17|upstream": n }));
+  const month = () => `_squirrel/month/${new Date().toISOString().slice(0, 7)}.json`;
+  const spentThisMonth = (n: number) => kept.set(month(), JSON.stringify({ esri: n }));
+  const countFile = (n: number, i = 1) => kept.set(`_squirrel/counts/${new Date().toISOString().slice(0, 10)}/i-${i}.json`, JSON.stringify({ "esri|17|upstream": n }));
+
+  it("reads the month's running total, never the count files, once one exists", async () => {
+    spentThisMonth(1_800_000);
+    const list = vi.spyOn(bucket, "list");
+    expect((await call(outside)).status).toBe(404);
+    expect(list).not.toHaveBeenCalled();
+    list.mockRestore();
+  });
+
+  it("seeds the total from the count files once, then adds each flush's upstream tiles to it", async () => {
+    countFile(1_000);
+    countFile(500, 2);
+    expect((await call(outside)).status).toBe(200);
+    // The tile flushed after the seed, so it lands on top: 1,500 seeded + 1.
+    expect(JSON.parse(String(kept.get(month())))).toEqual({ esri: 1_501 });
+  });
+
+  it("adds again when another Worker wrote the total between its read and its write", async () => {
+    spentThisMonth(10);
+    const put = bucket.put;
+    let raced = false;
+    vi.spyOn(bucket, "put").mockImplementation(async (k, v, o) => {
+      if (k === month() && !raced) (raced = true), kept.set(k, JSON.stringify({ esri: 20 }));
+      return put(k, v, o);
+    });
+    expect((await call(outside)).status).toBe(200);
+    await call("/squirrel");
+    expect(JSON.parse(String(kept.get(month())))).toEqual({ esri: 21 });
+    vi.mocked(bucket.put).mockRestore();
+  });
 
   it("serves one tile short of the stop, then refuses at 1.8 of its 2 million without asking Esri", async () => {
     spentThisMonth(1_799_999);
@@ -231,7 +268,7 @@ describe("mapbox: a standby source, off until Squirrel switches it on", () => {
 
   it("stops at 90% of its 750k free tiles", async () => {
     await flip("on");
-    kept.set(`_squirrel/counts/${new Date().toISOString().slice(0, 10)}/i-1.json`, JSON.stringify({ "mapbox|17|upstream": 675_000 }));
+    kept.set(`_squirrel/month/${new Date().toISOString().slice(0, 7)}.json`, JSON.stringify({ mapbox: 675_000 }));
     const res = await call(outside);
     expect(res.status).toBe(404);
     expect(await res.text()).toMatch(/90% of its free tier/);

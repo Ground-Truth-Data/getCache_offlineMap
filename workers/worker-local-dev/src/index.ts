@@ -189,7 +189,34 @@ async function flush(bucket: R2Bucket): Promise<void> {
   pending = {};
   pendingTiles = 0;
   lastFlush = Date.now();
-  if (Object.keys(out).length) await bucket.put(`_squirrel/counts/${new Date().toISOString().slice(0, 10)}/${(isolate ??= crypto.randomUUID())}-${lastFlush}.json`, JSON.stringify(out));
+  if (!Object.keys(out).length) return;
+  const day = new Date().toISOString().slice(0, 10);
+  await Promise.all([bucket.put(`_squirrel/counts/${day}/${(isolate ??= crypto.randomUUID())}-${lastFlush}.json`, JSON.stringify(out)), addToMonth(bucket, day.slice(0, 7), upstreamOf(out))]);
+}
+
+const monthKey = (month: string) => `_squirrel/month/${month}.json`;
+
+/** Adds upstream tiles to the month's running total. Dev and prod write it at once, so a lost race re-reads and adds again.
+ * No total yet: the meter seeds one from the count files, this flush's among them. */
+async function addToMonth(bucket: R2Bucket, month: string, add: Record<string, number>): Promise<void> {
+  if (!Object.keys(add).length) return;
+  for (let tries = 0; tries < 8; tries++) {
+    const now = await bucket.get(monthKey(month));
+    if (!now) return;
+    const tiles = await now.json<Record<string, number>>();
+    for (const [id, n] of Object.entries(add)) tiles[id] = (tiles[id] ?? 0) + n;
+    if (await bucket.put(monthKey(month), JSON.stringify(tiles), { onlyIf: { etagMatches: now.etag } })) return;
+  }
+  throw new Error(`the ${month} free-tier total lost 8 races in a row; ${JSON.stringify(add)} went uncounted`);
+}
+
+/** The month's upstream tiles per source: one read, or once a month the sum of every count file. */
+async function monthTotal(bucket: R2Bucket, month: string): Promise<Record<string, number>> {
+  const kept = await bucket.get(monthKey(month));
+  if (kept) return kept.json<Record<string, number>>();
+  const tiles = upstreamOf((await squirrelCounts(bucket, `_squirrel/counts/${month}`)).month);
+  await bucket.put(monthKey(month), JSON.stringify(tiles));
+  return tiles;
 }
 
 const ACTIVE_KEY = "_squirrel/active";
@@ -250,7 +277,7 @@ function upstreamOf(counts: Record<string, number>): Record<string, number> {
   return out;
 }
 
-// This month's upstream tiles, re-read from the count files every 5 min; the 10% left over the
+// This month's upstream tiles, re-read from the running total each minute; the 10% left over the
 // stop covers what a refresh hasn't seen yet and counts lost with a dead isolate.
 let spent = { month: "", at: 0, tiles: {} as Record<string, number> };
 
@@ -259,8 +286,7 @@ async function freeTierSpent(env: Env, id: string, src: SatelliteSource): Promis
   // No bucket, no meter: a metered source is refused rather than run blind.
   if (!env.METER) return true;
   const month = new Date().toISOString().slice(0, 7);
-  if (spent.month !== month || Date.now() - spent.at > 300_000)
-    spent = { month, at: Date.now(), tiles: upstreamOf((await squirrelCounts(env.METER, `_squirrel/counts/${month}`)).month) };
+  if (spent.month !== month || Date.now() - spent.at > 60_000) spent = { month, at: Date.now(), tiles: await monthTotal(env.METER, month) };
   return (spent.tiles[id] ?? 0) + (upstreamOf(pending)[id] ?? 0) >= 0.9 * src.freeTilesPerMonth;
 }
 
