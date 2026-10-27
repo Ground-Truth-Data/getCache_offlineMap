@@ -39,7 +39,12 @@ interface Env {
   GC_mapTiler_key: string;
   GC_esri_key: string;
   PUBLIC_GC_RT_mapbox_token: string;
+  /** The Fly import tiler (../importTiler) and the key it checks. */
+  GC_importTiler_url: string;
+  GC_importTiler_key: string;
 }
+
+const IMPORT_MAX_BYTES = 64 * 1024 * 1024;
 
 class R2Source implements Source {
   constructor(
@@ -129,12 +134,12 @@ class UpstreamRefused extends Error {
 type Tier = "edge" | "r2" | "upstream";
 
 /** One tile: this colo's edge cache, then the shared R2 copy, then the source. Only a 200 is ever kept. */
-async function satelliteTile(env: Env, ctx: ExecutionContext, origin: string, id: string, src: SatelliteSource, z: number, x: number, y: number): Promise<{ body: ArrayBuffer; tier: Tier }> {
+async function satelliteTile(env: Env, ctx: ExecutionContext, origin: string, id: string, src: SatelliteSource, keep: boolean, z: number, x: number, y: number): Promise<{ body: ArrayBuffer; tier: Tier }> {
   const name = `${id}/${z}/${x}/${y}.jpg`;
   const edge = new Request(`${origin}/satellite/${name}`, { method: "GET" });
   const near = src.live ? undefined : await caches.default.match(edge);
   if (near) return { body: await near.arrayBuffer(), tier: "edge" };
-  const bucket = src.cacheToR2 ? env.SAT_CACHE : undefined;
+  const bucket = keep ? env.SAT_CACHE : undefined;
   const kept = await bucket?.get(name);
   if (kept) {
     const body = await kept.arrayBuffer();
@@ -185,19 +190,32 @@ async function activeSource(env: Env): Promise<string> {
   return set ? await set.text() : DEFAULT_SOURCE;
 }
 
-// A standby source is on while `_squirrel/standby/<id>` says "on"; re-read each minute, so a switch reaches every isolate within one.
-const STANDBY_PREFIX = "_squirrel/standby/";
-let standby = { at: 0, on: [] as string[] };
+// Squirrel's switches, each `_squirrel/<switch>/<id>` = "on" or "off"; a cache switch never written is the source's cacheToR2.
+// Re-read each minute, so a switch reaches every isolate within one.
+const SWITCHABLE = {
+  standby: (src: SatelliteSource) => !!src.standby,
+  // A live source's licence forbids keeping it, so it has no cache switch.
+  cache: (src: SatelliteSource) => !src.live,
+};
+type Switches = { standby: string[]; cache: Record<string, boolean> };
+let switched = { at: 0, now: { standby: [], cache: {} } as Switches };
 
-async function standbyOn(env: Env): Promise<string[]> {
+async function switches(env: Env): Promise<Switches> {
+  const all = Object.entries(SATELLITE_SOURCES) as [string, SatelliteSource][];
   const bucket = env.SAT_CACHE;
-  if (!bucket) return [];
-  if (Date.now() - standby.at > 60_000) {
-    const ids = Object.keys(SATELLITE_SOURCES).filter((id) => sourceOf(id)?.standby);
-    const says = await Promise.all(ids.map(async (id) => (await (await bucket.get(STANDBY_PREFIX + id))?.text()) === "on"));
-    standby = { at: Date.now(), on: ids.filter((_, i) => says[i]) };
+  if (!bucket) return { standby: [], cache: Object.fromEntries(all.map(([id]) => [id, false])) };
+  if (Date.now() - switched.at > 60_000) {
+    const says = (sw: string, id: string) => bucket.get(`_squirrel/${sw}/${id}`).then((o) => o?.text() ?? null);
+    const [standby, cache] = await Promise.all([Promise.all(all.map(([id, s]) => (s.standby ? says("standby", id) : null))), Promise.all(all.map(([id, s]) => (s.live ? null : says("cache", id))))]);
+    switched = {
+      at: Date.now(),
+      now: {
+        standby: all.filter((_, i) => standby[i] === "on").map(([id]) => id),
+        cache: Object.fromEntries(all.map(([id, s], i) => [id, !s.live && (cache[i] === null ? s.cacheToR2 : cache[i] === "on")])),
+      },
+    };
   }
-  return standby.on;
+  return switched.now;
 }
 
 /** Every count file under `prefix`, summed into today, this month and all time, per `source|z|tier` key. */
@@ -249,20 +267,22 @@ export default {
 
     // /squirrel: which source the photos bake from, and what each one served. A POST of a source id switches it;
     // text/plain, so a browser sends it without a preflight. Only a Worker with the bucket keeps either.
-    // A POST of "on" or "off" to /squirrel/standby/<id> switches a standby source.
-    const standbyPath = /^\/squirrel\/standby\/([a-z0-9-]+)$/.exec(url.pathname);
-    if (url.pathname === "/squirrel" || url.pathname === "/squirrel/active" || standbyPath) {
+    // A POST of "on" or "off" to /squirrel/standby/<id> or /squirrel/cache/<id> flips that switch.
+    const switchPath = /^\/squirrel\/(standby|cache)\/([a-z0-9-]+)$/.exec(url.pathname);
+    if (url.pathname === "/squirrel" || url.pathname === "/squirrel/active" || switchPath) {
       const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json", "Cache-Control": "no-store" } });
-      if (standbyPath) {
-        const id = standbyPath[1];
+      if (switchPath) {
+        const sw = switchPath[1] as keyof typeof SWITCHABLE;
+        const id = switchPath[2];
         if (request.method !== "POST") return json({ error: "POST on or off" }, 405);
         if (!env.SAT_CACHE) return json({ error: "this Worker has no bucket to keep a switch in" }, 409);
-        if (!sourceOf(id)?.standby) return json({ error: `"${id}" is not a standby source` }, 400);
+        const src = sourceOf(id);
+        if (!src || !SWITCHABLE[sw](src)) return json({ error: `"${id}" has no ${sw} switch` }, 400);
         const on = (await request.text()).trim();
         if (on !== "on" && on !== "off") return json({ error: `send "on" or "off", not "${on}"` }, 400);
-        await env.SAT_CACHE.put(STANDBY_PREFIX + id, on);
-        standby.at = 0;
-        return json({ standby: await standbyOn(env) });
+        await env.SAT_CACHE.put(`_squirrel/${sw}/${id}`, on);
+        switched.at = 0;
+        return json(await switches(env));
       }
       if (request.method === "POST") {
         const id = (await request.text()).trim();
@@ -272,10 +292,28 @@ export default {
         await env.SAT_CACHE.put(ACTIVE_KEY, id);
         return json({ active: id });
       }
-      const [active, on] = await Promise.all([activeSource(env), standbyOn(env)]);
-      if (url.pathname === "/squirrel/active") return json({ active, standby: on });
+      const [active, sw] = await Promise.all([activeSource(env), switches(env)]);
+      if (url.pathname === "/squirrel/active") return json({ active, ...sw });
       if (env.SAT_CACHE) await flush(env.SAT_CACHE);
-      return json({ active, standby: on, counts: env.SAT_CACHE ? await squirrelCounts(env.SAT_CACHE) : null });
+      return json({ active, ...sw, counts: env.SAT_CACHE ? await squirrelCounts(env.SAT_CACHE) : null });
+    }
+
+    // POST /imports: an import too big for a GeoJSON source, as text/plain so the browser skips the preflight.
+    // Tiled once on Fly and kept under its content hash, so the same file twice is one job; the phone then fetches the name whole.
+    if (url.pathname === "/imports" && request.method === "POST") {
+      if (!env.GC_importTiler_key || !env.GC_importTiler_url)
+        return new Response("GC_importTiler_url / GC_importTiler_key are not configured on this Worker", { status: 500, headers: CORS_HEADERS });
+      const body = await request.arrayBuffer();
+      if (body.byteLength > IMPORT_MAX_BYTES)
+        return new Response(`Payload Too Large — imports stop at ${IMPORT_MAX_BYTES / 1024 / 1024} MB`, { status: 413, headers: CORS_HEADERS });
+      const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", body))].map((b) => b.toString(16).padStart(2, "0")).join("");
+      const name = `imports/${hash}.pmtiles`;
+      if (!(await env.TILES.head(name))) {
+        const tiled = await fetch(`${env.GC_importTiler_url}/tile`, { method: "POST", headers: { Authorization: `Bearer ${env.GC_importTiler_key}` }, body });
+        if (!tiled.ok) return new Response(`import tiler → ${tiled.status}: ${await tiled.text()}`, { status: 502, headers: CORS_HEADERS });
+        await env.TILES.put(name, await tiled.arrayBuffer());
+      }
+      return new Response(JSON.stringify({ name }), { headers: { ...CORS_HEADERS, "Content-Type": "application/json" } });
     }
 
     if (request.method !== "GET" && request.method !== "HEAD") {
@@ -429,9 +467,9 @@ export default {
       });
     }
 
-    // /highways-vN.pmtiles: the world's highways (getCache's build-world-highways.mjs), whole; each phone fetches it once.
-    // A rebuild is a new N, so each name is immutable.
-    const highways = /^\/(highways-v\d+\.pmtiles)$/.exec(url.pathname);
+    // /highways-vN.pmtiles (getCache's build-world-highways.mjs) and /imports/<sha256>.pmtiles, whole; each phone fetches one once.
+    // A rebuild is a new N and an import is named by its content, so each name is immutable.
+    const highways = /^\/(highways-v\d+\.pmtiles|imports\/[0-9a-f]{64}\.pmtiles)$/.exec(url.pathname);
     if (highways) {
       const object = await env.TILES.get(highways[1]);
       if (!object) return new Response(`${highways[1]} is not in the bucket`, { status: 404, headers: CORS_HEADERS });
@@ -448,6 +486,9 @@ export default {
       // Fail loud, like /fires: a blank basemap looks merely "not loaded yet".
       if (!src)
         return new Response(`Not Found — no satellite source "${id}"; there are: ${Object.keys(SATELLITE_SOURCES).join(", ")}`, { status: 404, headers: CORS_HEADERS });
+      const sw = await switches(env);
+      if (src.standby && !sw.standby.includes(id))
+        return new Response(`Not Found — ${id} is a standby source and is switched off on /app/squirrel`, { status: 404, headers: CORS_HEADERS });
       if (src.secret && !env[src.secret])
         return new Response(`${src.secret} is not configured on this Worker (wrangler secret put ${src.secret})`, { status: 500, headers: CORS_HEADERS });
       const span = 2 ** z;
@@ -456,14 +497,12 @@ export default {
       // A 404 here lets the map draw what lies under this layer.
       const under = src.live ? coverOf(tileLng(x, z), tileLat(y + 1, z), tileLng(x + 1, z), tileLat(y, z)) : undefined;
       if (under) return new Response(`Not Found — ${under} covers this tile, so ${id} is never asked for it`, { status: 404, headers: CORS_HEADERS });
-      if (src.standby && !(await standbyOn(env)).includes(id))
-        return new Response(`Not Found — ${id} is a standby source and is switched off on /app/squirrel`, { status: 404, headers: CORS_HEADERS });
       if (await freeTierSpent(env, id, src))
         return new Response(`Not Found — ${id} has served 90% of its free tier this month; it stops until the month resets`, { status: 404, headers: CORS_HEADERS });
       let tile: { body: ArrayBuffer; tier: Tier };
       const satStart = performance.now();
       try {
-        tile = await satelliteTile(env, ctx, url.origin, id, src, z, x, y);
+        tile = await satelliteTile(env, ctx, url.origin, id, src, sw.cache[id], z, x, y);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         // A 429 stays a 429, so the phone waits it out instead of retrying into it.
