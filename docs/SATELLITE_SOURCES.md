@@ -47,8 +47,9 @@ and this page is fixed.
 
 ### MapTiler — pin blobs
 
-- `satellite-v2`, already 512 px tiles. Photos bake at **z17** into a 3,456 px canvas across a 2 km
-  radius (~350 tiles per pin at 49° N). The raw tiles stay on the phone for the close-up.
+- `satellite-v2`, already 512 px tiles. Photos bake at **z16** into a 3,456 px canvas across a 2 km
+  radius (~90 tiles per pin at 49° N). Outside cities Maxar's real detail ends at z16: z17 tiles are
+  the same picture enlarged, at 4x the tiles. The raw tiles stay on the phone for the close-up.
 - It is the default photo source; Squirrel can switch the photo source to another bakeable one.
 - Approved for R2: both Workers keep its tiles while its cache switch is on.
 - Inside USGS cover, a pin's photo bakes from USGS at z16 instead, on purpose: `sourceAt` takes the
@@ -82,7 +83,7 @@ that is mounted.
 | Rule | Code |
 |---|---|
 | The source list, licences, attributions, prices | `lib/contract/satelliteSources.ts:38` (maptiler), `:57` (sentinel), `:72` (usgs), `:104` (esri), `:122` (mapbox) |
-| MapTiler photos at z17 | `lib/contract/satelliteSources.ts:47` |
+| MapTiler photos at z16 | `lib/contract/satelliteSources.ts:47` |
 | MapTiler is the default photo source | `lib/contract/satelliteSources.ts:147` |
 | A covering source wins (USGS first) | `lib/contract/satelliteSources.ts:154` (`sourceAt`), `:159` (`coverOf`) |
 | Sentinel below, sharp from z12 | `lib/onPhone/satellite/onlineImagery.ts:18` (`SHARP_FROM_Z`), `:69` (Sentinel layer) |

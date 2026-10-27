@@ -41,10 +41,9 @@ export const SATELLITE_SOURCES = {
 		// satellite-v2 is already 512px, so @2x 404s.
 		tileUrl: (key, z, x, y) => `https://api.maptiler.com/tiles/satellite-v2/${z}/${x}/${y}.jpg?key=${key}`,
 		secret: "GC_mapTiler_key",
-		// Its pyramid thins out past z20 outside cities.
 		maxZ: 20,
-		// The Maxar global floor, at the sharpest zoom MapTiler's own site shows.
-		zoom: 17,
+		// Outside cities Maxar's real detail ends here; z17 is the same picture at 4x the tiles.
+		zoom: 16,
 		// Not 4096: 4096² is over WebKit's ~16.7 MP canvas ceiling, which bakes blank.
 		canvasPx: 3456,
 		quality: 0.92,

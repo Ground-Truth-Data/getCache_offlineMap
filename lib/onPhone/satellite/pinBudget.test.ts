@@ -15,11 +15,11 @@ vi.mock("../store/keyedIdbStore", () => ({
 
 const { CLOSE_UP, bakeSatelliteImage } = await import("./satelliteImage");
 
-/** Nice, France: MapTiler z17 is the sharpest row, ~300 tiles across 2 km. */
+/** Nice, France: MapTiler at z16, ~85 tiles across 2 km. */
 const PIN: [number, number] = [7.2, 43.68];
 const KEY = "7.2000,43.6800";
-/** Measured 298 at this pin; a bake past this has grown its disc. */
-const MAX_TILES_PER_PIN = 330;
+/** Measured 84 at this pin; a bake past this has grown its disc or its zoom. */
+const MAX_TILES_PER_PIN = 92;
 
 const asked: string[][] = [];
 const source = async (keys: string[]) => {
@@ -60,7 +60,7 @@ describe("what one pin's photo costs", () => {
 
 	it("the disc stays inside the tile ceiling", async () => {
 		await bakeSatelliteImage(KEY, PIN, CLOSE_UP, source);
-		expect(asked[0].length).toBeGreaterThan(100);
+		expect(asked[0].length).toBeGreaterThan(60);
 		expect(asked[0].length).toBeLessThanOrEqual(MAX_TILES_PER_PIN);
 	});
 
