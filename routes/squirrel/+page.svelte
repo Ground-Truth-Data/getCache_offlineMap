@@ -10,7 +10,7 @@ import { rangeBox } from "../offlinev10/tiles";
 
 type Counts = Record<string, number>;
 type Answer = { active: string; counts: { today: Counts; month: Counts; all: Counts } | null };
-type Lic = "ok" | "dev" | "tos";
+type Lic = "ok" | "tos";
 type Row = {
 	id: string;
 	name: string;
@@ -33,8 +33,11 @@ type Row = {
 	unit: string;
 	free: number | null;
 	mtd: number | null;
-	proj: number | null;
+	/** one cost per HIT_RATES entry */
+	proj: number[] | null;
 	projNote?: string;
+	/** tiles the projection asks of a cached source, before any R2 hit */
+	projTiles?: number;
 };
 
 // R2 list price: Standard storage per GB-month, Class A (write) and Class B (read) per million.
@@ -42,13 +45,15 @@ const R2 = { storage: 0.015, write: 4.5, read: 0.36 };
 // The projection's planter: 20 pins a month, one photo each; only pin photos fetch MapTiler.
 const USERS = 10_000;
 const PINS_PER_USER = 20;
+// Crews plant the same blocks, so most of a pin's tiles were already fetched by a crewmate.
+const HIT_RATES = [0.5, 0.7, 0.9];
 // MapTiler Flex includes 500k requests a month; Esri's free tier is in the contract because the Worker stops at 90% of it.
 const INCLUDED: Record<string, number> = { maptiler: 500_000 };
 // Mapbox bills the online map per load, not per tile: ~50k free, then ~$5 per 1,000.
 const MAPBOX_LOADS = { free: 50_000, usdPer1000: 5 };
 
 const LOOK: Record<string, { sub: string; lic: Lic; licText: string; lock?: string }> = {
-	maptiler: { sub: "satellite-v2 · pin photos", lic: "dev", licText: "dev only" },
+	maptiler: { sub: "satellite-v2 · pin photos", lic: "ok", licText: "R2 approved" },
 	sentinel: { sub: "cloudless 2016 · online map", lic: "ok", licText: "CC BY 4.0" },
 	esri: { sub: "World Imagery · streamed", lic: "tos", licText: "ToS forbids", lock: 'Esri E204 §3.2c: "may not … store Data"' },
 	usgs: { sub: "ImageryOnly · US", lic: "ok", licText: "public domain" },
@@ -103,18 +108,16 @@ function sourceRow(id: string, src: SatelliteSource): Row {
 	const free = src.freeTilesPerMonth ?? INCLUDED[id] ?? null;
 	const billed = (n: number) => (Math.max(0, n - (free ?? 0)) / 1000) * src.usdPer1000;
 	const zs = zooms(c?.month, id);
-	let proj: number | null = null;
+	let proj = HIT_RATES.map(() => 0);
 	let projNote: string | undefined;
-	if (src.usdPer1000 === 0) proj = 0;
-	else if (src.live) {
-		proj = 0;
-		projNote = `stops at ${k(0.9 * (free ?? 0))}, then falls back to Sentinel`;
-	} else {
-		const hitRate = month ? (hits ?? 0) / month : 0;
+	let projTiles: number | undefined;
+	if (src.live) projNote = `stops at ${k(0.9 * (free ?? 0))}, then falls back to Sentinel`;
+	else if (src.usdPer1000 > 0) {
 		const perPin = photoTilesFor([-120, 50], src.zoom).length;
-		const projUp = USERS * PINS_PER_USER * perPin * (1 - hitRate);
-		proj = billed(projUp);
-		projNote = `${k(projUp)} tiles · ${perPin}/pin`;
+		const asked = USERS * PINS_PER_USER * perPin;
+		proj = HIT_RATES.map((hr) => billed(asked * (src.cacheToR2 ? 1 - hr : 1)));
+		projNote = `${k(asked)} tiles asked · ${perPin}/pin`;
+		if (src.cacheToR2) projTiles = asked;
 	}
 	return {
 		id,
@@ -139,6 +142,7 @@ function sourceRow(id: string, src: SatelliteSource): Row {
 		mtd: up === null ? null : billed(up),
 		proj,
 		projNote,
+		projTiles,
 	};
 }
 
@@ -186,6 +190,11 @@ const r2 = $derived.by(() => {
 	const reads = ids.reduce((n, id) => n + tiers(c.month, id, "r2"), 0);
 	return { gb, writes, reads, mtd: gb * R2.storage + (writes / 1e6) * R2.write + (reads / 1e6) * R2.read };
 });
+// Every hit is an R2 read and every miss an R2 write.
+const r2Proj = $derived.by(() => {
+	const asked = rows.reduce((a, r) => a + (r.projTiles ?? 0), 0);
+	return HIT_RATES.map((hr) => ((asked * hr) / 1e6) * R2.read + ((asked * (1 - hr)) / 1e6) * R2.write);
+});
 
 const sum = (pick: (r: Row) => number | null) => {
 	const vals = rows.map(pick).filter((v): v is number => v !== null);
@@ -199,7 +208,7 @@ const total = $derived({
 	tiles: sum((r) => r.tiles),
 	gb: sum((r) => r.gb),
 	mtd: answer?.counts ? (sum((r) => r.mtd) ?? 0) + (r2?.mtd ?? 0) : null,
-	proj: sum((r) => r.proj),
+	proj: HIT_RATES.map((_, i) => (sum((r) => r.proj?.[i] ?? null) ?? 0) + r2Proj[i]),
 });
 
 // Inventory: what Squirrel counted going into R2 (an upstream fetch of a cached source is one write), not a listing.
@@ -282,6 +291,12 @@ function toBody(node: HTMLElement) {
 	{#if v === null}<span class="dim">—</span>{:else}<span class={cls}>{show(v)}</span>{/if}
 {/snippet}
 
+{#snippet byHit(v: number[] | null, cls: string)}
+	{#if v === null}<span class="dim">—</span>
+	{:else if v.every((x) => x === 0)}<span class="dim">$0</span>
+	{:else}{#each HIT_RATES as hr, i (hr)}<span class="hitrow"><i>{hr * 100}% hits</i><span class={cls}>{usd(v[i])}</span></span>{/each}{/if}
+{/snippet}
+
 <div class="sq" use:toBody>
 	<div class="topbar">
 		<span class="gclogo">G¢</span><span class="wordmark">Get Cache</span><span class="crumb">/</span><span class="appname">SQUIRREL</span>
@@ -316,8 +331,8 @@ function toBody(node: HTMLElement) {
 							<button class="tog" class:on={s.cache} class:locked={!!s.lock} disabled title={s.lock ?? `cacheToR2 = ${s.cache} in satelliteSources.ts; switching from here is not wired yet`}></button>
 						</div>
 						<div class="lic-cell">
-							<span class="lic {s.lic}" title={s.licence}>{s.lic === "ok" ? "✓" : s.lic === "dev" ? "!" : "×"} {s.licText}</span>
-							{#if s.lock}<span class="why red">{s.lock}</span>{:else if s.lic === "dev"}<span class="why amb">no written permission</span>{/if}
+							<span class="lic {s.lic}" title={s.licence}>{s.lic === "ok" ? "✓" : "×"} {s.licText}</span>
+							{#if s.lock}<span class="why red">{s.lock}</span>{/if}
 						</div>
 						<div class="dim">{s.z ?? "—"}</div>
 						<div class="r">{@render dash(s.today)}</div>
@@ -344,7 +359,7 @@ function toBody(node: HTMLElement) {
 								</div>
 							{/if}
 						</div>
-						<div class="r last proj-cell">{@render dash(s.proj, usd, s.proj ? "num b" : "dim")}{#if s.projNote}<span class="why dim">{s.projNote}</span>{/if}</div>
+						<div class="r last proj-cell">{@render byHit(s.proj, "num b")}{#if s.projNote}<span class="why dim">{s.projNote}</span>{/if}</div>
 					{/each}
 
 					<div class="first removed"><span class="dot big" style="background:{MAPBOX_COLOR};opacity:.4"></span><span class="srcname"><b class="dim">Mapbox</b><i>satellite</i></span></div>
@@ -353,7 +368,7 @@ function toBody(node: HTMLElement) {
 					<div class="first r2row"><span class="dot big" style="background:var(--text)"></span><span class="srcname"><b>R2 bucket</b><i>storage · reads · writes</i></span></div>
 					<div class="r2row dim">—</div><div class="r2row"><span class="lic ok">list price</span></div><div class="r2row"></div><div class="r2row"></div><div class="r2row"></div>
 					<div class="r2row r dim">{r2 ? `${k(r2.writes)} wr` : "—"}</div><div class="r2row r dim">{r2 ? `${k(r2.reads)} rd` : "—"}</div><div class="r2row"></div><div class="r2row r dim">{r2 ? r2.gb.toFixed(3) : "—"}</div><div class="r2row"></div>
-					<div class="r2row r dim small">${R2.storage}/GB</div><div class="r2row r b">{@render dash(r2?.mtd ?? null, usd, "gold")}</div><div class="r2row"><span class="dim small">wr ${R2.write}/M · rd ${R2.read}/M</span></div><div class="r2row r last dim">—</div>
+					<div class="r2row r dim small">${R2.storage}/GB</div><div class="r2row r b">{@render dash(r2?.mtd ?? null, usd, "gold")}</div><div class="r2row"><span class="dim small">wr ${R2.write}/M · rd ${R2.read}/M</span></div><div class="r2row r last proj-cell">{@render byHit(r2Proj, "num b")}<span class="why dim">hits read · misses write</span></div>
 
 					<div class="tot first"><span class="lbl">MONTH TOTAL</span></div><div class="tot"></div><div class="tot"></div><div class="tot"></div>
 					<div class="tot r">{@render dash(total.today)}</div><div class="tot r">{@render dash(total.month)}</div><div class="tot r">{@render dash(total.up, n, "amb")}</div>
@@ -362,9 +377,9 @@ function toBody(node: HTMLElement) {
 					<div class="tot r">{@render dash(total.mtd, usd, "gold")}</div><div class="tot"></div><div class="tot r last dim">↓</div>
 
 					<div class="proj first"><span class="lbl gold">10K USERS / MO</span></div>
-					<div class="proj" style="grid-column:span 7"><span class="dim small">{n(USERS)} planters × {PINS_PER_USER} pin photos a month at this month's hit rate · Esri held under its stop · Mapbox and BC unmeasured</span></div>
+					<div class="proj" style="grid-column:span 7"><span class="dim small">{n(USERS)} planters × {PINS_PER_USER} pin photos a month · crews share tiles, so 50–90% come from R2 · Esri held under its stop · Mapbox and BC unmeasured</span></div>
 					<div class="proj"></div><div class="proj"></div><div class="proj"></div><div class="proj"></div><div class="proj"></div><div class="proj"></div>
-					<div class="proj r last">{#if total.proj === null}<span class="dim">—</span>{:else}<span class="bigproj">{usd(total.proj)}</span>{/if}</div>
+					<div class="proj r last proj-cell">{@render byHit(total.proj, "bigproj")}</div>
 				</div>
 			</div>
 			<div class="foot">
@@ -576,7 +591,6 @@ function toBody(node: HTMLElement) {
 .lic-cell { flex-direction: column; align-items: flex-start !important; justify-content: center; gap: 3px; }
 .lic { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 700; padding: 3px 7px; border-radius: 5px; border: 1px solid; white-space: nowrap; }
 .lic.ok { color: var(--green); border-color: rgba(127, 191, 106, 0.4); }
-.lic.dev { color: var(--amber); border-color: rgba(217, 154, 61, 0.5); background: rgba(217, 154, 61, 0.08); }
 .lic.tos { color: var(--red); border-color: rgba(226, 85, 63, 0.5); background: rgba(226, 85, 63, 0.08); }
 .why { font-size: 9.5px; line-height: 1.25; white-space: normal; }
 .proj-cell { flex-direction: column; align-items: flex-end !important; justify-content: center; gap: 2px; }
@@ -598,6 +612,8 @@ function toBody(node: HTMLElement) {
 .lbl { font-size: 10.5px; font-weight: 800; letter-spacing: 0.1em; color: var(--muted); }
 .lbl.gold { color: var(--gold); }
 .proj { background: rgba(234, 182, 39, 0.06); border-bottom: none !important; border-top: 1px dashed rgba(234, 182, 39, 0.35); }
+.hitrow { display: flex; align-items: baseline; gap: 6px; }
+.hitrow i { font-style: normal; font-size: 9.5px; color: var(--muted2); }
 .bigproj { font-size: 15px; font-weight: 800; color: var(--gold); }
 .foot { padding: 10px 18px; font-family: var(--mono); font-size: 10.5px; color: var(--muted2); display: flex; gap: 18px; flex-wrap: wrap; border-top: 1px solid var(--border); }
 

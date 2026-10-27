@@ -47,7 +47,7 @@ export const SATELLITE_SOURCES = {
 		canvasPx: 3456,
 		quality: 0.92,
 		attribution: "© MapTiler © Maxar",
-		licence: "MapTiler Cloud terms: per-request, no server-side caching without a contract",
+		licence: "MapTiler Cloud terms; caching in our R2 approved by MapTiler, Oct 2026",
 		cacheToR2: true,
 		// Flex plan, per 1,000 requests past the included 500k.
 		usdPer1000: 0.15,
