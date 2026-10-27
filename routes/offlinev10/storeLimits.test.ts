@@ -353,6 +353,18 @@ describe("offline areas are an LRU cache of the 16 MB test budget", () => {
 		expect(await ids()).not.toContain(second);
 	});
 
+	it("D2: the area seen last goes to the top though its hourly mark was not due", async () => {
+		const [seen, first, ...rest] = await fillToBudget();
+		const now = Date.now();
+		const ago = { [seen]: 50, [first]: 20, [rest[0]!]: 15, [rest[1]!]: 10 };
+		for (const r of await listRegions()) await putRegion({ ...r, lastOpened: now - ago[r.id]! * 60_000 });
+		await viewing(view(far(0)), 12);
+		await viewing(view(far(9)), 12);
+		const at = far(5);
+		stop = startBlobService(host([at]));
+		await vi.waitFor(async () => expect(await ids()).toEqual([seen, ...rest, regionId(...at)].sort()), SWEEP);
+	});
+
 	it("E: a pin that cannot fit fails loud with the words the map shows", async () => {
 		await fillToBudget();
 		// The whole stack is on screen: nothing may go.

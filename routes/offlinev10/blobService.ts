@@ -191,7 +191,7 @@ async function download({ at, id, photo, pin, keep }: Ask): Promise<void> {
 async function makeRoom(at: [number, number], id: string): Promise<void> {
 	const victims = (await listRegions())
 		.filter((r) => r.id !== id && !(shown && boxesIntersect(rangeBox(r.range), shown)))
-		.sort((a, b) => (a.lastOpened ?? a.at) - (b.lastOpened ?? b.at));
+		.sort((a, b) => lastSeen(a) - lastSeen(b));
 	for (;;) {
 		try {
 			return await roomFor(at[0], at[1]);
@@ -205,6 +205,9 @@ async function makeRoom(at: [number, number], id: string): Promise<void> {
 
 // What the map shows; an area under it is never evicted.
 let shown: Box | null = null;
+// lastOpened is written at most hourly; this keeps the order exact between writes.
+const seenAt = new Map<string, number>();
+const lastSeen = (r: Region): number => seenAt.get(r.id) ?? r.lastOpened ?? r.at;
 
 /** The map just showed this box. Areas under it go to the top of the stack, and every pin on it
  * gets its whole blob — roads, water and photo — fetched again if it was evicted, never fetched or
@@ -217,7 +220,9 @@ export async function viewing(box: Box, zoom: number): Promise<void> {
 
 async function look(box: Box): Promise<void> {
 	const rows = await listRegions();
-	const touched = new Set(await touchRegions(rows.filter((r) => boxesIntersect(rangeBox(r.range), box)).map((r) => r.id)));
+	const onScreen = rows.filter((r) => boxesIntersect(rangeBox(r.range), box)).map((r) => r.id);
+	for (const id of onScreen) seenAt.set(id, Date.now());
+	const touched = new Set(await touchRegions(onScreen));
 	// Checked when its hourly touch is due, so panning does not scan the store.
 	if (touched.size) {
 		const missing = await checkRegions();
