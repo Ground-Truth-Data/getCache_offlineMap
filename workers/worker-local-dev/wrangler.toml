@@ -63,5 +63,6 @@ bucket_name = "gc-satellite-cache"
 
 [env.dev.vars]
 PMTILES_KEY = "planet.pmtiles"
+GC_importTiler_url = "https://import-tiler-dev.christobinharris.workers.dev"
 
 # ⚠️ a staging Worker (offline-tiles-staging) may still exist in Cloudflare — deleting config never tears down a live Worker.

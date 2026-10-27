@@ -7,8 +7,6 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const KEY = process.env.GC_importTiler_key;
-if (!KEY) throw new Error("GC_importTiler_key is not set — refusing to tile for anyone who asks");
 const PORT = Number(process.env.PORT ?? 8080);
 const MAX_BYTES = 64 * 1024 * 1024;
 
@@ -43,7 +41,6 @@ createServer(async (req, res) => {
 	};
 	if (req.url === "/health") return send(200, "ok");
 	if (req.url !== "/tile" || req.method !== "POST") return send(404, "POST /tile");
-	if (req.headers.authorization !== `Bearer ${KEY}`) return send(401, "bad key");
 	const geojson = await body(req);
 	if (!geojson) return send(413, `imports stop at ${MAX_BYTES / 1024 / 1024} MB`);
 	const dir = await mkdtemp(join(tmpdir(), "tile-"));
