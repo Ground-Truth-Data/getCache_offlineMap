@@ -28,6 +28,11 @@ remote = true
 binding = "SAT_CACHE"
 bucket_name = "gc-satellite-cache-prod"
 
+# Counts only, shared with tiles-dev: both spend the same MapTiler and Esri keys, so one meter holds the 90% stops.
+[[r2_buckets]]
+binding = "METER"
+bucket_name = "gc-satellite-cache"
+
 # ⚠️ PMTILES_KEY must match the uploaded object key in the
 # bucket — a mismatch silently reads as "no tiles".
 [vars]
@@ -50,8 +55,14 @@ bucket_name = "offline-tiles"
 binding = "SAT_CACHE"
 bucket_name = "gc-satellite-cache"
 
+[[env.dev.r2_buckets]]
+binding = "METER"
+bucket_name = "gc-satellite-cache"
+
 [env.dev.vars]
 PMTILES_KEY = "planet.pmtiles"
 SQUIRREL_WRITES = "on"
+# Top-level vars don't reach an env, so dev names it too: no written permission covers either Worker.
+R2_NEVER = "maptiler"
 
 # ⚠️ a staging Worker (offline-tiles-staging) may still exist in Cloudflare — deleting config never tears down a live Worker.

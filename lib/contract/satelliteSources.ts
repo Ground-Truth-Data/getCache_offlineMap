@@ -49,7 +49,7 @@ export const SATELLITE_SOURCES = {
 		canvasPx: 3456,
 		quality: 0.92,
 		attribution: "© MapTiler © Maxar",
-		licence: "MapTiler Cloud terms; no written permission to keep tiles yet, so prod never stores them in R2",
+		licence: "MapTiler Cloud terms; no written permission to keep tiles yet, so neither Worker stores them in R2",
 		cacheToR2: true,
 		// Flex plan, per 1,000 requests past the included 500k.
 		usdPer1000: 0.15,

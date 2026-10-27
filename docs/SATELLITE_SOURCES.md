@@ -31,7 +31,8 @@ and this page is fixed.
 - **Live only.** It is never put in the edge cache, R2 or a photo, and photos never bake from it.
   Master Agreement E204 §3.2c: "Customer may not otherwise scrape, download, or store Data".
 - The phone asks for no Esri tile while the whole view sits inside a pin's photo or inside USGS cover.
-- **Free-tier guard.** The free tier is 2,000,000 tiles a month. At 90% the Worker answers 404 and
+- **Free-tier guard.** The free tier is 2,000,000 tiles a month, spent by tiles-dev and tiles-prod on
+  one key, so both count into one `METER` bucket. At 90% of their sum each Worker answers 404 and
   Sentinel shows through until the month resets. No card is on the account, so pay-as-you-go can
   never start.
 
@@ -49,8 +50,8 @@ and this page is fixed.
 - `satellite-v2`, already 512 px tiles. Photos bake at **z17** into a 3,456 px canvas across a 2 km
   radius (~350 tiles per pin at 49° N). The raw tiles stay on the phone for the close-up.
 - It is the default photo source; Squirrel can switch the photo source to another bakeable one.
-- Saved on the phone. Cached in tiles-dev's R2 only: MapTiler has given no written permission to keep
-  its tiles, so tiles-prod names it in `R2_NEVER` and stores none.
+- Saved on the phone, never in R2: MapTiler has given no written permission to keep its tiles, so
+  both Workers name it in `R2_NEVER`.
 - Inside USGS cover, a pin's photo bakes from USGS at z16 instead, on purpose: `sourceAt` takes the
   covering source first. USGS is free and public domain, and z16 is its sharpest zoom.
 
@@ -90,7 +91,7 @@ that is mounted.
 | No Esri tile inside a photo or USGS cover | `lib/onPhone/satellite/onlineImagery.ts:51` |
 | Worker: covered tile → 404 for a live source | `workers/worker-local-dev/src/index.ts:499` |
 | Worker: standby switched off → 404 | `workers/worker-local-dev/src/index.ts:491` |
-| Worker: 90% of the free tier → 404 | `workers/worker-local-dev/src/index.ts:247` (`freeTierSpent`), `:500` |
+| Worker: 90% of the free tier → 404 | `workers/worker-local-dev/src/index.ts:257` (`freeTierSpent`), `:526` |
 | Worker: edge → R2 → upstream; R2 only when the cache switch says keep | `workers/worker-local-dev/src/index.ts:137` |
 | Squirrel's photo-source switch; standby and cache switches (a live source has no cache switch) | `workers/worker-local-dev/src/index.ts:188`, `:195` |
 | A photo's tiles counted by X-Cache: disk, hit, upstream | `routes/offlinev10/satellite.ts:70`, `:82` |

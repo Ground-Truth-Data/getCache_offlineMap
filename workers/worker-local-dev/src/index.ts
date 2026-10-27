@@ -34,6 +34,8 @@ interface Env {
   TILES: R2Bucket;
   /** Satellite tiles every phone shares as `source/z/x/y.jpg`, Squirrel's counts and its source switch; bound on tiles-dev only. */
   SAT_CACHE?: R2Bucket;
+  /** Squirrel's counts and the free-tier stops, one bucket for dev and prod: they spend the same keys. */
+  METER?: R2Bucket;
   /** "on" where Squirrel may flip switches (tiles-dev); unset, every /squirrel POST is refused. */
   SQUIRREL_WRITES?: string;
   /** Source ids never kept in SAT_CACHE, whatever a switch says — a licence that covers dev but not prod. */
@@ -174,12 +176,12 @@ let pendingTiles = 0;
 let lastFlush = 0;
 
 function tally(env: Env, ctx: ExecutionContext, key: string, n: number): void {
-  if (!env.SAT_CACHE) return;
+  if (!env.METER) return;
   pending[key] = (pending[key] ?? 0) + n;
   // `served` is a tile's last count; flushing on any earlier one splits a tile across two objects.
   if (!key.endsWith("|served")) return;
   pendingTiles++;
-  if (pendingTiles >= 100 || Date.now() - lastFlush > 30_000) ctx.waitUntil(flush(env.SAT_CACHE));
+  if (pendingTiles >= 100 || Date.now() - lastFlush > 30_000) ctx.waitUntil(flush(env.METER));
 }
 
 async function flush(bucket: R2Bucket): Promise<void> {
@@ -255,10 +257,10 @@ let spent = { month: "", at: 0, tiles: {} as Record<string, number> };
 async function freeTierSpent(env: Env, id: string, src: SatelliteSource): Promise<boolean> {
   if (!src.freeTilesPerMonth) return false;
   // No bucket, no meter: a metered source is refused rather than run blind.
-  if (!env.SAT_CACHE) return true;
+  if (!env.METER) return true;
   const month = new Date().toISOString().slice(0, 7);
   if (spent.month !== month || Date.now() - spent.at > 300_000)
-    spent = { month, at: Date.now(), tiles: upstreamOf((await squirrelCounts(env.SAT_CACHE, `_squirrel/counts/${month}`)).month) };
+    spent = { month, at: Date.now(), tiles: upstreamOf((await squirrelCounts(env.METER, `_squirrel/counts/${month}`)).month) };
   return (spent.tiles[id] ?? 0) + (upstreamOf(pending)[id] ?? 0) >= 0.9 * src.freeTilesPerMonth;
 }
 
@@ -313,8 +315,8 @@ export default {
       }
       const [active, sw] = await Promise.all([activeSource(env), switches(env)]);
       if (url.pathname === "/squirrel/active") return json({ active, ...sw });
-      if (env.SAT_CACHE) await flush(env.SAT_CACHE);
-      return json({ active, ...sw, counts: env.SAT_CACHE ? await squirrelCounts(env.SAT_CACHE) : null });
+      if (env.METER) await flush(env.METER);
+      return json({ active, ...sw, counts: env.METER ? await squirrelCounts(env.METER) : null });
     }
 
     // POST /imports: an import too big for a GeoJSON source, as text/plain so the browser skips the preflight.

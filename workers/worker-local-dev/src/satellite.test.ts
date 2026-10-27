@@ -15,7 +15,7 @@ const bucket = {
   put: async (k: string, v: ArrayBuffer | string) => void kept.set(k, v),
   list: async ({ prefix }: { prefix: string }) => ({ objects: [...kept.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key })), truncated: false }),
 };
-const env = (more = {}) => ({ GC_mapTiler_key: "k", GC_esri_key: "e", PUBLIC_GC_RT_mapbox_token: "m", SAT_CACHE: bucket, SQUIRREL_WRITES: "on", ...more }) as never;
+const env = (more = {}) => ({ GC_mapTiler_key: "k", GC_esri_key: "e", PUBLIC_GC_RT_mapbox_token: "m", SAT_CACHE: bucket, METER: bucket, SQUIRREL_WRITES: "on", ...more }) as never;
 const ctx = { waitUntil: (p: Promise<unknown>) => void waits.push(p), passThroughOnException() {} } as never;
 const call = async (path: string, e = env(), init?: RequestInit) => {
   const res = await worker.fetch(new Request(`https://tiles.test${path}`, init), e, ctx);
@@ -124,7 +124,17 @@ describe("esri: streamed only, and stopped at 90% of its free tier", () => {
   });
 
   it("is refused outright on a Worker with no bucket to meter it", async () => {
-    expect((await call(outside, env({ SAT_CACHE: undefined }))).status).toBe(404);
+    expect((await call(outside, env({ METER: undefined }))).status).toBe(404);
+    expect(asked).toBe(0);
+  });
+
+  it("stops prod on what dev spent too: one key, one meter, whatever each Worker caches", async () => {
+    const prodTiles = { ...bucket, get: async () => null, put: async () => {}, list: async () => ({ objects: [], truncated: false }) };
+    vi.setSystemTime((clock += 6 * 60_000));
+    spentThisMonth(1_800_000);
+    const res = await call(outside, env({ SAT_CACHE: prodTiles, SQUIRREL_WRITES: undefined }));
+    expect(res.status).toBe(404);
+    expect(await res.text()).toMatch(/90% of its free tier/);
     expect(asked).toBe(0);
   });
 
@@ -270,6 +280,6 @@ describe("/squirrel", () => {
   });
 
   it("serves the default source and no counts on a Worker without the bucket", async () => {
-    expect(await (await call("/squirrel", env({ SAT_CACHE: undefined }))).json()).toEqual({ active: "maptiler", standby: [], cache: { maptiler: false, sentinel: false, usgs: false, esri: false, mapbox: false }, counts: null });
+    expect(await (await call("/squirrel", env({ SAT_CACHE: undefined, METER: undefined }))).json()).toEqual({ active: "maptiler", standby: [], cache: { maptiler: false, sentinel: false, usgs: false, esri: false, mapbox: false }, counts: null });
   });
 });
