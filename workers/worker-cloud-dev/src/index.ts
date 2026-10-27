@@ -25,7 +25,7 @@ import {
 import hospitalsPack from "./hospitalsWorld.v1.bin";
 
 /** Edge-cache key for /hospitals; bump on every re-bake (bakeHospitals.mjs prints it). */
-const HOSPITALS_BUILD = "v1-209173-20260907";
+const HOSPITALS_BUILD = "v1-209173-20260907-cap250";
 
 const SATELLITE_PATH = /^\/satellite\/([a-z0-9-]+)\/(\d{1,2})\/(\d{1,7})\/(\d{1,7})\.jpg$/;
 
@@ -360,6 +360,7 @@ export default {
       }
 
       let hospBody: string;
+      let servedKm = km;
       try {
         const { index, dataOrigin } = hospitalsIndex();
         const cellArrays: HospitalEntry[][] = [];
@@ -368,7 +369,9 @@ export default {
           if (!span) continue;
           cellArrays.push(readCellEntries(hospitalsPack, dataOrigin, span));
         }
-        hospBody = JSON.stringify(hospitalsCollection(cellArrays, lng, lat, km));
+        const { fc, radiusKm } = hospitalsCollection(cellArrays, lng, lat, km);
+        hospBody = JSON.stringify(fc);
+        servedKm = radiusKm;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         // 502, never an empty 200 — same law as /fires.
@@ -382,7 +385,7 @@ export default {
         ...CORS_HEADERS,
         "Content-Type": "application/json",
         // The radius actually served; the phone stores this, never the number it asked for.
-        "X-Radius-Km": String(km),
+        "X-Radius-Km": String(servedKm),
         "Cache-Control": "public, max-age=31536000, immutable",
       };
       ctx.waitUntil(
@@ -394,6 +397,17 @@ export default {
       return new Response(request.method === "HEAD" ? null : hospBody, {
         status: 200,
         headers: hospHeaders,
+      });
+    }
+
+    // /highways-vN.pmtiles: the world's highways (getCache's build-world-highways.mjs), whole; each phone fetches it once.
+    // A rebuild is a new N, so each name is immutable.
+    const highways = /^\/(highways-v\d+\.pmtiles)$/.exec(url.pathname);
+    if (highways) {
+      const object = await env.TILES.get(highways[1]);
+      if (!object) return new Response(`${highways[1]} is not in the bucket`, { status: 404, headers: CORS_HEADERS });
+      return new Response(request.method === "HEAD" ? null : object.body, {
+        headers: { ...CORS_HEADERS, "Content-Type": "application/vnd.pmtiles", "Content-Length": String(object.size), "Cache-Control": "public, max-age=31536000, immutable", ETag: object.httpEtag },
       });
     }
 
