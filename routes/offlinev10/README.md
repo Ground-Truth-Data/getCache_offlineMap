@@ -134,7 +134,7 @@ not in it. A row with no `place` gets one on the page's next refresh.
 | `SessionDock.svelte` | CURRENT SESSION: memory now/avg/peak + sparkline, live download, reads, json export |
 | `ConfigDock.svelte` | CONFIG: worker switches with the grey/yellow/green/red circle and the ask→seen stopwatch, read-through, the budget presets, one switch per pyramid layer |
 | `DataDock.svelte` | bytes off the network by feature, per day, kept across reloads |
-| `BlobsDock.svelte` | OFFLINE BLOBS: the kept light and MB of budget, the not-whole count with repair all, WIPE, "+ blobs for pins in view", the FOCUSED row, a whole/missing dot and a ledger per blob |
+| `BlobsDock.svelte` | OFFLINE BLOBS: the kept light and MB of budget, the not-whole count with repair all, WIPE, "+ blobs for pins in view", the latest pin blob open with each part's source, the rest folded, and the link to `/app/squirrel` |
 
 ## Pins, the ruler and the library
 

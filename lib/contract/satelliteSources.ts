@@ -4,6 +4,8 @@
 export interface SatelliteSource {
 	/** shown on the dock and stored on each photo it bakes */
 	name: string;
+	/** this source's dot on Squirrel and the debugger */
+	color: string;
 	/** the Worker's request; `key` is the Worker secret named by `secret` */
 	tileUrl: (key: string, z: number, x: number, y: number) => string;
 	secret?: "GC_mapTiler_key" | "GC_esri_key";
@@ -33,6 +35,7 @@ export interface SatelliteSource {
 export const SATELLITE_SOURCES = {
 	maptiler: {
 		name: "MapTiler",
+		color: "#6fb3d9",
 		// satellite-v2 is already 512px, so @2x 404s.
 		tileUrl: (key, z, x, y) => `https://api.maptiler.com/tiles/satellite-v2/${z}/${x}/${y}.jpg?key=${key}`,
 		secret: "GC_mapTiler_key",
@@ -51,6 +54,7 @@ export const SATELLITE_SOURCES = {
 	},
 	sentinel: {
 		name: "Sentinel-2 cloudless 2016",
+		color: "#7fbf6a",
 		// EOX's unyeared layer is the 2016 mosaic, the only one under CC BY; 2017 on are non-commercial.
 		tileUrl: (_key, z, x, y) => `https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/${z}/${y}/${x}.jpg`,
 		maxZ: 15,
@@ -65,6 +69,7 @@ export const SATELLITE_SOURCES = {
 	},
 	usgs: {
 		name: "USGS National Map imagery",
+		color: "oklch(0.72 0.11 300)",
 		tileUrl: (_key, z, x, y) => `https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/${z}/${y}/${x}`,
 		// It lists LODs to 23 but 404s past 16.
 		maxZ: 16,
@@ -96,6 +101,7 @@ export const SATELLITE_SOURCES = {
 	},
 	esri: {
 		name: "Esri World Imagery",
+		color: "#d99a3d",
 		tileUrl: (key, z, x, y) => `https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}?token=${key}`,
 		secret: "GC_esri_key",
 		// z19 is cities only; past 18 the map stretches z18, at a quarter of the billed tiles.

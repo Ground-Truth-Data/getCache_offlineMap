@@ -11,6 +11,7 @@ import {
 	getSatImageByKey,
 	CLOSE_UP,
 	isCurrentPhoto,
+	photoTilesFor,
 	satImageMeta,
 } from "../../lib/onPhone/satellite/satelliteImage";
 import { noteSatelliteTiles } from "../../lib/onPhone/store/downloadGuard";
@@ -28,6 +29,7 @@ import {
 	notePhotoBytes,
 	photoTileBytes,
 	putPhotoTiles,
+	type Region,
 	regionsSnapshot,
 } from "./store";
 
@@ -126,6 +128,42 @@ export interface PhotoInfo {
 }
 
 const WORLD = SATELLITE_SOURCES[DEFAULT_SOURCE];
+
+/** The earliest blob on a photo stored it; a later one on the same photo reuses it and added nothing. */
+export const ownsPhoto = (r: Region, regions: readonly Region[]): boolean =>
+	!!r.photoKey && !regions.some((o) => o.id !== r.id && o.photoKey === r.photoKey && (o.at < r.at || (o.at === r.at && o.id < r.id)));
+
+export interface BlobPart {
+	name: "roads" | "photo" | "close-up";
+	/** what served it; "planet roads" is our own R2 */
+	source: string;
+	/** the satellite source's id, when it is one */
+	id?: string;
+	/** what this blob added; null when unknown or not baked yet */
+	tiles: number | null;
+	bytes: number | null;
+	zoom: string;
+	/** why there is nothing to count */
+	note?: string;
+}
+
+/** A blob's three parts as stored: roads, its photo, and the close-up tiles it added. */
+export function blobParts(r: Region, photos: Record<string, PhotoInfo>, regions: readonly Region[]): BlobPart[] {
+	const p = r.photoKey ? photos[r.photoKey] : undefined;
+	const id = p ? Object.entries(SATELLITE_SOURCES).find(([, s]) => s.name === p.source)?.[0] : undefined;
+	const owns = ownsPhoto(r, regions);
+	const part = (name: "photo" | "close-up", tiles: number, bytes: number): BlobPart =>
+		!r.photoKey
+			? { name, source: "none", tiles: null, bytes: null, zoom: "", note: "follow-me · no pin" }
+			: !p
+				? { name, source: "not baked", tiles: null, bytes: null, zoom: "" }
+				: { name, source: p.source, id, tiles: owns ? tiles : 0, bytes: owns ? bytes : 0, zoom: `z${p.zoom}`, note: owns ? undefined : "reuses an earlier blob's" };
+	return [
+		{ name: "roads", source: "planet roads", tiles: r.fetched, bytes: r.newBytes ?? null, zoom: "z0–13" },
+		part("photo", p && r.photoCenter ? photoTilesFor(r.photoCenter, p.zoom).length : 0, p?.bytes ?? 0),
+		part("close-up", p?.closeUp.addedTiles ?? 0, p?.closeUp.addedBytes ?? 0),
+	];
+}
 
 /** Metadata per photo key, never the pixels; the total is reported to the tile store's budget. */
 export async function photoInfo(): Promise<Record<string, PhotoInfo>> {

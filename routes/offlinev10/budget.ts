@@ -32,11 +32,6 @@ export function isStale(r: { at: number; lastOpened?: number }, now = Date.now()
 	return (r.lastOpened ?? r.at) < cut.getTime();
 }
 
-/** Roads AND photo: a photo often outweighs the roads it covers. */
-export function blobBytes(tileBytes: number, photoBytes = 0): number {
-	return tileBytes + photoBytes;
-}
-
 export function setBudgetMb(mb: number): void {
 	if (!import.meta.env.DEV) return;
 	try {
