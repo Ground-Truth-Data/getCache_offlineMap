@@ -46,6 +46,10 @@ routes = [
   { pattern = "tiles-dev.getcache.org", custom_domain = true }
 ]
 
+# A 500 that won't reproduce left no trace (13/1370/2758.pbf, 27 Oct 2026); Workers Logs keeps its error.
+[env.dev.observability]
+enabled = true
+
 [[env.dev.r2_buckets]]
 binding = "TILES"
 bucket_name = "offline-tiles"
