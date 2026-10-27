@@ -9,7 +9,7 @@ import { createSatelliteMount, type SatelliteMount } from "./mountSatellite";
 import { PHOTO_COVERAGE_RADIUS_KM } from "./satelliteImage";
 import { kmToDegSpan } from "../../shared/kmGeo";
 
-/** The raster layer Mapbox's satellite styles draw their imagery with. */
+/** The online style's IMAGERY_ANCHOR: the imagery goes in under it, then it goes. */
 const MAPBOX_IMAGERY = "satellite";
 const SENTINEL = "gc-sentinel";
 /** Streamed past SHARP_FROM_Z: Esri, or a standby source while Squirrel has it switched on. */
