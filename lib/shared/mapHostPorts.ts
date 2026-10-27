@@ -40,6 +40,8 @@ export interface MapHostSession {
 	blockKey?: string | null;
 	createdAt: string;
 	lastTouchedAt: string;
+	/** Another phone's map, followed by link: nothing on it is added, edited, moved or deleted here. */
+	locked?: boolean;
 	features: MapHostFeature[];
 }
 
