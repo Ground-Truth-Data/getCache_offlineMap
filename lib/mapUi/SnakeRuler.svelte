@@ -1047,7 +1047,7 @@ $effect(() => {
     // A spot the user tapped to is theirs; panning would walk the shape out from under it.
     if (!a?.cornered || spotBump) return;
     const shortfall = VP_MARGIN + CHROME_STACK_PX - a.minY;
-    if (shortfall > 4 && !map.isEasing()) {
+    if (shortfall > 4 && !map.isMoving()) {
         map.panBy([0, shortfall], { duration: 220 });
     }
 });
