@@ -362,6 +362,7 @@ function touchInView(): void {
 /** Follow me: queue the blob around the person when less than FOLLOW_MARGIN_KM
  * of map is left. Never while a download is in flight, or bad signal stacks near-duplicates. */
 function onUserFix(lng: number, lat: number): void {
+	routeHandle?.fix(lng, lat);
 	if (!moved(lastEval, [lng, lat])) return;
 	lastEval = [lng, lat];
 	fix = [lng, lat];

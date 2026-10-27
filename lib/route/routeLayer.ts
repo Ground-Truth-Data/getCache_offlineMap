@@ -203,6 +203,8 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	let offFixes = 0;
 	let wake: WakeLockSentinel | null = null;
 	let target: LngLat | null = null;
+	/** A saved trip's stops, held for the first fix: the map can open before the phone knows where it is. */
+	let pending: LngLat[] = [];
 	// A DOM marker, not a map layer: block labels are DOM markers, and every DOM marker sits above the canvas.
 	const pinEl = document.createElement("img");
 	pinEl.src = targetPinUrl;
@@ -385,8 +387,9 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 
 	const remember = (): void => {
 		try {
-			if (!target && !stops.length) localStorage.removeItem(SAVED_KEY);
-			else localStorage.setItem(SAVED_KEY, JSON.stringify({ target, ahead: stops.slice(1) }));
+			const ahead = stops.length ? stops.slice(1) : pending;
+			if (!target && !ahead.length) localStorage.removeItem(SAVED_KEY);
+			else localStorage.setItem(SAVED_KEY, JSON.stringify({ target, ahead }));
 		} catch (e) {
 			console.warn("[route] could not keep the route for next launch", e);
 		}
@@ -462,6 +465,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		asked++;
 		solving = false;
 		stops = [];
+		pending = [];
 		result = null;
 		ghost = null;
 		drag = null;
@@ -493,6 +497,11 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		// A small move keeps the old anchor, so a slow crawl still adds up to a heading.
 		if (turned !== null) heading = turned;
 		if (turned !== null || !lastFix) lastFix = at;
+		if (pending.length) {
+			void solve([at, ...pending], false);
+			pending = [];
+			return;
+		}
 		if (!following || !result?.ok || solving) return;
 		const bearing = heading ?? map.getBearing();
 		const zoom = Math.max(map.getZoom(), FOLLOW_ZOOM);
@@ -742,7 +751,10 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		target = saved?.target ?? null;
 		const start = opts.origin();
 		if (saved?.ahead.length && start) void solve([start, ...saved.ahead], false);
-		else paint();
+		else {
+			pending = saved?.ahead ?? [];
+			paint();
+		}
 	} catch (e) {
 		console.warn("[route] saved route unreadable", e);
 	}
