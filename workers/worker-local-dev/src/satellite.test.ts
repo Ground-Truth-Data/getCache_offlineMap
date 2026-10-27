@@ -15,7 +15,7 @@ const bucket = {
   put: async (k: string, v: ArrayBuffer | string) => void kept.set(k, v),
   list: async ({ prefix }: { prefix: string }) => ({ objects: [...kept.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key })), truncated: false }),
 };
-const env = (more = {}) => ({ GC_mapTiler_key: "k", GC_esri_key: "e", PUBLIC_GC_RT_mapbox_token: "m", SAT_CACHE: bucket, ...more }) as never;
+const env = (more = {}) => ({ GC_mapTiler_key: "k", GC_esri_key: "e", PUBLIC_GC_RT_mapbox_token: "m", SAT_CACHE: bucket, SQUIRREL_WRITES: "on", ...more }) as never;
 const ctx = { waitUntil: (p: Promise<unknown>) => void waits.push(p), passThroughOnException() {} } as never;
 const call = async (path: string, e = env(), init?: RequestInit) => {
   const res = await worker.fetch(new Request(`https://tiles.test${path}`, init), e, ctx);
@@ -136,6 +136,37 @@ describe("esri: streamed only, and stopped at 90% of its free tier", () => {
   });
 });
 
+describe("the cache switch: Squirrel decides what R2 keeps", () => {
+  // The switches are re-read each minute; each test starts past that, with none written.
+  beforeEach(() => {
+    vi.stubGlobal("fetch", async () => new Response(new Uint8Array([7]), { status: 200 }));
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime((clock += 6 * 60_000));
+  });
+  afterEach(() => vi.useRealTimers());
+  const setCache = (id: string, to: string) => call(`/squirrel/cache/${id}`, env(), { method: "POST", body: to });
+
+  it("follows cacheToR2 until switched, then keeps what the switch says", async () => {
+    expect(await (await call("/squirrel/active")).json()).toMatchObject({ cache: { maptiler: true, sentinel: false, usgs: true, esri: false, mapbox: false } });
+    expect(await (await setCache("sentinel", "on")).json()).toMatchObject({ cache: { sentinel: true } });
+    await ask("sentinel");
+    expect(tiles()).toEqual(["sentinel/14/2627/5718.jpg"]);
+    await setCache("maptiler", "off");
+    await ask("maptiler");
+    expect(tiles()).toEqual(["sentinel/14/2627/5718.jpg"]);
+  });
+
+  it("has no switch for a source whose licence forbids keeping it", async () => {
+    expect((await setCache("esri", "on")).status).toBe(400);
+    expect((await setCache("mapbox", "on")).status).toBe(400);
+    expect((await setCache("bing", "on")).status).toBe(400);
+  });
+
+  it("is refused on a Worker with no bucket", async () => {
+    expect((await call("/squirrel/cache/sentinel", env({ SAT_CACHE: undefined }), { method: "POST", body: "on" })).status).toBe(409);
+  });
+});
+
 describe("mapbox: a standby source, off until Squirrel switches it on", () => {
   // Ethiopia: nothing covers it but Sentinel.
   const outside = "/satellite/mapbox/14/9874/7811.jpg";
@@ -161,7 +192,7 @@ describe("mapbox: a standby source, off until Squirrel switches it on", () => {
   });
 
   it("streams once switched on, kept nowhere, and stops again when switched off", async () => {
-    expect(await (await flip("on")).json()).toEqual({ standby: ["mapbox"] });
+    expect(await (await flip("on")).json()).toMatchObject({ standby: ["mapbox"] });
     expect(await (await call("/squirrel/active")).json()).toMatchObject({ standby: ["mapbox"] });
     expect((await call(outside)).status).toBe(200);
     expect(asked[0]).toMatch(/^https:\/\/api\.mapbox\.com\/v4\/mapbox\.satellite\/14\/9874\/7811\.jpg90\?access_token=/);
@@ -210,10 +241,18 @@ describe("/squirrel", () => {
   it("switches the active source, refusing one it does not know", async () => {
     expect((await call("/squirrel/active", env(), { method: "POST", body: "bing" })).status).toBe(400);
     expect((await call("/squirrel/active", env(), { method: "POST", body: "sentinel" })).status).toBe(200);
-    expect(await (await call("/squirrel/active")).json()).toEqual({ active: "sentinel", standby: [] });
+    expect(await (await call("/squirrel/active")).json()).toMatchObject({ active: "sentinel", standby: [] });
+  });
+
+  it("refuses every switch on a Worker that takes no writes, so tiles-prod can't be switched from outside", async () => {
+    const prod = env({ SQUIRREL_WRITES: undefined });
+    expect((await call("/squirrel/active", prod, { method: "POST", body: "sentinel" })).status).toBe(403);
+    expect((await call("/squirrel/cache/sentinel", prod, { method: "POST", body: "on" })).status).toBe(403);
+    expect((await call("/squirrel/standby/mapbox", prod, { method: "POST", body: "on" })).status).toBe(403);
+    expect([...kept.keys()].filter((k) => !k.startsWith("_squirrel/counts/"))).toEqual([]);
   });
 
   it("serves the default source and no counts on a Worker without the bucket", async () => {
-    expect(await (await call("/squirrel", env({ SAT_CACHE: undefined }))).json()).toEqual({ active: "maptiler", standby: [], counts: null });
+    expect(await (await call("/squirrel", env({ SAT_CACHE: undefined }))).json()).toEqual({ active: "maptiler", standby: [], cache: { maptiler: false, sentinel: false, usgs: false, esri: false, mapbox: false }, counts: null });
   });
 });

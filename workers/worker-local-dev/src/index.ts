@@ -33,6 +33,8 @@ interface Env {
   TILES: R2Bucket;
   /** Satellite tiles every phone shares as `source/z/x/y.jpg`, Squirrel's counts and its source switch; bound on tiles-dev only. */
   SAT_CACHE?: R2Bucket;
+  /** "on" where Squirrel may flip switches (tiles-dev); unset, every /squirrel POST is refused. */
+  SQUIRREL_WRITES?: string;
   PMTILES_KEY: string;
   /** Worker SECRETs (`wrangler secret put`), never [vars] — they must not reach the app bundle. */
   GC_firms_map_key: string;
@@ -271,6 +273,8 @@ export default {
     const switchPath = /^\/squirrel\/(standby|cache)\/([a-z0-9-]+)$/.exec(url.pathname);
     if (url.pathname === "/squirrel" || url.pathname === "/squirrel/active" || switchPath) {
       const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json", "Cache-Control": "no-store" } });
+      // Unauthenticated and CORS-open, so only the Worker Squirrel drives may take a switch.
+      if (request.method === "POST" && env.SQUIRREL_WRITES !== "on") return json({ error: "this Worker's switches are not writable" }, 403);
       if (switchPath) {
         const sw = switchPath[1] as keyof typeof SWITCHABLE;
         const id = switchPath[2];
