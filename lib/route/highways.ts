@@ -4,7 +4,7 @@ import { FileSource, PMTiles } from "pmtiles";
 import { onWifi, tilesHost } from "../worker/tilesHost";
 
 /** A rebuilt file gets the next number: a phone holding another name fetches this one and drops its old copy. */
-const NAME = "highways-v1.pmtiles";
+const NAME = "highways-v2.pmtiles";
 const DB = "gc-highways";
 const STORE = "file";
 const KEY = "highways";
