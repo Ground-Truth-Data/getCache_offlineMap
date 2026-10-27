@@ -13,6 +13,7 @@ and this page is fixed.
 | Browsing z13+, outside pins and outside the US | Esri | 13–18 | Never | Free to 2M tiles a month |
 | Browsing z13+ in the US | USGS | 13–16 | R2 | Free |
 | Pin blobs (the baked photo and its close-up) | MapTiler | 17 | R2, and on the phone | $0.15 per 1,000 |
+| Pin blobs in the US | USGS | 16 | R2, and on the phone | Free |
 | Standby, off | Mapbox satellite | 13–18 | Never | $0.25 per 1,000 past 750k |
 | Standby, off | BC Imagery | — | — | Not wired |
 
@@ -48,8 +49,8 @@ and this page is fixed.
   radius (~350 tiles per pin at 49° N). The raw tiles stay on the phone for the close-up.
 - It is the default photo source; Squirrel can switch the photo source to another bakeable one.
 - Cached in R2, approved by MapTiler (Oct 2026), and saved on the phone.
-- ⚠️ Inside USGS cover, a pin's photo bakes from USGS at z16, not MapTiler: `sourceAt` takes the
-  covering source first.
+- Inside USGS cover, a pin's photo bakes from USGS at z16 instead, on purpose: `sourceAt` takes the
+  covering source first. USGS is free and public domain, and z16 is its sharpest zoom.
 
 ### Standby
 
