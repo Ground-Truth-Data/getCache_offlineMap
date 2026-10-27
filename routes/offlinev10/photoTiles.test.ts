@@ -105,6 +105,19 @@ describe("what a photo's tiles cost on the wire", () => {
 		expect(fetchMock).toHaveBeenCalledTimes(3);
 	});
 
+	it("counts each tile by where it came from: disk, the Worker's cache (X-Cache HIT) or the source (MISS)", async () => {
+		const C = region("c", -81.5076, 43.1226);
+		await putRegion(C);
+		let n = 0;
+		fetchMock.mockImplementation(async () => ({ ok: true, status: 200, headers: new Headers({ "X-Cache": n++ % 3 ? "HIT" : "MISS" }), arrayBuffer: async () => new ArrayBuffer(7) }));
+		const wire = { disk: 0, hit: 0, miss: 0, kept: true };
+		await photoTiles(keysOf(C), C.id, "maptiler", wire);
+		const fetched = fetchMock.mock.calls.length;
+		expect(wire.disk).toBe(keysOf(C).length - fetched);
+		expect(wire.miss).toBe(Math.ceil(fetched / 3));
+		expect(wire.hit + wire.miss).toBe(fetched);
+	});
+
 	it("a photo for an area whose row is gone fetches, but lands no tile", async () => {
 		const C = region("c", -81.5076, 43.1226);
 		const before = await photoKeysOnDisk();

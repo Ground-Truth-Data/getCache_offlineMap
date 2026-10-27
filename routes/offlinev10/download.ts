@@ -224,10 +224,14 @@ export class RateLimited extends Error {
 	}
 }
 
+/** A tile as the host sent it, and its X-Cache: HIT or MISS from our satellite Worker, null from anything else. */
+type Got = { body: ArrayBuffer | null; cache: string | null };
+const NONE: Got = { body: null, cache: null };
+
 /** One GET per tile, at most `width` for this caller and IN_FLIGHT across all callers, in `urls` order; a 204 is null, and so is a failure when `skipFailed` — never a 429, which stops every lane. `stop` runs before each fetch and may throw. */
 export async function getEach(
 	urls: readonly string[],
-	onTile: (i: number, body: ArrayBuffer | null) => void,
+	onTile: (i: number, body: ArrayBuffer | null, cache: string | null) => void,
 	stop: () => boolean = () => false,
 	skipFailed = false,
 	onSkipped?: (error: unknown) => void,
@@ -238,14 +242,12 @@ export async function getEach(
 	const lane = async (): Promise<void> => {
 		while (next < urls.length && failed === null && !stop()) {
 			const i = next++;
-			onTile(
-				i,
-				await getOne(urls[i]).catch((e) => {
-					if (!skipFailed || e instanceof RateLimited) return Promise.reject(e);
-					onSkipped?.(e);
-					return null;
-				}),
-			);
+			const got = await getOne(urls[i]).catch((e) => {
+				if (!skipFailed || e instanceof RateLimited) return Promise.reject(e);
+				onSkipped?.(e);
+				return NONE;
+			});
+			onTile(i, got.body, got.cache);
 		}
 	};
 	const lanes = await Promise.allSettled(
@@ -268,7 +270,7 @@ function release(): void {
 	else free++;
 }
 
-async function getOne(url: string): Promise<ArrayBuffer | null> {
+async function getOne(url: string): Promise<Got> {
 	if (free > 0) free--;
 	else await new Promise<void>((r) => queued.push(r));
 	try {
@@ -286,7 +288,7 @@ export const resetWireStats = () => {
 	wire.n = wire.rtt = wire.worker = 0;
 };
 
-async function getOnce(url: string): Promise<ArrayBuffer | null> {
+async function getOnce(url: string): Promise<Got> {
 	for (let attempt = 0; ; attempt++) {
 		const t0 = performance.now();
 		const res = await fetch(url);
@@ -295,8 +297,8 @@ async function getOnce(url: string): Promise<ArrayBuffer | null> {
 			wire.rtt += performance.now() - t0;
 			for (const d of (res.headers.get("Server-Timing") ?? "").matchAll(/dur=([\d.]+)/g)) wire.worker += Number(d[1]);
 		}
-		if (res.status === 204) return null;
-		if (res.ok) return res.arrayBuffer();
+		if (res.status === 204) return NONE;
+		if (res.ok) return { body: await res.arrayBuffer(), cache: res.headers.get("X-Cache") };
 		if (res.status === 429) throw new RateLimited((Number(res.headers.get("Retry-After")) || 60) * 1000, url);
 		// A cold isolate's first archive read can race; the retry lands warm.
 		if (attempt === 1) throw new Error(`tile ${url}: HTTP ${res.status} ${await res.text().catch(() => "")}`.trim());

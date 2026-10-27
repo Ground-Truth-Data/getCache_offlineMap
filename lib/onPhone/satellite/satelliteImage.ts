@@ -63,6 +63,16 @@ export interface SatImage {
 	canvasPx?: number;
 	/** ask → on disk: the satellite download and the bake together */
 	ms?: number;
+	/** where its tiles came from; absent on a photo baked before this was counted */
+	wire?: PhotoWire;
+}
+
+/** A bake's tiles by origin: this phone's disk, a Worker cache hit (X-Cache HIT), or the source (MISS); `kept` says the Worker wrote those misses to R2. */
+export interface PhotoWire {
+	disk: number;
+	hit: number;
+	miss: number;
+	kept: boolean;
 }
 
 const idb = makeKeyedIdbStore<SatImage>({ dbName: DB_NAME, storeName: STORE });
@@ -102,6 +112,7 @@ export async function satImageMeta(): Promise<
 		zoom?: number;
 		canvasPx?: number;
 		ms?: number;
+		wire?: PhotoWire;
 	}[]
 > {
 	const [keys, meta] = await Promise.all([
@@ -113,6 +124,7 @@ export async function satImageMeta(): Promise<
 			zoom: v.zoom,
 			canvasPx: v.canvasPx,
 			ms: v.ms,
+			wire: v.wire,
 		})),
 	]);
 	return keys.map((k, i) => ({ key: k, ...meta[i]! }));
@@ -216,6 +228,8 @@ export async function bakeSatelliteImage(
 	src: SatelliteSource,
 	tiles: PhotoTileSource,
 	beforeSave?: () => Promise<void>,
+	/** filled by `tiles` as they arrive; stored with the photo */
+	wire?: PhotoWire,
 ): Promise<SatImage | null> {
 	const existing = await idb.get(key);
 	// A stale stamp is a miss; a photo from a source switched away from stays until it is re-baked.
@@ -226,6 +240,7 @@ export async function bakeSatelliteImage(
 	const out = await bakeFrom(src, center, tiles);
 	if (!out) return existing ?? null;
 	out.ms = Math.round(performance.now() - t0);
+	out.wire = wire;
 	await beforeSave?.();
 	await idb.put(key, out);
 	return out;

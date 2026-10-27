@@ -189,15 +189,15 @@ $effect(() => {
 				<div class="bcoord">{ll(focus.lat)}, {ll(focus.lng)} · {health(focus)}</div>
 				<div class="plines">
 					{#each partsOf(focus) as p (p.name)}
-						{@const cached = p.id ? SATELLITE_SOURCES[p.id as SourceId].cacheToR2 : false}
 						<div class="pl">
 							<span class="part">{p.name}</span>
 							<span class="src" title={p.source}><i style="background:{colorOf(p)}"></i>{p.source}</span>
 							<span class="how">
 								{#if p.name === "roads"}<span class="grn">R2 hit</span>
 								{:else if p.note || p.tiles === null}<span class="dim">{p.note ?? "—"}</span>
-								{:else if !cached}<span class="red">upstream · not saved</span>
-								{:else}<span class="dim">R2 or upstream: not recorded</span>{/if}
+								{:else if p.wire}<span class="grn">{p.wire.hit} hit</span> · <span class:amb={p.wire.miss > 0}>{p.wire.miss} upstream</span>{#if p.wire.miss}{#if p.wire.kept}<span class="dim"> · written to R2</span>{:else}<span class="red"> · not saved</span>{/if}{/if}
+								{:else if p.name === "close-up"}<span class="dim">with the photo's</span>
+								{:else}<span class="dim">baked before counting</span>{/if}
 								{#if p.tiles !== null}<span class="dim"> · {p.tiles} tiles</span>{/if}
 							</span>
 							<span class="mb">{p.bytes === null ? "—" : mb(p.bytes)}</span>

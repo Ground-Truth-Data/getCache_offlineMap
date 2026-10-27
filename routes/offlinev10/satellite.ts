@@ -11,6 +11,7 @@ import {
 	getSatImageByKey,
 	CLOSE_UP,
 	isCurrentPhoto,
+	type PhotoWire,
 	photoTilesFor,
 	satImageMeta,
 } from "../../lib/onPhone/satellite/satelliteImage";
@@ -60,11 +61,13 @@ const reasonOf = (e: unknown): string =>
 		.replace(/ for \d+\/\d+\/\d+$/, "")
 		.trim() || "tile request failed";
 
-/** A photo's tiles from `source`: disk first, the rest one GET each. Only the close-up source's are kept, under `owner`'s row, before they are drawn. */
-export async function photoTiles(keys: string[], owner: string, source: string = DEFAULT_SOURCE): Promise<Map<string, ArrayBuffer>> {
+/** A photo's tiles from `source`: disk first, the rest one GET each, each counted into `wire` by where it came from.
+ * Only the close-up source's are kept, under `owner`'s row, before they are drawn. */
+export async function photoTiles(keys: string[], owner: string, source: string = DEFAULT_SOURCE, wire?: PhotoWire): Promise<Map<string, ArrayBuffer>> {
 	const keep = sourceOf(source) === CLOSE_UP;
 	lastTileFailure = null;
 	const have = keep ? await getPhotoTiles(keys) : new Map<string, ArrayBuffer>();
+	if (wire) wire.disk += have.size;
 	const missing = keys.filter((k) => !have.has(k));
 	if (missing.length === 0 || (typeof navigator !== "undefined" && navigator.onLine === false)) return have;
 	const urls = missing.map((k) => satelliteTileUrl(source, ...(k.split("/").map(Number) as [number, number, number])));
@@ -74,8 +77,10 @@ export async function photoTiles(keys: string[], owner: string, source: string =
 	try {
 		await getEach(
 			urls as string[],
-			(i, b) => {
+			(i, b, cache) => {
 				if (!b) return;
+				if (wire && cache === "HIT") wire.hit++;
+				else if (wire && cache === "MISS") wire.miss++;
 				got.push([missing[i], b]);
 				have.set(missing[i], b);
 				noteBytes("satellite", b.byteLength);
@@ -125,6 +130,7 @@ export interface PhotoInfo {
 	ms?: number;
 	/** The raw source tiles kept for the close-up; they live in the tile store, so its budget already counts them. */
 	closeUp: CloseUp;
+	wire?: PhotoWire;
 }
 
 const WORLD = SATELLITE_SOURCES[DEFAULT_SOURCE];
@@ -145,6 +151,8 @@ export interface BlobPart {
 	zoom: string;
 	/** why there is nothing to count */
 	note?: string;
+	/** the photo's tiles by origin, counted at its bake */
+	wire?: PhotoWire;
 }
 
 /** A blob's three parts as stored: roads, its photo, and the close-up tiles it added. */
@@ -160,7 +168,7 @@ export function blobParts(r: Region, photos: Record<string, PhotoInfo>, regions:
 				: { name, source: p.source, id, tiles: owns ? tiles : 0, bytes: owns ? bytes : 0, zoom: `z${p.zoom}`, note: owns ? undefined : "reuses an earlier blob's" };
 	return [
 		{ name: "roads", source: "planet roads", tiles: r.fetched, bytes: r.newBytes ?? null, zoom: "z0–13" },
-		part("photo", p && r.photoCenter ? photoTilesFor(r.photoCenter, p.zoom).length : 0, p?.bytes ?? 0),
+		{ ...part("photo", p && r.photoCenter ? photoTilesFor(r.photoCenter, p.zoom).length : 0, p?.bytes ?? 0), wire: owns ? p?.wire : undefined },
 		part("close-up", p?.closeUp.addedTiles ?? 0, p?.closeUp.addedBytes ?? 0),
 	];
 }
@@ -187,6 +195,7 @@ export async function photoInfo(): Promise<Record<string, PhotoInfo>> {
 			zoom: m.zoom ?? WORLD.zoom,
 			canvasPx: m.canvasPx ?? WORLD.canvasPx,
 			ms: m.ms,
+			wire: m.wire,
 			closeUp: closeByKey.get(m.key) ?? { tiles: 0, bytes: 0, addedTiles: 0, addedBytes: 0 },
 		};
 	}
@@ -234,7 +243,7 @@ async function pass(asks: readonly PhotoAsk[]): Promise<number> {
 		say(`[offlineV10] photo: paused ${Math.ceil((pausedUntil - Date.now()) / 1000)}s more, pass skipped`);
 		return 0;
 	}
-	let active: [string, SatelliteSource];
+	let active: [string, SatelliteSource, Record<string, boolean>];
 	try {
 		active = await activeSource();
 	} catch (error) {
@@ -253,7 +262,8 @@ async function pass(asks: readonly PhotoAsk[]): Promise<number> {
 		}
 		let img: Awaited<ReturnType<typeof bakeSatelliteImage>> = null;
 		try {
-			img = await bakeSatelliteImage(photoKey, at, src, (keys) => photoTiles(keys, id, sid), () => claimArea(id));
+			const wire: PhotoWire = { disk: 0, hit: 0, miss: 0, kept: !!active[2][sid] };
+			img = await bakeSatelliteImage(photoKey, at, src, (keys) => photoTiles(keys, id, sid, wire), () => claimArea(id), wire);
 		} catch (error) {
 			if (error instanceof RateLimited) {
 				pausedUntil = Date.now() + error.ms;
@@ -284,16 +294,17 @@ async function pass(asks: readonly PhotoAsk[]): Promise<number> {
 	return landed;
 }
 
-/** The source the Worker says photos bake from; asked once a pass, so a switch on /app/squirrel lands on the next one. */
-async function activeSource(): Promise<[string, SatelliteSource]> {
+/** The source the Worker says photos bake from, and which sources it keeps in R2; asked once a pass, so a switch on /app/squirrel lands on the next one. */
+async function activeSource(): Promise<[string, SatelliteSource, Record<string, boolean>]> {
 	const url = squirrelUrl("/active");
 	if (!url) throw new Error("no tiles host configured — configureTilesHost() must run before a photo bakes.");
 	const res = await fetch(url);
 	if (!res.ok) throw new Error(`HTTP ${res.status} the Worker would not say which satellite source is on`);
-	const { active } = (await res.json()) as { active: string };
+	const { active, cache } = (await res.json()) as { active: string; cache?: Record<string, boolean> };
 	const src = sourceOf(active);
 	if (!src) throw new Error(`the Worker serves satellite source "${active}", which this build does not know`);
-	return [active, src];
+	// tiles-prod names no cache switches until its next deploy; there R2 keeps nothing.
+	return [active, src, cache ?? {}];
 }
 
 export async function bakeAllPhotos(): Promise<number> {

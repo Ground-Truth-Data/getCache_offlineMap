@@ -9,7 +9,7 @@ import { type Region, listRegions } from "../offlinev10/store";
 import { rangeBox } from "../offlinev10/tiles";
 
 type Counts = Record<string, number>;
-type Answer = { active: string; standby: string[]; counts: { today: Counts; month: Counts; all: Counts } | null };
+type Answer = { active: string; standby: string[]; cache: Record<string, boolean>; counts: { today: Counts; month: Counts; all: Counts } | null };
 type Lic = "ok" | "tos";
 type Row = {
 	id: string;
@@ -53,8 +53,15 @@ const PINS_PER_USER = 20;
 const HIT_RATES = [0.5, 0.7, 0.9];
 // MapTiler Flex includes 500k requests a month; Esri's free tier is in the contract because the Worker stops at 90% of it.
 const INCLUDED: Record<string, number> = { maptiler: 500_000 };
-// Mapbox bills the online map per load, not per tile: ~50k free, then ~$5 per 1,000.
-const MAPBOX_LOADS = { free: 50_000, usdPer1000: 5 };
+// Mapbox bills the online map per load, not per tile: 50k free, then $ per 1,000 falling by tier (mapbox.com/pricing, Oct 2026).
+const MAPBOX_LOADS = { free: 50_000, tiers: [[100_000, 5], [200_000, 4], [1_000_000, 3], [Infinity, 2.5]] as const };
+const OPENS_PER_DAY = 3;
+const loadsCost = (n: number) =>
+	MAPBOX_LOADS.tiers.reduce((usd, [upTo, per], i) => {
+		const from = i ? MAPBOX_LOADS.tiers[i - 1][0] : MAPBOX_LOADS.free;
+		return usd + (Math.max(0, Math.min(n, upTo) - from) / 1000) * per;
+	}, 0);
+const LOADS = USERS * OPENS_PER_DAY * 30;
 
 const LOOK: Record<string, { sub: string; lic: Lic; licText: string; lock?: string }> = {
 	maptiler: { sub: "satellite-v2 · pin photos", lic: "ok", licText: "R2 approved" },
@@ -91,13 +98,13 @@ async function load(): Promise<void> {
 
 $effect(() => void load());
 
-async function flip(id: string, on: boolean): Promise<void> {
+async function flip(sw: "standby" | "cache", id: string, on: boolean): Promise<void> {
 	failure = null;
 	try {
-		const res = await fetch(squirrelUrl(`/standby/${id}`) ?? "", { method: "POST", body: on ? "on" : "off" });
+		const res = await fetch(squirrelUrl(`/${sw}/${id}`) ?? "", { method: "POST", body: on ? "on" : "off" });
 		if (!res.ok) throw new Error(`HTTP ${res.status} ${await res.text()}`);
-		const { standby } = (await res.json()) as { standby: string[] };
-		if (answer) answer = { ...answer, standby };
+		const { standby, cache } = (await res.json()) as Pick<Answer, "standby" | "cache">;
+		if (answer) answer = { ...answer, standby, cache };
 	} catch (e) {
 		failure = String(e instanceof Error ? e.message : e);
 	}
@@ -124,6 +131,8 @@ function sourceRow(id: string, src: SatelliteSource): Row {
 	const free = src.freeTilesPerMonth ?? INCLUDED[id] ?? null;
 	const billed = (n: number) => (Math.max(0, n - (free ?? 0)) / 1000) * src.usdPer1000;
 	const zs = zooms(c?.month, id);
+	// The Worker's switch once it answers; the contract's default until then.
+	const keeps = answer ? answer.cache[id] : src.cacheToR2;
 	let proj = HIT_RATES.map(() => 0);
 	let projNote: string | undefined;
 	let projTiles: number | undefined;
@@ -131,9 +140,9 @@ function sourceRow(id: string, src: SatelliteSource): Row {
 	else if (src.usdPer1000 > 0) {
 		const perPin = photoTilesFor([-120, 50], src.zoom).length;
 		const asked = USERS * PINS_PER_USER * perPin;
-		proj = HIT_RATES.map((hr) => billed(asked * (src.cacheToR2 ? 1 - hr : 1)));
-		projNote = `${k(asked)} tiles asked · ${perPin}/pin`;
-		if (src.cacheToR2) projTiles = asked;
+		proj = HIT_RATES.map((hr) => billed(asked * (keeps ? 1 - hr : 1)));
+		projNote = `${k(asked)} tiles asked · ${perPin}/pin at z${src.zoom}${keeps ? "" : " · cache off, every tile upstream"}`;
+		if (keeps) projTiles = asked;
 	}
 	return {
 		id,
@@ -143,7 +152,7 @@ function sourceRow(id: string, src: SatelliteSource): Row {
 		lic: look.lic,
 		licText: look.licText,
 		licence: `${src.licence} · ${src.attribution}`,
-		cache: src.cacheToR2,
+		cache: keeps,
 		standby: src.standby ? (answer ? answer.standby.includes(id) : null) : undefined,
 		stops: !!src.freeTilesPerMonth,
 		lock: look.lock ?? null,
@@ -193,9 +202,11 @@ const rows = $derived<Row[]>([
 		licence: "Mapbox ToS: no caching of map data outside the SDK",
 		cache: false,
 		lock: "Mapbox ToS: no caching outside the SDK",
-		price: `$${MAPBOX_LOADS.usdPer1000.toFixed(2)}`,
+		price: "$5→2.50",
 		unit: "/1k loads",
 		free: MAPBOX_LOADS.free,
+		proj: HIT_RATES.map(() => loadsCost(LOADS)),
+		projNote: `${k(LOADS)} loads · ${OPENS_PER_DAY} opens/user/day`,
 	},
 ]);
 
@@ -241,10 +252,11 @@ const MAX_LOG = 50;
 const colorOf = (p: BlobPart) => (p.name === "roads" ? ROADS_COLOR : p.id ? SATELLITE_SOURCES[p.id as SourceId].color : "var(--muted2)");
 type Part = BlobPart & { color: string; mb: number | null };
 const log = $derived(
-	regions.slice(0, MAX_LOG).map((r) => ({
-		r,
-		parts: blobParts(r, photos, regions).map((p): Part => ({ ...p, color: colorOf(p), mb: p.bytes === null ? null : p.bytes / 1048576 })),
-	})),
+	regions.slice(0, MAX_LOG).map((r) => {
+		const parts = blobParts(r, photos, regions).map((p): Part => ({ ...p, color: colorOf(p), mb: p.bytes === null ? null : p.bytes / 1048576 }));
+		const w = parts.find((p) => p.wire)?.wire;
+		return { r, parts, hits: w && w.hit + w.miss ? Math.round((100 * w.hit) / (w.hit + w.miss)) : null };
+	}),
 );
 const blobMb = (parts: Part[]) => parts.reduce((a, p) => a + (p.mb ?? 0), 0);
 const picked = $derived(log.find((b) => b.r.id === sel) ?? log[0]);
@@ -312,6 +324,7 @@ function toBody(node: HTMLElement) {
 {#snippet byHit(v: number[] | null, cls: string)}
 	{#if v === null}<span class="dim">—</span>
 	{:else if v.every((x) => x === 0)}<span class="dim">$0</span>
+	{:else if v.every((x) => x === v[0])}<span class={cls}>{usd(v[0])}</span>
 	{:else}{#each HIT_RATES as hr, i (hr)}<span class="hitrow"><i>{hr * 100}% hits</i><span class={cls}>{usd(v[i])}</span></span>{/each}{/if}
 {/snippet}
 
@@ -345,9 +358,9 @@ function toBody(node: HTMLElement) {
 
 					{#each rows as s (s.id)}
 						<div class="first" title={s.licence}><span class="dot big" style="background:{s.color}"></span><span class="srcname"><b>{s.name}</b><i>{s.sub}</i>
-							{#if s.standby !== undefined}<label class="standby"><button class="tog" class:on={s.standby} disabled={s.standby === null} aria-label="standby {s.name}" onclick={() => flip(s.id, !s.standby)}></button><span class:grn={s.standby} class:dim={!s.standby}>{s.standby ? "ON · streaming" : s.standby === null ? "—" : "OFF"}</span></label>{/if}</span></div>
+							{#if s.standby !== undefined}<label class="standby"><button class="tog" class:on={s.standby} disabled={s.standby === null} aria-label="standby {s.name}" onclick={() => flip("standby", s.id, !s.standby)}></button><span class:grn={s.standby} class:dim={!s.standby}>{s.standby ? "ON · streaming" : s.standby === null ? "—" : "OFF"}</span></label>{/if}</span></div>
 						<div>
-							<button class="tog" class:on={s.cache} class:locked={!!s.lock} disabled title={s.lock ?? `cacheToR2 = ${s.cache} in satelliteSources.ts; switching from here is not wired yet`}></button>
+							<button class="tog" class:on={s.cache} class:locked={!!s.lock} disabled={!!s.lock || !answer} aria-label="cache {s.name} in R2" title={s.lock ?? `R2 ${s.cache ? "keeps" : "skips"} ${s.name}; the Worker follows within a minute`} onclick={() => flip("cache", s.id, !s.cache)}></button>
 						</div>
 						<div class="lic-cell">
 							<span class="lic {s.lic}" title={s.licence}>{s.lic === "ok" ? "✓" : "×"} {s.licText}</span>
@@ -393,7 +406,7 @@ function toBody(node: HTMLElement) {
 					<div class="tot r">{@render dash(total.mtd, usd, "gold")}</div><div class="tot"></div><div class="tot r last dim">↓</div>
 
 					<div class="proj first"><span class="lbl gold">10K USERS / MO</span></div>
-					<div class="proj" style="grid-column:span 7"><span class="dim small">{n(USERS)} planters × {PINS_PER_USER} pin photos a month · crews share tiles, so 50–90% come from R2 · Esri held under its stop · Mapbox and BC unmeasured</span></div>
+					<div class="proj" style="grid-column:span 7"><span class="dim small">{n(USERS)} planters × {PINS_PER_USER} pin photos a month · crews share tiles, so 50–90% come from R2 · Mapbox map {OPENS_PER_DAY} opens a day · Esri held under its stop · BC unmeasured</span></div>
 					<div class="proj"></div><div class="proj"></div><div class="proj"></div><div class="proj"></div><div class="proj"></div><div class="proj"></div>
 					<div class="proj r last proj-cell">{@render byHit(total.proj, "bigproj")}</div>
 				</div>
@@ -479,13 +492,13 @@ function toBody(node: HTMLElement) {
 					<div class="log">
 						<div class="lhead"><span></span><span>PIN</span><span>LAT, LON</span><span>SAVED</span><span>PARTS · R2 HITS</span><span class="end">ADDED</span></div>
 						{#if log.length === 0}<div class="empty dim">no blobs in this browser yet: drop a pin on /app/offlinev10</div>{/if}
-						{#each log as { r, parts } (r.id)}
+						{#each log as { r, parts, hits } (r.id)}
 							<button class="lrow" class:open={open.has(r.id)} class:sel={picked?.r.id === r.id} onclick={() => toggle(r.id)}>
 								<span class="chev">▶</span>
 								<span class="pin">{r.place ? placeLabel(r.place) : r.pin ? r.id : "follow-me"}</span>
 								<span class="dim">{ll(r.lat)}, {ll(r.lng)}</span>
 								<span class:num={r === regions[0]} class:dim={r !== regions[0]}>{when(r.at)}</span>
-								<span class="dotsrow"><span class="dots">{#each parts as p (p.name)}<i style="background:{p.color}"></i>{/each}</span><span class="dim">—/3 R2</span></span>
+								<span class="dotsrow"><span class="dots">{#each parts as p (p.name)}<i style="background:{p.color}"></i>{/each}</span><span class:grn={hits !== null} class:dim={hits === null}>{hits === null ? "—" : `${hits}% photo hits`}</span></span>
 								<span class="mb">{blobMb(parts).toFixed(1)} MB</span>
 							</button>
 							{#if open.has(r.id)}
@@ -495,8 +508,17 @@ function toBody(node: HTMLElement) {
 										<div class="prow">
 											<span class="num">{p.name}</span>
 											<span><span class="badge"><i style="background:{p.color}"></i>{p.source}</span></span>
-											<span>{#if p.name === "roads"}<span class="tag r2">R2</span>{:else}<span class="dim">—</span>{/if}</span>
-											<span>{#if p.name === "roads"}<span class="dim">no · already there</span>{:else if p.id && !SATELLITE_SOURCES[p.id as keyof typeof SATELLITE_SOURCES]?.cacheToR2}<span class="red">no · cache off</span>{:else}<span class="dim">—</span>{/if}</span>
+											<span>
+												{#if p.name === "roads"}<span class="tag r2">R2</span>
+												{:else if p.wire}<span class="grn">{p.wire.hit} hit</span><span class="dim"> · </span><span class:amb={p.wire.miss > 0} class:dim={!p.wire.miss}>{p.wire.miss} upstream</span>{#if p.wire.disk}<span class="dim"> · {p.wire.disk} disk</span>{/if}
+												{:else if p.name === "close-up" && p.tiles}<span class="dim">with the photo's</span>
+												{:else}<span class="dim">—</span>{/if}
+											</span>
+											<span>
+												{#if p.name === "roads"}<span class="dim">no · already there</span>
+												{:else if p.wire}{#if p.wire.kept}<span class="grn">{p.wire.miss} written</span>{:else}<span class="red">no · cache off</span>{/if}
+												{:else}<span class="dim">—</span>{/if}
+											</span>
 											<span class="num end">{p.tiles ?? "—"}</span>
 											<span class="num end">{p.mb === null ? "—" : p.mb.toFixed(p.mb < 0.1 ? 2 : 1)}</span>
 											<span class="dim pz">{p.note ?? p.zoom}</span>
@@ -603,7 +625,7 @@ function toBody(node: HTMLElement) {
 .tog.on { background: rgba(127, 191, 106, 0.18); border-color: rgba(127, 191, 106, 0.55); }
 .tog.on::after { left: 17px; background: var(--green); }
 .standby { display: flex; align-items: center; gap: 6px; margin-top: 3px; font-size: 10px; font-weight: 700; }
-.standby .tog { cursor: pointer; }
+.tog:not(:disabled) { cursor: pointer; }
 .tog.locked { border-color: rgba(226, 85, 63, 0.45); }
 .tog.locked::before { content: "🔒"; position: absolute; right: -17px; top: 1px; font-size: 10px; }
 .lic-cell { flex-direction: column; align-items: flex-start !important; justify-content: center; gap: 3px; }

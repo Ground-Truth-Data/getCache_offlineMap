@@ -21,7 +21,8 @@ and this page is fixed.
 
 - EOX `s2cloudless_3857`, the 2016 mosaic: 10 m pixels, 256 px tiles to z15.
 - It is drawn under everything, so it shows wherever a sharper source answers 404.
-- CC BY 4.0, so caching is allowed. Today it is kept in the edge cache only (`cacheToR2: false`).
+- CC BY 4.0, so caching is allowed. By default it is kept in the edge cache only (`cacheToR2: false`); Squirrel's
+  cache switch can turn R2 on.
 - EOX's later years are non-commercial; only the unyeared (2016) layer may be used.
 
 ### Esri — zoomed in, outside pins, outside the US
@@ -86,11 +87,12 @@ that is mounted.
 | Sentinel below, sharp from z13 | `lib/onPhone/satellite/onlineImagery.ts:18` (`SHARP_FROM_Z`), `:69` (Sentinel layer) |
 | Esri (or a standby source that is on) is the one live layer | `lib/onPhone/satellite/onlineImagery.ts:35` |
 | No Esri tile inside a photo or USGS cover | `lib/onPhone/satellite/onlineImagery.ts:51` |
-| Worker: covered tile → 404 for a live source | `workers/worker-local-dev/src/index.ts:457` |
-| Worker: standby switched off → 404 | `workers/worker-local-dev/src/index.ts:459` |
-| Worker: 90% of the free tier → 404 | `workers/worker-local-dev/src/index.ts:230` (`freeTierSpent`), `:461` |
-| Worker: edge → R2 → upstream; live sources never kept | `workers/worker-local-dev/src/index.ts:131` |
-| Squirrel's photo-source switch, standby switches | `workers/worker-local-dev/src/index.ts:181`, `:189` |
+| Worker: covered tile → 404 for a live source | `workers/worker-local-dev/src/index.ts:499` |
+| Worker: standby switched off → 404 | `workers/worker-local-dev/src/index.ts:491` |
+| Worker: 90% of the free tier → 404 | `workers/worker-local-dev/src/index.ts:247` (`freeTierSpent`), `:500` |
+| Worker: edge → R2 → upstream; R2 only when the cache switch says keep | `workers/worker-local-dev/src/index.ts:137` |
+| Squirrel's photo-source switch; standby and cache switches (a live source has no cache switch) | `workers/worker-local-dev/src/index.ts:188`, `:195` |
+| A photo's tiles counted by X-Cache: disk, hit, upstream | `routes/offlinev10/satellite.ts:70`, `:82` |
 | Mounted photos' attributions | `lib/onPhone/satellite/mountSatellite.ts:230` |
 | Photo coverage radius (2 km) | `lib/onPhone/satellite/satelliteImage.ts:12` |
 
@@ -100,9 +102,10 @@ Bucket `gc-satellite-cache`, bound as `SAT_CACHE` (`workers/worker-cloud-dev/wra
 
 | Key | What |
 |---|---|
-| `<source>/<z>/<x>/<y>.jpg` | One tile, only from a source with `cacheToR2`, only a 200 |
+| `<source>/<z>/<x>/<y>.jpg` | One tile, only from a source whose cache switch is on, only a 200 |
 | `_squirrel/counts/<YYYY-MM-DD>/<isolate>-<ms>.json` | Squirrel's tile counts, one object per 100 tiles or 30 s |
 | `_squirrel/active` | The source photos bake from; absent means MapTiler |
 | `_squirrel/standby/<source>` | `on` or `off` for a standby source |
+| `_squirrel/cache/<source>` | `on` or `off`: keep its tiles in R2; absent means the source's `cacheToR2` |
 
 A new tileset is a new source id, so its tiles never mix with an old one's under the same key.
