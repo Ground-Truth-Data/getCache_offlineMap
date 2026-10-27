@@ -271,8 +271,19 @@ const zPeak = $derived(byZoom.findIndex((col) => col.reduce((a, b) => a + b, 0) 
 const MAX_LOG = 50;
 const colorOf = (p: BlobPart) => (p.name === "roads" ? ROADS_COLOR : p.id ? SATELLITE_SOURCES[p.id as SourceId].color : "var(--muted2)");
 type Part = BlobPart & { color: string; mb: number | null };
+// A point, or a map URL pasted whole (its `at=lat%2Clng`): every blob that holds it, however old.
+let find = $state("");
+const at = $derived(/(-?\d+(?:\.\d+)?)\s*(?:,|%2C)\s*(-?\d+(?:\.\d+)?)/i.exec(find));
+const shown = $derived.by(() => {
+	if (!at) return regions.slice(0, MAX_LOG);
+	const [lat, lng] = [Number(at[1]), Number(at[2])];
+	return regions.filter((r) => {
+		const b = rangeBox(r.range);
+		return lat >= b.s && lat <= b.n && lng >= b.w && lng <= b.e;
+	});
+});
 const log = $derived(
-	regions.slice(0, MAX_LOG).map((r) => {
+	shown.map((r) => {
 		const parts = blobParts(r, photos, regions).map((p): Part => ({ ...p, color: colorOf(p), mb: p.bytes === null ? null : p.bytes / 1048576 }));
 		const w = parts.find((p) => p.wire)?.wire;
 		return { r, parts, hits: w && w.hit + w.miss ? Math.round((100 * w.hit) / (w.hit + w.miss)) : null };
@@ -621,14 +632,15 @@ function toBody(node: HTMLElement) {
 			<div class="cardhead">
 				<span class="dot" style="background:var(--gold)"></span><span class="title">BLOB LOG</span>
 				<span class="hnote">{regions.length > MAX_LOG ? `last ${MAX_LOG} of ${regions.length}` : `${regions.length} blobs`} · {log.reduce((a, b) => a + blobMb(b.parts), 0).toFixed(1)} MB · this browser</span>
+				<input class="refresh find" placeholder="lat, lng or a map URL" aria-label="find the blobs holding a point" bind:value={find} />
 				<span class="spacer"></span>
-				<span class="hnote">newest first · click a row for its footprint</span>
+				<span class="hnote">{at ? `${log.length} holding ${at[1]}, ${at[2]}` : "newest first"} · click a row for its footprint</span>
 			</div>
 			<div class="scroll">
 				<div class="logwrap">
 					<div class="log">
 						<div class="lhead"><span></span><span>PIN</span><span>LAT, LON</span><span>SAVED</span><span>PARTS · R2 HITS</span><span class="end">ADDED</span></div>
-						{#if log.length === 0}<div class="empty dim">no blobs in this browser yet: drop a pin on /app/offlinev10</div>{/if}
+						{#if log.length === 0}<div class="empty dim">{at ? "no blob in this browser holds that point" : "no blobs in this browser yet: drop a pin on /app/offlinev10"}</div>{/if}
 						{#each log as { r, parts, hits } (r.id)}
 							<button class="lrow" class:open={open.has(r.id)} class:sel={picked?.r.id === r.id} onclick={() => toggle(r.id)}>
 								<span class="chev">▶</span>
@@ -734,6 +746,7 @@ function toBody(node: HTMLElement) {
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex: none; }
 .dot.big { width: 9px; height: 9px; }
 .title { font-weight: 800; font-size: 14px; letter-spacing: 0.06em; color: var(--gold); }
+.find { width: 16rem; margin-left: 10px; cursor: text; font-family: var(--mono); }
 .hnote { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
 .scroll { overflow-x: auto; }
 .num { color: var(--text); font-weight: 600; }

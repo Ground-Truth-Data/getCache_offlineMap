@@ -304,6 +304,7 @@ export function buildStyle(origin: string): StyleSpecification {
 				tiles: [PLANET_TILES],
 				minzoom: MIN_Z,
 				maxzoom: MAX_Z,
+				attribution: '<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>',
 			},
 			[REGIONS]: {
 				type: "geojson",

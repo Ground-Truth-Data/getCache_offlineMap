@@ -111,9 +111,9 @@ export function createSatelliteMount(
 
     if (closeUpTiles) {
         const z = CLOSE_UP.zoom;
-        map.addSource(SAT_CLOSE_ID, { type: "raster", tiles: [closeUpTiles], tileSize: 512, minzoom: z, maxzoom: z });
+        map.addSource(SAT_CLOSE_ID, { type: "raster", tiles: [closeUpTiles], tileSize: 512, minzoom: z, maxzoom: z, attribution: CLOSE_UP.attribution });
         map.addLayer(
-            { id: SAT_CLOSE_LAYER, type: "raster", source: SAT_CLOSE_ID, paint: { "raster-fade-duration": SAT_FADE_MS } },
+            { id: SAT_CLOSE_LAYER, type: "raster", source: SAT_CLOSE_ID, minzoom: z, paint: { "raster-fade-duration": SAT_FADE_MS } },
             map.getLayer(insertBefore) ? insertBefore : undefined,
         );
     }

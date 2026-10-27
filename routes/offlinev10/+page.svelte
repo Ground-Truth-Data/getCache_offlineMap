@@ -10,7 +10,6 @@ import MapLegend from "../../lib/mapUi/MapLegend.svelte";
 import { attachCameraPersistence, loadCamera, MAP_HOME_CENTER } from "../../lib/mapState/mapViewport";
 import { attachDoubleTapToPin } from "../../lib/shared/doubleTapToPin";
 import { FIRE_LAYER_ID_LIST, type FireLayerHandle, attachFireLayer } from "../../lib/onPhone/render/fireLayer";
-import PhotoCredits from "../../lib/mapUi/PhotoCredits.svelte";
 import { SAT_CLOSE_LAYER, type SatelliteMount, createSatelliteMount, satLayerId } from "../../lib/onPhone/satellite/mountSatellite";
 import { NiceScaleBarControl } from "$gc/mapScaleBar";
 import { safeFlyTo } from "$gc/safeMap";
@@ -54,7 +53,14 @@ let fireHandle: FireLayerHandle | null = null;
 let hospitalHandle: HospitalLayerHandle | null = null;
 let routeHandle: RouteHandle | null = null;
 let photos: SatelliteMount | null = null;
-let credits = $state<string[]>([]);
+// The online map's ⓘ, closed at first (a tap opens it); the photos' sources ride as custom credits.
+const credits = new maplibregl.AttributionControl({ compact: true });
+const compact = credits._updateCompact;
+credits._updateCompact = () => {
+	const first = !credits._container.classList.contains("maplibregl-compact");
+	compact();
+	if (first) credits._updateCompactMinimize();
+};
 let regions = $state<Region[]>([]);
 let photoMeta = $state<Record<string, PhotoInfo>>({});
 let photoProblem = $state<string | null>(null);
@@ -221,7 +227,8 @@ function reconcilePhotos(): void {
 		)
 		.then(() => {
 			if (map === m) enforceOff(m);
-			credits = photos?.attributions() ?? [];
+			credits.options.customAttribution = photos?.attributions() ?? [];
+			credits._updateAttributions();
 		});
 }
 
@@ -481,6 +488,7 @@ onMount(() => {
 		canvasContextAttributes: { preserveDrawingBuffer: true },
 	});
 	map = m;
+	m.addControl(credits, "bottom-left");
 	m.on("moveend", writeUrl);
 	m.on("load", () => {
 		buildLayerRows(m);
@@ -551,7 +559,6 @@ onMount(() => {
 	class:draw-active-pin={armKind === "pin"}
 >
 	<div class="map-canvas" bind:this={host}></div>
-	<PhotoCredits {credits} />
 
 	<MapTopControls ports={mapPorts} bind:mapOnly crowMode="offline" onCrowToggle={() => goto(onlineUrl())} />
 
