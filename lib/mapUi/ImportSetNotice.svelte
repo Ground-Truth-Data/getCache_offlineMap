@@ -15,7 +15,7 @@ $effect(() =>
 		if (e.kind !== "waiting") return;
 		const next = e.sets[0] ?? null;
 		set = next;
-		if (!next) return;
+		if (!next || next.all.length > BULK_MAX) return;
 		const key = `${next.key}:${next.all.length}`;
 		let ask = sizes.get(key);
 		if (!ask) sizes.set(key, (ask = estimateBytes(next.all)));
@@ -26,7 +26,10 @@ $effect(() =>
 	}),
 );
 
-const mb = (b: number): string => (b >= 1e9 ? `${(b / 1073741824).toFixed(1)} GB` : `${Math.max(1, Math.round(b / 1048576))} MB`);
+// More pins than this in one tap would burst the imagery host; each still downloads when opened.
+const BULK_MAX = 50;
+
+const mb =(b: number): string => (b >= 1e9 ? `${(b / 1073741824).toFixed(1)} GB` : `${Math.max(1, Math.round(b / 1048576))} MB`);
 
 function download(s: WaitingSet): void {
 	saveSpots(s.all);
@@ -37,9 +40,13 @@ function download(s: WaitingSet): void {
 {#if set}
 	<div class="import-set" role="status">
 		<p>{set.name || "This import"} · {set.all.length} {set.all.length === 1 ? "pin" : "pins"}{size !== null ? ` · about ${mb(size)}` : ""}</p>
-		<FancyButton size="xs" disabled={size === null || size > budgetBytes()} onclick={() => set && download(set)}>
-			{size !== null && size > budgetBytes() ? "More than this phone keeps" : "Download"}
-		</FancyButton>
+		{#if set.all.length > BULK_MAX}
+			<p>Too many to download at once — open pins one at a time</p>
+		{:else}
+			<FancyButton size="xs" disabled={size === null || size > budgetBytes()} onclick={() => set && download(set)}>
+				{size !== null && size > budgetBytes() ? "More than this phone keeps" : "Download"}
+			</FancyButton>
+		{/if}
 	</div>
 {/if}
 
