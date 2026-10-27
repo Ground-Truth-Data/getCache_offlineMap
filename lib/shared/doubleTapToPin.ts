@@ -69,7 +69,7 @@ export function attachDoubleTapToPin(
 		emit("drop");
 	};
 
-	const DEBUG = true; // [dbg:loupe108]
+	const DEBUG = false;
 	const log = (...a: unknown[]) => {
 		if (DEBUG) console.log("[snake-gesture]", ...a);
 	};

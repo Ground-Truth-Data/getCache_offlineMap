@@ -435,7 +435,6 @@ function add(lng: number, lat: number) {
     if (!active || !map) return;
     const p = map.project({ lng, lat });
     const near = nodeAt(map, p.x, p.y);
-    console.log("[dbg:loupe108] add", { near, n: verts.length, isPolygon, moveIndex, p: [p.x | 0, p.y | 0] });
     if (near === 0 && verts.length >= 3 && !isPolygon) {
         isPolygon = true;
         render();
@@ -521,7 +520,6 @@ $effect(() => {
     const ev = measureEvent;
     if (!ev) return;
     measureEvent = null;
-    console.log("[dbg:loupe108] measureEvent", { active, armed, n: verts.length });
     if (armed) return;
     // A fast final click-to-commit can read as a dblclick; swallow the seed so the fresh popover isn't torn down.
     if (performance.now() - lastCommitAt < 600) return;
@@ -592,7 +590,6 @@ $effect(() => {
             if (tapOnShape(m, e.point.x, e.point.y)) spotBump++;
             else discard();
         }
-        console.log("[dbg:loupe108] click", { nearIdx, n: verts.length, active });
     };
     m.on("click", onClick);
     return () => m.off("click", onClick);
@@ -611,7 +608,6 @@ $effect(() => {
             if (d < nearestD) { nearestD = d; moveIndex = i; }
         }
         e.preventDefault();
-        console.log("[dbg:loupe108] node down", moveIndex);
         moved = false;
         shapeRings = null;
         lastSnap = null;
@@ -632,7 +628,6 @@ $effect(() => {
     };
     const up = () => {
         if (moveIndex === null) return;
-        console.log("[dbg:loupe108] node up", { moveIndex, moved, n: verts.length });
         m.dragPan.enable();
         if (moved && cursor) {
             const v = [...verts];
