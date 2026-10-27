@@ -396,6 +396,28 @@ describe("offline areas are an LRU cache of the 16 MB test budget", () => {
 		expect(waiting.at(-1)).toEqual([]);
 		off();
 	});
+
+	it("G: a 10,000-pin import fetches nothing from MapTiler, browsed or not", async () => {
+		const set = { key: "big", name: "Big" };
+		const imported = Array.from({ length: 10_000 }, (_, i): [number, number] => [-130 + (i % 100) * 0.5, 30 + Math.floor(i / 100) * 0.3]);
+		const asked: string[] = [];
+		vi.stubGlobal("fetch", async (url: string) => {
+			asked.push(String(url));
+			return String(url).endsWith("/squirrel/active") ? new Response(JSON.stringify({ active: "maptiler" })) : new Response(new ArrayBuffer(10));
+		});
+		const ports = host();
+		ports.places = () => imported.map((a) => ({ anchors: [a], photo: true, set }));
+		const stopPhotos = startPhotoService();
+		stop = startBlobService(ports);
+		for (const a of imported.slice(0, 5)) await viewing(view(a), 12);
+		window.dispatchEvent(new Event("online"));
+		await new Promise((r) => setTimeout(r, 200));
+		await vi.waitFor(() => expect(blobBusy()).toBe(false), SWEEP);
+		expect(asked.filter((u) => u.includes("/satellite/maptiler/"))).toEqual([]);
+		expect(baked).toEqual([]);
+		expect(await ids()).toEqual([]);
+		stopPhotos();
+	});
 });
 
 // Last: the hung fetches below hold the download pool for the rest of this file.
