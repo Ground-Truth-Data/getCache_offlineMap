@@ -335,6 +335,7 @@ export function startBlobService(ports: HostPorts): () => void {
 		stop = null;
 		host = null;
 		shown = null;
+		seenAt.clear();
 	};
 	return stop;
 }
