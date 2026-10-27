@@ -11,7 +11,8 @@ import { markerCtor } from "../shared/rendererOf";
 import targetPinUrl from "./pin_search_target.webp";
 import routeSignUrl from "./routeSign.svg";
 import { ARRIVED_M, courseDeg, metresAlong, OFF_ROUTE_FIXES, OFF_ROUTE_M, progressOn } from "./follow";
-import { gapReader, type RouteResult } from "./roadGraph";
+import { highwayTile } from "./highways";
+import { gapReader, HIGHWAY_KEY, type RouteResult } from "./roadGraph";
 import type { FromWorker, ToWorker } from "./routeWorker";
 
 export const ROUTE_LAYER_IDS = {
@@ -82,6 +83,11 @@ export function kmFromYou(at: Readonly<LngLat>): number | null {
 /** The live map's pack; off the map, the network. */
 let readTile: (key: string) => Promise<ArrayBuffer | undefined> = networkTile;
 const pack = gapReader((key) => readTile(key));
+const readAny = (key: string): Promise<ArrayBuffer | undefined> => {
+	if (!key.startsWith(HIGHWAY_KEY)) return pack.read(key);
+	const [z, x, y] = key.slice(HIGHWAY_KEY.length).split("/").map(Number);
+	return highwayTile(z, x, y);
+};
 let worker: Worker | null = null;
 const jobs = new Map<number, { ok: (r: RouteResult) => void; fail: (e: unknown) => void }>();
 let jobN = 0;
@@ -98,7 +104,7 @@ function route(stops: LngLat[]): Promise<RouteResult> {
 				jobs.delete(m.job);
 				return;
 			}
-			void pack.read(m.key).then(
+			void readAny(m.key).then(
 				(bytes) => tell({ kind: "tile", ask: m.ask, bytes }),
 				() => tell({ kind: "tile", ask: m.ask, bytes: undefined }),
 			);

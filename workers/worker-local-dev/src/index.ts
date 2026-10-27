@@ -400,6 +400,15 @@ export default {
       });
     }
 
+    // /highways.pmtiles: the world's highways (getCache's build-world-highways.mjs), whole; each phone fetches it once.
+    if (url.pathname === "/highways.pmtiles") {
+      const object = await env.TILES.get("highways.pmtiles");
+      if (!object) return new Response("highways.pmtiles is not in the bucket", { status: 502, headers: CORS_HEADERS });
+      return new Response(request.method === "HEAD" ? null : object.body, {
+        headers: { ...CORS_HEADERS, "Content-Type": "application/vnd.pmtiles", "Content-Length": String(object.size), "Cache-Control": "public, max-age=86400", ETag: object.httpEtag },
+      });
+    }
+
     // /satellite/{source}/{z}/{x}/{y}.jpg: that source's imagery, its key held here.
     const sat = SATELLITE_PATH.exec(url.pathname);
     if (sat !== null) {

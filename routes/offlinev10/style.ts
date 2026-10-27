@@ -9,11 +9,13 @@ import type {
 	LayerSpecification,
 	StyleSpecification,
 } from "maplibre-gl";
-import { PLANET_TILES } from "./protocol";
+import { HIGHWAY_Z } from "../../lib/route/roadGraph";
+import { HIGHWAY_TILES, PLANET_TILES } from "./protocol";
 import { ANCHOR_Z, MAX_Z, MIN_Z } from "./tiles";
 
 export const PLANET = "planet";
 export const BASE = "world-base";
+const HIGHWAYS = "highways";
 export const REGIONS = "v10-regions";
 /** A blob's photo sits over the earth and landuse fills, under water, roads and labels. */
 export const PHOTO_INSERT_BEFORE = "water";
@@ -219,9 +221,14 @@ export function buildStyle(origin: string): StyleSpecification {
 		{
 			id: "base-roads",
 			type: "line",
-			source: BASE,
-			"source-layer": "roads",
-			filter: [">=", ["zoom"], ["-", ["coalesce", ["get", "min_zoom"], 9], 4]],
+			source: HIGHWAYS,
+			"source-layer": "highways",
+			// "ne" and "join" are routing's stitches, a few hundred metres off the road.
+			filter: [
+				"all",
+				["==", ["get", "k"], "road"],
+				[">=", ["zoom"], ["match", ["get", "d"], "motorway", 3, "trunk", 5, 6]],
+			],
 			paint: {
 				"line-color": DARK.major,
 				"line-width": [
@@ -229,9 +236,9 @@ export function buildStyle(origin: string): StyleSpecification {
 					["linear"],
 					["zoom"],
 					4,
-					["match", ["get", "expressway"], 1, 1.2, 0.8],
+					["match", ["get", "d"], "primary", 0.8, 1.2],
 					9,
-					["match", ["get", "expressway"], 1, 2, 1.2],
+					["match", ["get", "d"], "primary", 1.2, 2],
 				],
 			},
 		},
@@ -285,6 +292,12 @@ export function buildStyle(origin: string): StyleSpecification {
 				tiles: [`${origin}${BASE_TILES}/{z}/{x}/{y}.pbf`],
 				minzoom: 0,
 				maxzoom: 6,
+			},
+			[HIGHWAYS]: {
+				type: "vector",
+				tiles: [HIGHWAY_TILES],
+				minzoom: 3,
+				maxzoom: HIGHWAY_Z,
 			},
 			[PLANET]: {
 				type: "vector",

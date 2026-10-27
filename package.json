@@ -19,7 +19,8 @@
 		"@turf/length": "^7.3.2",
 		"mapbox-gl": "^3.24.0",
 		"maplibre-gl": "^6.11.0",
-		"pbf": "^4.0.1"
+		"pbf": "^4.0.1",
+		"pmtiles": "^4.4.1"
 	},
 	"peerDependencies": {
 		"svelte": "^5.57.0"

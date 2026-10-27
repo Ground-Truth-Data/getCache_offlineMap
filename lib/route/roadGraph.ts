@@ -1,10 +1,14 @@
-/** Offline directions over the pack's z13 `roads` tiles near each stop and the world base's highways between. Pure: no map, no store. */
+/** Offline directions over the pack's z13 `roads` tiles near each stop and the world highways' z8 tiles between. Pure: no map, no store. */
 
 import { VectorTile } from "@mapbox/vector-tile";
 import Pbf from "pbf";
 import type { LngLat } from "../shared/kmGeo";
 
 export const ROUTE_Z = 13;
+/** The highways file's top zoom (getCache's scripts/build-world-highways.mjs): every line whole there. */
+export const HIGHWAY_Z = 8;
+/** The router's tile key for a highways-file tile, beside the pack's bare "z/x/y". */
+export const HIGHWAY_KEY = "hw/";
 /** Tile-local units per tile, whatever extent a tile was cut at. */
 const UNITS = 4096;
 const WORLD = 2 ** ROUTE_Z * UNITS;
@@ -96,40 +100,24 @@ export function tilesFor(stops: readonly LngLat[], share: number): TileId[] {
 
 type Box = { x0: number; y0: number; x1: number; y1: number };
 
-/** The world base's highways, junctions already joined (getCache's scripts/build-world-highways.mjs), as the lines crossing a box in world units. */
-export function highwaysFrom(buf: ArrayBuffer): (box: Box) => RoadLine[] {
-	const a = new Int32Array(buf);
-	const n = a[0];
-	const at = 2 + n;
-	const lines: RoadLine[] = [];
-	const boxes: Box[] = [];
-	for (let p = 0; p < n; p++) {
-		const pts: Array<[number, number]> = [];
-		for (let i = a[1 + p]; i < a[2 + p]; i++) pts.push(toWorld([a[at + 2 * i] / 1e5, a[at + 2 * i + 1] / 1e5]));
-		const xs = pts.map((q) => q[0]);
-		const ys = pts.map((q) => q[1]);
-		lines.push({ pts, cost: 1 });
-		boxes.push({ x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) });
-	}
-	return (b) => lines.filter((_, i) => boxes[i].x1 >= b.x0 && boxes[i].x0 <= b.x1 && boxes[i].y1 >= b.y0 && boxes[i].y0 <= b.y1);
-}
-
 const metresPerUnit = (lat: number): number => (EARTH_M * Math.cos((lat * Math.PI) / 180)) / WORLD;
 
-/** The tile's drivable lines in world units, each cut to the tile's own square so neighbours meet on the seam. */
+/** The tile's drivable lines in world units, each cut to the tile's own square so neighbours meet on the seam. A pack tile's `roads`, or the highways file's `highways`. */
 export function decodeRoads(t: TileId, bytes: ArrayBuffer): RoadLine[] {
 	if (!bytes.byteLength) return [];
-	const layer = new VectorTile(new Pbf(new Uint8Array(bytes)) as unknown as ConstructorParameters<typeof VectorTile>[0]).layers.roads;
+	const layers = new VectorTile(new Pbf(new Uint8Array(bytes)) as unknown as ConstructorParameters<typeof VectorTile>[0]).layers;
+	const layer = layers.roads ?? layers.highways;
 	if (!layer) return [];
 	const E = layer.extent;
-	const k = UNITS / E;
-	const ox = t.x * UNITS;
-	const oy = t.y * UNITS;
+	const side = UNITS * 2 ** (ROUTE_Z - t.z);
+	const k = side / E;
+	const ox = t.x * side;
+	const oy = t.y * side;
 	const out: RoadLine[] = [];
 	for (let i = 0; i < layer.length; i++) {
 		const f = layer.feature(i);
 		if (f.type !== 2) continue;
-		const cost = costOf(f.properties.kind, f.properties.kind_detail);
+		const cost = layer === layers.highways ? 1 : costOf(f.properties.kind, f.properties.kind_detail);
 		if (cost === null) continue;
 		for (const ring of f.loadGeometry()) {
 			let run: Array<[number, number]> = [];
@@ -501,7 +489,7 @@ const OFF_ROAD_DRAW_M = 15;
 export async function findRoute(
 	stops: readonly LngLat[],
 	read: (t: TileId) => Promise<RoadLine[] | null>,
-	highways?: (box: Box) => RoadLine[],
+	highways?: (t: TileId) => Promise<RoadLine[] | null>,
 ): Promise<RouteResult> {
 	const crowKm = crowMetres(stops) / 1000;
 	const tooFar: RouteResult = { ok: false, reason: "too-far", crowKm, missing: 0 };
@@ -527,7 +515,7 @@ export async function findRoute(
 async function viaHighways(
 	stops: readonly LngLat[],
 	read: (t: TileId) => Promise<RoadLine[] | null>,
-	highways: (box: Box) => RoadLine[],
+	highways: (t: TileId) => Promise<RoadLine[] | null>,
 	crowKm: number,
 ): Promise<RouteResult> {
 	const mpu = metresPerUnit(stops[0][1]);
@@ -536,7 +524,11 @@ async function viaHighways(
 	const ys = w.map((p) => p[1]);
 	// The wide pad at once: a short join outside the box (Merritt's, at 25 %) cuts a highway that runs inside it.
 	const pad = Math.max(Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) * PADS[1], 50_000 / mpu);
-	let coarse = highways({ x0: Math.min(...xs) - pad, y0: Math.min(...ys) - pad, x1: Math.max(...xs) + pad, y1: Math.max(...ys) + pad });
+	const side = UNITS * 2 ** (ROUTE_Z - HIGHWAY_Z);
+	const corridor: TileId[] = [];
+	for (let x = Math.floor((Math.min(...xs) - pad) / side); x <= Math.floor((Math.max(...xs) + pad) / side); x++)
+		for (let y = Math.floor((Math.min(...ys) - pad) / side); y <= Math.floor((Math.max(...ys) + pad) / side); y++) corridor.push({ z: HIGHWAY_Z, x, y });
+	let coarse = (await Promise.all(corridor.map(highways))).flatMap((g) => g ?? []);
 	const local: RoadLine[] = [];
 	const entries: RoadLine[] = [];
 	let missing = 0;

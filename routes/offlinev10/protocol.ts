@@ -6,6 +6,7 @@
  */
 
 import * as maplibregl from "maplibre-gl";
+import { highwayTile } from "../../lib/route/highways";
 import { clipTile, type Rect } from "./clip";
 import { getTile, PHOTO_PREFIX, regionsSnapshot } from "./store";
 import { ANCHOR_Z, rangeBox, rangeContains, toMerc } from "./tiles";
@@ -14,8 +15,10 @@ export const SCHEME = "v10";
 export const PLANET_TILES = `${SCHEME}://planet/{z}/{x}/{y}`;
 /** The satellite photo's own source tiles, served raw. */
 export const PHOTO_TILES = `${SCHEME}://photo/{z}/{x}/{y}`;
+/** The world's highways file, drawn under the blobs. */
+export const HIGHWAY_TILES = `${SCHEME}://highways/{z}/{x}/{y}`;
 
-const RE = /^v10:\/\/(planet|photo)\/(\d+)\/(\d+)\/(\d+)/;
+const RE = /^v10:\/\/(planet|photo|highways)\/(\d+)\/(\d+)\/(\d+)/;
 
 export interface ReadCounts {
 	hit: number;
@@ -90,6 +93,8 @@ export function installProtocol(): void {
 			throw Object.assign(new Error("aborted"), { name: "AbortError" });
 		const m = RE.exec(params.url);
 		if (!m) throw notFound(params.url);
+		if (m[1] === "highways")
+			return { data: (await highwayTile(Number(m[2]), Number(m[3]), Number(m[4]))) ?? new ArrayBuffer(0) };
 		const photo = m[1] === "photo";
 		const key = `${m[2]}/${m[3]}/${m[4]}`;
 		const [z, x, y] = [Number(m[2]), Number(m[3]), Number(m[4])];

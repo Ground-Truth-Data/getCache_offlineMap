@@ -1,7 +1,8 @@
-import { readFileSync } from "node:fs";
+import { openSync, readSync } from "node:fs";
+import { PMTiles } from "pmtiles";
 import { describe, expect, it } from "vitest";
 import type { LngLat } from "../shared/kmGeo";
-import { findRoute, gapReader, highwaysFrom, type RoadLine, ROUTE_Z, type TileId, toLngLat, toWorld } from "./roadGraph";
+import { decodeRoads, findRoute, gapReader, type RoadLine, ROUTE_Z, type TileId, toLngLat, toWorld } from "./roadGraph";
 
 const ORIGIN: LngLat = [136.8, -13.8];
 const [OX, OY] = toWorld(ORIGIN);
@@ -113,9 +114,26 @@ describe("a blob that lands after the route is drawn", () => {
 });
 
 describe("findRoute between downloaded areas", () => {
-	const highways = highwaysFrom(new Uint8Array(readFileSync(new URL("../../../getCache/static/mobileAssets/worldBase/base/highways.bin", import.meta.url))).buffer);
+	// Built, not committed: `node scripts/build-world-highways.mjs` in getCache. Missing, this throws — never a silent pass.
+	const fd = openSync(new URL("../../../getCache/scripts/.cache/highways.pmtiles", import.meta.url), "r");
+	const archive = new PMTiles({
+		getKey: () => "highways.pmtiles",
+		getBytes: async (offset: number, length: number) => {
+			const data = new Uint8Array(length);
+			readSync(fd, data, 0, length, offset);
+			return { data: data.buffer };
+		},
+	});
+	const highways = async (t: TileId) => {
+		const got = await archive.getZxy(t.z, t.x, t.y);
+		return got ? decodeRoads(t, got.data) : null;
+	};
+	/** Within ~10 km of a town on the way. */
+	const via = (line: readonly LngLat[], [lng, lat]: LngLat) => line.some(([x, y]) => Math.abs(x - lng) < 0.14 && Math.abs(y - lat) < 0.09);
 	const nothingDownloaded = async (): Promise<RoadLine[] | null> => null;
 	const VANCOUVER: LngLat = [-123.1, 49.265];
+	const CLEARWATER: LngLat = [-120.04, 51.65];
+	const VALEMOUNT: LngLat = [-119.27, 52.83];
 
 	it("drives Vancouver to Kelowna over the Coquihalla, through Merritt", async () => {
 		const r = await findRoute([VANCOUVER, [-119.49, 49.885]], nothingDownloaded, highways);
@@ -132,6 +150,25 @@ describe("findRoute between downloaded areas", () => {
 
 	it("drives through a town Natural Earth draws no road across (97 meets 16 at Prince George)", async () => {
 		expect((await findRoute([VANCOUVER, [-122.75, 53.917]], nothingDownloaded, highways)).ok).toBe(true);
+	});
+
+	it("drives Vancouver to Valemount on Highway 5, up the North Thompson", async () => {
+		const r = await findRoute([VANCOUVER, VALEMOUNT], nothingDownloaded, highways);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(via(r.line, CLEARWATER)).toBe(true);
+		expect(r.km).toBeGreaterThan(640);
+		expect(r.km).toBeLessThan(720);
+	});
+
+	it("drives Vancouver to Jasper on Highway 5 through Valemount, not round by Banff", async () => {
+		const r = await findRoute([VANCOUVER, [-118.0814, 52.8737]], nothingDownloaded, highways);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(via(r.line, VALEMOUNT)).toBe(true);
+		expect(Math.max(...r.line.map(([lng]) => lng))).toBeLessThan(-117.9);
+		expect(r.km).toBeGreaterThan(770);
+		expect(r.km).toBeLessThan(860);
 	});
 
 	it("never drives across water", async () => {
