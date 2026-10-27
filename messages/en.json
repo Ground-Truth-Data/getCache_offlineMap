@@ -53,6 +53,7 @@
 	"ofmap_shared_hospital_my_location": "My location",
 	"ofmap_shared_hospital_copied": "Copied",
 	"ofmap_shared_hospital_fallback_name": "Hospital",
+	"ofmap_shared_hospital_er_unconfirmed": "Hospital — ER not confirmed",
 	"ofmap_route_directions": "Directions",
 	"ofmap_route_finding": "Finding a road route…",
 	"ofmap_route_by_road": "{distance} by road",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { colIndex, makeEntry, parseCsv } from "../../hospitalBlocks/lib.mjs";
+import { colIndex, erOrLonely, makeEntry, parseCsv } from "../../hospitalBlocks/lib.mjs";
 import { featureTester, inRing } from "../../hospitalBlocks/countries.mjs";
 import { parseActivity14, parseFiness } from "../../hospitalBlocks/fr.mjs";
 import { parseBatchGeocode, parseCms } from "../../hospitalBlocks/us.mjs";
@@ -114,7 +114,7 @@ describe("fr adapter parsing", () => {
 		expect(entries.map((e) => e[2])).toEqual(["CH KEEP"]);
 	});
 
-	it("flags emergency from activity 14 OR san_urg, else null; phone rides", () => {
+	it("flags emergency from activity 14 OR san_urg, else no: the register is the whole truth", () => {
 		const csv = [
 			finessHeader,
 			row({ finess: "1", rs: "VIA ACTIVITY", tel: "0474454647" }),
@@ -125,7 +125,7 @@ describe("fr adapter parsing", () => {
 		const byName = Object.fromEntries(entries.map((e) => [e[2], e]));
 		expect(byName["VIA ACTIVITY"]).toEqual([2.35, 48.86, "VIA ACTIVITY", "yes", "0474454647"]);
 		expect(byName["VIA SAN_URG"][3]).toBe("yes");
-		expect(byName["UNKNOWN"]).toEqual([2.35, 48.86, "UNKNOWN"]);
+		expect(byName["UNKNOWN"]).toEqual([2.35, 48.86, "UNKNOWN", "no"]);
 		// ERs first, so a same-coordinate collapse in the bake keeps the ER.
 		expect(entries[entries.length - 1][2]).toBe("UNKNOWN");
 	});
@@ -156,5 +156,25 @@ describe("us adapter parsing", () => {
 		expect(got.get("010001")).toEqual([-85.36174, 31.215775]);
 		expect(got.get("010002")).toBeNull();
 		expect(got.get("010003")).toBeNull();
+	});
+});
+
+describe("lib.erOrLonely", () => {
+	const er = makeEntry(10, 50, "ER", "yes");
+	const km = (d) => d / 111.2;
+	it("keeps every ER and drops every explicit no", () => {
+		expect(erOrLonely([er, makeEntry(10, 51, "Shut", "no")])).toEqual([er]);
+	});
+	it("drops an unconfirmed hospital within 50 km of an ER, keeps one beyond", () => {
+		const near = makeEntry(10, 50 + km(49), "Near");
+		const far = makeEntry(10, 50 + km(51), "Far");
+		expect(erOrLonely([er, near, far]).map((e) => e[2])).toEqual(["ER", "Far"]);
+	});
+	it("an odd tag (ambulance_station) is unconfirmed, and leaves the pack untagged", () => {
+		const odd = makeEntry(10, 52, "Odd", "ambulance_station", "123");
+		expect(erOrLonely([odd])).toEqual([[10, 52, "Odd", null, "123"]]);
+	});
+	it("finds an ER across a cell edge and across the antimeridian", () => {
+		expect(erOrLonely([makeEntry(179.99, 0, "E", "yes"), makeEntry(-179.99, 0, "W")]).map((e) => e[2])).toEqual(["E"]);
 	});
 });

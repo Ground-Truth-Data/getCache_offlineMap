@@ -86,17 +86,23 @@ afterEach(() => {
 
 describe("hospitalCardHtml", () => {
 	it("escapes the name, rounds the distance in the chosen unit, and offers the locate button", () => {
-		const html = hospitalCardHtml({ name: "St <Mary's>", phone: "250-555-0100", fromYouKm: 12.4, locateButton: true });
+		const html = hospitalCardHtml({ name: "St <Mary's>", er: true, phone: "250-555-0100", fromYouKm: 12.4, locateButton: true });
 		const el = Object.assign(document.createElement("div"), { innerHTML: html });
 		expect(el.querySelector("h4")!.textContent).toBe("St <Mary's>");
 		expect(el.querySelectorAll("[data-copy]")).toHaveLength(2);
 		expect(el.querySelector(".rt-hospital-tel")!.textContent).toBe("250-555-0100");
 		expect(el.textContent).toMatch(/12 km/);
 		expect(el.querySelector(".rt-hospital-loc")).not.toBeNull();
-		const bare = Object.assign(document.createElement("div"), { innerHTML: hospitalCardHtml({ name: "X", fromYouKm: Number.NaN, locateButton: false }) });
+		const bare = Object.assign(document.createElement("div"), { innerHTML: hospitalCardHtml({ name: "X", er: true, fromYouKm: Number.NaN, locateButton: false }) });
 		expect(bare.querySelector("[data-copy]")).toBeNull();
 		expect(bare.querySelector(".rt-hospital-loc")).toBeNull();
 		expect(bare.querySelectorAll(".rt-hospital-row")).toHaveLength(0);
+	});
+
+	it("says the ER is not confirmed when OSM never tagged emergency=yes", () => {
+		const el = Object.assign(document.createElement("div"), { innerHTML: hospitalCardHtml({ name: "Gove", er: false, locateButton: false }) });
+		expect(el.textContent).toContain("Hospital — ER not confirmed");
+		expect(el.querySelector("img")!.getAttribute("src")).toMatch(/Unconfirmed/);
 	});
 });
 

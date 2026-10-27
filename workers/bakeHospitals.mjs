@@ -5,7 +5,7 @@
 // hospitals.ts. Bake in worker-local-dev only; the deploy scripts sync the .bin.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { makeEntry } from "./hospitalBlocks/lib.mjs";
+import { erOrLonely, makeEntry } from "./hospitalBlocks/lib.mjs";
 import * as blockFr from "./hospitalBlocks/fr.mjs";
 import * as blockUs from "./hospitalBlocks/us.mjs";
 
@@ -94,7 +94,7 @@ for (const [name, s, w, n, e] of REGIONS) {
 		const lat = el.lat ?? el.center?.lat;
 		const lon = el.lon ?? el.center?.lon;
 		if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-		// An explicit "no" is dropped; untagged stays, because most real ERs are untagged.
+		// An explicit "no" is dropped; untagged waits for erOrLonely, because most real ERs are untagged.
 		if (el.tags?.emergency === "no") continue;
 		const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
 		if (byCoord.has(key)) continue;
@@ -149,8 +149,11 @@ if (byCoord.size < 50_000) {
 	throw new Error(`only ${byCoord.size} hospitals — refusing to bake a hollow world`);
 }
 
+const shipped = erOrLonely([...byCoord.values()]);
+console.log(`[emergency] ${byCoord.size} hospitals → ${shipped.length}: ${shipped.filter((e) => e[3] === "yes").length} ERs, ${shipped.filter((e) => e[3] !== "yes").length} unconfirmed with no ER within 50 km`);
+
 const cells = new Map();
-for (const entry of byCoord.values()) {
+for (const entry of shipped) {
 	const [lng, lat] = entry;
 	const cy = Math.min(35, Math.max(0, Math.floor((lat + 90) / CELL_DEG)));
 	const cx = Math.min(71, Math.max(0, Math.floor((lng + 180) / CELL_DEG)));
@@ -164,7 +167,7 @@ const blobs = [];
 const index = {
 	v: 1,
 	cellDeg: CELL_DEG,
-	count: byCoord.size,
+	count: shipped.length,
 	generated: new Date().toISOString().slice(0, 10),
 	cells: {},
 };

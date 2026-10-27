@@ -2,6 +2,7 @@
 
 import type * as maplibregl from "maplibre-gl";
 import hospitalPinUrl from "./hospitalPin.webp";
+import hospitalPinUnconfirmedUrl from "./hospitalPinUnconfirmed.webp";
 import { overlayVisibility } from "../../lib/mapState/overlayVisibility.svelte";
 import { isMaplibreMap, loadMapImage, popupCtor } from "../../lib/shared/rendererOf";
 import { distKm } from "../fires/fireRelevance";
@@ -27,6 +28,13 @@ export const HOSPITAL_LAYER_ID_LIST: readonly string[] = [
 ];
 
 const PIN = "rt-hospital-pin";
+/** Grey: a hospital OSM never tagged emergency=yes, shipped only where no ER is within 50 km. */
+const PIN_UNCONFIRMED = "rt-hospital-pin-unconfirmed";
+const PINS = [
+	[PIN, hospitalPinUrl],
+	[PIN_UNCONFIRMED, hospitalPinUnconfirmedUrl],
+] as const;
+const isEr = (props: Record<string, unknown> | null | undefined): boolean => props?.emergency === "yes";
 const PIN_SIZE = 0.47;
 const MIN_ZOOM = 6.5;
 const POPUP_OFFSET = 22;
@@ -81,7 +89,7 @@ function addLayers(map: maplibregl.Map): void {
 		filter: ["!", ["has", "point_count"]],
 		minzoom: MIN_ZOOM,
 		layout: {
-			"icon-image": PIN,
+			"icon-image": ["case", ["==", ["get", "emergency"], "yes"], PIN, PIN_UNCONFIRMED],
 			"icon-size": PIN_SIZE,
 			"icon-allow-overlap": false,
 			// The teardrop's TIP is the coordinate; `center` drifts as you zoom.
@@ -98,6 +106,7 @@ const COPY_GLYPH =
 
 export function hospitalCardHtml(opts: {
 	readonly name: string;
+	readonly er: boolean;
 	readonly phone?: string | null;
 	readonly fromYouKm?: number | null;
 	readonly locateButton: boolean;
@@ -120,7 +129,8 @@ export function hospitalCardHtml(opts: {
 		: "";
 	return (
 		`<div class="rt-hospital-card">` +
-		`<div class="rt-hospital-head"><img class="rt-hospital-pinimg" src="${hospitalPinUrl}" alt="" aria-hidden="true" decoding="async"/><h4>${esc(opts.name)}</h4></div>` +
+		`<div class="rt-hospital-head"><img class="rt-hospital-pinimg" src="${opts.er ? hospitalPinUrl : hospitalPinUnconfirmedUrl}" alt="" aria-hidden="true" decoding="async"/><h4>${esc(opts.name)}</h4></div>` +
+		(opts.er ? "" : `<div class="rt-hospital-row"><span class="rt-hospital-v">${m.ofmap_shared_hospital_er_unconfirmed()}</span></div>`) +
 		phoneRow +
 		fromRow +
 		(locate || dir ? `<div class="rt-hospital-actions">${locate}${dir}</div>` : "") +
@@ -210,19 +220,20 @@ export function attachHospitalLayer(
 		if (!overlayVisibility.hospitals) popup?.remove();
 	};
 
-	const ready: Promise<void> = map.hasImage(PIN)
-		? Promise.resolve()
-		: loadMapImage(map, hospitalPinUrl).then(
-				(img) => {
-					if (isLive() && !map.hasImage(PIN)) map.addImage(PIN, img);
-				},
-				(err) => {
-					console.warn(
-						"[hospitals] pin icon failed to load — hospitals will NOT render",
-						err,
-					);
-				},
-			);
+	const pinsMissing = (): boolean => PINS.some(([id]) => !map.hasImage(id));
+	const loadPins = (): Promise<unknown> =>
+		Promise.all(
+			PINS.map(([id, url]) =>
+				map.hasImage(id)
+					? undefined
+					: loadMapImage(map, url).then((img) => {
+							if (isLive() && !map.hasImage(id)) map.addImage(id, img);
+						}),
+			),
+		);
+	const ready: Promise<unknown> = loadPins().catch((err) => {
+		console.warn("[hospitals] pin icon failed to load — hospitals will NOT render", err);
+	});
 	const repaint = (): void => {
 		applyVisibility();
 		void ready.then(paint).catch((err) => {
@@ -234,12 +245,9 @@ export function attachHospitalLayer(
 	const offLanded = onHospitals(repaint);
 	// A style swap drops every custom layer.
 	const onStyle = (): void => {
-		if (!map.hasImage(PIN)) {
-			void loadMapImage(map, hospitalPinUrl)
-				.then((img) => {
-					if (isLive() && !map.hasImage(PIN)) map.addImage(PIN, img);
-					repaint();
-				})
+		if (pinsMissing()) {
+			void loadPins()
+				.then(repaint)
 				.catch((err) => {
 					console.warn("[hospitals] pin icon reload failed", err);
 				});
@@ -265,6 +273,7 @@ export function attachHospitalLayer(
 			.setHTML(
 				hospitalCardHtml({
 					name: typeof props?.name === "string" ? props.name : m.ofmap_shared_hospital_fallback_name(),
+					er: isEr(props),
 					phone: typeof props?.phone === "string" ? props.phone : null,
 					fromYouKm: nearestKm(at, opts.origins()),
 					locateButton: opts.onShowMyLocation !== undefined,

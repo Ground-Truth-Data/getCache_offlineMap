@@ -72,7 +72,7 @@ export function parseFiness(csvText, activity14) {
 		const lat = Number(r[col.geoloc_4326_lat]);
 		if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
 		const emergency =
-			activity14.has(r[col.finess]) || r[col.san_urg] === "OUI" ? "yes" : null;
+			activity14.has(r[col.finess]) || r[col.san_urg] === "OUI" ? "yes" : "no";
 		const phone = (r[col.telephone] ?? "").trim();
 		entries.push(
 			makeEntry(lng, lat, r[col.rs].trim() || "Hospital", emergency, phone || undefined),

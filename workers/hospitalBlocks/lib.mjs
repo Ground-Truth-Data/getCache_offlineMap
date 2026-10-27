@@ -88,6 +88,42 @@ export function colIndex(header, names) {
 }
 
 /** [lng, lat, name, emergency, phone] with trailing null/absent fields trimmed. */
+const R_KM = 6371;
+function km(a, b) {
+	const dLat = ((b[1] - a[1]) * Math.PI) / 180;
+	const dLng = ((b[0] - a[0]) * Math.PI) / 180;
+	const h = Math.sin(dLat / 2) ** 2 + Math.cos((a[1] * Math.PI) / 180) * Math.cos((b[1] * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+	return 2 * R_KM * Math.asin(Math.sqrt(h));
+}
+
+/** Every ER (emergency=yes), and a hospital whose ER is unconfirmed only where no ER is within
+ *  `withinKm`: in most countries OSM leaves real ERs untagged, and a rural planter's only
+ *  hospital must not vanish. An explicit "no" is dropped; any other value ships as unconfirmed. */
+export function erOrLonely(entries, withinKm = 50) {
+	const cell = (lng, lat) => `${Math.floor(lat)}_${((Math.floor(lng) % 360) + 360) % 360}`;
+	const ers = new Map();
+	for (const e of entries)
+		if (e[3] === "yes") {
+			const k = cell(e[0], e[1]);
+			if (!ers.has(k)) ers.set(k, []);
+			ers.get(k).push(e);
+		}
+	const nearEr = (e) => {
+		const dLat = Math.ceil(withinKm / 111);
+		const dLng = Math.min(180, Math.ceil(withinKm / (111 * Math.max(0.01, Math.cos((e[1] * Math.PI) / 180)))));
+		for (let y = -dLat; y <= dLat; y++)
+			for (let x = -dLng; x <= dLng; x++)
+				for (const er of ers.get(cell(e[0] + x, e[1] + y)) ?? []) if (km(e, er) <= withinKm) return true;
+		return false;
+	};
+	const out = [];
+	for (const e of entries) {
+		if (e[3] === "yes") out.push(e);
+		else if (e[3] !== "no" && !nearEr(e)) out.push(makeEntry(e[0], e[1], e[2], null, e[4]));
+	}
+	return out;
+}
+
 export function makeEntry(lng, lat, name, emergency = null, phone = undefined) {
 	const e = [Number(lng.toFixed(5)), Number(lat.toFixed(5)), name, emergency, phone];
 	while (e.length > 3 && (e[e.length - 1] === null || e[e.length - 1] === undefined))

@@ -53,6 +53,7 @@
 	"ofmap_shared_hospital_my_location": "Ma position",
 	"ofmap_shared_hospital_copied": "Copié",
 	"ofmap_shared_hospital_fallback_name": "Hôpital",
+	"ofmap_shared_hospital_er_unconfirmed": "Hôpital — urgences non confirmées",
 	"ofmap_route_directions": "Itinéraire",
 	"ofmap_route_finding": "Recherche d’un itinéraire routier…",
 	"ofmap_route_by_road": "{distance} par la route",
