@@ -145,7 +145,7 @@ function wireCloseButton(popup: Popup): void {
 	const btn = popup
 		.getElement()
 		?.querySelector<HTMLButtonElement>(
-			".maplibregl-popup-close-button, .mapboxgl-popup-close-button",
+			".maplibregl-popup-close-button",
 		);
 	if (!btn) return;
 	btn.blur();

@@ -48,7 +48,7 @@ const geom = $derived(
 		isPoint,
 		wide,
 		topReserve: TOP_RESERVE,
-		bottomReserve: containerHeight - readFloorY(document.querySelector(".mapboxgl-canvas, .maplibregl-canvas") as HTMLElement) + FLOOR_GAP,
+		bottomReserve: containerHeight - readFloorY(document.querySelector(".maplibregl-canvas") as HTMLElement) + FLOOR_GAP,
 		crow: crowExclusion(),
 	}),
 );
