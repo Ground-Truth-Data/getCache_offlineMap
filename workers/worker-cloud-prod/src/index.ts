@@ -11,6 +11,7 @@ import {
   fetchFires,
   MAX_RADIUS_KM,
 } from "../../../lib/worker/firesWorker";
+import { coverOf, DEFAULT_SOURCE, SATELLITE_SOURCES, type SatelliteSource, sourceOf } from "../../../lib/contract/satelliteSources";
 import {
   cellKeysForDisc,
   HOSPITAL_MAX_KM,
@@ -24,27 +25,19 @@ import {
 import hospitalsPack from "./hospitalsWorld.v1.bin";
 
 /** Edge-cache key for /hospitals; bump on every re-bake (bakeHospitals.mjs prints it). */
-const HOSPITALS_BUILD = "v1-209173-20260907";
+const HOSPITALS_BUILD = "v1-58331-20261027";
 
-/** Edge-cache key for /satellite; bump when the upstream tileset id changes. */
-const SATELLITE_BUILD = "satellite-v2";
-
-/** MapTiler's pyramid thins out past this outside cities; the client overzooms instead. */
-const SATELLITE_MAX_Z = 20;
-
-const SATELLITE_PATH = /^\/satellite\/(\d{1,2})\/(\d{1,7})\/(\d{1,7})\.jpg$/;
-
-/** satellite-v2 is already 512px, so @2x 404s — the client declares tileSize 512. */
-function satelliteUrl(key: string, z: number, x: number, y: number): string {
-  return `https://api.maptiler.com/tiles/satellite-v2/${z}/${x}/${y}.jpg?key=${key}`;
-}
+const SATELLITE_PATH = /^\/satellite\/([a-z0-9-]+)\/(\d{1,2})\/(\d{1,7})\/(\d{1,7})\.jpg$/;
 
 interface Env {
   TILES: R2Bucket;
+  /** Satellite tiles every phone shares as `source/z/x/y.jpg`, Squirrel's counts and its source switch; bound on tiles-dev only. */
+  SAT_CACHE?: R2Bucket;
   PMTILES_KEY: string;
   /** Worker SECRETs (`wrangler secret put`), never [vars] — they must not reach the app bundle. */
   GC_firms_map_key: string;
   GC_mapTiler_key: string;
+  GC_esri_key: string;
 }
 
 class R2Source implements Source {
@@ -106,7 +99,9 @@ const EXPOSED_HEADERS = [
   "X-Sources-Ok",
   "X-Radius-Km",
   "X-Tile-Source",
+  "X-Cache",
   "Server-Timing",
+  "Retry-After",
 ].join(", ");
 
 const CORS_HEADERS: Record<string, string> = {
@@ -120,21 +115,113 @@ const CORS_HEADERS: Record<string, string> = {
 const SAT_HEADERS: Record<string, string> = {
   ...CORS_HEADERS,
   "Content-Type": "image/jpeg",
-  "X-Tile-Source": "maptiler",
   "Cache-Control": "public, max-age=31536000, immutable",
 };
 
-/** One MapTiler tile through the edge cache. */
-async function satelliteTile(env: Env, ctx: ExecutionContext, origin: string, z: number, x: number, y: number): Promise<ArrayBuffer> {
-  const key = new Request(`${origin}/satellite/${z}/${x}/${y}.jpg?build=${SATELLITE_BUILD}`, { method: "GET" });
-  const hit = await caches.default.match(key);
-  if (hit) return hit.arrayBuffer();
-  const upstream = await fetch(satelliteUrl(env.GC_mapTiler_key, z, x, y));
-  if (!upstream.ok) throw new Error(`MapTiler responded ${upstream.status} for ${z}/${x}/${y}`);
-  const body = await upstream.arrayBuffer();
-  ctx.waitUntil(caches.default.put(key, new Response(body, { status: 200, headers: SAT_HEADERS })));
-  return body;
+/** The source said no; its status and Retry-After travel on to the phone. */
+class UpstreamRefused extends Error {
+  constructor(readonly status: number, readonly retryAfter: string | null, message: string) {
+    super(message);
+  }
 }
+
+type Tier = "edge" | "r2" | "upstream";
+
+/** One tile: this colo's edge cache, then the shared R2 copy, then the source. Only a 200 is ever kept. */
+async function satelliteTile(env: Env, ctx: ExecutionContext, origin: string, id: string, src: SatelliteSource, z: number, x: number, y: number): Promise<{ body: ArrayBuffer; tier: Tier }> {
+  const name = `${id}/${z}/${x}/${y}.jpg`;
+  const edge = new Request(`${origin}/satellite/${name}`, { method: "GET" });
+  const near = src.live ? undefined : await caches.default.match(edge);
+  if (near) return { body: await near.arrayBuffer(), tier: "edge" };
+  const bucket = src.cacheToR2 ? env.SAT_CACHE : undefined;
+  const kept = await bucket?.get(name);
+  if (kept) {
+    const body = await kept.arrayBuffer();
+    ctx.waitUntil(caches.default.put(edge, new Response(body, { status: 200, headers: SAT_HEADERS })));
+    return { body, tier: "r2" };
+  }
+  const upstream = await fetch(src.tileUrl(src.secret ? env[src.secret] : "", z, x, y));
+  if (!upstream.ok) throw new UpstreamRefused(upstream.status, upstream.headers.get("Retry-After"), `${id} responded ${upstream.status} for ${z}/${x}/${y}`);
+  const body = await upstream.arrayBuffer();
+  if (!src.live) ctx.waitUntil(caches.default.put(edge, new Response(body, { status: 200, headers: SAT_HEADERS })));
+  if (bucket) {
+    ctx.waitUntil(bucket.put(name, body, { httpMetadata: { contentType: "image/jpeg" } }));
+    tally(env, ctx, `${id}|stored|tiles`, 1);
+    tally(env, ctx, `${id}|stored|bytes`, body.byteLength);
+  }
+  return { body, tier: "upstream" };
+}
+
+// Squirrel's counts: summed in this isolate, written as one small R2 object per 100 tiles or 30 s,
+// so counting costs one write per hundred tiles. A count still in an isolate when it dies is lost.
+// Named at first flush: Workers refuse random values at global scope.
+let isolate: string | null = null;
+let pending: Record<string, number> = {};
+let pendingTiles = 0;
+let lastFlush = 0;
+
+function tally(env: Env, ctx: ExecutionContext, key: string, n: number): void {
+  if (!env.SAT_CACHE) return;
+  pending[key] = (pending[key] ?? 0) + n;
+  // `served` is a tile's last count; flushing on any earlier one splits a tile across two objects.
+  if (!key.endsWith("|served")) return;
+  pendingTiles++;
+  if (pendingTiles >= 100 || Date.now() - lastFlush > 30_000) ctx.waitUntil(flush(env.SAT_CACHE));
+}
+
+async function flush(bucket: R2Bucket): Promise<void> {
+  const out = pending;
+  pending = {};
+  pendingTiles = 0;
+  lastFlush = Date.now();
+  if (Object.keys(out).length) await bucket.put(`_squirrel/counts/${new Date().toISOString().slice(0, 10)}/${(isolate ??= crypto.randomUUID())}-${lastFlush}.json`, JSON.stringify(out));
+}
+
+const ACTIVE_KEY = "_squirrel/active";
+
+async function activeSource(env: Env): Promise<string> {
+  const set = await env.SAT_CACHE?.get(ACTIVE_KEY);
+  return set ? await set.text() : DEFAULT_SOURCE;
+}
+
+/** Every count file under `prefix`, summed into today, this month and all time, per `source|z|tier` key. */
+async function squirrelCounts(bucket: R2Bucket, prefix = "_squirrel/counts/"): Promise<Record<"today" | "month" | "all", Record<string, number>>> {
+  const today = new Date().toISOString().slice(0, 10);
+  const out = { today: {} as Record<string, number>, month: {} as Record<string, number>, all: {} as Record<string, number> };
+  let cursor: string | undefined;
+  do {
+    const page = await bucket.list({ prefix, cursor });
+    const bodies = await Promise.all(page.objects.map(async (o) => [o.key.split("/")[2], await (await bucket.get(o.key))?.json<Record<string, number>>()] as const));
+    for (const [day, counts] of bodies)
+      for (const [k, n] of Object.entries(counts ?? {}))
+        for (const into of [out.all, ...(day.slice(0, 7) === today.slice(0, 7) ? [out.month] : []), ...(day === today ? [out.today] : [])]) into[k] = (into[k] ?? 0) + n;
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  return out;
+}
+
+function upstreamOf(counts: Record<string, number>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [k, n] of Object.entries(counts)) if (k.endsWith("|upstream")) out[k.split("|")[0]] = (out[k.split("|")[0]] ?? 0) + n;
+  return out;
+}
+
+// This month's upstream tiles, re-read from the count files every 5 min; the 10% left over the
+// stop covers what a refresh hasn't seen yet and counts lost with a dead isolate.
+let spent = { month: "", at: 0, tiles: {} as Record<string, number> };
+
+async function freeTierSpent(env: Env, id: string, src: SatelliteSource): Promise<boolean> {
+  if (!src.freeTilesPerMonth) return false;
+  // No bucket, no meter: a metered source is refused rather than run blind.
+  if (!env.SAT_CACHE) return true;
+  const month = new Date().toISOString().slice(0, 7);
+  if (spent.month !== month || Date.now() - spent.at > 300_000)
+    spent = { month, at: Date.now(), tiles: upstreamOf((await squirrelCounts(env.SAT_CACHE, `_squirrel/counts/${month}`)).month) };
+  return (spent.tiles[id] ?? 0) + (upstreamOf(pending)[id] ?? 0) >= 0.9 * src.freeTilesPerMonth;
+}
+
+const tileLng = (x: number, z: number) => (x / 2 ** z) * 360 - 180;
+const tileLat = (y: number, z: number) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / 2 ** z))) * 180) / Math.PI;
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -143,6 +230,24 @@ export default {
     }
 
     const url = new URL(request.url);
+
+    // /squirrel: which source the photos bake from, and what each one served. A POST of a source id switches it;
+    // text/plain, so a browser sends it without a preflight. Only a Worker with the bucket keeps either.
+    if (url.pathname === "/squirrel" || url.pathname === "/squirrel/active") {
+      const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json", "Cache-Control": "no-store" } });
+      if (request.method === "POST") {
+        const id = (await request.text()).trim();
+        if (!env.SAT_CACHE) return json({ error: "this Worker has no bucket to keep a switch in" }, 409);
+        if (!sourceOf(id)) return json({ error: `no satellite source "${id}"` }, 400);
+        if (sourceOf(id)?.live) return json({ error: `${id} may only be streamed, so photos never bake from it` }, 400);
+        await env.SAT_CACHE.put(ACTIVE_KEY, id);
+        return json({ active: id });
+      }
+      const active = await activeSource(env);
+      if (url.pathname === "/squirrel/active") return json({ active });
+      if (env.SAT_CACHE) await flush(env.SAT_CACHE);
+      return json({ active, counts: env.SAT_CACHE ? await squirrelCounts(env.SAT_CACHE) : null });
+    }
 
     if (request.method !== "GET" && request.method !== "HEAD") {
       return new Response("Method Not Allowed", {
@@ -255,6 +360,7 @@ export default {
       }
 
       let hospBody: string;
+      let servedKm = km;
       try {
         const { index, dataOrigin } = hospitalsIndex();
         const cellArrays: HospitalEntry[][] = [];
@@ -263,7 +369,9 @@ export default {
           if (!span) continue;
           cellArrays.push(readCellEntries(hospitalsPack, dataOrigin, span));
         }
-        hospBody = JSON.stringify(hospitalsCollection(cellArrays, lng, lat, km));
+        const { fc, radiusKm } = hospitalsCollection(cellArrays, lng, lat, km);
+        hospBody = JSON.stringify(fc);
+        servedKm = radiusKm;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         // 502, never an empty 200 — same law as /fires.
@@ -277,7 +385,7 @@ export default {
         ...CORS_HEADERS,
         "Content-Type": "application/json",
         // The radius actually served; the phone stores this, never the number it asked for.
-        "X-Radius-Km": String(km),
+        "X-Radius-Km": String(servedKm),
         "Cache-Control": "public, max-age=31536000, immutable",
       };
       ctx.waitUntil(
@@ -292,53 +400,68 @@ export default {
       });
     }
 
-    // /satellite/{z}/{x}/{y}.jpg: MapTiler imagery, key held here.
+    // /highways-vN.pmtiles: the world's highways (getCache's build-world-highways.mjs), whole; each phone fetches it once.
+    // A rebuild is a new N, so each name is immutable.
+    const highways = /^\/(highways-v\d+\.pmtiles)$/.exec(url.pathname);
+    if (highways) {
+      const object = await env.TILES.get(highways[1]);
+      if (!object) return new Response(`${highways[1]} is not in the bucket`, { status: 404, headers: CORS_HEADERS });
+      return new Response(request.method === "HEAD" ? null : object.body, {
+        headers: { ...CORS_HEADERS, "Content-Type": "application/vnd.pmtiles", "Content-Length": String(object.size), "Cache-Control": "public, max-age=31536000, immutable", ETag: object.httpEtag },
+      });
+    }
+
+    // /satellite/{source}/{z}/{x}/{y}.jpg: that source's imagery, its key held here.
     const sat = SATELLITE_PATH.exec(url.pathname);
     if (sat !== null) {
-      const z = Number(sat[1]);
-      const x = Number(sat[2]);
-      const y = Number(sat[3]);
-      if (z > SATELLITE_MAX_Z) {
-        return new Response(`Bad Request — z must be 0..${SATELLITE_MAX_Z}`, {
-          status: 400,
-          headers: CORS_HEADERS,
-        });
-      }
+      const [id, z, x, y] = [sat[1], Number(sat[2]), Number(sat[3]), Number(sat[4])];
+      const src = sourceOf(id);
+      // Fail loud, like /fires: a blank basemap looks merely "not loaded yet".
+      if (!src)
+        return new Response(`Not Found — no satellite source "${id}"; there are: ${Object.keys(SATELLITE_SOURCES).join(", ")}`, { status: 404, headers: CORS_HEADERS });
+      if (src.secret && !env[src.secret])
+        return new Response(`${src.secret} is not configured on this Worker (wrangler secret put ${src.secret})`, { status: 500, headers: CORS_HEADERS });
       const span = 2 ** z;
-      if (x >= span || y >= span) {
-        return new Response(`Bad Request — x,y must be 0..${span - 1} at z${z}`, {
-          status: 400,
-          headers: CORS_HEADERS,
-        });
-      }
-      if (!env.GC_mapTiler_key) {
-        // Fail loud, like /fires: a blank basemap looks merely "not loaded yet".
-        return new Response(
-          "GC_mapTiler_key is not configured on this Worker (wrangler secret put GC_mapTiler_key)",
-          { status: 500, headers: CORS_HEADERS },
-        );
-      }
-
-      let body: ArrayBuffer;
+      if (z > src.maxZ || x >= span || y >= span)
+        return new Response(`Bad Request — ${id} serves z 0..${src.maxZ} and x,y 0..${span - 1} at z${z}`, { status: 400, headers: CORS_HEADERS });
+      // A 404 here lets the map draw what lies under this layer.
+      const under = src.live ? coverOf(tileLng(x, z), tileLat(y + 1, z), tileLng(x + 1, z), tileLat(y, z)) : undefined;
+      if (under) return new Response(`Not Found — ${under} covers this tile, so ${id} is never asked for it`, { status: 404, headers: CORS_HEADERS });
+      if (await freeTierSpent(env, id, src))
+        return new Response(`Not Found — ${id} has served 90% of its free tier this month; it stops until the month resets`, { status: 404, headers: CORS_HEADERS });
+      let tile: { body: ArrayBuffer; tier: Tier };
       const satStart = performance.now();
       try {
-        body = await satelliteTile(env, ctx, url.origin, z, x, y);
+        tile = await satelliteTile(env, ctx, url.origin, id, src, z, x, y);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        // A 429 stays a 429, so the phone waits it out instead of retrying into it.
+        if (err instanceof UpstreamRefused && err.status === 429)
+          return new Response(`Satellite fetch failed: ${message}`, {
+            status: 429,
+            headers: { ...CORS_HEADERS, "Retry-After": err.retryAfter ?? "60" },
+          });
         return new Response(`Satellite fetch failed: ${message}`, {
           status: 502,
           headers: CORS_HEADERS,
         });
       }
-      return new Response(request.method === "HEAD" ? null : body, {
+      tally(env, ctx, `${id}|${z}|${tile.tier}`, 1);
+      tally(env, ctx, `${id}|served`, 1);
+      return new Response(request.method === "HEAD" ? null : tile.body, {
         status: 200,
-        headers: { ...SAT_HEADERS, "Server-Timing": `sat;dur=${(performance.now() - satStart).toFixed(1)}` },
+        headers: {
+          ...SAT_HEADERS,
+          "X-Tile-Source": id,
+          "X-Cache": tile.tier === "upstream" ? "MISS" : "HIT",
+          "Server-Timing": `sat;dur=${(performance.now() - satStart).toFixed(1)}`,
+        },
       });
     }
 
     const match = TILE_PATH.exec(url.pathname);
     if (match === null) {
-      return new Response("Not Found — expected /{z}/{x}/{y}.pbf, /satellite/{z}/{x}/{y}.jpg, /fires?lng=&lat=, or /hospitals?lng=&lat=&km=", {
+      return new Response("Not Found — expected /{z}/{x}/{y}.pbf, /satellite/{source}/{z}/{x}/{y}.jpg, /squirrel, /fires?lng=&lat=, or /hospitals?lng=&lat=&km=", {
         status: 404,
         headers: CORS_HEADERS,
       });

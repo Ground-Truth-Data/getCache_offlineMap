@@ -37,6 +37,11 @@ routes = [
 binding = "TILES"
 bucket_name = "offline-tiles"
 
+# Satellite tiles every phone shares, plus Squirrel's counts and source switch; tiles-prod has no binding: edge cache only, default source.
+[[env.dev.r2_buckets]]
+binding = "SAT_CACHE"
+bucket_name = "gc-satellite-cache"
+
 [env.dev.vars]
 PMTILES_KEY = "planet.pmtiles"
 
