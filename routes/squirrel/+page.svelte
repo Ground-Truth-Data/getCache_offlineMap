@@ -318,7 +318,7 @@ function toBody(node: HTMLElement) {
 <div class="sq" use:toBody>
 	<div class="topbar">
 		<span class="gclogo">G¢</span><span class="wordmark">Get Cache</span><span class="crumb">/</span><span class="appname">SQUIRREL</span>
-		<span class="hnote">satellite traffic controller</span>
+		<span class="hnote">satellite traffic controller · <a href="https://github.com/Ground-Truth-Data/getCache_offlineMap/blob/main/docs/SATELLITE_SOURCES.md" target="_blank" rel="noopener">which source serves what</a></span>
 		<span class="spacer"></span>
 		<span class="meta">photos bake from <b>{answer ? (SATELLITE_SOURCES[answer.active as keyof typeof SATELLITE_SOURCES]?.name ?? answer.active) : "—"}</b> · active users <b>—</b></span>
 		{#if failure}<span class="statuspill bad" title={failure}>✕ worker · {host}</span>
