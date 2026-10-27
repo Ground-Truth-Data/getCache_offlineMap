@@ -11,7 +11,7 @@ import {
   fetchFires,
   MAX_RADIUS_KM,
 } from "../../../lib/worker/firesWorker";
-import { DEFAULT_SOURCE, SATELLITE_SOURCES, type SatelliteSource, sourceOf } from "../../../lib/contract/satelliteSources";
+import { coverOf, DEFAULT_SOURCE, SATELLITE_SOURCES, type SatelliteSource, sourceOf } from "../../../lib/contract/satelliteSources";
 import {
   cellKeysForDisc,
   HOSPITAL_MAX_KM,
@@ -37,6 +37,7 @@ interface Env {
   /** Worker SECRETs (`wrangler secret put`), never [vars] — they must not reach the app bundle. */
   GC_firms_map_key: string;
   GC_mapTiler_key: string;
+  GC_esri_key: string;
 }
 
 class R2Source implements Source {
@@ -130,7 +131,7 @@ type Tier = "edge" | "r2" | "upstream";
 async function satelliteTile(env: Env, ctx: ExecutionContext, origin: string, id: string, src: SatelliteSource, z: number, x: number, y: number): Promise<{ body: ArrayBuffer; tier: Tier }> {
   const name = `${id}/${z}/${x}/${y}.jpg`;
   const edge = new Request(`${origin}/satellite/${name}`, { method: "GET" });
-  const near = await caches.default.match(edge);
+  const near = src.live ? undefined : await caches.default.match(edge);
   if (near) return { body: await near.arrayBuffer(), tier: "edge" };
   const bucket = src.cacheToR2 ? env.SAT_CACHE : undefined;
   const kept = await bucket?.get(name);
@@ -142,7 +143,7 @@ async function satelliteTile(env: Env, ctx: ExecutionContext, origin: string, id
   const upstream = await fetch(src.tileUrl(src.secret ? env[src.secret] : "", z, x, y));
   if (!upstream.ok) throw new UpstreamRefused(upstream.status, upstream.headers.get("Retry-After"), `${id} responded ${upstream.status} for ${z}/${x}/${y}`);
   const body = await upstream.arrayBuffer();
-  ctx.waitUntil(caches.default.put(edge, new Response(body, { status: 200, headers: SAT_HEADERS })));
+  if (!src.live) ctx.waitUntil(caches.default.put(edge, new Response(body, { status: 200, headers: SAT_HEADERS })));
   if (bucket) {
     ctx.waitUntil(bucket.put(name, body, { httpMetadata: { contentType: "image/jpeg" } }));
     tally(env, ctx, `${id}|stored|tiles`, 1);
@@ -183,13 +184,13 @@ async function activeSource(env: Env): Promise<string> {
   return set ? await set.text() : DEFAULT_SOURCE;
 }
 
-/** Every count file, summed into today, this month and all time, per `source|z|tier` key. */
-async function squirrelCounts(bucket: R2Bucket): Promise<Record<"today" | "month" | "all", Record<string, number>>> {
+/** Every count file under `prefix`, summed into today, this month and all time, per `source|z|tier` key. */
+async function squirrelCounts(bucket: R2Bucket, prefix = "_squirrel/counts/"): Promise<Record<"today" | "month" | "all", Record<string, number>>> {
   const today = new Date().toISOString().slice(0, 10);
   const out = { today: {} as Record<string, number>, month: {} as Record<string, number>, all: {} as Record<string, number> };
   let cursor: string | undefined;
   do {
-    const page = await bucket.list({ prefix: "_squirrel/counts/", cursor });
+    const page = await bucket.list({ prefix, cursor });
     const bodies = await Promise.all(page.objects.map(async (o) => [o.key.split("/")[2], await (await bucket.get(o.key))?.json<Record<string, number>>()] as const));
     for (const [day, counts] of bodies)
       for (const [k, n] of Object.entries(counts ?? {}))
@@ -198,6 +199,29 @@ async function squirrelCounts(bucket: R2Bucket): Promise<Record<"today" | "month
   } while (cursor);
   return out;
 }
+
+function upstreamOf(counts: Record<string, number>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [k, n] of Object.entries(counts)) if (k.endsWith("|upstream")) out[k.split("|")[0]] = (out[k.split("|")[0]] ?? 0) + n;
+  return out;
+}
+
+// This month's upstream tiles, re-read from the count files every 5 min; the 10% left over the
+// stop covers what a refresh hasn't seen yet and counts lost with a dead isolate.
+let spent = { month: "", at: 0, tiles: {} as Record<string, number> };
+
+async function freeTierSpent(env: Env, id: string, src: SatelliteSource): Promise<boolean> {
+  if (!src.freeTilesPerMonth) return false;
+  // No bucket, no meter: a metered source is refused rather than run blind.
+  if (!env.SAT_CACHE) return true;
+  const month = new Date().toISOString().slice(0, 7);
+  if (spent.month !== month || Date.now() - spent.at > 300_000)
+    spent = { month, at: Date.now(), tiles: upstreamOf((await squirrelCounts(env.SAT_CACHE, `_squirrel/counts/${month}`)).month) };
+  return (spent.tiles[id] ?? 0) + (upstreamOf(pending)[id] ?? 0) >= 0.9 * src.freeTilesPerMonth;
+}
+
+const tileLng = (x: number, z: number) => (x / 2 ** z) * 360 - 180;
+const tileLat = (y: number, z: number) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / 2 ** z))) * 180) / Math.PI;
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -215,6 +239,7 @@ export default {
         const id = (await request.text()).trim();
         if (!env.SAT_CACHE) return json({ error: "this Worker has no bucket to keep a switch in" }, 409);
         if (!sourceOf(id)) return json({ error: `no satellite source "${id}"` }, 400);
+        if (sourceOf(id)?.live) return json({ error: `${id} may only be streamed, so photos never bake from it` }, 400);
         await env.SAT_CACHE.put(ACTIVE_KEY, id);
         return json({ active: id });
       }
@@ -385,6 +410,11 @@ export default {
       const span = 2 ** z;
       if (z > src.maxZ || x >= span || y >= span)
         return new Response(`Bad Request — ${id} serves z 0..${src.maxZ} and x,y 0..${span - 1} at z${z}`, { status: 400, headers: CORS_HEADERS });
+      // A 404 here lets the map draw what lies under this layer.
+      const under = src.live ? coverOf(tileLng(x, z), tileLat(y + 1, z), tileLng(x + 1, z), tileLat(y, z)) : undefined;
+      if (under) return new Response(`Not Found — ${under} covers this tile, so ${id} is never asked for it`, { status: 404, headers: CORS_HEADERS });
+      if (await freeTierSpent(env, id, src))
+        return new Response(`Not Found — ${id} has served 90% of its free tier this month; it stops until the month resets`, { status: 404, headers: CORS_HEADERS });
       let tile: { body: ArrayBuffer; tier: Tier };
       const satStart = performance.now();
       try {

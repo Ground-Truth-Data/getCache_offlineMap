@@ -1,15 +1,18 @@
 // The online map's imagery: Sentinel through our Worker where Mapbox's own satellite was, and the
 // phone's baked photos over it wherever it holds one. Every satellite pixel is then a source Squirrel counts.
 import type * as maplibregl from "maplibre-gl";
-import { SATELLITE_SOURCES, type SatelliteSource } from "../../contract/satelliteSources";
+import { coverOf, SATELLITE_SOURCES, type SatelliteSource } from "../../contract/satelliteSources";
 import { tilesHost } from "../../worker/tilesHost";
 import { listRegions, onRegionsChanged } from "../../../routes/offlinev10/store";
 import { onPhoto } from "../../../routes/offlinev10/satellite";
 import { createSatelliteMount, type SatelliteMount } from "./mountSatellite";
+import { PHOTO_COVERAGE_RADIUS_KM } from "./satelliteImage";
+import { kmToDegSpan } from "../../shared/kmGeo";
 
 /** The raster layer Mapbox's satellite styles draw their imagery with. */
 const MAPBOX_IMAGERY = "satellite";
 const SENTINEL = "gc-sentinel";
+const ESRI = "gc-esri";
 /** Sentinel's 10 m pixels hold until here; past it a sharper source takes over where one covers. */
 const SHARP_FROM_Z = 13;
 
@@ -17,6 +20,7 @@ const SHARP_FROM_Z = 13;
  * `onCredits` hears the attributions of the photos on the map; Sentinel's rides its own source. */
 export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: string[]) => void): () => void {
 	let photos: SatelliteMount | null = null;
+	const boxes = new Map<string, readonly [number, number, number, number]>();
 
 	const show = async (): Promise<void> => {
 		const mount = photos;
@@ -26,7 +30,18 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 		for (const r of await listRegions())
 			if (!r.removed && r.photoKey && r.photoCenter) sites.set(r.photoKey, { key: r.photoKey, center: r.photoCenter });
 		await mount.reconcile([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], [...sites.values()], map.getZoom());
-		if (mount === photos) onCredits(mount.attributions());
+		if (mount !== photos) return;
+		onCredits(mount.attributions());
+		// Esri bills per tile, so it asks for none while the whole view is inside one photo or a sharper source's cover;
+		// the square inside a photo's disc keeps the corners honest.
+		const inside = !!coverOf(b.getWest(), b.getSouth(), b.getEast(), b.getNorth()) || [...sites.values()].some(({ center: [lng, lat] }) => {
+			const { dLat, dLng } = kmToDegSpan(PHOTO_COVERAGE_RADIUS_KM / Math.SQRT2, lat);
+			return b.getWest() >= lng - dLng && b.getEast() <= lng + dLng && b.getSouth() >= lat - dLat && b.getNorth() <= lat + dLat;
+		});
+		if (map.getLayer(ESRI)) map.setLayoutProperty(ESRI, "visibility", inside ? "none" : "visible");
+		// Mapbox credits every visible layer, in view or not; a box out of view is hidden so its source isn't credited.
+		for (const [box, [w, s, e, n]] of boxes)
+			if (map.getLayer(box)) map.setLayoutProperty(box, "visibility", w < b.getEast() && e > b.getWest() && s < b.getNorth() && n > b.getSouth() ? "visible" : "none");
 	};
 
 	const swap = (): void => {
@@ -45,10 +60,22 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 			attribution: sentinel.attribution,
 		});
 		map.addLayer({ id: SENTINEL, type: "raster", source: SENTINEL }, MAPBOX_IMAGERY);
+		const esri = SATELLITE_SOURCES.esri;
+		// The Worker 404s what USGS covers and everything past 90% of the free tier, and Sentinel shows through.
+		map.addSource(ESRI, {
+			type: "raster",
+			tiles: [`${tilesHost()}/satellite/esri/{z}/{x}/{y}.jpg`],
+			tileSize: 256,
+			minzoom: SHARP_FROM_Z,
+			maxzoom: esri.maxZ,
+			attribution: esri.attribution,
+		});
+		map.addLayer({ id: ESRI, type: "raster", source: ESRI, minzoom: SHARP_FROM_Z }, MAPBOX_IMAGERY);
 		for (const [id, src] of Object.entries(SATELLITE_SOURCES) as [string, SatelliteSource][])
 			src.covers?.forEach((bounds, i) => {
 				// One source per box: a raster source takes one bounds, and outside it no tile is asked for.
 				const box = `gc-${id}-${i}`;
+				boxes.set(box, bounds);
 				map.addSource(box, {
 					type: "raster",
 					tiles: [`${tilesHost()}/satellite/${id}/{z}/{x}/{y}.jpg`],

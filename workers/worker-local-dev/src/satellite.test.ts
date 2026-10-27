@@ -15,7 +15,7 @@ const bucket = {
   put: async (k: string, v: ArrayBuffer | string) => void kept.set(k, v),
   list: async ({ prefix }: { prefix: string }) => ({ objects: [...kept.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key })), truncated: false }),
 };
-const env = (more = {}) => ({ GC_mapTiler_key: "k", SAT_CACHE: bucket, ...more }) as never;
+const env = (more = {}) => ({ GC_mapTiler_key: "k", GC_esri_key: "e", SAT_CACHE: bucket, ...more }) as never;
 const ctx = { waitUntil: (p: Promise<unknown>) => void waits.push(p), passThroughOnException() {} } as never;
 const call = async (path: string, e = env(), init?: RequestInit) => {
   const res = await worker.fetch(new Request(`https://tiles.test${path}`, init), e, ctx);
@@ -81,6 +81,57 @@ describe("/satellite through the shared R2 cache", () => {
     const res = await ask("bing");
     expect(res.status).toBe(404);
     expect(await res.text()).toContain("maptiler, sentinel");
+  });
+});
+
+describe("esri: streamed only, and stopped at 90% of its free tier", () => {
+  // Ethiopia: nothing covers it but Sentinel.
+  const outside = "/satellite/esri/14/9874/7811.jpg";
+  let asked: number;
+  let clock = Date.now();
+  beforeEach(() => {
+    asked = 0;
+    vi.stubGlobal("fetch", async () => (asked++, new Response(new Uint8Array(1000), { status: 200 })));
+    // The meter re-reads the counts every 5 min; each test starts past that.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime((clock += 6 * 60_000));
+  });
+  afterEach(() => vi.useRealTimers());
+  const spentThisMonth = (n: number) => kept.set(`_squirrel/counts/${new Date().toISOString().slice(0, 10)}/i-1.json`, JSON.stringify({ "esri|17|upstream": n }));
+
+  it("serves one tile short of the stop, then refuses at 1.8 of its 2 million without asking Esri", async () => {
+    spentThisMonth(1_799_999);
+    expect((await call(outside)).status).toBe(200);
+    expect(asked).toBe(1);
+    vi.setSystemTime((clock += 6 * 60_000));
+    spentThisMonth(1_800_000);
+    const res = await call(outside);
+    expect(res.status).toBe(404);
+    expect(await res.text()).toMatch(/90% of its free tier/);
+    expect(asked).toBe(1);
+  });
+
+  it("is refused outright on a Worker with no bucket to meter it", async () => {
+    expect((await call(outside, env({ SAT_CACHE: undefined }))).status).toBe(404);
+    expect(asked).toBe(0);
+  });
+
+  it("is never kept, in R2 or at the edge", async () => {
+    const put = vi.fn(async () => {});
+    vi.stubGlobal("caches", { default: { match: async () => undefined, put } });
+    expect((await call(outside)).status).toBe(200);
+    expect(tiles()).toEqual([]);
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it("is never asked for a tile USGS covers", async () => {
+    // Seattle.
+    expect((await call("/satellite/esri/14/2627/5718.jpg")).status).toBe(404);
+    expect(asked).toBe(0);
+  });
+
+  it("can never be the source photos bake from", async () => {
+    expect((await call("/squirrel/active", env(), { method: "POST", body: "esri" })).status).toBe(400);
   });
 });
 

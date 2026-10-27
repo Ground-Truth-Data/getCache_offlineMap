@@ -6,7 +6,7 @@ export interface SatelliteSource {
 	name: string;
 	/** the Worker's request; `key` is the Worker secret named by `secret` */
 	tileUrl: (key: string, z: number, x: number, y: number) => string;
-	secret?: "GC_mapTiler_key";
+	secret?: "GC_mapTiler_key" | "GC_esri_key";
 	/** past this the source has nothing sharper; the Worker refuses */
 	maxZ: number;
 	/** the zoom a photo is baked from */
@@ -24,6 +24,10 @@ export interface SatelliteSource {
 	usdPer1000: number;
 	/** where it has imagery, [w, s, e, n]; a source with any wins there over the switched-on one */
 	covers?: readonly (readonly [number, number, number, number])[];
+	/** streamed only: never kept at the edge, in R2 or in a photo, and never the switched-on source */
+	live?: true;
+	/** what it gives free each month; the Worker stops serving it at 90% of this */
+	freeTilesPerMonth?: number;
 }
 
 export const SATELLITE_SOURCES = {
@@ -90,6 +94,23 @@ export const SATELLITE_SOURCES = {
 			[-67.3, 17.9, -65.2, 18.6],
 		],
 	},
+	esri: {
+		name: "Esri World Imagery",
+		tileUrl: (key, z, x, y) => `https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}?token=${key}`,
+		secret: "GC_esri_key",
+		// z19 is cities only; past 18 the map stretches z18, at a quarter of the billed tiles.
+		maxZ: 18,
+		// Never baked (`live`); these only satisfy the shape.
+		zoom: 17,
+		canvasPx: 3456,
+		quality: 0.9,
+		attribution: "Powered by Esri · Sources: Esri, Vantor, Earthstar Geographics, and the GIS User Community",
+		licence: "ArcGIS Location Platform: stream only — \"Customer may not otherwise scrape, download, or store Data.\"",
+		cacheToR2: false,
+		live: true,
+		usdPer1000: 0.15,
+		freeTilesPerMonth: 2_000_000,
+	},
 } satisfies Record<string, SatelliteSource>;
 
 export type SourceId = keyof typeof SATELLITE_SOURCES;
@@ -103,9 +124,13 @@ export function sourceOf(id: string): SatelliteSource | undefined {
 
 /** The source a photo at `at` bakes from: one that covers the spot, else the switched-on one. */
 export function sourceAt([lng, lat]: [number, number], active: string): string {
-	for (const [id, s] of Object.entries(SATELLITE_SOURCES) as [string, SatelliteSource][])
-		if (s.covers?.some(([w, so, e, n]) => lng >= w && lng <= e && lat >= so && lat <= n)) return id;
-	return active;
+	return coverOf(lng, lat, lng, lat) ?? active;
+}
+
+/** The source whose coverage holds the whole box, if one does. */
+export function coverOf(w: number, s: number, e: number, n: number): string | undefined {
+	for (const [id, src] of Object.entries(SATELLITE_SOURCES) as [string, SatelliteSource][])
+		if (src.covers?.some(([bw, bs, be, bn]) => w >= bw && e <= be && s >= bs && n <= bn)) return id;
 }
 
 /** The source a photo names on disk, by its stored name. */

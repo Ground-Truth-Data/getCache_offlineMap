@@ -55,7 +55,7 @@ function row(id: string, src: SatelliteSource) {
 	const hitRate = served.month ? hits / served.month : 0;
 	const storedTiles = c?.all[`${id}|stored|tiles`] ?? 0;
 	const storedGb = (c?.all[`${id}|stored|bytes`] ?? 0) / 1e9;
-	const cost = (upstream / 1000) * src.usdPer1000 + storedGb * R2_USD_PER_GB;
+	const cost = (Math.max(0, upstream - (src.freeTilesPerMonth ?? 0)) / 1000) * src.usdPer1000 + storedGb * R2_USD_PER_GB;
 	const perPin = photoTilesFor([-120, 50], src.zoom).length;
 	const projectedUpstream = USERS * PINS_PER_USER * perPin * (1 - hitRate);
 	const projected = (projectedUpstream / 1000) * src.usdPer1000;
@@ -85,7 +85,7 @@ const int = (n: number) => Math.round(n).toLocaleString();
 							<td><b>{r.src.name}</b><br /><span class="dim">{r.src.licence}{r.src.cacheToR2 ? "" : " · not cached"}</span></td>
 							<td>{int(r.served.today)}</td>
 							<td>{int(r.served.month)}</td>
-							<td>{int(r.upstream)}</td>
+							<td>{int(r.upstream)}{#if r.src.freeTilesPerMonth}<br /><span class="dim">{((r.upstream / r.src.freeTilesPerMonth) * 100).toFixed(2)}% of free; stops at 90%</span>{/if}</td>
 							<td>{int(r.hits)}</td>
 							<td>{r.served.month ? `${Math.round(r.hitRate * 100)}%` : "—"}</td>
 							<td>{int(r.storedTiles)}<br /><span class="dim">{r.storedGb.toFixed(3)} GB</span></td>
@@ -93,7 +93,7 @@ const int = (n: number) => Math.round(n).toLocaleString();
 							<td>{usd(r.cost)}</td>
 							<td>
 								{#if r.id === answer.active}<span class="dim">active</span>
-								{:else if answer.counts}<FancyButton size="xs" disabled={switching} onclick={() => use(r.id)}>Use</FancyButton>{/if}
+								{:else if answer.counts && !r.src.live}<FancyButton size="xs" disabled={switching} onclick={() => use(r.id)}>Use</FancyButton>{/if}
 							</td>
 						</tr>
 					{/each}
@@ -107,7 +107,7 @@ const int = (n: number) => Math.round(n).toLocaleString();
 		<h2>At {int(USERS)} planters</h2>
 		<p class="dim">{PINS_PER_USER} pins each a month, one photo per pin, at this month's hit rate.</p>
 		<ul>
-			{#each rows as r (r.id)}
+			{#each rows.filter((r) => !r.src.live) as r (r.id)}
 				<li><b>{r.src.name}</b>: {int(r.perPin)} tiles a pin (z{r.src.zoom}) → {int(r.projectedUpstream)} upstream tiles → <b>{usd(r.projected)}</b> a month</li>
 			{/each}
 		</ul>
