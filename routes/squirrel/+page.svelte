@@ -1,9 +1,9 @@
 <!-- Squirrel: every imagery source side by side: what it served, pulled upstream, kept in R2 and costs. Dev only. Numbers are the Worker's counts and this browser's blobs; "—" means nothing measures it yet. -->
 <script lang="ts">
-import { SATELLITE_SOURCES, type SatelliteSource, type SourceId, sourceOf } from "../../lib/contract/satelliteSources";
+import { SATELLITE_SOURCES, type SatelliteSource, type SourceId, sourceNamed, sourceOf } from "../../lib/contract/satelliteSources";
 import { loadCamera, MAP_HOME_CENTER } from "../../lib/mapState/mapViewport";
 import { forcedImagery, forceImagery } from "../../lib/onPhone/satellite/onlineImagery";
-import { photoTilesFor } from "../../lib/onPhone/satellite/satelliteImage";
+import { PHOTO_COVERAGE_RADIUS_KM, photoTilesFor } from "../../lib/onPhone/satellite/satelliteImage";
 import { type WorkerTarget, getWorkerTarget, satelliteTileUrl, setWorkerTarget, squirrelUrl } from "../../lib/worker/tilesHost";
 import { placeLabel } from "../offlinev10/places";
 import { type BlobPart, type PhotoInfo, blobParts, photoInfo } from "../offlinev10/satellite";
@@ -304,6 +304,28 @@ function toggle(id: string): void {
 const W = 400;
 const H = 300;
 const KM_PER_DEG = 111.32;
+
+/** The photos whose disc covers the searched point, nearest centre first: what the offline map draws there. */
+const here = $derived.by(() => {
+	if (!at) return [];
+	const [lat, lng] = [Number(at[1]), Number(at[2])];
+	const cos = Math.cos((lat * Math.PI) / 180);
+	const km = ([x, y]: [number, number]) => Math.hypot((x - lng) * cos, y - lat) * KM_PER_DEG;
+	const byKey = new Map<string, { key: string; km: number; info?: PhotoInfo; blobs: Region[] }>();
+	for (const r of regions) {
+		if (!r.photoKey || !r.photoCenter || km(r.photoCenter) > PHOTO_COVERAGE_RADIUS_KM) continue;
+		const e = byKey.get(r.photoKey) ?? { key: r.photoKey, km: km(r.photoCenter), info: photos[r.photoKey], blobs: [] };
+		e.blobs.push(r);
+		byKey.set(r.photoKey, e);
+	}
+	return [...byKey.values()].sort((a, b) => a.km - b.km);
+});
+
+function openBlob(id: string): void {
+	sel = id;
+	open = new Set([...open, id]);
+	requestAnimationFrame(() => document.getElementById(`blob-${id}`)?.scrollIntoView({ block: "center", inline: "nearest" }));
+}
 const foot = $derived.by(() => {
 	if (!picked) return null;
 	const { r } = picked;
@@ -449,6 +471,26 @@ function toBody(node: HTMLElement) {
 	{#if failure}<p class="fail" role="alert">{failure}</p>{/if}
 
 	<div class="page">
+		<div class="card search">
+			<input class="find" placeholder="Search a GPS point (49.2418, -123.1126) or paste a map URL" aria-label="find what the offline map draws at a point" bind:value={find} />
+			{#if at}
+				<div class="report">
+					<p class="where">{at[1]}, {at[2]}</p>
+					{#each here as p, i (p.key)}
+						{@const owner = p.blobs[p.blobs.length - 1]}
+						<div class="hit" class:first={i === 0}>
+							<p class="big">{i === 0 ? "Offline imagery here:" : "Also covers it:"} <b>{p.info?.source ?? "photo not baked"}</b>{#if p.info} · z{p.info.zoom} · {(p.info.bytes / 1048576).toFixed(1)} MB{/if}</p>
+							{#if p.info}<p>credit: {sourceNamed(p.info.source)?.attribution ?? "—"}</p>{/if}
+							{#if p.info?.wire}<p>tiles: <span class="grn">{p.info.wire.hit} from R2</span> · <span class:amb={p.info.wire.miss > 0}>{p.info.wire.miss} upstream</span>{#if p.info.wire.disk} · {p.info.wire.disk} already on the phone{/if}</p>{/if}
+							<p>photo <code>{p.key}</code> · {p.km.toFixed(2)} km from its centre · first saved by blob <button class="link" onclick={() => openBlob(owner.id)}><code>{owner.id}</code></button> {owner.place ? placeLabel(owner.place) : ""} · {when(owner.at)}{p.blobs.length > 1 ? ` · used by ${p.blobs.length} blobs` : ""}</p>
+						</div>
+					{:else}
+						<p class="big">No photo covers this point: offline it draws the bare map, roads only.</p>
+					{/each}
+					<p class="dim">{log.length} blobs hold this point's roads; they are listed in the blob log below.</p>
+				</div>
+			{/if}
+		</div>
 		<div class="card">
 			<div class="cardhead">
 				<span class="dot" style="background:var(--green)"></span><span class="title">SOURCES</span>
@@ -632,7 +674,6 @@ function toBody(node: HTMLElement) {
 			<div class="cardhead">
 				<span class="dot" style="background:var(--gold)"></span><span class="title">BLOB LOG</span>
 				<span class="hnote">{regions.length > MAX_LOG ? `last ${MAX_LOG} of ${regions.length}` : `${regions.length} blobs`} · {log.reduce((a, b) => a + blobMb(b.parts), 0).toFixed(1)} MB · this browser</span>
-				<input class="refresh find" placeholder="lat, lng or a map URL" aria-label="find the blobs holding a point" bind:value={find} />
 				<span class="spacer"></span>
 				<span class="hnote">{at ? `${log.length} holding ${at[1]}, ${at[2]}` : "newest first"} · click a row for its footprint</span>
 			</div>
@@ -642,7 +683,7 @@ function toBody(node: HTMLElement) {
 						<div class="lhead"><span></span><span>PIN</span><span>LAT, LON</span><span>SAVED</span><span>PARTS · R2 HITS</span><span class="end">ADDED</span></div>
 						{#if log.length === 0}<div class="empty dim">{at ? "no blob in this browser holds that point" : "no blobs in this browser yet: drop a pin on /app/offlinev10"}</div>{/if}
 						{#each log as { r, parts, hits } (r.id)}
-							<button class="lrow" class:open={open.has(r.id)} class:sel={picked?.r.id === r.id} onclick={() => toggle(r.id)}>
+							<button id="blob-{r.id}" class="lrow" class:open={open.has(r.id)} class:sel={picked?.r.id === r.id} onclick={() => toggle(r.id)}>
 								<span class="chev">▶</span>
 								<span class="pin">{r.place ? placeLabel(r.place) : r.pin ? r.id : "follow-me"}</span>
 								<span class="dim">{ll(r.lat)}, {ll(r.lng)}</span>
@@ -726,8 +767,10 @@ function toBody(node: HTMLElement) {
 	background: var(--bg); color: var(--text); font-family: var(--sans);
 	position: fixed; inset: 0; z-index: 1000; overflow: auto;
 }
+/* Every size below scales with this; on the fixed root it would shrink the page instead. */
+.topbar, .page { zoom: 1.35; }
 .sq button { font-family: var(--mono); }
-.topbar { display: flex; align-items: center; gap: 10px; padding: 16px 28px; border-bottom: 3px solid var(--gold); white-space: nowrap; }
+.topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 12px; border-bottom: 3px solid var(--gold); white-space: nowrap; }
 .gclogo { font-family: "Lilita One", cursive; font-style: italic; font-size: 28px; color: var(--gold); letter-spacing: -0.02em; }
 .wordmark { font-weight: 800; font-size: 20px; color: var(--gold); }
 .crumb { font-family: var(--mono); font-size: 13px; color: var(--muted2); }
@@ -740,13 +783,21 @@ function toBody(node: HTMLElement) {
 .meta { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
 .meta b { color: var(--text); }
 .fail { margin: 12px 28px 0; color: var(--red); font-family: var(--mono); font-size: 12px; }
-.page { max-width: 1720px; margin: 0 auto; padding: 22px 28px 80px; display: flex; flex-direction: column; gap: 18px; }
+.page { padding: 16px 8px 80px; display: flex; flex-direction: column; gap: 18px; }
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
 .cardhead { display: flex; align-items: center; gap: 10px; padding: 14px 18px; background: var(--panel2); border-bottom: 1px solid var(--border); white-space: nowrap; }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex: none; }
 .dot.big { width: 9px; height: 9px; }
 .title { font-weight: 800; font-size: 14px; letter-spacing: 0.06em; color: var(--gold); }
-.find { width: 16rem; margin-left: 10px; cursor: text; font-family: var(--mono); }
+.search { padding: 16px 18px; }
+.find { width: 100%; box-sizing: border-box; font-family: var(--mono); font-size: 18px; padding: 12px 16px; border-radius: 10px; border: 1px solid var(--gold); background: var(--panel3); color: var(--text); }
+.report { margin-top: 14px; font-family: var(--mono); font-size: 14px; display: flex; flex-direction: column; gap: 10px; }
+.report p { margin: 0; }
+.where { color: var(--muted); }
+.hit { display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; border-left: 3px solid var(--border2); }
+.hit.first { border-left-color: var(--gold); }
+.big { font-family: var(--sans); font-size: 20px; }
+.link { all: unset; cursor: pointer; text-decoration: underline; color: var(--gold); }
 .hnote { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
 .scroll { overflow-x: auto; }
 .num { color: var(--text); font-weight: 600; }
