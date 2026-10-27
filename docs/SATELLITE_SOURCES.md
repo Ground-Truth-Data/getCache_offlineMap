@@ -49,7 +49,8 @@ and this page is fixed.
 - `satellite-v2`, already 512 px tiles. Photos bake at **z17** into a 3,456 px canvas across a 2 km
   radius (~350 tiles per pin at 49° N). The raw tiles stay on the phone for the close-up.
 - It is the default photo source; Squirrel can switch the photo source to another bakeable one.
-- Cached in R2, approved by MapTiler (Oct 2026), and saved on the phone.
+- Saved on the phone. Cached in tiles-dev's R2 only: MapTiler has given no written permission to keep
+  its tiles, so tiles-prod names it in `R2_NEVER` and stores none.
 - Inside USGS cover, a pin's photo bakes from USGS at z16 instead, on purpose: `sourceAt` takes the
   covering source first. USGS is free and public domain, and z16 is its sharpest zoom.
 
