@@ -1,11 +1,11 @@
 <script lang="ts">
 import { m } from "$parent/src/lib/paraglide/messages";
-import type { Map as MapboxMap } from "mapbox-gl";
+import type { Map as MapLibreMap } from "maplibre-gl";
 import type { MapHostPorts, MapShareRow as ShareFormat } from "../shared/mapHostPorts";
 
 type Props = {
     ports: MapHostPorts;
-    map: MapboxMap | null;
+    map: MapLibreMap | null;
     coord: { lng: number; lat: number } | null;
     /** Built by the host, keeping the pill presentational. */
     formats: ShareFormat[];

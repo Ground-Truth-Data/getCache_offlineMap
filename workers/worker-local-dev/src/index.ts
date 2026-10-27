@@ -11,6 +11,7 @@ import {
   fetchFires,
   MAX_RADIUS_KM,
 } from "../../../lib/worker/firesWorker";
+import { mergeFires } from "../../../lib/worker/fireMerge";
 import { coverOf, DEFAULT_SOURCE, SATELLITE_SOURCES, type SatelliteSource, sourceOf } from "../../../lib/contract/satelliteSources";
 import {
   cellKeysForDisc,
@@ -100,7 +101,7 @@ function hospitalsIndex(): ReturnType<typeof parseHospitalsPack> {
 
 /** Edge-cache key for /fires; bump whenever a change alters what a correct response
  *  looks like — a TTL expires stale data, never incomplete data. */
-const FIRE_ANSWER_VERSION = 3;
+const FIRE_ANSWER_VERSION = 4;
 
 // Every X-* response header must be listed here: cross-origin JS reads an
 // unexposed header as null, silently. Add new ones at the same time.
@@ -370,9 +371,14 @@ export default {
       let body: string;
       let sourcesOk: number;
       let fetchedAt: number;
+      let servedKm: number;
       try {
-        const r = await fetchFires(env.GC_firms_map_key, lng, lat, km);
-        body = JSON.stringify(r.collection);
+        // From the snapped centre, so every phone sharing this cached answer gets the same one.
+        const [cx, cy] = [Number(snap(lng)), Number(snap(lat))];
+        const r = await fetchFires(env.GC_firms_map_key, cx, cy, km);
+        const merged = mergeFires(r.collection, cx, cy, km);
+        body = JSON.stringify(merged.collection);
+        servedKm = merged.radiusKm;
         sourcesOk = r.sourcesOk;
         fetchedAt = r.fetchedAt;
       } catch (err) {
@@ -391,7 +397,7 @@ export default {
         "Cache-Control": "public, max-age=3600",
         "X-Fetched-At": String(fetchedAt),
         "X-Sources-Ok": String(sourcesOk),
-        "Access-Control-Expose-Headers": "X-Fetched-At, X-Sources-Ok",
+        "X-Radius-Km": String(servedKm),
       };
       ctx.waitUntil(
         fireEdge.put(fireCacheKey, new Response(body, { status: 200, headers: fireHeaders })),

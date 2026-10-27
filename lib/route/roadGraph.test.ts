@@ -171,6 +171,14 @@ describe("findRoute between downloaded areas", () => {
 		expect(r.km).toBeLessThan(860);
 	});
 
+	it("drives a trip small enough for street tiles over the highways when none are downloaded (Kamloops to Kelowna)", async () => {
+		const r = await findRoute([[-120.33, 50.675], [-119.49, 49.885]], nothingDownloaded, highways);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.km).toBeGreaterThan(150);
+		expect(r.km).toBeLessThan(190);
+	});
+
 	it("never drives across water", async () => {
 		const r = await findRoute([VANCOUVER, [-123.365, 48.428]], nothingDownloaded, highways);
 		expect(r.ok).toBe(false);

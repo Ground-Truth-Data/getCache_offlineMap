@@ -2,20 +2,19 @@
 <script lang="ts">
 import { iconPath } from "../shared/icons";
 import { m } from "$parent/src/lib/paraglide/messages";
-import handShovelCursor from "$gc/assets/hand_shovel_cursor.webp";
-import handShovelCursorRight from "$gc/assets/hand_shovel_cursor_right.webp";
 import type { Feature } from "geojson";
-import type { Map as MapboxMap } from "mapbox-gl";
+import type * as maplibregl from "maplibre-gl";
+import type { Map as MapLibreMap } from "maplibre-gl";
 import area from "@turf/area";
 import turfLength from "@turf/length";
 import { markerCtor } from "../shared/rendererOf";
-import { coordLabel, emit as emitPress, swallowNextClick } from "../shared/doubleTapToPin";
+import { coordLabel, emit as emitPress } from "../shared/doubleTapToPin";
 import { DRAW_LIMIT_NOTE, mayAddVertex } from "$gc/drawLimit";
 import { BORDER_RUST, POLYGON_FILL, POLYGON_OUTLINE, STROKE } from "$gc/drawDials";
 import { type Lnglat, type SnapKind, type SnapRings, snapLngLat, snapRings } from "$gc/snapToShapes";
 import { formatArea, formatLength } from "$gc/units.svelte";
 import { keptLegLabels } from "./legLabelCrowding";
-import { type Rect, mapKeepOutRects, readFloorY, readTopBarH, rectsOverlap, shiftClear } from "../shared/mapKeepOut";
+import { type Rect, mapKeepOutRects, readFloorY, readTopBarH, shiftClear } from "../shared/mapKeepOut";
 import type {
     MapHostPorts,
     MapShareFormat,
@@ -38,10 +37,10 @@ let {
     snapShapes,
 }: {
     ports: MapHostPorts;
-    map: MapboxMap | null;
-    /** Seed from the host's double-tap: plants the first node. */
+    map: MapLibreMap | null;
+    /** The host's double-tap or settled hold: plants the first node, then each next corner. */
     measureEvent?: { lng: number; lat: number; n: number } | null;
-    /** Palette tap-to-build mode; null = double-tap + hands mode. */
+    /** Palette tap-to-build mode; null = hold mode. */
     armKind?: "line" | "polygon" | "pin" | null;
     onPersist: (
         kind: "line" | "polygon",
@@ -84,10 +83,7 @@ let active = $state(false);
 let verts: Lnglat[] = $state.raw([]);
 let cursor: Lnglat | null = $state.raw(null);
 let isPolygon = $state(false);
-let dragFromHead = false;
-let dragAnchor: Lnglat | null = null;
-let atAnchor = false;
-let moveIndex: number | null = $state(null); // polygon vertex being reshaped
+let moveIndex: number | null = $state(null); // corner being dragged
 let mapMoveSeq = $state(0);
 let spotBump = $state(0);
 let armed: "line" | "polygon" | "pin" | null = $state(null);
@@ -128,10 +124,8 @@ const MEASURE_FILL_SRC = "measure-fill";
 const MEASURE_TICKS_SRC = "measure-ticks";
 const MEASURE_ENDDOTS_SRC = "measure-end-dots";
 const ALL_SRCS = [MEASURE_FILL_SRC, MEASURE_LINE_SRC, MEASURE_TICKS_SRC, MEASURE_NODES_SRC, MEASURE_ENDDOTS_SRC];
-const MEASURE_SNAP_PX = 18;
 const SELF_SNAP_PX = 22; // ≈44px touch target
 const FINISH_TAP_PX = 22;
-const MEASURE_UNSNAP_PX = 34; // hysteresis: un-snaps only past this
 const LEG_LABEL_FRAC = 0.78;
 const LEG_LABEL_OFF = 18;
 const LABEL_HALF_H = 10;
@@ -268,18 +262,11 @@ function buildTicksFC(ring: Lnglat[]): GeoJSON.FeatureCollection {
     return fc(features);
 }
 
-function liveVerts(): Lnglat[] {
-    if (isPolygon && moveIndex !== null && cursor) {
-        const v = [...verts];
-        v[moveIndex] = cursor;
-        return v;
-    }
-    return verts;
-}
 function points(): Lnglat[] {
-    if (isPolygon) return liveVerts();
-    if (!cursor) return [...verts];
-    return dragFromHead ? [cursor, ...verts] : [...verts, cursor];
+    if (moveIndex === null || !cursor) return verts;
+    const v = [...verts];
+    v[moveIndex] = cursor;
+    return v;
 }
 /** The drawn path: closed back to its first corner once it is a polygon. */
 function ring(pts = points()): Lnglat[] {
@@ -302,7 +289,6 @@ function render() {
         : []));
     setData(MEASURE_ENDDOTS_SRC, pointsFC(isPolygon || pts.length < 2 ? pts : [pts[0], pts[pts.length - 1]]));
     renderLegs();
-    updateEndCursors();
 }
 
 function clearAll() {
@@ -315,132 +301,11 @@ function clearAll() {
     if (copiedTimer) clearTimeout(copiedTimer);
     for (const id of ALL_SRCS) setData(id, fc());
     clearLegs();
-    removeEndCursors();
 }
-// The hands and leg labels are Markers added to the map, not Svelte DOM: a dev hot-swap of this
+// The leg labels are Markers added to the map, not Svelte DOM: a dev hot-swap of this
 // component would otherwise leave them on the map with no state behind them and no way to dismiss.
 $effect(() => () => clearAll());
 
-// HEAD (vertex 0) = LEFT hand; TAIL = RIGHT hand. Widths chosen so both render ≈75px tall: a handle the cursor's hand (100px) grabs, so smaller than it.
-const HEAD_CURSOR = {
-    src: handShovelCursor,
-    w: 54,
-    offset: [18, 0] as [number, number], // fingertip nudge
-};
-const TAIL_CURSOR = {
-    src: handShovelCursorRight,
-    w: 33,
-    offset: [4, 0] as [number, number],
-};
-let headCursor: mapboxgl.Marker | null = null;
-let tailCursor: mapboxgl.Marker | null = null;
-function makeEndCursorEl(src: string, w: number): HTMLElement {
-    const el = document.createElement("div");
-    el.className = "rt-measure-grab";
-    el.setAttribute("aria-label", m.ofmap_ui_map_marker());
-    const img = document.createElement("img");
-    img.src = src;
-    img.alt = "";
-    img.draggable = false;
-    img.style.width = `${w}px`;
-    el.appendChild(img);
-    return el;
-}
-// move/up listeners live on WINDOW so the gesture survives the sprite being removed mid-drag when it snaps closed into a piece.
-function wireHandDrag(el: HTMLElement, which: "head" | "tail") {
-    let moved = false;
-    // Node-to-pointer gap at grab time, so the node doesn't jump to the cursor.
-    let grabDX = 0;
-    let grabDY = 0;
-    // The page is CSS-zoomed, so a viewport px is more than a canvas px; the same ratio Mapbox applies to its own pointer events.
-    const canvasPx = (e: PointerEvent): [number, number] => {
-        const c = map!.getCanvas();
-        const r = c.getBoundingClientRect();
-        const s = c.offsetWidth / r.width;
-        return [(e.clientX - r.left) * s, (e.clientY - r.top) * s];
-    };
-    const toLngLat = (e: PointerEvent): Lnglat => {
-        const [x, y] = canvasPx(e);
-        const p = map!.unproject([x + grabDX, y + grabDY]);
-        return [p.lng, p.lat];
-    };
-    let raf = 0;
-    let pendingLL: Lnglat | null = null;
-    const flush = () => {
-        raf = 0;
-        if (!pendingLL || !map) return;
-        const [lng, lat] = pendingLL;
-        hover(lng, lat);
-        // The loupe rides the end being dragged, so the drop lands where the eye says. No clock: a drag is not a hold.
-        const node = cursor ?? [lng, lat];
-        const c = map.getCanvas();
-        const r = c.getBoundingClientRect();
-        const s = c.offsetWidth / r.width;
-        const p = map.project({ lng: node[0], lat: node[1] });
-        emitPress("aim", r.left + p.x / s, r.top + p.y / s, { canvas: c, label: coordLabel(node[0], node[1]) });
-    };
-    const onMove = (e: PointerEvent) => {
-        if (!map) return;
-        moved = true;
-        pendingLL = toLngLat(e);
-        if (!raf) raf = requestAnimationFrame(flush);
-    };
-    const onUp = (e: PointerEvent) => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-        window.removeEventListener("pointercancel", onUp);
-        if (raf) { cancelAnimationFrame(raf); raf = 0; }
-        pendingLL = null;
-        // The drag's own click would land as a tap beside the shape and dismiss it.
-        if (moved) {
-            swallowNextClick();
-            emitPress("end", 0, 0, { locked: true });
-        }
-        endGrab(moved && map ? toLngLat(e) : null);
-        moved = false;
-    };
-    el.addEventListener("pointerdown", (e: PointerEvent) => {
-        if (!active || !map) return;
-        e.preventDefault();
-        e.stopPropagation();
-        moved = false;
-        // The cursor's hand closes into a fist around the ruler's hand, as it does for a pan; its pointerup opens it again.
-        emitPress("drag");
-        const anchor = beginGrab(which);
-        {
-            const ns = map.project({ lng: anchor[0], lat: anchor[1] });
-            const [x0, y0] = canvasPx(e);
-            grabDX = ns.x - x0;
-            grabDY = ns.y - y0;
-        }
-        window.addEventListener("pointermove", onMove);
-        window.addEventListener("pointerup", onUp);
-        window.addEventListener("pointercancel", onUp);
-    });
-}
-// The non-pointer half of a hand drag, shared with the teaching-hand tour.
-function beginGrab(which: "head" | "tail"): Lnglat {
-    shapeRings = null;
-    lastSnap = null;
-    dragFromHead = which === "head";
-    const anchor = which === "head" ? verts[0] : verts[verts.length - 1];
-    dragAnchor = anchor;
-    atAnchor = true;
-    map?.dragPan.disable();
-    (which === "head" ? headCursor : tailCursor)?.getElement().classList.add("rt-grabbed");
-    return anchor;
-}
-function endGrab(ll: Lnglat | null) {
-    for (const h of [headCursor, tailCursor]) h?.getElement().classList.remove("rt-grabbed");
-    map?.dragPan.enable();
-    if (ll) commitAt(ll[0], ll[1]);
-    else {
-        cursor = null;
-        isPolygon = false;
-        render();
-    }
-    dragAnchor = null;
-}
 // The lesson's "saved" beat: the shape turns into a saved piece (drawStyle's own paint), holds,
 // then dims to nothing and is discarded. A new start or a discard mid-fade bumps the token, so the
 // fade leaves whatever replaced it alone.
@@ -490,48 +355,12 @@ async function tourFade(ms: number): Promise<void> {
 /** The teaching hand drives a real ruler through these instead of synthetic pointer events. */
 export const tour = {
     seed: (lng: number, lat: number) => start(null, [lng, lat]),
-    grab: (which: "head" | "tail") => {
-        if (active && map) beginGrab(which);
-    },
-    hover,
-    /** The hand's sprite, so the teaching hand can close its fist on the handle. */
-    hand: (which: "head" | "tail") => (which === "head" ? headCursor : tailCursor)?.getElement() ?? null,
-    drop: (lng: number, lat: number) => endGrab([lng, lat]),
+    add,
     fade: tourFade,
     discard,
 };
-function removeEndCursors() {
-    headCursor?.remove();
-    headCursor = null;
-    tailCursor?.remove();
-    tailCursor = null;
-}
-function placeEndCursor(
-    have: mapboxgl.Marker | null,
-    which: "head" | "tail",
-    at: Lnglat,
-): mapboxgl.Marker {
-    if (have) return have.setLngLat(at);
-    const cfg = which === "head" ? HEAD_CURSOR : TAIL_CURSOR;
-    const el = makeEndCursorEl(cfg.src, cfg.w);
-    wireHandDrag(el, which);
-    return new (markerCtor(map))({ element: el, anchor: "top", offset: cfg.offset })
-        .setLngLat(at).addTo(map!);
-}
-function updateEndCursors() {
-    if (!map) return;
-    const pts = points();
-    if (!active || isPolygon || pts.length === 0 || armed === "pin") return removeEndCursors();
-    headCursor = placeEndCursor(headCursor, "head", pts[0]);
-    if (pts.length >= 2) {
-        tailCursor = placeEndCursor(tailCursor, "tail", pts[pts.length - 1]);
-    } else {
-        tailCursor?.remove();
-        tailCursor = null;
-    }
-}
 
-let legMarkers: mapboxgl.Marker[] = [];
+let legMarkers: maplibregl.Marker[] = [];
 /** Which legs wore a label at the last render, as "1101": the move handler rebuilds only when this changes. */
 let legLabelsShown = "";
 function legLabelsFit(anchors = legLabelAnchors()): boolean[] {
@@ -594,79 +423,28 @@ function renderLegs() {
     });
 }
 
-function hover(lng: number, lat: number) {
-    if (!active) return;
-    if (map && verts.length >= 3) {
-        const anchorIdx = dragFromHead ? verts.length - 1 : 0;
-        const anchor = verts[anchorIdx];
-        const f = map.project({ lng: anchor[0], lat: anchor[1] });
-        const p = map.project({ lng, lat });
-        const d2 = (f.x - p.x) ** 2 + (f.y - p.y) ** 2;
-        const threshold = isPolygon ? MEASURE_UNSNAP_PX : MEASURE_SNAP_PX;
-        if (d2 < threshold ** 2) {
-            const closing = !isPolygon;
-            isPolygon = true;
-            cursor = anchor;
-            render();
-            if (closing) flashCorners();
-            return;
-        }
-    }
-    // Back over the grabbed end: the cursor sits on it and every node flashes, so a let-go there adds nothing.
-    if (map && dragAnchor) {
-        const a = map.project({ lng: dragAnchor[0], lat: dragAnchor[1] });
-        const p = map.project({ lng, lat });
-        const near = (a.x - p.x) ** 2 + (a.y - p.y) ** 2 < MEASURE_SNAP_PX ** 2;
-        if (near && !atAnchor) flashCorners();
-        atAnchor = near;
-        if (near) {
-            isPolygon = false;
-            cursor = dragAnchor;
-            render();
-            return;
-        }
-    }
-    isPolygon = false;
-    cursor = snap(lng, lat);
-    if (lastSnap === "corner") dropCorner(cursor);
-    render();
+/** The corner within a finger of canvas point (x, y), or -1. */
+function nodeAt(m: MapLibreMap, x: number, y: number): number {
+    return verts.findIndex((v) => {
+        const q = m.project({ lng: v[0], lat: v[1] });
+        return (q.x - x) ** 2 + (q.y - y) ** 2 < FINISH_TAP_PX ** 2;
+    });
 }
-// Dragging across a saved corner drops it as a node and the hand keeps going, so tracing a many-cornered border is one drag.
-function dropCorner(ll: Lnglat) {
-    const end = dragFromHead ? verts[0] : verts[verts.length - 1];
-    if (end?.[0] === ll[0] && end[1] === ll[1]) return;
-    if (!mayAddVertex(verts.length)) return;
-    verts = dragFromHead ? [ll, ...verts] : [...verts, ll];
-    // Releasing on the corner just dropped then cancels in commitAt instead of adding it twice.
-    dragAnchor = ll;
-    seedAtSelf = false;
-}
-function commitAt(lng: number, lat: number) {
-    if (!active) return;
-    const ll = snap(lng, lat);
-    if (isPolygon) {
-        cursor = null;
+/** A hold that settles while the ruler is out: a corner at the crosshair, or on the first corner, the close. */
+function add(lng: number, lat: number) {
+    if (!active || !map) return;
+    const p = map.project({ lng, lat });
+    const near = nodeAt(map, p.x, p.y);
+    console.log("[dbg:loupe108] add", { near, n: verts.length, isPolygon, moveIndex, p: [p.x | 0, p.y | 0] });
+    if (near === 0 && verts.length >= 3 && !isPolygon) {
+        isPolygon = true;
         render();
+        flashCorners();
         return;
     }
-    // Releasing near the grabbed end cancels: no tiny trailing stub.
-    if (dragAnchor && map) {
-        const a = map.project({ lng: dragAnchor[0], lat: dragAnchor[1] });
-        const p = map.project({ lng, lat });
-        if ((a.x - p.x) ** 2 + (a.y - p.y) ** 2 < MEASURE_SNAP_PX ** 2) {
-            cursor = null;
-            render();
-            return;
-        }
-    }
-    if (!mayAddVertex(verts.length)) {
-        cursor = null;
-        render();
-        return;
-    }
-    verts = dragFromHead ? [ll, ...verts] : [...verts, ll];
+    if (near !== -1 || !mayAddVertex(verts.length)) return;
+    verts = [...verts, snap(lng, lat, SELF_SNAP_PX)];
     seedAtSelf = false;
-    cursor = null;
     render();
 }
 
@@ -681,7 +459,7 @@ function snapSeedToSelf(seed: Lnglat): { seed: Lnglat; atSelf: boolean } {
     return { seed, atSelf: false };
 }
 
-/** Hands mode starts from a double-tap seed; palette mode starts armed and empty. */
+/** Hold mode starts from a seed; palette mode starts armed and empty. */
 function start(kind: typeof armed, seed?: Lnglat) {
     const snapped = seed ? snapSeedToSelf(seed) : null;
     fadeGen++;
@@ -743,9 +521,11 @@ $effect(() => {
     const ev = measureEvent;
     if (!ev) return;
     measureEvent = null;
+    console.log("[dbg:loupe108] measureEvent", { active, armed, n: verts.length });
     if (armed) return;
     // A fast final click-to-commit can read as a dblclick; swallow the seed so the fresh popover isn't torn down.
     if (performance.now() - lastCommitAt < 600) return;
+    if (active) return add(ev.lng, ev.lat);
     // A finger's reach: a hold aimed at a border lands on it, not beside it.
     start(null, snap(ev.lng, ev.lat, SELF_SNAP_PX));
 });
@@ -756,7 +536,7 @@ $effect(() => {
     else if (!k && armed) discard();
 });
 
-function tapOnShape(m: MapboxMap, x: number, y: number): boolean {
+function tapOnShape(m: MapLibreMap, x: number, y: number): boolean {
     if (verts.length < 3) return false;
     const ring = verts.map((v) => m.project({ lng: v[0], lat: v[1] }));
     let inside = false;
@@ -768,18 +548,15 @@ function tapOnShape(m: MapboxMap, x: number, y: number): boolean {
     return inside;
 }
 
-// Hands mode grows ONLY by dragging a hand; a tap never adds a corner. Tap the LAST node
+// Hold mode grows ONLY by a settled hold (`add`); a tap never adds a corner. Tap the LAST node
 // to save, the FIRST (3+) to close, anywhere else to dismiss.
 $effect(() => {
     const m = map;
     if (!m) return;
-    const onClick = (e: mapboxgl.MapMouseEvent) => {
+    const onClick = (e: maplibregl.MapMouseEvent) => {
         if (!active) return;
         const pt = snap(e.lngLat.lng, e.lngLat.lat);
-        const nearIdx = verts.findIndex((v) => {
-            const q = m.project({ lng: v[0], lat: v[1] });
-            return (q.x - e.point.x) ** 2 + (q.y - e.point.y) ** 2 < FINISH_TAP_PX ** 2;
-        });
+        const nearIdx = nodeAt(m, e.point.x, e.point.y);
         if (armed === "pin") {
             // Deferred so the host's own map-click handler can't instantly clear the fresh pin's selection.
             const [lng, lat] = pt;
@@ -815,6 +592,7 @@ $effect(() => {
             if (tapOnShape(m, e.point.x, e.point.y)) spotBump++;
             else discard();
         }
+        console.log("[dbg:loupe108] click", { nearIdx, n: verts.length, active });
     };
     m.on("click", onClick);
     return () => m.off("click", onClick);
@@ -823,64 +601,49 @@ $effect(() => {
 $effect(() => {
     const m = map;
     if (!m) return;
-    let dragging = false;
     let moved = false;
-    const down = (e: mapboxgl.MapLayerMouseEvent | mapboxgl.MapLayerTouchEvent) => {
+    const down = (e: maplibregl.MapLayerMouseEvent | maplibregl.MapLayerTouchEvent) => {
         if (!active || verts.length === 0) return;
-        let nearest = -1;
         let nearestD = Number.POSITIVE_INFINITY;
         for (let i = 0; i < verts.length; i++) {
             const q = m.project({ lng: verts[i][0], lat: verts[i][1] });
             const d = (q.x - e.point.x) ** 2 + (q.y - e.point.y) ** 2;
-            if (d < nearestD) { nearestD = d; nearest = i; }
-        }
-        if (isPolygon) {
-            moveIndex = nearest;
-        } else {
-            const isHead = nearest === 0;
-            const isTail = nearest === verts.length - 1;
-            if (!isHead && !isTail) return;
-            dragFromHead = isHead && !isTail;
-            dragAnchor = verts[nearest];
-            moveIndex = null;
+            if (d < nearestD) { nearestD = d; moveIndex = i; }
         }
         e.preventDefault();
-        dragging = true;
+        console.log("[dbg:loupe108] node down", moveIndex);
         moved = false;
         shapeRings = null;
         lastSnap = null;
         m.dragPan.disable();
     };
     const move = (e: { lngLat: { lng: number; lat: number } }) => {
-        if (!dragging) return;
+        if (moveIndex === null) return;
         moved = true;
-        if (moveIndex !== null) {
-            cursor = snap(e.lngLat.lng, e.lngLat.lat);
-            render();
-        } else {
-            hover(e.lngLat.lng, e.lngLat.lat);
-        }
+        const ll = snap(e.lngLat.lng, e.lngLat.lat);
+        cursor = ll;
+        render();
+        // The loupe rides the corner, so the drop lands where the eye says. No clock: a drag is not a hold.
+        const c = m.getCanvas();
+        const r = c.getBoundingClientRect();
+        const s = c.offsetWidth / r.width;
+        const p = m.project({ lng: ll[0], lat: ll[1] });
+        emitPress("aim", r.left + p.x / s, r.top + p.y / s, { canvas: c, label: coordLabel(ll[0], ll[1]) });
     };
-    const up = (e: { lngLat: { lng: number; lat: number } }) => {
-        if (!dragging) return;
-        dragging = false;
+    const up = () => {
+        if (moveIndex === null) return;
+        console.log("[dbg:loupe108] node up", { moveIndex, moved, n: verts.length });
         m.dragPan.enable();
-        if (moveIndex !== null) {
-            if (moved) {
-                const v = [...verts];
-                v[moveIndex] = snap(e.lngLat.lng, e.lngLat.lat);
-                verts = v;
-            }
-            moveIndex = null;
-            cursor = null;
-            render();
-        } else if (moved) {
-            commitAt(e.lngLat.lng, e.lngLat.lat);
-        } else {
-            cursor = null;
-            render();
+        if (moved && cursor) {
+            const v = [...verts];
+            v[moveIndex] = cursor;
+            verts = v;
+            emitPress("end", 0, 0, { locked: true });
         }
+        moveIndex = null;
+        cursor = null;
         moved = false;
+        render();
     };
     const layerEvents = ["mousedown", "touchstart"] as const;
     const nodeLayers = ["measure-nodes-halo", "measure-nodes"];
@@ -894,7 +657,6 @@ $effect(() => {
 });
 
 const CHROME_STACK_PX = 150; // popover offset + height
-const HAND_DROP_PX = 34; // hands hang below the end nodes
 const VP_MARGIN = 14;
 const OFFSCREEN_HIDE = 40;
 const POP_HALF_W = 42;
@@ -905,9 +667,6 @@ const TOTAL_HALF_W = 72;
 const POP_OFFSET_PX = 52;
 const TOTAL_OFFSET_PX = 16;
 const POP_H = 78;
-const TOTAL_H = 22;
-// The lone node's ring plus the hand hanging down-right of it (HEAD_CURSOR: 54px wide, ≈75px tall).
-const ARM_RECT = { l: 12, t: 12, w: 62, h: 92 };
 const BESIDE_GAP = 18;
 
 // Above the bbox by default; below if above clips the top; `cornered` when neither fits.
@@ -954,7 +713,7 @@ let popAnchor = $derived.by(() => {
     const topY = readTopBarH() + VP_MARGIN;
     const fitsAbove = minY - CHROME_STACK_PX >= topY;
     const floorY = readFloorY(map.getCanvas()) - VP_MARGIN;
-    const belowY = maxY + HAND_DROP_PX;
+    const belowY = maxY;
     const fitsBelow = belowY + CHROME_STACK_PX <= floorY;
     const popHalf = singlePoint ? POP_GRID_W / 2 : POP_HALF_W;
     const leftX = minX - BESIDE_GAP - popHalf;
@@ -969,15 +728,13 @@ let popAnchor = $derived.by(() => {
         // Only on a shape big enough to leave some of itself to tap past the pad.
         ...(maxX - minX >= 3 * popHalf &&maxY - minY >= 2 * CHROME_STACK_PX ? (["over"] as const) : []),
     ];
-    const spot = singlePoint ? "above" : spots[spotBump % spots.length];    // A lone node's menu never goes below: the hand hangs down-right, so it sits level, on the LEFT.
-    const beside = singlePoint && !fitsAbove;
+    const spot = singlePoint ? spots[0] : spots[spotBump % spots.length];
     const below = spot === "below";
     const cornered = spot === "top";
     const level = spot === "left" || spot === "right" || spot === "over";
     const clampX = (x: number, half: number, edge: number) =>
         Math.min(Math.max(x, edge + half), W - edge - half);
-    const besideX = leftX - popHalf >= POP_EDGE_PX ? leftX : minX - ARM_RECT.l + ARM_RECT.w + BESIDE_GAP + popHalf;
-    let popX = beside ? besideX : spot === "left" ? leftX : spot === "right" ? rightX : clampX(cx, popHalf, POP_EDGE_PX);
+    let popX = spot === "left" ? leftX : spot === "right" ? rightX : clampX(cx, popHalf, POP_EDGE_PX);
     const midY = (minY + maxY) / 2 + POP_OFFSET_PX + POP_H / 2;
     // Cornered, the stack ends up pinned under the top bar ON the snake; start it there so the sideways dodge sees the overlap.
     const y = level ? midY : below ? belowY : cornered ? Math.max(minY, topY + POP_OFFSET_PX + POP_H) : minY;
@@ -985,9 +742,7 @@ let popAnchor = $derived.by(() => {
     // Dodge the map's floating chrome SIDEWAYS (upward reads as a diagonal leap), pill + popover as ONE box.
     const popW = popHalf * 2;
     // The snake itself is a keep-out: sideways from the crow's corner is straight onto the measurement.
-    const snakeRect: Rect = singlePoint
-        ? { x: minX - ARM_RECT.l, y: minY - ARM_RECT.t, w: ARM_RECT.w, h: ARM_RECT.h }
-        : { x: minX, y: minY, w: Math.max(maxX - minX, 1), h: Math.max(maxY - minY, 1) };
+    const snakeRect: Rect = { x: minX, y: minY, w: Math.max(maxX - minX, 1), h: Math.max(maxY - minY, 1) };
     const rects = [
         ...mapKeepOutRects(W, undefined, map.getCanvas()),
         ...(spot === "over" ? [] : [snakeRect]),
@@ -996,9 +751,9 @@ let popAnchor = $derived.by(() => {
     const maxPopX = W - POP_EDGE_PX - popW;
     const stackBox = (atY: number): Rect => ({
         x: popX - popHalf,
-        y: beside ? atY - POP_H / 2 : below ? atY + TOTAL_OFFSET_PX : atY - POP_OFFSET_PX - POP_H,
+        y: below ? atY + TOTAL_OFFSET_PX : atY - POP_OFFSET_PX - POP_H,
         w: popW,
-        h: beside ? POP_H + TOTAL_OFFSET_PX + TOTAL_H : POP_OFFSET_PX + POP_H - TOTAL_OFFSET_PX,
+        h: POP_OFFSET_PX + POP_H - TOTAL_OFFSET_PX,
     });
     let shifted = shiftClear(stackBox(y), rects, minPopX, maxPopX);
     let levelY = y;
@@ -1012,19 +767,10 @@ let popAnchor = $derived.by(() => {
         }
     }
     if (shifted !== null) popX = shifted + popHalf;
-    // Beside with no sideways lane (arm one side, draw strip the other): drop under the obstacle, still left of the arm.
-    if (beside && shifted === null) {
-        const box = stackBox(y);
-        levelY = Math.max(...rects.filter((r) => rectsOverlap(box, r)).map((r) => r.y + r.h)) + POP_H / 2;
-    }
 
     // Save lives in this box, so it must always be reachable; the `cornered` pan can silently refuse.
-    const topOffset = beside ? -POP_H / 2 : below ? TOTAL_OFFSET_PX : -POP_OFFSET_PX - POP_H;
-    // Beside, the pill hangs under the popover, so the pair must clear the bottom together.
-    const clampedY = Math.min(
-        Math.max(levelY, topY - topOffset),
-        floorY - POP_H - topOffset - (beside ? TOTAL_OFFSET_PX + TOTAL_H : 0),
-    );
+    const topOffset = below ? TOTAL_OFFSET_PX : -POP_OFFSET_PX - POP_H;
+    const clampedY = Math.min(Math.max(levelY, topY - topOffset), floorY - POP_H - topOffset);
 
     return {
         popX,
@@ -1032,9 +778,8 @@ let popAnchor = $derived.by(() => {
             ? popX
             : clampX(cx + (tailX - cx) * TOTAL_TAIL_BIAS, TOTAL_HALF_W, VP_MARGIN),
         y: clampedY,
-        totalY: beside ? clampedY + POP_H / 2 : clampedY,
+        totalY: clampedY,
         below,
-        beside,
         cornered,
         minY,
     };
@@ -1046,7 +791,7 @@ $effect(() => {
     // A spot the user tapped to is theirs; panning would walk the shape out from under it.
     if (!a?.cornered || spotBump) return;
     const shortfall = VP_MARGIN + CHROME_STACK_PX - a.minY;
-    if (shortfall > 4 && !map.isEasing()) {
+    if (shortfall > 4 && !map.isMoving()) {
         map.panBy([0, shortfall], { duration: 220 });
     }
 });
@@ -1156,13 +901,13 @@ $effect(() => {
     <div
         class="rt-line-label rt-line-label-total measure-total"
         class:measure-gliding={!!cursor}
-        class:measure-below={popAnchor.below || popAnchor.beside}
+        class:measure-below={popAnchor.below}
         style="left:{popAnchor.totalX}px; top:{popAnchor.totalY}px;"
     >{totalText}{#if !mayAddVertex(verts.length)} · {DRAW_LIMIT_NOTE}{/if}</div>
 {/if}
 
 {#if active && popAnchor && (canFinish || singlePoint) && !fading}
-    <div class="measure-pop" class:measure-grid={singlePoint} class:measure-at-self={singlePoint && seedAtSelf} class:measure-gliding={!!cursor} class:measure-below={popAnchor.below} class:measure-beside={popAnchor.beside} style="left:{popAnchor.popX}px; top:{popAnchor.y}px;">
+    <div class="measure-pop" class:measure-grid={singlePoint} class:measure-at-self={singlePoint && seedAtSelf} class:measure-gliding={!!cursor} class:measure-below={popAnchor.below} style="left:{popAnchor.popX}px; top:{popAnchor.y}px;">
         {#if singlePoint}
             <!-- 2×2: copy · plot / pin · cache. A tap off the node dismisses. -->
             {#if seedAtSelf}
@@ -1250,7 +995,6 @@ $effect(() => {
         box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
     }
     .measure-pop.measure-below { transform: translate(-50%, 52px); }
-    .measure-pop.measure-beside { transform: translate(-50%, -50%); }
 
     .measure-col {
         display: flex;
@@ -1341,23 +1085,4 @@ $effect(() => {
     .measure-save:active { background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
     .measure-plot { color: #f2f2f2; }
     .measure-plot:active { background: color-mix(in srgb, #ffffff 14%, transparent); }
-    :global(.rt-measure-grab) {
-        pointer-events: auto;
-        cursor: grab;
-        touch-action: none;
-        user-select: none;
-        -webkit-user-select: none;
-    }
-    :global(.rt-measure-grab:active) { cursor: grabbing; }
-    :global(.rt-measure-grab img) {
-        display: block;
-        height: auto;
-        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55));
-    }
-    /* The hand under the fist: the same gold edging the cursor's own hand wears for a press. */
-    :global(.rt-measure-grab.rt-grabbed img) {
-        filter: drop-shadow(1.5px 0 0 var(--rt-yellow)) drop-shadow(-1.5px 0 0 var(--rt-yellow))
-            drop-shadow(0 1.5px 0 var(--rt-yellow)) drop-shadow(0 -1.5px 0 var(--rt-yellow))
-            drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55));
-    }
 </style>

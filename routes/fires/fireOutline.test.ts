@@ -1,7 +1,5 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-	__resetOutlineMemoForTest,
 	convexHull,
 	expandRing,
 	fireOutlines,
@@ -221,65 +219,5 @@ describe("the margin — the outline sits OUTSIDE every detection", () => {
 				0.1,
 			),
 		).not.toThrow();
-	});
-});
-
-describe("fireOutlines — the per-pan memo", () => {
-	it("returns the SAME object for unchanged data (a pan must not recompute)", () => {
-		__resetOutlineMemoForTest();
-		const spots = blob(4);
-		const first = fireOutlines(spots);
-		const second = fireOutlines([...spots]);
-		expect(second).toBe(first);
-	});
-
-	it("RECOMPUTES when a fire actually moves", () => {
-		__resetOutlineMemoForTest();
-		const first = fireOutlines(blob(4));
-		const moved = fireOutlines(blob(4, -120, 50));
-		expect(moved).not.toBe(first);
-		const ring = (moved.features[0].geometry as GeoJSON.Polygon).coordinates[0];
-		expect(ring.every(([lng]) => lng > -120.1)).toBe(true);
-	});
-
-	it("RECOMPUTES when a fire grows", () => {
-		__resetOutlineMemoForTest();
-		const small = fireOutlines(blob(4));
-		const bigger = fireOutlines(blob(6));
-		expect(bigger).not.toBe(small);
-	});
-
-	it("distinguishes a group SPLITTING from one that merely moved", () => {
-		__resetOutlineMemoForTest();
-		const together = fireOutlines(blob(4));
-		const apart = fireOutlines([...blob(2), ...blob(2, -119, 48)]);
-		expect(apart).not.toBe(together);
-	});
-});
-
-describe("fireOutlines — stableKey", () => {
-	it("hits across rebuilt `shown` arrays when given a stable key", () => {
-		__resetOutlineMemoForTest();
-		const all = blob(4);
-		const first = fireOutlines([...all], all);
-		const second = fireOutlines([...all], all);
-		expect(second).toBe(first);
-	});
-
-	it("⛔ does NOT serve a stale outline when `shown` shrinks under a stable key", () => {
-		__resetOutlineMemoForTest();
-		const all = [...blob(4), ...blob(4, -119, 48)];
-		const both = fireOutlines([...all], all);
-		expect(both.features).toHaveLength(2);
-		const half = fireOutlines(blob(4), all);
-		expect(half).not.toBe(both);
-		expect(half.features).toHaveLength(1);
-	});
-
-	it("still works with no key at all (content hashing fallback)", () => {
-		__resetOutlineMemoForTest();
-		const a = fireOutlines(blob(4));
-		const b = fireOutlines([...blob(4)]);
-		expect(b).toBe(a);
 	});
 });

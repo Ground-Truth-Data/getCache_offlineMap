@@ -1,6 +1,7 @@
 /** Pure functions: no map, no DOM, no fetch. */
 
 import { m } from "$parent/src/lib/paraglide/messages";
+import { PASS_BUCKET_MS } from "../../lib/shared/fireContract";
 
 export type SeverityLevel = 1 | 2 | 3 | 4 | 5;
 
@@ -255,9 +256,6 @@ export const TREND_MIN_PASSES = 3;
 /** Ratio between the EARLIER and LATER halves' mean peak FRP. */
 export const TREND_GROWING_RATIO = 1.5;
 export const TREND_QUIETER_RATIO = 0.67;
-
-/** One overpass writes many rows across a few minutes. */
-export const PASS_BUCKET_MS = 30 * 60 * 1000;
 
 /**
  * Earlier half of passes against the later half, never the last two: FRP

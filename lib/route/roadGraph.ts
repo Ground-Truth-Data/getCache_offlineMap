@@ -495,18 +495,16 @@ export async function findRoute(
 	const tooFar: RouteResult = { ok: false, reason: "too-far", crowKm, missing: 0 };
 	if (crowKm > MAX_KM) return tooFar;
 	let last: RouteResult = tooFar;
-	const b = tileBox(stops, PADS[0]);
-	if ((b.x1 - b.x0 + 1) * (b.y1 - b.y0 + 1) > MAX_TILES) {
-		if (highways) last = await viaHighways(stops, read, highways, crowKm);
-	} else
-		for (const share of PADS) {
-			const tiles = tilesFor(stops, share);
-			if (tiles.length > MAX_TILES) break;
-			const got = await Promise.all(tiles.map(read));
-			const missing = got.filter((g) => g === null).length;
-			last = routeOver(new RoadGraph(got.flatMap((g) => g ?? []), stops[0][1]), stops) ?? { ok: false, reason: "no-road", crowKm, missing };
-			if (last.ok) break;
-		}
+	for (const share of PADS) {
+		const tiles = tilesFor(stops, share);
+		if (tiles.length > MAX_TILES) break;
+		const got = await Promise.all(tiles.map(read));
+		const missing = got.filter((g) => g === null).length;
+		last = routeOver(new RoadGraph(got.flatMap((g) => g ?? []), stops[0][1]), stops) ?? { ok: false, reason: "no-road", crowKm, missing };
+		if (last.ok) break;
+	}
+	// Too big for street tiles, or they aren't on the phone: Kamloops to Kelowna is small enough and found nothing.
+	if (!last.ok && highways) last = await viaHighways(stops, read, highways, crowKm);
 	// The limit is the drive, not the crow: 900 km apart can be 1,400 km of road.
 	return last.ok && last.km > MAX_KM ? tooFar : last;
 }

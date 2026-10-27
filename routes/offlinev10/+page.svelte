@@ -19,7 +19,7 @@ import EphemeralDock from "$rig/dev/EphemeralDock.svelte";
 import type { Component } from "svelte";
 import { soloFireOrigins, soloMapPorts } from "../../lib/shared/soloPorts";
 import type { MapDrawControlsExports, MapHostPorts } from "../../lib/shared/mapHostPorts";
-import type { Map as MapboxMap } from "mapbox-gl";
+import type { Map as MapLibreMap } from "maplibre-gl";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 // MapLibre finds its worker beside its own file, which pre-bundling moves; Vite bundles it whole here instead.
@@ -90,7 +90,7 @@ function settleWait(id: string, ms: number): void {
 	void patchRegion(id, { msWait });
 }
 let layerRows = $state<LayerRow[]>([]);
-let mapForTools = $state<MapboxMap | null>(null);
+let mapForTools = $state<MapLibreMap | null>(null);
 let drawControlsRef: ReturnType<NonNullable<typeof MapDrawControls>> | undefined = $state();
 let mapOnly = $state(false);
 let legendOpen = $state(false);
@@ -486,7 +486,7 @@ onMount(() => {
 		buildLayerRows(m);
 		refresh();
 		// The drawer speaks Mapbox GL types; this map is MapLibre.
-		mapForTools = m as unknown as MapboxMap;
+		mapForTools = m as unknown as MapLibreMap;
 		fireHandle = attachFireLayer(m, { origins: () => origins(m) });
 		routeHandle = attachRouteLayer(m, { readTile: getTile, origin: readStoredFix, packChanged: onRegionsChanged });
 		hospitalHandle = attachHospitalLayer(m, {

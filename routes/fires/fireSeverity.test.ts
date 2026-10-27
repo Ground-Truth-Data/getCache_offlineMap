@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { PASS_BUCKET_MS } from "../../lib/shared/fireContract";
 import {
 	FRP_EXTREME_MW,
 	FRP_HIGH_MW,
 	FRP_MODERATE_MW,
-	PASS_BUCKET_MS,
 	SEVERITY_TABLE,
 	SIZE_SPOT_MAX_KM2,
 	severityFor,

@@ -2,7 +2,7 @@
  * satellite pixels, never a surveyed perimeter — no tap target, card or area readout. */
 
 /** One VIIRS pixel; keep in sync with `CELL_DEG` in staticHeatSources. */
-const CELL_DEG = 0.00375;
+export const CELL_DEG = 0.00375;
 
 /** Cells apart that still count as one fire: joins offset satellite passes, not unrelated fires. */
 const JOIN_CELLS = 2;
@@ -14,20 +14,6 @@ const MIN_CELLS = 5;
 const OUTLINE_MARGIN_DEG = CELL_DEG * 0.8;
 
 type Cell = number;
-
-// One memo entry shared by both maps; callers clone it across the GL worker boundary.
-let outlineMemoKey: string | null = null;
-let outlineMemo: GeoJSON.FeatureCollection | null = null;
-/** WeakRef: a strong ref would leak the hotspot array. */
-let outlineMemoSrc: WeakRef<object> | null = null;
-let outlineMemoLen = -1;
-
-export function __resetOutlineMemoForTest(): void {
-	outlineMemoKey = null;
-	outlineMemo = null;
-	outlineMemoSrc = null;
-	outlineMemoLen = -1;
-}
 
 /** Primitive keys are ~3× faster than strings at this volume; ±2^20 cells covers the globe. */
 function pack(gx: number, gy: number): Cell {
@@ -107,20 +93,8 @@ export function expandRing(
 /** Flood fill over the grid, one outline per group; O(cells), no distance matrix. */
 export function fireOutlines(
 	hotspots: readonly { coordinates: readonly [number, number] }[],
-	/** Stable identity for the fast-path memo (`hotspots` rebuilds every pan). */
-	stableKey?: object,
+	properties: GeoJSON.GeoJsonProperties = {},
 ): GeoJSON.FeatureCollection {
-	// The memo must run BEFORE any work, or a hit still pays the cell bucketing.
-	const fastKey = stableKey ?? hotspots;
-	if (
-		outlineMemo !== null &&
-		outlineMemoSrc !== null &&
-		outlineMemoSrc.deref() === fastKey &&
-		outlineMemoLen === hotspots.length
-	) {
-		return outlineMemo;
-	}
-
 	// One point per cell is most of the speed-up.
 	const cellPts = new Map<Cell, [number, number]>();
 	for (const h of hotspots) {
@@ -129,21 +103,6 @@ export function fireOutlines(
 		const { gx, gy } = cellOf(lng, lat);
 		const key = pack(gx, gy);
 		if (!cellPts.has(key)) cellPts.set(key, [lng, lat]);
-	}
-
-	// Second-tier memo keyed on the cell set: a commutative hash, never a sorted join.
-	let sum = 0;
-	let xor = 0;
-	for (const k of cellPts.keys()) {
-		sum = (sum + k) % 0x7fffffff;
-		xor ^= k;
-	}
-	const key = `${cellPts.size}:${sum}:${xor}`;
-	if (key === outlineMemoKey && outlineMemo !== null) {
-		// Adopt the new array as the fast-path key, or an equal-but-new array pays bucketing forever.
-		outlineMemoSrc = new WeakRef(fastKey as object);
-		outlineMemoLen = hotspots.length;
-		return outlineMemo;
 	}
 
 	const seen = new Set<Cell>();
@@ -179,7 +138,7 @@ export function fireOutlines(
 		if (ring.length < 3) continue;
 		features.push({
 			type: "Feature",
-			properties: {},
+			properties,
 			geometry: {
 				type: "Polygon",
 				coordinates: [[...ring, ring[0]!]],
@@ -187,13 +146,5 @@ export function fireOutlines(
 		});
 	}
 
-	const result: GeoJSON.FeatureCollection = {
-		type: "FeatureCollection",
-		features,
-	};
-	outlineMemoKey = key;
-	outlineMemo = result;
-	outlineMemoSrc = new WeakRef(fastKey as object);
-	outlineMemoLen = hotspots.length;
-	return result;
+	return { type: "FeatureCollection", features };
 }
