@@ -22,24 +22,31 @@ binding = "TILES"
 bucket_name = "offline-tiles"
 remote = true
 
-# Prod's own satellite cache and meter. Its switches stay at their defaults: no SQUIRREL_WRITES here, so no
-# one can flip what every shipped phone bakes, and testing Squirrel on tiles-dev never reaches prod.
+# Prod's own satellite cache and switches, so testing Squirrel on tiles-dev never reaches prod. Only Chris's
+# Supabase sign-in flips them (squirrelAdmin in src/index.ts).
 [[r2_buckets]]
 binding = "SAT_CACHE"
 bucket_name = "gc-satellite-cache-prod"
+
+# Counts only, shared with tiles-dev: both spend the same MapTiler and Esri keys, so one meter holds the 90% stops.
+[[r2_buckets]]
+binding = "METER"
+bucket_name = "gc-satellite-cache"
 
 # ⚠️ PMTILES_KEY must match the uploaded object key in the
 # bucket — a mismatch silently reads as "no tiles".
 [vars]
 PMTILES_KEY = "planet.pmtiles"
-# No written permission from MapTiler to keep its tiles on prod; USGS and the rest still cache.
-R2_NEVER = "maptiler"
 
 [env.dev]
 name = "offline-tiles-dev"
 routes = [
   { pattern = "tiles-dev.getcache.org", custom_domain = true }
 ]
+
+# A 500 that won't reproduce left no trace (13/1370/2758.pbf, 27 Oct 2026); Workers Logs keeps its error.
+[env.dev.observability]
+enabled = true
 
 [[env.dev.r2_buckets]]
 binding = "TILES"
@@ -50,8 +57,11 @@ bucket_name = "offline-tiles"
 binding = "SAT_CACHE"
 bucket_name = "gc-satellite-cache"
 
+[[env.dev.r2_buckets]]
+binding = "METER"
+bucket_name = "gc-satellite-cache"
+
 [env.dev.vars]
 PMTILES_KEY = "planet.pmtiles"
-SQUIRREL_WRITES = "on"
 
 # ⚠️ a staging Worker (offline-tiles-staging) may still exist in Cloudflare — deleting config never tears down a live Worker.

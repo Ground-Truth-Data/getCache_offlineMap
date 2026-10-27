@@ -34,10 +34,8 @@ interface Env {
   TILES: R2Bucket;
   /** Satellite tiles every phone shares as `source/z/x/y.jpg`, Squirrel's counts and its source switch; bound on tiles-dev only. */
   SAT_CACHE?: R2Bucket;
-  /** "on" where Squirrel may flip switches (tiles-dev); unset, every /squirrel POST is refused. */
-  SQUIRREL_WRITES?: string;
-  /** Source ids never kept in SAT_CACHE, whatever a switch says — a licence that covers dev but not prod. */
-  R2_NEVER?: string;
+  /** Squirrel's counts and the free-tier stops, one bucket for dev and prod: they spend the same keys. */
+  METER?: R2Bucket;
   PMTILES_KEY: string;
   /** Worker SECRETs (`wrangler secret put`), never [vars] — they must not reach the app bundle. */
   GC_firms_map_key: string;
@@ -117,8 +115,9 @@ const EXPOSED_HEADERS = [
 
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-  "Access-Control-Allow-Headers": "*",
+  "Access-Control-Allow-Methods": "GET, HEAD, POST, OPTIONS",
+  // `*` never covers Authorization, which Squirrel's signed-in writes carry.
+  "Access-Control-Allow-Headers": "Authorization, *",
   "Access-Control-Expose-Headers": EXPOSED_HEADERS,
   "Access-Control-Max-Age": "86400",
 };
@@ -165,21 +164,19 @@ async function satelliteTile(env: Env, ctx: ExecutionContext, origin: string, id
   return { body, tier: "upstream" };
 }
 
-// Squirrel's counts: summed in this isolate, written as one small R2 object per 100 tiles or 30 s,
-// so counting costs one write per hundred tiles. A count still in an isolate when it dies is lost.
-// Named at first flush: Workers refuse random values at global scope.
-let isolate: string | null = null;
+// Squirrel's counts: summed in this isolate, added to the running totals per 100 tiles or 30 s.
+// A count still in an isolate when it dies is lost.
 let pending: Record<string, number> = {};
 let pendingTiles = 0;
 let lastFlush = 0;
 
 function tally(env: Env, ctx: ExecutionContext, key: string, n: number): void {
-  if (!env.SAT_CACHE) return;
+  if (!env.METER) return;
   pending[key] = (pending[key] ?? 0) + n;
   // `served` is a tile's last count; flushing on any earlier one splits a tile across two objects.
   if (!key.endsWith("|served")) return;
   pendingTiles++;
-  if (pendingTiles >= 100 || Date.now() - lastFlush > 30_000) ctx.waitUntil(flush(env.SAT_CACHE));
+  if (pendingTiles >= 100 || Date.now() - lastFlush > 30_000) ctx.waitUntil(flush(env.METER));
 }
 
 async function flush(bucket: R2Bucket): Promise<void> {
@@ -187,7 +184,33 @@ async function flush(bucket: R2Bucket): Promise<void> {
   pending = {};
   pendingTiles = 0;
   lastFlush = Date.now();
-  if (Object.keys(out).length) await bucket.put(`_squirrel/counts/${new Date().toISOString().slice(0, 10)}/${(isolate ??= crypto.randomUUID())}-${lastFlush}.json`, JSON.stringify(out));
+  if (!Object.keys(out).length) return;
+  await Promise.all(Object.values(totalKeys()).map((key) => addTo(bucket, key, out)));
+}
+
+/** Squirrel's running totals per `source|z|tier` key: today's, this month's and all time. A period with none yet starts at zero. */
+const totalKeys = (now = new Date().toISOString()) => ({
+  today: `_squirrel/total/day/${now.slice(0, 10)}.json`,
+  month: `_squirrel/total/month/${now.slice(0, 7)}.json`,
+  all: "_squirrel/total/all.json",
+});
+
+/** Dev and prod add to the same totals at once, so each write names what it read, and a lost race reads and adds again. */
+async function addTo(bucket: R2Bucket, key: string, add: Record<string, number>): Promise<void> {
+  for (let tries = 0; tries < 8; tries++) {
+    const now = await bucket.get(key);
+    const counts = now ? await now.json<Record<string, number>>() : {};
+    for (const [k, n] of Object.entries(add)) counts[k] = (counts[k] ?? 0) + n;
+    if (await bucket.put(key, JSON.stringify(counts), { onlyIf: now ? { etagMatches: now.etag } : new Headers({ "If-None-Match": "*" }) })) return;
+  }
+  throw new Error(`${key} lost 8 races in a row; ${JSON.stringify(add)} went uncounted`);
+}
+
+async function totals(bucket: R2Bucket): Promise<Record<"today" | "month" | "all", Record<string, number>>> {
+  const keys = totalKeys();
+  const read = (key: string) => bucket.get(key).then((o) => o?.json<Record<string, number>>() ?? {});
+  const [today, month, all] = await Promise.all([read(keys.today), read(keys.month), read(keys.all)]);
+  return { today, month, all };
 }
 
 const ACTIVE_KEY = "_squirrel/active";
@@ -204,14 +227,19 @@ const SWITCHABLE = {
   // A live source's licence forbids keeping it, so it has no cache switch.
   cache: (src: SatelliteSource) => !src.live,
 };
-type Switches = { standby: string[]; cache: Record<string, boolean> };
-let switched = { at: 0, now: { standby: [], cache: {} } as Switches };
+/** `cache` is what the Worker does; `overrides` names every source where that is not what its toggle says, and why. */
+type Switches = { standby: string[]; cache: Record<string, boolean>; overrides: Record<string, string> };
+let switched = { at: 0, now: { standby: [], cache: {}, overrides: {} } as Switches };
 
 async function switches(env: Env): Promise<Switches> {
   const all = Object.entries(SATELLITE_SOURCES) as [string, SatelliteSource][];
   const bucket = env.SAT_CACHE;
-  if (!bucket) return { standby: [], cache: Object.fromEntries(all.map(([id]) => [id, false])) };
-  const never = (env.R2_NEVER ?? "").split(",").map((id) => id.trim());
+  if (!bucket)
+    return {
+      standby: [],
+      cache: Object.fromEntries(all.map(([id]) => [id, false])),
+      overrides: Object.fromEntries(all.filter(([, s]) => s.cacheToR2).map(([id]) => [id, "this Worker has no R2 bucket, so it keeps nothing"])),
+    };
   if (Date.now() - switched.at > 60_000) {
     const says = (sw: string, id: string) => bucket.get(`_squirrel/${sw}/${id}`).then((o) => o?.text() ?? null);
     const [standby, cache] = await Promise.all([Promise.all(all.map(([id, s]) => (s.standby ? says("standby", id) : null))), Promise.all(all.map(([id, s]) => (s.live ? null : says("cache", id))))]);
@@ -220,26 +248,31 @@ async function switches(env: Env): Promise<Switches> {
       now: {
         standby: all.filter((_, i) => standby[i] === "on").map(([id]) => id),
         cache: Object.fromEntries(all.map(([id, s], i) => [id, !s.live && (cache[i] === null ? s.cacheToR2 : cache[i] === "on")])),
+        overrides: {},
       },
     };
   }
-  return { ...switched.now, cache: Object.fromEntries(Object.entries(switched.now.cache).map(([id, on]) => [id, on && !never.includes(id)])) };
+  return switched.now;
 }
 
-/** Every count file under `prefix`, summed into today, this month and all time, per `source|z|tier` key. */
-async function squirrelCounts(bucket: R2Bucket, prefix = "_squirrel/counts/"): Promise<Record<"today" | "month" | "all", Record<string, number>>> {
-  const today = new Date().toISOString().slice(0, 10);
-  const out = { today: {} as Record<string, number>, month: {} as Record<string, number>, all: {} as Record<string, number> };
-  let cursor: string | undefined;
-  do {
-    const page = await bucket.list({ prefix, cursor });
-    const bodies = await Promise.all(page.objects.map(async (o) => [o.key.split("/")[2], await (await bucket.get(o.key))?.json<Record<string, number>>()] as const));
-    for (const [day, counts] of bodies)
-      for (const [k, n] of Object.entries(counts ?? {}))
-        for (const into of [out.all, ...(day.slice(0, 7) === today.slice(0, 7) ? [out.month] : []), ...(day === today ? [out.today] : [])]) into[k] = (into[k] ?? 0) + n;
-    cursor = page.truncated ? page.cursor : undefined;
-  } while (cursor);
-  return out;
+// Our Supabase projects, prod then dev; a token from any other issuer is refused before it is sent anywhere.
+const AUTH_ISSUERS = ["https://rekedbdmkzcpbntjntza.supabase.co/auth/v1", "https://cjqvdoaeymnfoalxforc.supabase.co/auth/v1"];
+// The switches change what every phone bakes and what R2 keeps: Chris alone flips them.
+const SQUIRREL_ADMINS = ["chris@groundtruth.app", "christobinharris@gmail.com"];
+
+/** The admin who signed this request, asked of the Supabase project that issued its token; null for anyone else. */
+async function squirrelAdmin(request: Request): Promise<string | null> {
+  const token = /^Bearer (.+)$/.exec(request.headers.get("Authorization") ?? "")?.[1];
+  const apikey = request.headers.get("apikey");
+  const body = token?.split(".")[1]?.replace(/-/g, "+").replace(/_/g, "/");
+  if (!token || !apikey || !body) return null;
+  const { iss } = JSON.parse(atob(body.padEnd(Math.ceil(body.length / 4) * 4, "="))) as { iss?: string };
+  if (!iss || !AUTH_ISSUERS.includes(iss)) return null;
+  const res = await fetch(`${iss}/user`, { headers: { Authorization: `Bearer ${token}`, apikey } });
+  if (!res.ok) return null;
+  const user = (await res.json()) as { email?: string; email_confirmed_at?: string | null };
+  const email = user.email?.toLowerCase();
+  return email && user.email_confirmed_at && SQUIRREL_ADMINS.includes(email) ? email : null;
 }
 
 function upstreamOf(counts: Record<string, number>): Record<string, number> {
@@ -248,17 +281,17 @@ function upstreamOf(counts: Record<string, number>): Record<string, number> {
   return out;
 }
 
-// This month's upstream tiles, re-read from the count files every 5 min; the 10% left over the
+// This month's upstream tiles, re-read from the running total each minute; the 10% left over the
 // stop covers what a refresh hasn't seen yet and counts lost with a dead isolate.
 let spent = { month: "", at: 0, tiles: {} as Record<string, number> };
 
 async function freeTierSpent(env: Env, id: string, src: SatelliteSource): Promise<boolean> {
   if (!src.freeTilesPerMonth) return false;
   // No bucket, no meter: a metered source is refused rather than run blind.
-  if (!env.SAT_CACHE) return true;
+  if (!env.METER) return true;
   const month = new Date().toISOString().slice(0, 7);
-  if (spent.month !== month || Date.now() - spent.at > 300_000)
-    spent = { month, at: Date.now(), tiles: upstreamOf((await squirrelCounts(env.SAT_CACHE, `_squirrel/counts/${month}`)).month) };
+  if (spent.month !== month || Date.now() - spent.at > 60_000)
+    spent = { month, at: Date.now(), tiles: upstreamOf((await env.METER.get(totalKeys().month).then((o) => o?.json<Record<string, number>>())) ?? {}) };
   return (spent.tiles[id] ?? 0) + (upstreamOf(pending)[id] ?? 0) >= 0.9 * src.freeTilesPerMonth;
 }
 
@@ -274,21 +307,21 @@ export default {
     const url = new URL(request.url);
 
     // /squirrel: which source the photos bake from, and what each one served. A POST of a source id switches it;
-    // text/plain, so a browser sends it without a preflight. Only a Worker with the bucket keeps either.
+    // only a Worker with the bucket keeps either.
     // A POST of "on" or "off" to /squirrel/standby/<id> or /squirrel/cache/<id> flips that switch.
     const switchPath = /^\/squirrel\/(standby|cache)\/([a-z0-9-]+)$/.exec(url.pathname);
     const forget = /^\/squirrel\/forget\/([a-z0-9-]+)$/.exec(url.pathname);
     if (url.pathname === "/squirrel" || url.pathname === "/squirrel/active" || switchPath || forget) {
       const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json", "Cache-Control": "no-store" } });
-      // Unauthenticated and CORS-open, so only the Worker Squirrel drives may take a switch.
-      if (request.method === "POST" && env.SQUIRREL_WRITES !== "on") return json({ error: "this Worker's switches are not writable" }, 403);
-      // Squirrel's hand test drops the tiles it fetched, from R2 and this colo's edge, so its next run starts at MISS.
+      // CORS-open, so a write must carry an admin's Supabase sign-in.
+      if (request.method === "POST" && !(await squirrelAdmin(request).catch(() => null))) return json({ error: "sign in as Chris on Get Cache to flip Squirrel's switches" }, 401);
+      // Squirrel's hand test drops the tiles it fetched from this colo's edge, never R2: R2's tiles are collected data, locked.
       if (forget) {
         if (request.method !== "POST") return json({ error: "POST z/x/y lines" }, 405);
         if (!sourceOf(forget[1])) return json({ error: `no satellite source "${forget[1]}"` }, 400);
         const names = (await request.text()).split("\n").filter((l) => /^\d{1,2}\/\d{1,7}\/\d{1,7}$/.test(l)).slice(0, 100).map((l) => `${forget[1]}/${l}.jpg`);
-        const [, edge] = await Promise.all([env.SAT_CACHE?.delete(names), Promise.all(names.map((n) => caches.default.delete(new Request(`${url.origin}/satellite/${n}`, { method: "GET" }))))]);
-        return json({ r2: env.SAT_CACHE ? names.length : 0, edge: edge.filter(Boolean).length });
+        const edge = await Promise.all(names.map((n) => caches.default.delete(new Request(`${url.origin}/satellite/${n}`, { method: "GET" }))));
+        return json({ edge: edge.filter(Boolean).length });
       }
       if (switchPath) {
         const sw = switchPath[1] as keyof typeof SWITCHABLE;
@@ -313,8 +346,8 @@ export default {
       }
       const [active, sw] = await Promise.all([activeSource(env), switches(env)]);
       if (url.pathname === "/squirrel/active") return json({ active, ...sw });
-      if (env.SAT_CACHE) await flush(env.SAT_CACHE);
-      return json({ active, ...sw, counts: env.SAT_CACHE ? await squirrelCounts(env.SAT_CACHE) : null });
+      if (env.METER) await flush(env.METER);
+      return json({ active, ...sw, counts: env.METER ? await totals(env.METER) : null });
     }
 
     // POST /imports: an import too big for a GeoJSON source, as text/plain so the browser skips the preflight.
