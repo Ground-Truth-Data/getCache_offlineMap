@@ -49,7 +49,7 @@ describe("startFireService", () => {
 		await settle();
 		expect(h.writes).toEqual(["-119.5937,49.4991"]);
 		expect(heard).toHaveBeenCalledTimes(1);
-		expect(console.groupCollapsed).toHaveBeenCalledWith(expect.stringContaining("1 disc, 1 hotspots, 2.0 KB uncompressed"));
+		expect(console.groupCollapsed).toHaveBeenCalledWith(expect.stringContaining("1 disc, 0 fires + 1 hotspots near the centre, 2.0 KB uncompressed"));
 		expect(console.groupCollapsed).toHaveBeenCalledWith(expect.stringContaining("1 on partial satellite coverage"));
 
 		h.fetch.mockClear();

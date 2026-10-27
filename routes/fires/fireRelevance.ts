@@ -3,6 +3,7 @@
  * last touched ground), never the camera. Past HARD_CUTOFF_KM: absent.
  */
 
+import { FIRE_NEAR_KM, type FireOutline } from "../../lib/shared/fireContract";
 import type { FireHotspot } from "./fireCache";
 
 /** Not a number to tune: equals FIRE_RADIUS_KM, since what we download is what we may draw. */
@@ -96,6 +97,8 @@ export function fireFeatureCollection(opts: {
 	readonly now: number;
 	readonly staticMask: ReadonlySet<string>;
 	readonly hidden?: boolean;
+	/** Each kept only while its fire is on the map. */
+	readonly outlines?: readonly FireOutline[];
 	/** injected to keep this module free of the cache types */
 	readonly toGeoJSON: (
 		h: readonly RelevantHotspot[],
@@ -107,20 +110,34 @@ export function fireFeatureCollection(opts: {
 	) => boolean;
 	/** True means DROPPED, not flagged. Absent keeps everything: a caller without polygons must not silently lose fires. */
 	readonly isUrban?: (lng: number, lat: number) => boolean;
-}): { fc: GeoJSON.FeatureCollection; shown: RelevantHotspot[] } {
+}): { fc: GeoJSON.FeatureCollection; shown: RelevantHotspot[]; outlines: GeoJSON.FeatureCollection } {
 	const empty: GeoJSON.FeatureCollection = {
 		type: "FeatureCollection",
 		features: [],
 	};
-	if (opts.hidden === true) return { fc: empty, shown: [] };
+	if (opts.hidden === true) return { fc: empty, shown: [], outlines: empty };
 
 	const inRange = relevantHotspots(opts.hotspots, opts.origin);
 	const urban = opts.isUrban;
-	const shown =
+	const kept =
 		urban === undefined
 			? inRange
 			: inRange.filter((h) => !urban(h.coordinates[0], h.coordinates[1]));
+	// Near the user every hotspot shows and stands in for its fire; elsewhere the fire is one flame.
+	const nearFires = new Set(kept.filter((h) => h.n === undefined && h.km <= FIRE_NEAR_KM).map((h) => h.f));
+	const shown = kept.filter((h) => (h.n === undefined ? h.km <= FIRE_NEAR_KM : !nearFires.has(h.f)));
 	const fc = opts.toGeoJSON(shown);
+	const onMap = new Set(shown.map((h) => h.f));
+	const outlines: GeoJSON.FeatureCollection = {
+		type: "FeatureCollection",
+		features: (opts.outlines ?? [])
+			.filter((o) => onMap.has(o.f))
+			.map((o) => ({
+				type: "Feature",
+				properties: {},
+				geometry: { type: "Polygon", coordinates: [o.ring.map((p) => [p[0], p[1]])] },
+			})),
+	};
 
 	for (const f of fc.features) {
 		const props = f.properties as Record<string, unknown>;
@@ -130,5 +147,5 @@ export function fireFeatureCollection(opts: {
 		// Flagged, never removed: a refinery genuinely can catch fire.
 		props.ind = opts.isStatic(lng, lat, opts.staticMask) ? 1 : 0;
 	}
-	return { fc, shown };
+	return { fc, shown, outlines };
 }

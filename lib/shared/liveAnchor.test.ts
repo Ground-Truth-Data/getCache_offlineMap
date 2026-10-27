@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-	FIRE_TRIGGER_KM,
 	fireDiscCentres,
+	fireTriggerKm,
 	FIRE_RELEVANCE_KM,
 	fireCentresWorthFetching,
 	isUsableFix,
@@ -13,6 +13,8 @@ import type { LngLat } from "./kmGeo";
 
 // A block in the Ottawa valley — the repo's usual test locale.
 const BLOCK: LngLat = [-76.3, 45.2];
+const FIRE_TRIGGER_KM = fireTriggerKm(FIRE_RADIUS_KM);
+const full = (...cs: LngLat[]) => cs.map((center) => ({ center, radiusKm: FIRE_RADIUS_KM }));
 
 /** Move km due north; ~111 km/° is exact enough for threshold tests without a projection. */
 function north(from: LngLat, km: number): LngLat {
@@ -20,6 +22,11 @@ function north(from: LngLat, km: number): LngLat {
 }
 
 describe("needsFireDisc — geography only", () => {
+	it("a disc the nearest fires cut short triggers a refetch sooner", () => {
+		expect(needsFireDisc(north(BLOCK, 100), [{ center: BLOCK, radiusKm: 120 }])).toBe(true);
+		expect(needsFireDisc(north(BLOCK, 80), [{ center: BLOCK, radiusKm: 120 }])).toBe(false);
+	});
+
 	it("pulls a disc on the first fix", () => {
 		expect(needsFireDisc(BLOCK, [])).toBe(true);
 	});
@@ -30,12 +37,12 @@ describe("needsFireDisc — geography only", () => {
 
 	it("does not refetch across a whole season at one camp", () => {
 		for (const km of [1, 10, 50, 100, 200, 300]) {
-			expect(needsFireDisc(north(BLOCK, km), [BLOCK])).toBe(false);
+			expect(needsFireDisc(north(BLOCK, km), full(BLOCK))).toBe(false);
 		}
 	});
 
 	it("refetches after a genuine relocation", () => {
-		expect(needsFireDisc(north(BLOCK, FIRE_TRIGGER_KM + 10), [BLOCK])).toBe(
+		expect(needsFireDisc(north(BLOCK, FIRE_TRIGGER_KM + 10), full(BLOCK))).toBe(
 			true,
 		);
 	});
@@ -93,7 +100,7 @@ describe("fireDiscCentres — blob-scale centres must not become disc-scale fetc
 		const chosen = fireDiscCentres(cluster);
 		expect(chosen.length).toBeLessThan(cluster.length);
 		for (const c of cluster)
-			expect(needsFireDisc(c, chosen)).toBe(false);
+			expect(needsFireDisc(c, full(...chosen))).toBe(false);
 	});
 
 	it("is stable: reducing an already-reduced set changes nothing", () => {

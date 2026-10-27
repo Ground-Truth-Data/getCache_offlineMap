@@ -15,6 +15,12 @@ const OUTLINE_MARGIN_DEG = CELL_DEG * 0.8;
 
 type Cell = number;
 
+// Plain types: the Worker builds these and has no GeoJSON namespace.
+export interface OutlineCollection {
+	type: "FeatureCollection";
+	features: { type: "Feature"; properties: Record<string, unknown>; geometry: { type: "Polygon"; coordinates: [number, number][][] } }[];
+}
+
 /** Primitive keys are ~3× faster than strings at this volume; ±2^20 cells covers the globe. */
 function pack(gx: number, gy: number): Cell {
 	return gx * 4_194_304 + gy;
@@ -93,8 +99,8 @@ export function expandRing(
 /** Flood fill over the grid, one outline per group; O(cells), no distance matrix. */
 export function fireOutlines(
 	hotspots: readonly { coordinates: readonly [number, number] }[],
-	properties: GeoJSON.GeoJsonProperties = {},
-): GeoJSON.FeatureCollection {
+	properties: Record<string, unknown> = {},
+): OutlineCollection {
 	// One point per cell is most of the speed-up.
 	const cellPts = new Map<Cell, [number, number]>();
 	for (const h of hotspots) {
@@ -106,7 +112,7 @@ export function fireOutlines(
 	}
 
 	const seen = new Set<Cell>();
-	const features: GeoJSON.Feature[] = [];
+	const features: OutlineCollection["features"] = [];
 
 	for (const start of cellPts.keys()) {
 		if (seen.has(start)) continue;

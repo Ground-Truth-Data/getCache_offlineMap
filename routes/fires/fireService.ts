@@ -1,6 +1,5 @@
 /** The fire pass, app-wide: every centre the app hands over gets a fire disc. Runs on a centre landing, coming back online, coming to the front — never a clock. A dead feed pauses the pass, never the map. */
 
-import { FIRE_RADIUS_KM } from "../../lib/shared/fireContract";
 import {
     fireCentresWorthFetching,
     fireDiscCentres,
@@ -58,22 +57,24 @@ async function pass(centres: readonly LngLat[]): Promise<number> {
         const prev = await readFireCache(key);
         if (prev && isFresh(prev)) continue;
         const fresh = (await fireCoverage())
-            .filter((c) => isCoverageFresh(c))
-            .map((c) => c.center);
+            .filter((c) => isCoverageFresh(c));
         if (!needsFireDisc([lng, lat], fresh)) continue;
         try {
             const r = await fetchAreaFires(lng, lat);
             await writeFireCache(key, {
                 fetchedAt: r.fetchedAt,
                 center: [lng, lat],
-                radiusKm: FIRE_RADIUS_KM,
+                radiusKm: r.radiusKm,
                 sourcesOk: r.sourcesOk,
                 hotspots: [...r.hotspots],
+                outlines: r.outlines,
             });
             landed++;
             fetched.push({
                 at: `${lat.toFixed(4)},${lng.toFixed(4)}`,
-                hotspots: r.hotspots.length,
+                fires: r.hotspots.filter((h) => h.n !== undefined).length,
+                hotspots: r.hotspots.filter((h) => h.n === undefined).length,
+                km: r.radiusKm,
                 jsonKB: Number((r.bytes / 1024).toFixed(1)),
                 satellites: `${r.sourcesOk}/3`,
             });
@@ -93,7 +94,10 @@ async function pass(centres: readonly LngLat[]): Promise<number> {
 
 interface FireFetchLog {
     at: string;
+    fires: number;
+    /** the individual ones sent near the centre */
     hotspots: number;
+    km: number;
     /** decompressed; the download is ~1/13th of it */
     jsonKB: number;
     satellites: string;
@@ -102,12 +106,13 @@ interface FireFetchLog {
 /** One line per pass, so a quiet pass and a runaway one look different. */
 function reportPass(fetched: readonly FireFetchLog[]): void {
     if (fetched.length === 0) return;
+    const fires = fetched.reduce((n, f) => n + f.fires, 0);
     const hotspots = fetched.reduce((n, f) => n + f.hotspots, 0);
     // Streamed gzip carries no Content-Length: uncompressed is all this side can measure.
     const kb = fetched.reduce((n, f) => n + f.jsonKB, 0);
     const degraded = fetched.filter((f) => f.satellites !== "3/3").length;
     console.groupCollapsed(
-        `[fires] ${fetched.length} disc${fetched.length === 1 ? "" : "s"}, ${hotspots.toLocaleString()} hotspots, ${kb.toFixed(1)} KB uncompressed (~${(kb / 13).toFixed(0)} KB downloaded), ${FIRE_RADIUS_KM} km each${degraded > 0 ? ` — ${degraded} on partial satellite coverage` : ""}`,
+        `[fires] ${fetched.length} disc${fetched.length === 1 ? "" : "s"}, ${fires} fires + ${hotspots} hotspots near the centre, ${kb.toFixed(1)} KB uncompressed (~${(kb / 13).toFixed(0)} KB downloaded)${degraded > 0 ? ` — ${degraded} on partial satellite coverage` : ""}`,
     );
     console.table(fetched);
     console.groupEnd();

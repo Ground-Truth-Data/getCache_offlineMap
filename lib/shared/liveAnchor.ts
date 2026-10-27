@@ -3,8 +3,13 @@ import { FIRE_RADIUS_KM } from "./fireContract";
 
 export const FIRE_COVERAGE_KM = FIRE_RADIUS_KM;
 
-/** ~350 km, four or five hours of driving. */
-export const FIRE_TRIGGER_KM = Math.round(FIRE_COVERAGE_KM * 0.7);
+/** A full disc's is ~350 km, four or five hours of driving; a disc the nearest fires cut short triggers sooner. */
+export const fireTriggerKm = (radiusKm: number): number => Math.round(radiusKm * 0.7);
+
+export interface FireDisc {
+	readonly center: readonly [number, number];
+	readonly radiusKm: number;
+}
 
 /** Two discs' reach — a day's drive stays covered, the far side of the country costs nothing. */
 export const FIRE_RELEVANCE_KM = FIRE_COVERAGE_KM * 2;
@@ -25,9 +30,9 @@ export function kmToNearest(
 /** Geography only — time-based freshness is fireIsFresh's axis; don't conflate the two. */
 export function needsFireDisc(
 	pos: readonly [number, number],
-	fireCentres: readonly (readonly [number, number])[],
+	discs: readonly FireDisc[],
 ): boolean {
-	return kmToNearest(pos, fireCentres) > FIRE_TRIGGER_KM;
+	return !discs.some((d) => kmBetween(pos, d.center) <= fireTriggerKm(d.radiusKm));
 }
 
 /** The few centres whose discs cover them all. ⚠️ Blob centres are ~11 m apart
@@ -37,7 +42,8 @@ export function fireDiscCentres(
 	centres: readonly (readonly [number, number])[],
 ): Array<readonly [number, number]> {
 	const chosen: Array<readonly [number, number]> = [];
-	for (const c of centres) if (needsFireDisc(c, chosen)) chosen.push(c);
+	for (const c of centres)
+		if (needsFireDisc(c, chosen.map((center) => ({ center, radiusKm: FIRE_COVERAGE_KM })))) chosen.push(c);
 	return chosen;
 }
 

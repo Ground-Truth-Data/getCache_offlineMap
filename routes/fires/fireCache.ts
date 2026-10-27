@@ -4,7 +4,7 @@ import { kmBetween, kmToDegSpan } from "../../lib/shared/kmGeo";
 import { makeKeyedIdbStore } from "../../lib/onPhone/store/keyedIdbStore";
 
 /** Bump on any shape/fix change — a TTL only catches stale data, never wrong data. */
-export const FIRE_CACHE_VERSION = 3;
+export const FIRE_CACHE_VERSION = 4;
 
 export { FIRE_RADIUS_KM } from "../../lib/shared/fireContract";
 
@@ -14,17 +14,19 @@ export const FIRE_TTL_MS = 45 * 60 * 1000;
 export type { FireConfidence } from "../../lib/shared/fireContract";
 
 export type { FireHotspot } from "../../lib/shared/fireContract";
-import type { FireHotspot } from "../../lib/shared/fireContract";
+import type { FireHotspot, FireOutline } from "../../lib/shared/fireContract";
 
 export interface FireCacheEntry {
 	cacheVersion: number;
 	/** when WE fetched it; each hotspot's `t` is when the satellite saw it */
 	fetchedAt: number;
 	center: [number, number];
+	/** what the Worker served: smaller than asked where the nearest fires ran out first */
 	radiusKm: number;
 	/** of three satellites; < 3 is degraded coverage */
 	sourcesOk: number;
 	hotspots: FireHotspot[];
+	outlines: FireOutline[];
 }
 
 const idb = makeKeyedIdbStore<FireCacheEntry>({
@@ -57,6 +59,7 @@ export async function deleteFireCache(key: string): Promise<void> {
 
 export interface UnionResult {
 	hotspots: FireHotspot[];
+	outlines: FireOutline[];
 	oldestFetchedAt: number | null;
 	degraded: boolean;
 }
@@ -192,7 +195,7 @@ function discBox(entry: FireCacheEntry): DiscBox {
  * the OLDEST fetch time — newest would let one fresh disc vouch for a stale one. */
 export function unionHotspots(entries: readonly FireCacheEntry[]): UnionResult {
 	if (entries.length === 0) {
-		return { hotspots: [], oldestFetchedAt: null, degraded: false };
+		return { hotspots: [], outlines: [], oldestFetchedAt: null, degraded: false };
 	}
 	// Exact array identity: two memo'd reads hold different discs.
 	if (unionMemo !== null && entries === unionMemoSrc) return unionMemo;
@@ -233,8 +236,13 @@ export function unionHotspots(entries: readonly FireCacheEntry[]): UnionResult {
 			if (prev === undefined || h.frp > prev.frp) best.set(key, h);
 		}
 	}
+	// Kept whole here; the paint drops a line whose fire did not survive.
+	const outlines = new Map<string, FireOutline>();
+	for (const e of entries)
+		for (const o of e.outlines) outlines.set(`${o.f}|${o.ring[0]}`, o);
 	const result: UnionResult = {
 		hotspots: [...best.values()],
+		outlines: [...outlines.values()],
 		// codestyle-allow-spread: one entry per cached fire area, tens at most.
 		oldestFetchedAt: Math.min(...entries.map((e) => e.fetchedAt)),
 		degraded: entries.some((e) => e.sourcesOk < 3),
@@ -261,7 +269,28 @@ export function hotspotsToGeoJSON(
 				frp: h.frp,
 				...(h.px === undefined ? {} : { px: h.px }),
 				...(h.dn === undefined ? {} : { dn: h.dn }),
+				...(h.f === undefined ? {} : { f: h.f }),
+				// The map hands nested arrays back as strings; markOf parses `p`.
+				...(h.n === undefined ? {} : { n: h.n, a: h.a, t0: h.t0, p: JSON.stringify(h.p ?? []) }),
 			},
 		})),
+	};
+}
+
+/** A tapped flame back to what the cards read: hotspotsToGeoJSON's inverse. */
+export function markOf(
+	props: Record<string, unknown> | null | undefined,
+	coordinates: [number, number],
+): Pick<FireHotspot, "coordinates" | "t" | "frp" | "px" | "n" | "a" | "t0" | "p"> {
+	const num = (v: unknown): number | undefined => (Number.isFinite(Number(v)) && v !== null && v !== undefined ? Number(v) : undefined);
+	const n = num(props?.n);
+	return {
+		coordinates,
+		t: Number(props?.t),
+		frp: Number(props?.frp),
+		px: num(props?.px),
+		...(n === undefined
+			? {}
+			: { n, a: num(props?.a), t0: num(props?.t0), p: JSON.parse(String(props?.p ?? "[]")) as [number, number][] }),
 	};
 }

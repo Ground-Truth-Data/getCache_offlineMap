@@ -45,6 +45,7 @@ const entry = (
 	center: [-75.7, 45.4],
 	radiusKm: 500,
 	sourcesOk,
+	outlines: [],
 	hotspots,
 });
 
@@ -244,6 +245,7 @@ describe("superseded ground — newer evidence wins", () => {
 		center: centre,
 		radiusKm: 500,
 		sourcesOk: 3,
+		outlines: [],
 		hotspots: hotspots.map((h) => ({ ...h, c: "nominal" as const })),
 	});
 
@@ -343,6 +345,7 @@ describe("unionHotspots stays cheap as the cache grows — the 119% CPU bug", ()
 				center: centre,
 				radiusKm: 30,
 				sourcesOk: 3,
+				outlines: [],
 				hotspots: Array.from({ length: per }, (_, j) => ({
 					coordinates: [
 						centre[0] + (j % 64) * 0.002,
@@ -397,6 +400,7 @@ describe("unionHotspots stays cheap as the cache grows — the 119% CPU bug", ()
 			center: ground,
 			radiusKm: 500,
 			sourcesOk: 3,
+			outlines: [],
 			hotspots: [
 				{ coordinates: ground, t: NOW - 19 * HOUR, c: "nominal", frp: 12 },
 			],
@@ -407,6 +411,7 @@ describe("unionHotspots stays cheap as the cache grows — the 119% CPU bug", ()
 			center: ground,
 			radiusKm: 500,
 			sourcesOk: 3,
+			outlines: [],
 			hotspots: [],
 		};
 		invalidateFireEntries();

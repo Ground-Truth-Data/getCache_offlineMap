@@ -14,11 +14,14 @@ import {
 } from "./fireRelevance";
 import type { FireHotspot } from "./fireCache";
 
+// A merged fire, as the Worker sends every fire past the user's 20 km.
 const spot = (lng: number, lat: number, frp = 100): FireHotspot => ({
 	coordinates: [lng, lat],
 	t: 1_786_000_000_000,
 	c: "nominal",
 	frp,
+	f: `${lng},${lat}`,
+	n: 1,
 });
 
 const USER: [number, number] = [-123.1, 49.28];
@@ -321,5 +324,38 @@ describe("a real fire inside the wall RENDERS, however small", () => {
 	it("exports no FRP gate — size must never decide visibility", () => {
 		expect(mod).not.toHaveProperty("frpGateAt");
 		expect(mod).not.toHaveProperty("MAX_FRP_GATE");
+	});
+});
+
+describe("fireFeatureCollection — every hotspot near the user, one flame per fire elsewhere", () => {
+	const KM = 1 / 111.2;
+	const fire = (km: number, f: string): FireHotspot => ({ coordinates: [USER[0], USER[1] + km * KM], t: 1, c: "nominal", frp: 9, f, n: 3 });
+	const hot = (km: number, f: string): FireHotspot => ({ coordinates: [USER[0], USER[1] + km * KM], t: 1, c: "nominal", frp: 3, f });
+	const ring = (f: string) => ({ f, ring: [[0, 0], [1, 0], [1, 1]] as [number, number][] });
+	const build = (hotspots: FireHotspot[], outlines = [ring("near"), ring("far")]) =>
+		fireFeatureCollection({
+			hotspots,
+			origin: AT_USER,
+			now: 2,
+			staticMask: new Set<string>(),
+			outlines,
+			toGeoJSON: (hs) => ({ type: "FeatureCollection", features: hs.map((h) => ({ type: "Feature", geometry: { type: "Point", coordinates: [...h.coordinates] }, properties: { f: h.f, n: h.n } })) }),
+			isStatic: () => false,
+		});
+
+	it("within 20 km its hotspots show and stand in for the fire's own flame", () => {
+		const { shown } = build([fire(5, "near"), hot(4, "near"), hot(6, "near")]);
+		expect(shown.map((h) => h.n)).toEqual([undefined, undefined]);
+	});
+
+	it("past 20 km the hotspots stay off and the fire is one flame", () => {
+		const { shown } = build([fire(40, "far"), hot(30, "far"), hot(45, "far")]);
+		expect(shown.map((h) => h.n)).toEqual([3]);
+	});
+
+	it("draws a fire's outline only while the fire is on the map", () => {
+		const { outlines } = build([fire(40, "far")]);
+		expect(outlines.features).toHaveLength(1);
+		expect(build([fire(600, "far")]).outlines.features).toHaveLength(0);
 	});
 });

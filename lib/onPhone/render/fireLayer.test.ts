@@ -44,7 +44,7 @@ import { FIRE_LAYER_IDS, FIRE_LAYER_ID_LIST, attachFireLayer } from "./fireLayer
 const ANCHOR: [number, number] = [-119.5, 49.9];
 const hour = 3_600_000;
 const spot = (lng: number, lat: number, frp = 20, agoH = 1) => ({ coordinates: [lng, lat], t: Date.now() - agoH * hour, c: "nominal", frp });
-const entry = (hotspots: unknown[], fetchedAt = Date.now() - 10 * 60_000) => ({ cacheVersion: 3, fetchedAt, center: ANCHOR, radiusKm: 500, sourcesOk: 3, hotspots });
+const entry = (hotspots: unknown[], fetchedAt = Date.now() - 10 * 60_000) => ({ cacheVersion: 4, fetchedAt, center: ANCHOR, radiusKm: 500, sourcesOk: 3, hotspots, outlines: [] });
 
 let decode = vi.fn(async () => {});
 function rig() {

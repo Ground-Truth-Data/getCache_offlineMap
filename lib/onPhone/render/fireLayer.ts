@@ -10,16 +10,16 @@ import fireIntensity5 from "../../assets/fire_intensity/5-fire_intensity.webp";
 import {
     fireEntriesNear,
     hotspotsToGeoJSON,
+    markOf,
     unionHotspots,
 } from "../../../routes/fires/fireCache";
 import { peekUrbanVerdict } from "../../../routes/fires/fireClassifyCache";
 import { overlayVisibility } from "../../mapState/overlayVisibility.svelte";
 import {
     buildClusterCard,
-    buildHotspotCard,
+    buildMarkCard,
     type CardRow,
 } from "../../../routes/fires/fireHotspotCopy";
-import { fireOutlines } from "../../../routes/fires/fireOutline";
 import {
     distKm,
     fireFeatureCollection,
@@ -382,26 +382,6 @@ function wireCloseButton(popup: maplibregl.Popup): void {
     });
 }
 
-type FirePoint = {
-    coordinates: [number, number];
-    t: number;
-    frp: number;
-    px?: number;
-};
-
-function pointOf(
-    props: Record<string, unknown> | null | undefined,
-    coordinates: [number, number],
-): FirePoint {
-    const px = Number(props?.px);
-    return {
-        coordinates,
-        t: Number(props?.t),
-        frp: Number(props?.frp),
-        px: Number.isFinite(px) ? px : undefined,
-    };
-}
-
 /** Attach the fire layer; re-adds itself on style.load. The disposer also carries `.repaint()`. */
 export function attachFireLayer(
     map: maplibregl.Map,
@@ -421,13 +401,14 @@ export function attachFireLayer(
         await flameDecoded();
         if (disposed) return;
         addFireLayers(map);
-        const { hotspots: all } = unionHotspots(entries);
+        const { hotspots: all, outlines } = unionHotspots(entries);
         lastPingedAt = entries.length
             ? entries.reduce((m, e) => Math.max(m, e.fetchedAt), 0)
             : null;
         setPlacesRegion([c0.lng, c0.lat]);
-        const { fc, shown } = fireFeatureCollection({
+        const { fc, outlines: lines } = fireFeatureCollection({
             hotspots: all,
+            outlines,
             origin,
             now: Date.now(),
             staticMask: peekStaticMask(),
@@ -447,8 +428,7 @@ export function attachFireLayer(
         const outlineSrc = map.getSource(FIRE_LAYER_IDS.outlineSrc) as
             | maplibregl.GeoJSONSource
             | undefined;
-        // `all` is the memo key; the hull is built from `shown` so it matches the flames.
-        outlineSrc?.setData(fireOutlines(shown, all));
+        outlineSrc?.setData(lines);
     };
 
     const onStyle = (): void => void paint();
@@ -473,8 +453,8 @@ export function attachFireLayer(
         const f = e.features?.[0];
         if (!f || f.geometry.type !== "Point") return;
         const at = f.geometry.coordinates as [number, number];
-        const card = buildHotspotCard(
-            pointOf(f.properties, at),
+        const card = buildMarkCard(
+            markOf(f.properties, at),
             anchorNearest(opts.origins?.() ?? [], at),
             Date.now(),
             whereFor(at),
@@ -499,7 +479,7 @@ export function attachFireLayer(
                 const members = leaves
                     .filter((l) => l.geometry?.type === "Point")
                     .map((l) =>
-                        pointOf(
+                        markOf(
                             l.properties,
                             (l.geometry as GeoJSON.Point).coordinates as [
                                 number,

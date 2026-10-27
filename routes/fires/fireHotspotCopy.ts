@@ -247,8 +247,9 @@ export function buildHotspotCard(
 
 /** Same shape as a single detection's card plus the spot count. Heat is the
  * MAX, never a sum — twenty campfires are not one inferno. */
+/** A merged fire (it carries `n`) counts as everything it holds. */
 export function buildClusterCard(
-	hotspots: readonly (Pick<FireHotspot, "coordinates" | "t" | "frp"> & {
+	hotspots: readonly (Pick<FireHotspot, "coordinates" | "t" | "frp" | "n" | "a" | "t0" | "p"> & {
 		px?: number;
 	})[],
 	centre: readonly [number, number],
@@ -258,16 +259,18 @@ export function buildClusterCard(
 	industrial = false,
 	pingedAt: number | null = null,
 ): FireCard {
-	const n = hotspots.length;
-	const area = clusterAreaKm2(hotspots);
+	const single = hotspots.filter((h) => h.n === undefined);
+	const fires = hotspots.filter((h) => h.n !== undefined);
+	const n = single.length + fires.reduce((s, f) => s + (f.n ?? 0), 0);
+	const area = clusterAreaKm2(single) + fires.reduce((s, f) => s + (f.a ?? 0) * CELL_KM ** 2, 0);
 	const peakFrp = hotspots.reduce((m, h) => Math.max(m, h.frp || 0), 0);
 	const newest = hotspots.reduce((m, h) => Math.max(m, h.t || 0), 0);
-	const oldest = hotspots.reduce(
-		(m, h) => (h.t && (m === 0 || h.t < m) ? h.t : m),
-		0,
-	);
+	const oldest = hotspots.reduce((m, h) => {
+		const first = h.t0 ?? h.t;
+		return first && (m === 0 || first < m) ? first : m;
+	}, 0);
 	const sev = severityFor(area, peakFrp);
-	const trend = trendFor(hotspots);
+	const trend = trendFor([...single, ...fires.flatMap((f) => (f.p ?? []).map(([t, frp]) => ({ t, frp })))]);
 
 	const rows = commonRows({
 		level: sev.level,
@@ -288,4 +291,18 @@ export function buildClusterCard(
 		value: m.ofmap_shared_fire_hot_spots_detected({ count: n }),
 	});
 	return { title: m.ofmap_shared_fire_title(), rows };
+}
+
+/** A tapped flame: a merged fire gets the fire's card, a lone hotspot its own. */
+export function buildMarkCard(
+	mark: Parameters<typeof buildClusterCard>[0][number],
+	you: readonly [number, number] | null,
+	now: number = Date.now(),
+	where: string | null = null,
+	industrial = false,
+	pingedAt: number | null = null,
+): FireCard {
+	return mark.n === undefined
+		? buildHotspotCard(mark, you, now, where, industrial, pingedAt)
+		: buildClusterCard([mark], mark.coordinates, you, now, where, industrial, pingedAt);
 }

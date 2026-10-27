@@ -96,8 +96,7 @@ export function mergeFires(
 				p: [...passes].sort((a, b) => a[0] - b[0]),
 			},
 		});
-		for (const g of fireOutlines(members.map((i) => ({ coordinates: at(spots[i]!) })), { f }).features)
-			out.push(g as MergedFireCollection["features"][number]);
+		for (const g of fireOutlines(members.map((i) => ({ coordinates: at(spots[i]!) })), { f }).features) out.push(g);
 		for (const i of members) if (d[i]! <= FIRE_NEAR_SEND_KM) near.push({ i, f });
 	}
 	for (const { i, f } of near.sort((a, b) => d[a.i]! - d[b.i]!).slice(0, FIRE_MAX_COUNT))

@@ -6,7 +6,7 @@ const cache = new Map<
     string,
     { fetchedAt: number; center: [number, number] }
 >();
-const coverage: Array<{ center: [number, number]; fetchedAt: number }> = [];
+const coverage: Array<{ center: [number, number]; radiusKm: number; fetchedAt: number }> = [];
 const writes: Array<
     [string, { center: [number, number]; hotspots: unknown[] }]
 > = [];
@@ -73,7 +73,7 @@ describe("the fire pass", () => {
     it("a fresh disc nearby covers the centre — nothing is fetched", async () => {
         const fetch = vi.fn(async () => ok());
         vi.stubGlobal("fetch", fetch);
-        coverage.push({ center: [-119.4, 49.6], fetchedAt: Date.now() });
+        coverage.push({ center: [-119.4, 49.6], radiusKm: 500, fetchedAt: Date.now() });
         expect(await refreshFires([PENTICTON])).toBe(0);
         expect(fetch).not.toHaveBeenCalled();
     });
