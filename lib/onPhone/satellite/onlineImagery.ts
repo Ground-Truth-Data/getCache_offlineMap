@@ -1,7 +1,7 @@
-// The online map's imagery: Sentinel through our Worker where Mapbox's own satellite was, live imagery over it,
-// and the phone's baked photos only while offline. Every satellite pixel is then a source Squirrel counts.
+// The online map's imagery: the two sources Squirrel puts on the map, through our Worker where Mapbox's own satellite
+// was, and the phone's baked photos only while offline. Every satellite pixel is then a source Squirrel counts.
 import type * as maplibregl from "maplibre-gl";
-import { coverOf, SATELLITE_SOURCES, type SatelliteSource, sourceOf } from "../../contract/satelliteSources";
+import { coverOf, type MapBand, SATELLITE_SOURCES, type SatelliteSource, sourceOf } from "../../contract/satelliteSources";
 import { squirrelUrl, tilesHost } from "../../worker/tilesHost";
 import { listRegions, onRegionsChanged } from "../../../routes/offlinev10/store";
 import { onPhoto } from "../../../routes/offlinev10/satellite";
@@ -11,14 +11,15 @@ import { kmToDegSpan } from "../../shared/kmGeo";
 
 /** The online style's IMAGERY_ANCHOR: the imagery goes in under it, then it goes. */
 const MAPBOX_IMAGERY = "satellite";
-const SENTINEL = "gc-sentinel";
-/** Streamed past SHARP_FROM_Z: Esri, or a standby source while Squirrel has it switched on. */
-const LIVE = (Object.entries(SATELLITE_SOURCES) as [string, SatelliteSource][]).filter(([, s]) => s.live);
-/** Sentinel looks rough from here in; a sharper source takes over where one covers. */
+const FAR = "gc-far";
+const NEAR = "gc-near";
+/** `near` takes over from here in; a source with its own boxes (USGS) wins inside them. */
 const SHARP_FROM_Z = 12;
-/** The sharp source fades in over Sentinel across these two zooms, so the hand-over is never a jump. */
+/** `near` fades in over `far` across these two zooms, so the hand-over is never a jump. */
 const FADE_FROM_Z = SHARP_FROM_Z - 2;
 const FADE_IN: maplibregl.RasterLayerSpecification["paint"] = { "raster-opacity": ["interpolate", ["linear"], ["zoom"], FADE_FROM_Z, 0, SHARP_FROM_Z, 1] };
+/** Sentinel fitted to MapTiler's brightness, spread and colour over the same z11 ground. */
+const TONE: Record<string, maplibregl.RasterLayerSpecification["paint"]> = { sentinel: { "raster-contrast": -0.15, "raster-saturation": 0.4 } };
 const FORCED = "gc-forced";
 const FORCED_KEY = "gc-forced-imagery";
 
@@ -32,25 +33,33 @@ export function forceImagery(id: string | null): void {
 	else localStorage.removeItem(FORCED_KEY);
 }
 
+/** Squirrel's picks for the map, asked once a style load, so a switch lands on every map's next one. */
+async function mapPicks(): Promise<Record<MapBand, [string, SatelliteSource]>> {
+	const res = await fetch(squirrelUrl("/active") ?? "");
+	if (!res.ok) throw new Error(`HTTP ${res.status} the Worker would not say which sources are on the map`);
+	const { map } = (await res.json()) as { map?: Record<MapBand, string> };
+	const [far, near] = [sourceOf(map?.far ?? ""), sourceOf(map?.near ?? "")];
+	if (!map || !far || !near || far.covers || near.covers)
+		throw new Error(`The Worker named no map sources (${JSON.stringify(map)}); deploy the tiles Worker before the app`);
+	return { far: [map.far, far], near: [map.near, near] };
+}
+
+const raster = (id: string, src: SatelliteSource, more: Partial<maplibregl.RasterSourceSpecification> = {}): maplibregl.RasterSourceSpecification => ({
+	type: "raster",
+	tiles: [`${tilesHost()}/satellite/${id}/{z}/{x}/{y}.jpg`],
+	tileSize: src.tilePx ?? 256,
+	maxzoom: src.maxZ,
+	attribution: src.attribution,
+	...more,
+});
+
 /** Swaps the imagery on every style load (the basemap picker reloads the style); a style without imagery is left alone.
- * `onCredits` hears the attributions of the photos on the map; Sentinel's rides its own source. */
+ * `onCredits` hears the attributions of the photos on the map; each source on it credits itself. */
 export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: string[]) => void): () => void {
 	let photos: SatelliteMount | null = null;
 	const boxes = new Map<string, readonly [number, number, number, number]>();
-	let live = "esri";
 	let above: string | undefined;
-
-	/** Asked once a style load, so a switch on /app/squirrel lands on the next one. */
-	const pickLive = async (): Promise<void> => {
-		const url = squirrelUrl("/active");
-		if (!url) return;
-		const res = await fetch(url);
-		if (!res.ok) throw new Error(`HTTP ${res.status} the Worker would not say which standby sources are on`);
-		// tiles-prod names no standby until its next deploy: nothing is switched on there.
-		const { standby } = (await res.json()) as { standby?: string[] };
-		live = LIVE.find(([id, s]) => s.standby && standby?.includes(id))?.[0] ?? "esri";
-		void show();
-	};
+	let loads = 0;
 
 	const show = async (): Promise<void> => {
 		const mount = photos;
@@ -64,7 +73,7 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 		await mount.reconcile([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], [...sites.values()], map.getZoom());
 		if (mount !== photos) return;
 		onCredits(mount.attributions());
-		// Esri bills per tile, so it asks for none while the whole view is inside a sharper source's cover, or offline
+		// `near` bills per tile, so it asks for none while the whole view is inside a covering source's box, or offline
 		// inside one photo; the square inside a photo's disc keeps the corners honest.
 		const inside = !!coverOf(b.getWest(), b.getSouth(), b.getEast(), b.getNorth()) || [...sites.values()].some(({ center: [lng, lat] }) => {
 			const { dLat, dLng } = kmToDegSpan(PHOTO_COVERAGE_RADIUS_KM / Math.SQRT2, lat);
@@ -72,9 +81,9 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 		});
 		// A forced source hides the rest, so nothing under it shows through a tile it 404s.
 		const forced = !!map.getLayer(FORCED);
-		if (map.getLayer(SENTINEL)) map.setLayoutProperty(SENTINEL, "visibility", forced ? "none" : "visible");
-		for (const [id] of LIVE) if (map.getLayer(`gc-${id}`)) map.setLayoutProperty(`gc-${id}`, "visibility", forced || inside || id !== live ? "none" : "visible");
-		// Mapbox credits every visible layer, in view or not; a box out of view is hidden so its source isn't credited.
+		if (map.getLayer(FAR)) map.setLayoutProperty(FAR, "visibility", forced ? "none" : "visible");
+		if (map.getLayer(NEAR)) map.setLayoutProperty(NEAR, "visibility", forced || inside ? "none" : "visible");
+		// Every visible layer is credited, in view or not; a box out of view is hidden so its source isn't credited.
 		for (const [box, [w, s, e, n]] of boxes)
 			if (map.getLayer(box)) map.setLayoutProperty(box, "visibility", !forced && w < b.getEast() && e > b.getWest() && s < b.getNorth() && n > b.getSouth() ? "visible" : "none");
 	};
@@ -84,8 +93,8 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 		if (map.getSource(FORCED)) map.removeSource(FORCED);
 		const id = forcedImagery();
 		const src = id ? sourceOf(id) : undefined;
-		if (src) {
-			map.addSource(FORCED, { type: "raster", tiles: [`${tilesHost()}/satellite/${id}/{z}/{x}/{y}.jpg`], tileSize: src.tilePx ?? 256, maxzoom: src.maxZ, attribution: src.attribution });
+		if (id && src) {
+			map.addSource(FORCED, raster(id, src));
 			map.addLayer({ id: FORCED, type: "raster", source: FORCED }, above);
 		}
 		void show();
@@ -94,69 +103,48 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 		if (e.key === FORCED_KEY && photos) force();
 	};
 
-	const swap = (): void => {
+	const swap = async (): Promise<void> => {
+		const load = ++loads;
 		photos?.dispose();
 		photos = null;
+		if (!map.getLayer(MAPBOX_IMAGERY)) return onCredits([]);
+		const { far: [farId, far], near: [nearId, near] } = await mapPicks();
+		// The style loaded again while we asked; that load builds its own imagery.
+		if (load !== loads || !map.getLayer(MAPBOX_IMAGERY)) return;
 		const layers = map.getStyle().layers;
-		const at = layers.findIndex((l) => l.id === MAPBOX_IMAGERY);
-		if (at < 0) return onCredits([]);
-		above = layers[at + 1]?.id;
-		const sentinel = SATELLITE_SOURCES.sentinel;
-		map.addSource(SENTINEL, {
-			type: "raster",
-			tiles: [`${tilesHost()}/satellite/sentinel/{z}/{x}/{y}.jpg`],
-			tileSize: 256,
-			maxzoom: sentinel.maxZ,
-			attribution: sentinel.attribution,
-		});
-		// Fitted to MapTiler's brightness, spread and colour over the same z11 ground, so the z12 hand-over doesn't jump.
-		map.addLayer({ id: SENTINEL, type: "raster", source: SENTINEL, paint: { "raster-contrast": -0.15, "raster-saturation": 0.4 } }, MAPBOX_IMAGERY);
-		// The Worker 404s what USGS covers and everything past 90% of the free tier, and Sentinel shows through.
-		// Each starts hidden, so no tile is asked for until `show` picks the one live source.
-		for (const [id, src] of LIVE) {
-			map.addSource(`gc-${id}`, {
-				type: "raster",
-				tiles: [`${tilesHost()}/satellite/${id}/{z}/{x}/{y}.jpg`],
-				tileSize: 256,
-				minzoom: FADE_FROM_Z,
-				maxzoom: src.maxZ,
-				attribution: src.attribution,
-			});
-			map.addLayer({ id: `gc-${id}`, type: "raster", source: `gc-${id}`, minzoom: FADE_FROM_Z, layout: { visibility: "none" }, paint: FADE_IN }, MAPBOX_IMAGERY);
-		}
-		void pickLive();
+		above = layers[layers.findIndex((l) => l.id === MAPBOX_IMAGERY) + 1]?.id;
+		map.addSource(FAR, raster(farId, far));
+		map.addLayer({ id: FAR, type: "raster", source: FAR, paint: TONE[farId] }, MAPBOX_IMAGERY);
+		// The Worker 404s what a box covers, a standby source not on the map and anything past 90% of a free tier;
+		// `far` shows through.
+		map.addSource(NEAR, raster(nearId, near, { minzoom: FADE_FROM_Z }));
+		map.addLayer({ id: NEAR, type: "raster", source: NEAR, minzoom: FADE_FROM_Z, paint: { ...TONE[nearId], ...FADE_IN } }, MAPBOX_IMAGERY);
 		for (const [id, src] of Object.entries(SATELLITE_SOURCES) as [string, SatelliteSource][])
 			src.covers?.forEach((bounds, i) => {
 				// One source per box: a raster source takes one bounds, and outside it no tile is asked for.
 				const box = `gc-${id}-${i}`;
 				boxes.set(box, bounds);
-				map.addSource(box, {
-					type: "raster",
-					tiles: [`${tilesHost()}/satellite/${id}/{z}/{x}/{y}.jpg`],
-					tileSize: 256,
-					bounds: [...bounds],
-					minzoom: FADE_FROM_Z,
-					maxzoom: src.maxZ,
-					attribution: src.attribution,
-				});
+				map.addSource(box, raster(id, src, { bounds: [...bounds], minzoom: FADE_FROM_Z }));
 				map.addLayer({ id: box, type: "raster", source: box, minzoom: FADE_FROM_Z, paint: FADE_IN }, MAPBOX_IMAGERY);
 			});
 		map.removeLayer(MAPBOX_IMAGERY);
 		photos = createSatelliteMount(map, above ?? "", null);
 		force();
 	};
+	const restyled = (): void => void swap();
 
 	const moved = (): void => void show();
-	map.on("style.load", swap);
+	map.on("style.load", restyled);
 	map.on("moveend", moved);
 	addEventListener("storage", forcedElsewhere);
 	addEventListener("online", moved);
 	addEventListener("offline", moved);
 	const offRegions = onRegionsChanged(moved);
 	const offPhoto = onPhoto(moved);
-	if (map.isStyleLoaded()) swap();
+	if (map.isStyleLoaded()) restyled();
 	return () => {
-		map.off("style.load", swap);
+		loads++;
+		map.off("style.load", restyled);
 		map.off("moveend", moved);
 		removeEventListener("storage", forcedElsewhere);
 		removeEventListener("online", moved);

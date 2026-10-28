@@ -30,7 +30,7 @@ export interface SatelliteSource {
 	covers?: readonly (readonly [number, number, number, number])[];
 	/** streamed only: never kept at the edge, in R2 or in a photo, and never the switched-on source */
 	live?: true;
-	/** off until switched on from /app/squirrel; while on, the online map streams it in Esri's place */
+	/** the Worker serves it only while Squirrel has it on the online map, so it bills nothing until picked */
 	standby?: true;
 	/** what it gives free each month; the Worker stops serving it at 90% of this */
 	freeTilesPerMonth?: number;
@@ -147,6 +147,13 @@ export type SourceId = keyof typeof SATELLITE_SOURCES;
 
 /** What a Worker serves when nobody has switched it; a switch lives in the Worker's R2 bucket. */
 export const DEFAULT_SOURCE: SourceId = "maptiler";
+
+/** The online map draws `far` below SHARP_FROM_Z and `near` from it, until Squirrel picks others. */
+export const MAP_DEFAULT = { far: "sentinel", near: "maptiler" } as const satisfies Record<string, SourceId>;
+export type MapBand = keyof typeof MAP_DEFAULT;
+
+/** What Squirrel may put on the map: every source that draws the whole world, not only its own boxes. */
+export const MAP_PICKS = (Object.entries(SATELLITE_SOURCES) as [SourceId, SatelliteSource][]).filter(([, s]) => !s.covers).map(([id]) => id);
 
 export function sourceOf(id: string): SatelliteSource | undefined {
 	return (SATELLITE_SOURCES as Record<string, SatelliteSource>)[id];

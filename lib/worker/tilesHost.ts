@@ -1,3 +1,4 @@
+import type { MapBand } from "../contract/satelliteSources";
 import { noteProbe } from "../shared/workMeter.svelte";
 // No production host is baked in: a hardcoded default bills the maintainer's R2
 // account for every stranger who installs this package.
@@ -87,7 +88,7 @@ export function satelliteTileUrl(source: string, z: number, x: number, y: number
 }
 
 /** The Worker's Squirrel: which source photos bake from, and what each served. */
-export function squirrelUrl(path: "" | "/active" | `/${"standby" | "cache" | "forget"}/${string}` = ""): string | null {
+export function squirrelUrl(path: "" | "/active" | `/map/${MapBand}` | `/${"cache" | "forget"}/${string}` = ""): string | null {
 	const h = tilesHost();
 	return h === null ? null : `${h}/squirrel${path}`;
 }

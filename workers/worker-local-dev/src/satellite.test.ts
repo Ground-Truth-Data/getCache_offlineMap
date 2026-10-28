@@ -272,43 +272,49 @@ describe("the cache switch: Squirrel decides what R2 keeps", () => {
   });
 });
 
-describe("mapbox: a standby source, off until Squirrel switches it on", () => {
+describe("the online map: Squirrel picks the source below z12 and the one from it", () => {
   // Ethiopia: nothing covers it but Sentinel.
   const outside = "/satellite/mapbox/14/9874/7811.jpg";
   let asked: string[];
-  const flip = (to: string) => call("/squirrel/standby/mapbox", env(), { method: "POST", body: to });
+  const pick = (band: string, id: string) => call(`/squirrel/map/${band}`, env(), { method: "POST", body: id });
   beforeEach(() => {
     asked = [];
     stubFetch(async (u: string) => (asked.push(u), new Response(new Uint8Array(1000), { status: 200 })));
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime((clock += 6 * 60_000));
   });
-  // The switch is remembered in the isolate; leave it off for the tests after.
+  // The picks are remembered in the isolate; put the defaults back for the tests after.
   afterEach(async () => {
-    await flip("off");
+    await pick("far", "sentinel");
+    await pick("near", "maptiler");
     vi.useRealTimers();
   });
 
-  it("is refused while off, without asking Mapbox", async () => {
+  it("draws Sentinel below z12 and MapTiler from it until Squirrel picks others", async () => {
+    expect(await (await call("/squirrel/active")).json()).toMatchObject({ map: { far: "sentinel", near: "maptiler" } });
+  });
+
+  it("refuses Mapbox while it is not on the map, without asking Mapbox", async () => {
     const res = await call(outside);
     expect(res.status).toBe(404);
-    expect(await res.text()).toMatch(/standby/);
+    expect(await res.text()).toMatch(/not put it on the map/);
     expect(asked).toEqual([]);
   });
 
-  it("streams once switched on, kept nowhere, and stops again when switched off", async () => {
-    expect(await (await flip("on")).json()).toMatchObject({ standby: ["mapbox"] });
-    expect(await (await call("/squirrel/active")).json()).toMatchObject({ standby: ["mapbox"] });
+  it("streams Mapbox once picked for either band, kept nowhere, and stops when picked away", async () => {
+    expect(await (await pick("near", "mapbox")).json()).toMatchObject({ map: { far: "sentinel", near: "mapbox" } });
     expect((await call(outside)).status).toBe(200);
     expect(asked[0]).toMatch(/^https:\/\/api\.mapbox\.com\/v4\/mapbox\.satellite\/14\/9874\/7811\.jpg90\?access_token=/);
     expect(tiles()).toEqual([]);
-    await flip("off");
+    await pick("near", "esri");
     expect((await call(outside)).status).toBe(404);
-    expect(asked).toHaveLength(1);
+    await pick("far", "mapbox");
+    expect((await call(outside)).status).toBe(200);
+    expect(asked).toHaveLength(2);
   });
 
-  it("stops at 90% of its 750k free tiles", async () => {
-    await flip("on");
+  it("stops Mapbox at 90% of its 750k free tiles", async () => {
+    await pick("near", "mapbox");
     kept.set(`_squirrel/total/month/${new Date().toISOString().slice(0, 7)}.json`, JSON.stringify({ "mapbox|17|upstream": 675_000 }));
     const res = await call(outside);
     expect(res.status).toBe(404);
@@ -316,10 +322,12 @@ describe("mapbox: a standby source, off until Squirrel switches it on", () => {
     expect(asked).toEqual([]);
   });
 
-  it("switches only standby sources, only to on or off", async () => {
-    expect((await call("/squirrel/standby/esri", env(), { method: "POST", body: "on" })).status).toBe(400);
-    expect((await flip("yes")).status).toBe(400);
+  it("puts only a whole-world source on the map, in one of two bands", async () => {
+    expect((await pick("near", "usgs")).status).toBe(400);
+    expect((await pick("near", "bing")).status).toBe(400);
+    expect((await pick("middle", "esri")).status).toBe(405);
     expect((await call("/squirrel/active", env(), { method: "POST", body: "mapbox" })).status).toBe(400);
+    expect(await (await call("/squirrel/active")).json()).toMatchObject({ map: { far: "sentinel", near: "maptiler" } });
   });
 });
 
@@ -350,7 +358,7 @@ describe("/squirrel", () => {
     stubFetch(async () => new Response(null, { status: 500 }));
     expect((await call("/squirrel/active", env(), { method: "POST", body: "bing" })).status).toBe(400);
     expect((await call("/squirrel/active", env(), { method: "POST", body: "sentinel" })).status).toBe(200);
-    expect(await (await call("/squirrel/active")).json()).toMatchObject({ active: "sentinel", standby: [] });
+    expect(await (await call("/squirrel/active")).json()).toMatchObject({ active: "sentinel" });
   });
 
   it("refuses every switch to anyone but Chris, so nobody else can flip tiles-prod", async () => {
@@ -359,13 +367,13 @@ describe("/squirrel", () => {
     for (const headers of [{}, STRANGER, elsewhere, signedIn("not-a-jwt")]) {
       expect((await call("/squirrel/active", env(), { method: "POST", body: "sentinel", headers })).status).toBe(401);
       expect((await call("/squirrel/cache/sentinel", env(), { method: "POST", body: "on", headers })).status).toBe(401);
-      expect((await call("/squirrel/standby/mapbox", env(), { method: "POST", body: "on", headers })).status).toBe(401);
+      expect((await call("/squirrel/map/near", env(), { method: "POST", body: "mapbox", headers })).status).toBe(401);
     }
     expect([...kept.keys()].filter((k) => !k.startsWith("_squirrel/total/"))).toEqual([]);
   });
 
   it("serves the default source and no counts on a Worker without the bucket", async () => {
-    expect(await (await call("/squirrel", env({ SAT_CACHE: undefined, METER: undefined }))).json()).toEqual({ active: "maptiler", standby: [], cache: { maptiler: false, sentinel: false, usgs: false, esri: false, mapbox: false },
+    expect(await (await call("/squirrel", env({ SAT_CACHE: undefined, METER: undefined }))).json()).toEqual({ active: "maptiler", map: { far: "sentinel", near: "maptiler" }, cache: { maptiler: false, sentinel: false, usgs: false, esri: false, mapbox: false },
       overrides: { maptiler: "this Worker has no R2 bucket, so it keeps nothing", sentinel: "this Worker has no R2 bucket, so it keeps nothing", usgs: "this Worker has no R2 bucket, so it keeps nothing" },
       counts: null,
     });

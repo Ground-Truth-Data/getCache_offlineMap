@@ -1,6 +1,6 @@
 <!-- Squirrel: every imagery source side by side: what it served, pulled upstream, kept in R2 and costs. Dev only. Numbers are the Worker's counts and this browser's blobs; "—" means nothing measures it yet. -->
 <script lang="ts">
-import { SATELLITE_SOURCES, type SatelliteSource, type SourceId, sourceNamed, sourceOf } from "../../lib/contract/satelliteSources";
+import { MAP_PICKS, type MapBand, SATELLITE_SOURCES, type SatelliteSource, type SourceId, sourceNamed, sourceOf } from "../../lib/contract/satelliteSources";
 import { loadCamera, MAP_HOME_CENTER } from "../../lib/mapState/mapViewport";
 import { forcedImagery, forceImagery } from "../../lib/onPhone/satellite/onlineImagery";
 import { PHOTO_COVERAGE_RADIUS_KM, photoTilesFor } from "../../lib/onPhone/satellite/satelliteImage";
@@ -11,7 +11,7 @@ import { type Region, listRegions } from "../offlinev10/store";
 import { rangeBox } from "../offlinev10/tiles";
 
 type Counts = Record<string, number>;
-type Answer = { active: string; standby: string[]; cache: Record<string, boolean>; overrides: Record<string, string>; counts: { today: Counts; month: Counts; all: Counts } | null };
+type Answer = { active: string; map: Record<MapBand, string>; cache: Record<string, boolean>; overrides: Record<string, string>; counts: { today: Counts; month: Counts; all: Counts } | null };
 type Lic = "ok" | "tos";
 type Row = {
 	id: string;
@@ -22,8 +22,8 @@ type Row = {
 	licText: string;
 	licence: string;
 	cache: boolean;
-	/** a standby source's switch: on, off, or unknown until the Worker answers */
-	standby?: boolean | null;
+	/** where the online map draws it, once the Worker answers */
+	onMap: string | null;
 	/** the Worker stops it at 90% of its free tier */
 	stops?: boolean;
 	/** why the toggle cannot be switched on */
@@ -72,7 +72,7 @@ const LOOK: Record<string, { sub: string; lic: Lic; licText: string; lock?: stri
 	sentinel: { sub: "cloudless 2016 · online map", lic: "ok", licText: "CC BY 4.0" },
 	esri: { sub: "World Imagery · streamed", lic: "tos", licText: "ToS forbids", lock: 'Esri E204 §3.2c: "may not … store Data"' },
 	usgs: { sub: "ImageryOnly · US", lic: "ok", licText: "public domain" },
-	mapbox: { sub: "satellite · standby", lic: "tos", licText: "stream only", lock: "Mapbox ToS: no caching outside the SDK" },
+	mapbox: { sub: "satellite · streamed", lic: "tos", licText: "stream only", lock: "Mapbox ToS: no caching outside the SDK" },
 };
 const BC_COLOR = "oklch(0.74 0.10 190)";
 const ROADS_COLOR = "#f3f1e9";
@@ -115,17 +115,20 @@ async function load(): Promise<void> {
 
 $effect(() => void load());
 
-async function flip(sw: "standby" | "cache", id: string, on: boolean): Promise<void> {
+/** Every switch answers with all of them; the map's picks reach each phone on its next style load. */
+async function flip(path: Parameters<typeof squirrelUrl>[0], body: string): Promise<void> {
 	failure = null;
 	try {
-		const res = await post(`/${sw}/${id}`, on ? "on" : "off");
+		const res = await post(path, body);
 		if (!res.ok) throw new Error(`HTTP ${res.status} ${await res.text()}`);
-		const { standby, cache, overrides } = (await res.json()) as Pick<Answer, "standby" | "cache" | "overrides">;
-		if (answer) answer = { ...answer, standby, cache, overrides };
+		const { map, cache, overrides } = (await res.json()) as Pick<Answer, "map" | "cache" | "overrides">;
+		if (answer) answer = { ...answer, map, cache, overrides };
 	} catch (e) {
 		failure = String(e instanceof Error ? e.message : e);
 	}
 }
+const BANDS: [MapBand, string][] = [["far", "below z12"], ["near", "z12 and up"]];
+const bandsOf = (id: string) => (answer ? BANDS.filter(([b]) => answer?.map[b] === id).map(([, label]) => label).join(" · ") : null);
 
 /** `source|z|tier` counts for one source, summed over the tiers named. */
 const tiers = (c: Counts | undefined, id: string, ...want: string[]) =>
@@ -153,7 +156,7 @@ function sourceRow(id: string, src: SatelliteSource): Row {
 	let proj = HIT_RATES.map(() => 0);
 	let projNote: string | undefined;
 	let projTiles: number | undefined;
-	if (src.live) projNote = src.standby && !answer?.standby.includes(id) ? "off: Esri streams instead" : `stops at ${k(0.9 * (free ?? 0))}, then falls back to Sentinel`;
+	if (src.live) projNote = !bandsOf(id) ? "not on the map: streams nothing" : `stops at ${k(0.9 * (free ?? 0))}, then the layer under it shows`;
 	else if (src.usdPer1000 > 0) {
 		const perPin = photoTilesFor([-120, 50], src.zoom).length;
 		const asked = USERS * PINS_PER_USER * perPin;
@@ -170,7 +173,7 @@ function sourceRow(id: string, src: SatelliteSource): Row {
 		licText: look.licText,
 		licence: `${src.licence} · ${src.attribution}`,
 		cache: keeps,
-		standby: src.standby ? (answer ? answer.standby.includes(id) : null) : undefined,
+		onMap: bandsOf(id),
 		stops: !!src.freeTilesPerMonth,
 		lock: look.lock ?? null,
 		override: answer?.overrides[id] ?? null,
@@ -191,7 +194,7 @@ function sourceRow(id: string, src: SatelliteSource): Row {
 	};
 }
 
-const blank = { z: null, today: null, month: null, up: null, hits: null, tiles: null, gb: null, mtd: null, proj: null };
+const blank = { onMap: null, z: null, today: null, month: null, up: null, hits: null, tiles: null, gb: null, mtd: null, proj: null };
 const rows = $derived<Row[]>([
 	...Object.entries(SATELLITE_SOURCES).map(([id, src]) => sourceRow(id, src as SatelliteSource)),
 	{
@@ -429,9 +432,9 @@ async function copyLog(): Promise<void> {
 	const log = {
 		page: "/app/squirrel",
 		at: new Date().toISOString(),
-		worker: { host, failure, active: answer?.active ?? null, standby: answer?.standby ?? null },
+		worker: { host, failure, active: answer?.active ?? null, map: answer?.map ?? null },
 		forcedOnThisBrowser: forced,
-		sources: rows.map(({ id, cache, standby, lock, override, z, today, month, up, hits, tiles, gb, free, mtd }) => ({ id, cache, standby, lock, override, z, today, month, upstream: up, hits, r2Tiles: tiles, r2Gb: gb, freeTier: free, usdMonthToDate: mtd })),
+		sources: rows.map(({ id, cache, onMap, lock, override, z, today, month, up, hits, tiles, gb, free, mtd }) => ({ id, cache, onMap, lock, override, z, today, month, upstream: up, hits, r2Tiles: tiles, r2Gb: gb, freeTier: free, usdMonthToDate: mtd })),
 		handTest: probes,
 		deleted: forgot,
 	};
@@ -503,6 +506,13 @@ function toBody(node: HTMLElement) {
 				<span class="dot" style="background:var(--green)"></span><span class="title">SOURCES</span>
 				<span class="hnote">{rows.length} rows · {rows.filter((r) => r.cache).length} caching · {rows.filter((r) => r.lic === "tos").length} ToS-flagged</span>
 				<span class="spacer"></span>
+				{#each BANDS as [band, label] (band)}
+					<label class="hnote">online map {label}
+						<select class="refresh" value={answer?.map[band] ?? ""} disabled={!answer} aria-label="online map source {label}" onchange={(e) => flip(`/map/${band}`, e.currentTarget.value)}>
+							{#each MAP_PICKS as id (id)}<option value={id}>{SATELLITE_SOURCES[id].name}</option>{/each}
+						</select>
+					</label>
+				{/each}
 				<span class="hnote">month to date · {today.toLocaleString("en-US", { month: "short" })} 1–{today.getDate()} UTC</span>
 			</div>
 			<div class="scroll">
@@ -514,9 +524,9 @@ function toBody(node: HTMLElement) {
 
 					{#each rows as s (s.id)}
 						<div class="first" title={s.licence}><span class="dot big" style="background:{s.color}"></span><span class="srcname"><b>{s.name}</b><i>{s.sub}</i>
-							{#if s.standby !== undefined}<label class="standby"><button class="tog" class:on={s.standby} disabled={s.standby === null} aria-label="standby {s.name}" onclick={() => flip("standby", s.id, !s.standby)}></button><span class:grn={s.standby} class:dim={!s.standby}>{s.standby ? "ON · streaming" : s.standby === null ? "—" : "OFF"}</span></label>{/if}</span></div>
+							{#if s.onMap}<span class="onmap grn">on the map · {s.onMap}</span>{/if}</span></div>
 						<div>
-							<button class="tog" class:on={s.cache} class:locked={!!s.lock} disabled={!!s.lock || !answer} aria-label="cache {s.name} in R2" title={s.lock ?? `R2 ${s.cache ? "keeps" : "skips"} ${s.name}; the Worker follows within a minute`} onclick={() => flip("cache", s.id, !s.cache)}></button>
+							<button class="tog" class:on={s.cache} class:locked={!!s.lock} disabled={!!s.lock || !answer} aria-label="cache {s.name} in R2" title={s.lock ?? `R2 ${s.cache ? "keeps" : "skips"} ${s.name}; the Worker follows within a minute`} onclick={() => flip(`/cache/${s.id}`, s.cache ? "off" : "on")}></button>
 							{#if s.override}<span class="why red" role="alert">overridden: {s.override}</span>{/if}
 						</div>
 						<div class="lic-cell">
@@ -596,7 +606,7 @@ function toBody(node: HTMLElement) {
 							<div class="hcell">
 								<button class="tog" class:on={forced === id} aria-label="force the online map to {src.name}" onclick={() => setForced(id)}></button>
 								<span class="small" class:grn={forced === id} class:dim={forced !== id}>{forced === id ? "forced" : "off"}</span>
-								{#if src.standby && answer && !answer.standby.includes(id)}<span class="amb small">standby OFF: the Worker 404s it</span>{/if}
+								{#if src.standby && answer && !bandsOf(id)}<span class="amb small">not on the map: the Worker 404s it</span>{/if}
 							</div>
 							<div><button class="refresh" disabled={p === "running"} onclick={() => testCache(id, src)}>{p === "running" ? "testing…" : "test cache"}</button></div>
 							<div class="hcell">
@@ -792,7 +802,7 @@ function toBody(node: HTMLElement) {
 .fail { margin: 12px 28px 0; color: var(--red); font-family: var(--mono); font-size: 12px; }
 .page { padding: 16px 8px 80px; display: flex; flex-direction: column; gap: 18px; }
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
-.cardhead { display: flex; align-items: center; gap: 10px; padding: 14px 18px; background: var(--panel2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+.cardhead { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 18px; background: var(--panel2); border-bottom: 1px solid var(--border); white-space: nowrap; }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex: none; }
 .dot.big { width: 9px; height: 9px; }
 .title { font-weight: 800; font-size: 14px; letter-spacing: 0.06em; color: var(--gold); }
@@ -832,7 +842,7 @@ function toBody(node: HTMLElement) {
 .tog::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: var(--muted2); }
 .tog.on { background: rgba(127, 191, 106, 0.18); border-color: rgba(127, 191, 106, 0.55); }
 .tog.on::after { left: 17px; background: var(--green); }
-.standby { display: flex; align-items: center; gap: 6px; margin-top: 3px; font-size: 10px; font-weight: 700; }
+.onmap { display: block; margin-top: 3px; font-size: 10px; font-weight: 700; }
 .tog:not(:disabled) { cursor: pointer; }
 .tog.locked { border-color: rgba(226, 85, 63, 0.45); }
 .tog.locked::before { content: "🔒"; position: absolute; right: -17px; top: 1px; font-size: 10px; }

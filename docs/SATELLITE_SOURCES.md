@@ -9,28 +9,36 @@ and this page is fixed.
 
 | Where | Source | Zooms | Kept | Cost |
 |---|---|---|---|---|
-| Browsing, zoomed out (below z12) | Sentinel | 0–15 | R2 | Free |
-| Browsing z12+, outside pins and outside the US | Esri | 12–18 | Never | Free to 2M tiles a month |
+| Browsing below z12 | Squirrel's pick; Sentinel by default | — | Per source | Per source |
+| Browsing z12+, outside pins and outside the US | Squirrel's pick, fading in from z10; MapTiler by default | — | Per source | Per source |
 | Browsing z12+ in the US | USGS | 12–16 | R2 | Free |
 | Pin blobs (the baked photo and its close-up) | MapTiler | 17 | R2, and on the phone | $0.15 per 1,000 |
 | Pin blobs in the US | USGS | 16 | R2, and on the phone | Free |
-| Standby, off | Mapbox satellite | 13–18 | Never | $0.25 per 1,000 past 750k |
-| Standby, off | BC Imagery | — | — | Not wired |
+| Only while Squirrel puts it on the map | Mapbox satellite | 0–18 | Never | $0.25 per 1,000 past 750k |
+| Off | BC Imagery | — | — | Not wired |
 
-### Sentinel — zoomed out
+### The online map: two picks
+
+Squirrel's SOURCES card picks the source drawn below z12 (`far`) and the one from z12 (`near`), from every source
+without coverage boxes: Sentinel, MapTiler, Esri, Mapbox. The Worker keeps each pick in R2, every isolate reads it
+within a minute, and each phone builds its imagery from it on its next style load. `near` fades in over `far` from
+z10, so the hand-over never jumps, and each layer credits its own source.
+
+### Sentinel — zoomed out by default
 
 - EOX `s2cloudless_3857`, the 2016 mosaic: 10 m pixels, 256 px tiles to z15.
-- It is drawn under everything, so it shows wherever a sharper source answers 404.
+- As `far` it is drawn under everything, so it shows wherever a sharper source answers 404. Wherever it is
+  drawn it is toned (contrast −0.15, saturation +0.4) to match MapTiler over the same ground.
 - CC BY 4.0, so caching is allowed, and R2 keeps it (`cacheToR2: true`) until Squirrel's cache switch says
   otherwise.
 - EOX's later years are non-commercial; only the unyeared (2016) layer may be used.
 
-### Esri — zoomed in, outside pins, outside the US
+### Esri — streamed when picked
 
 - ArcGIS Location Platform basemap tiles, read with the Worker secret `GC_esri_key`.
 - **Live only.** It is never put in the edge cache, R2 or a photo, and photos never bake from it.
   Master Agreement E204 §3.2c: "Customer may not otherwise scrape, download, or store Data".
-- The phone asks for no Esri tile while the whole view sits inside a pin's photo or inside USGS cover.
+- As `near`, no tile is asked for while the whole view sits inside a pin's photo or inside USGS cover.
 - **Free-tier guard.** The free tier is 2,000,000 tiles a month, spent by tiles-dev and tiles-prod on
   one key, so both count into one `METER` bucket. At 90% of their sum each Worker answers 404 and
   Sentinel shows through until the month resets. No card is on the account, so pay-as-you-go can
@@ -45,7 +53,7 @@ and this page is fixed.
 - Public domain, cached in R2: "Map services and data downloaded from The National Map are free and in
   the public domain."
 
-### MapTiler — pin blobs
+### MapTiler — pin blobs, and zoomed in by default
 
 - `satellite-v2`, already 512 px tiles. Photos bake at **z16** into a 3,456 px canvas across a 2 km
   radius (~90 tiles per pin at 49° N). Outside cities Maxar's real detail ends at z16: z17 tiles are
@@ -57,9 +65,9 @@ and this page is fixed.
 
 ### Standby
 
-- **Mapbox satellite** — streamed only, never cached (Mapbox ToS). Off until switched on in Squirrel. While on,
-  it takes Esri's place on the online map. 750k free tiles a month, then $0.25, $0.20 from 2M and $0.15
-  from 4M per 1,000. The 90% guard covers it like Esri.
+- **Mapbox satellite** — streamed only, never cached (Mapbox ToS). The Worker 404s it unless Squirrel has it
+  on the map. 750k free tiles a month, then $0.25, $0.20 from 2M and $0.15 from 4M per 1,000. The 90%
+  guard covers it like Esri.
 - **BC Imagery Web Map Service** — off until the Province approves; not in the source list. Its
   catalogue licence is "Access Only", and the service "cannot be cascaded through another Web Map
   Service without the express written permission of the Province of British Columbia".
@@ -86,14 +94,14 @@ that is mounted.
 | MapTiler photos at z16 | `lib/contract/satelliteSources.ts:47` |
 | MapTiler is the default photo source | `lib/contract/satelliteSources.ts:147` |
 | A covering source wins (USGS first) | `lib/contract/satelliteSources.ts:154` (`sourceAt`), `:159` (`coverOf`) |
-| Sentinel below, sharp fading in z10 → z12 | `lib/onPhone/satellite/onlineImagery.ts:18` (`SHARP_FROM_Z`, `FADE_IN`), `:113` (Sentinel layer, tuned to MapTiler) |
-| Esri (or a standby source that is on) is the one live layer | `lib/onPhone/satellite/onlineImagery.ts:35` |
+| The map's two picks and their defaults | `lib/contract/satelliteSources.ts` (`MAP_DEFAULT`, `MAP_PICKS`), `lib/onPhone/satellite/onlineImagery.ts:37` (`mapPicks`) |
+| `far` below, `near` fading in z10 → z12, Sentinel toned to MapTiler | `lib/onPhone/satellite/onlineImagery.ts:17` (`SHARP_FROM_Z`, `FADE_IN`, `TONE`), `:117` |
 | No Esri tile inside a photo or USGS cover | `lib/onPhone/satellite/onlineImagery.ts:51` |
 | Worker: covered tile → 404 for a live source | `workers/worker-local-dev/src/index.ts:499` |
-| Worker: standby switched off → 404 | `workers/worker-local-dev/src/index.ts:491` |
+| Worker: standby source not on the map → 404 | `workers/worker-local-dev/src/index.ts:525` |
 | Worker: 90% of the free tier → 404 | `workers/worker-local-dev/src/index.ts:257` (`freeTierSpent`), `:526` |
 | Worker: edge → R2 → upstream; R2 only when the cache switch says keep | `workers/worker-local-dev/src/index.ts:137` |
-| Squirrel's photo-source switch; standby and cache switches (a live source has no cache switch) | `workers/worker-local-dev/src/index.ts:237` (`switches`) |
+| Squirrel's photo-source switch; map picks and cache switches (a live source has no cache switch) | `workers/worker-local-dev/src/index.ts:225` (`switches`) |
 | Only Chris's Supabase sign-in flips a switch, on either Worker | `workers/worker-local-dev/src/index.ts:267` (`squirrelAdmin`) |
 | A photo's tiles counted by X-Cache: disk, hit, upstream | `routes/offlinev10/satellite.ts:70`, `:82` |
 | Mounted photos' attributions | `lib/onPhone/satellite/mountSatellite.ts:230` |
@@ -109,7 +117,8 @@ Bucket `gc-satellite-cache`, bound as `SAT_CACHE` (`workers/worker-cloud-dev/wra
 | `_squirrel/total/day/<YYYY-MM-DD>.json`, `_squirrel/total/month/<YYYY-MM>.json`, `_squirrel/total/all.json` | Squirrel's running tile counts per `source\|z\|tier`, added to every 100 tiles or 30 s; the meter reads the month's |
 | `_squirrel/counts/<YYYY-MM-DD>/<isolate>-<ms>.json` | The old per-flush counts, written until 27 Oct 2026 and summed into the totals; nothing reads them |
 | `_squirrel/active` | The source photos bake from; absent means MapTiler |
-| `_squirrel/standby/<source>` | `on` or `off` for a standby source |
+| `_squirrel/map/far`, `_squirrel/map/near` | The source the online map draws below z12 and from it; absent means `MAP_DEFAULT` (Sentinel, MapTiler) |
+| `_squirrel/standby/<source>` | The old Mapbox on/off switch, written until 28 Oct 2026; nothing reads it |
 | `_squirrel/cache/<source>` | `on` or `off`: keep its tiles in R2; absent means the source's `cacheToR2` |
 
 A new tileset is a new source id, so its tiles never mix with an old one's under the same key.
