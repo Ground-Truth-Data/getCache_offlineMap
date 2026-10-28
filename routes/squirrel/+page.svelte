@@ -9,6 +9,7 @@ import { placeLabel } from "../offlinev10/places";
 import { type BlobPart, type PhotoInfo, blobParts, photoInfo } from "../offlinev10/satellite";
 import { type Region, listRegions } from "../offlinev10/store";
 import { rangeBox } from "../offlinev10/tiles";
+import gcLogo from "$gc/assets/GC_fly_logo_transparent.webp";
 import mapboxLogo from "../../lib/onPhone/satellite/logos/mapbox.webp";
 import maptilerMark from "../../lib/onPhone/satellite/logos/maptiler-mark.webp";
 import sentinelMark from "../../lib/onPhone/satellite/logos/sentinel-mark.webp";
@@ -471,7 +472,7 @@ function toBody(node: HTMLElement) {
 
 <div class="sq" use:toBody>
 	<div class="topbar">
-		<span class="gclogo">G¢</span><span class="wordmark">Get Cache</span><span class="crumb">/</span><span class="appname">SQUIRREL</span>
+		<img class="gclogo" src={gcLogo} alt="Get Cache" /><span class="wordmark">Get Cache</span><span class="crumb">/</span><span class="appname">SQUIRREL</span>
 		<span class="hnote">satellite traffic controller · <a href="https://github.com/Ground-Truth-Data/getCache_offlineMap/blob/main/docs/SATELLITE_SOURCES.md" target="_blank" rel="noopener">which source serves what</a></span>
 		<span class="spacer"></span>
 		<span class="meta">photos bake from <b>{answer ? (SATELLITE_SOURCES[answer.active as keyof typeof SATELLITE_SOURCES]?.name ?? answer.active) : "—"}</b> · active users <b>—</b></span>
@@ -794,7 +795,7 @@ function toBody(node: HTMLElement) {
 .topbar, .page { zoom: 1.35; }
 .sq button { font-family: var(--mono); }
 .topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 12px; border-bottom: 3px solid var(--gold); white-space: nowrap; }
-.gclogo { font-family: "Lilita One", cursive; font-style: italic; font-size: 28px; color: var(--gold); letter-spacing: -0.02em; }
+.gclogo { height: 30px; width: auto; flex: none; }
 .wordmark { font-weight: 800; font-size: 20px; color: var(--gold); }
 .crumb { font-family: var(--mono); font-size: 13px; color: var(--muted2); }
 .appname { font-weight: 800; font-size: 15px; letter-spacing: 0.08em; }
