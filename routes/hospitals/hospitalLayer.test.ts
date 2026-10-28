@@ -193,9 +193,11 @@ describe("attachHospitalLayer", () => {
 	it("warns and paints nothing when the pin icon never loads", async () => {
 		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 		const { d } = rig();
-		d.raw.loadImage = vi.fn(async () => {
-			throw new Error("404");
-		}) as never;
+		Object.assign(d.raw, {
+			loadImage: vi.fn(async () => {
+				throw new Error("404");
+			}),
+		});
 		attachHospitalLayer(d.map as never, { origins: () => [ORIGIN] });
 		await vi.waitFor(() => expect(warn).toHaveBeenCalledWith(expect.stringContaining("pin icon failed"), expect.any(Error)));
 		d.fire("styledata");

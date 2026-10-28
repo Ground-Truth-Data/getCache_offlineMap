@@ -108,7 +108,7 @@ describe("planet fade", () => {
 		};
 		const flavor = groundFlavor({ ...DARK });
 		const earth = lum(DARK.earth as string);
-		for (const key of ["wood_a", "wood_b", "park_a", "park_b"])
+		for (const key of ["wood_a", "wood_b", "park_a", "park_b"] as const)
 			expect(
 				Math.abs(lum(flavor[key] as string) - earth),
 				`${key} must read as different ground`,
@@ -117,7 +117,7 @@ describe("planet fade", () => {
 
 	it("keeps each _a/_b pair equal", () => {
 		const flavor = groundFlavor({ ...DARK });
-		for (const base of ["wood", "park", "scrub"])
+		for (const base of ["wood", "park", "scrub"] as const)
 			expect(flavor[`${base}_a`], `${base} must not drift`).toBe(
 				flavor[`${base}_b`],
 			);
@@ -125,7 +125,7 @@ describe("planet fade", () => {
 
 	it("returns stock colours when the lift is zero", () => {
 		const zero = groundFlavor({ ...DARK }, 0);
-		for (const key of ["wood_a", "park_b", "sand", "industrial"])
+		for (const key of ["wood_a", "park_b", "sand", "industrial"] as const)
 			expect(zero[key]).toBe(DARK[key]);
 	});
 

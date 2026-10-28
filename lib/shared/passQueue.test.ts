@@ -96,7 +96,7 @@ describe("passQueue — a second ask is never dropped", () => {
 
 		let calls = 0;
 		const { release, run } = heldPass();
-		const ask = passQueue(async (keys) => {
+		const ask = passQueue<string>(async (keys) => {
 			calls++;
 			// Hold pass 1 open so the DRAINED pass 2 is the one that fails.
 			if (calls === 1) return run(keys);

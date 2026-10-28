@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { ACTIVATE_MS, HOLD_MS, attachDoubleTapToPin } from "./doubleTapToPin";
 
 // Node has EventTarget and Event but no DOM: a window plus the two pointer event classes the detector
@@ -48,7 +48,7 @@ const saved = { window: g.window, MouseEvent: g.MouseEvent, TouchEvent: g.TouchE
 
 function rig() {
 	let map: ReturnType<typeof fakeMap>;
-	let seed: ReturnType<typeof vi.fn>;
+	let seed: Mock<(lng: number, lat: number) => void>;
 	let detach: () => void;
 	beforeEach(() => {
 		vi.useFakeTimers();

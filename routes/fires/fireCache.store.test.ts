@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type Mod = typeof import("./fireCache");
 let fc: Mod;
-const spot = (lng: number, lat: number, t = 1) => ({ coordinates: [lng, lat] as [number, number], t, c: "h" as const, frp: 3 });
+const spot = (lng: number, lat: number, t = 1) => ({ coordinates: [lng, lat] as [number, number], t, c: "high" as const, frp: 3 });
 const area = (lng: number, lat: number, fetchedAt = 1_000) => ({ fetchedAt, center: [lng, lat] as [number, number], radiusKm: 50, sourcesOk: 3, hotspots: [spot(lng, lat)], outlines: [] });
 
 beforeEach(async () => {

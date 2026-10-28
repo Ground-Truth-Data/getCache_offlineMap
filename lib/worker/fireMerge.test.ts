@@ -10,7 +10,10 @@ const spot = (lng: number, lat: number, t = 1_000, frp = 1) => ({
 });
 const fc = (features: ReturnType<typeof spot>[]): FireCollection => ({ type: "FeatureCollection", features });
 const kinds = (out: ReturnType<typeof mergeFires>) => {
-	const pts = out.collection.features.filter((f) => f.geometry.type === "Point");
+	type Feature = (typeof out.collection.features)[number];
+	const pts = out.collection.features.filter(
+		(f): f is Extract<Feature, { geometry: { type: "Point" } }> => f.geometry.type === "Point",
+	);
 	return {
 		fires: pts.filter((f) => "n" in f.properties),
 		hotspots: pts.filter((f) => !("n" in f.properties)),

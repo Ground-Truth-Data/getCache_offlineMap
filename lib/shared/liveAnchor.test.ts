@@ -14,7 +14,7 @@ import type { LngLat } from "./kmGeo";
 // A block in the Ottawa valley — the repo's usual test locale.
 const BLOCK: LngLat = [-76.3, 45.2];
 const FIRE_TRIGGER_KM = fireTriggerKm(FIRE_RADIUS_KM);
-const full = (...cs: LngLat[]) => cs.map((center) => ({ center, radiusKm: FIRE_RADIUS_KM }));
+const full = (...cs: (readonly [number, number])[]) => cs.map((center) => ({ center, radiusKm: FIRE_RADIUS_KM }));
 
 /** Move km due north; ~111 km/° is exact enough for threshold tests without a projection. */
 function north(from: LngLat, km: number): LngLat {
