@@ -42,7 +42,7 @@ interface Env {
   GC_mapTiler_key: string;
   GC_esri_key: string;
   PUBLIC_GC_RT_mapbox_token: string;
-  /** The Fly import tiler (../importTiler) and the key it checks. */
+  /** The import tiler container (../importTiler) and the key its Worker checks. */
   GC_importTiler_url: string;
   GC_importTiler_key: string;
 }
