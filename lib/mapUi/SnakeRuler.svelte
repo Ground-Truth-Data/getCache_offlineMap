@@ -139,6 +139,7 @@ const LEG_LABEL_FRAC = 0.78;
 const LEG_LABEL_OFF = 18;
 const LABEL_HALF_H = 10;
 const TOTAL_TAIL_BIAS = 0.35;
+const HALO_OPACITY = [0.01, 0.4] as const; // [idle, glowing]
 
 const fc = (features: GeoJSON.Feature[] = []): GeoJSON.FeatureCollection => ({ type: "FeatureCollection", features });
 const pointsFC = (cs: Lnglat[]) =>
@@ -179,10 +180,13 @@ function ensureLayers() {
             "circle-stroke-width": 2,
         },
     });
-    // Invisible fat halo so a node is easy to grab with a finger.
+    // Fat halo so a node is easy to grab with a finger; invisible until a node is hovered or held.
     map.addLayer({
         id: "measure-nodes-halo", type: "circle", source: MEASURE_NODES_SRC,
-        paint: { "circle-radius": 16, "circle-color": "#ffffff", "circle-opacity": 0.01 },
+        paint: {
+            "circle-radius": 16, "circle-color": "#ffd54a", "circle-blur": 0.6,
+            "circle-opacity": HALO_OPACITY[0], "circle-opacity-transition": { duration: 150, delay: 0 },
+        },
     });
     map.addLayer({
         id: "measure-end-dots", type: "circle", source: MEASURE_ENDDOTS_SRC,
@@ -844,6 +848,14 @@ $effect(() => {
     if (!m) return;
     let dragging = false;
     let moved = false;
+    let hovering = false;
+    // Every node glows while one is under the mouse or held, so a fat finger sees what it caught.
+    const glow = () => {
+        if (m.getLayer("measure-nodes-halo")) {
+            m.setPaintProperty("measure-nodes-halo", "circle-opacity", HALO_OPACITY[hovering || dragging ? 1 : 0]);
+        }
+    };
+    // A node is picked up and moved, ends included; only a hand grows the snake.
     const down = (e: maplibregl.MapLayerMouseEvent | maplibregl.MapLayerTouchEvent) => {
         if (!active || verts.length === 0) return;
         let nearest = -1;
@@ -853,64 +865,54 @@ $effect(() => {
             const d = (q.x - e.point.x) ** 2 + (q.y - e.point.y) ** 2;
             if (d < nearestD) { nearestD = d; nearest = i; }
         }
-        const isHead = nearest === 0;
-        const isTail = nearest === verts.length - 1;
-        // An end node grows the line; any other node is picked up and moved.
-        if (isPolygon || (!isHead && !isTail)) {
-            moveIndex = nearest;
-            mergeInto = null;
-        } else {
-            dragFromHead = isHead && !isTail;
-            dragAnchor = verts[nearest];
-            moveIndex = null;
-        }
+        moveIndex = nearest;
+        mergeInto = null;
         e.preventDefault();
         dragging = true;
         moved = false;
         shapeRings = null;
         lastSnap = null;
         m.dragPan.disable();
+        glow();
     };
     const move = (e: { lngLat: { lng: number; lat: number } }) => {
         if (!dragging) return;
         moved = true;
-        if (moveIndex !== null) {
-            moveNode(e.lngLat.lng, e.lngLat.lat);
-            render();
-        } else {
-            hover(e.lngLat.lng, e.lngLat.lat);
-        }
+        moveNode(e.lngLat.lng, e.lngLat.lat);
+        render();
     };
     const up = (e: { lngLat: { lng: number; lat: number } }) => {
         if (!dragging) return;
         dragging = false;
         m.dragPan.enable();
-        if (moveIndex !== null) {
-            if (moved) {
-                moveNode(e.lngLat.lng, e.lngLat.lat);
-                const at = moveIndex;
-                verts = mergeInto === null ? liveVerts() : verts.filter((_, i) => i !== at);
-                if (verts.length < 3) isPolygon = false;
-            }
-            moveIndex = null;
-            mergeInto = null;
-            cursor = null;
-            render();
-        } else if (moved) {
-            commitAt(e.lngLat.lng, e.lngLat.lat);
-        } else {
-            cursor = null;
-            render();
+        glow();
+        if (moved) {
+            moveNode(e.lngLat.lng, e.lngLat.lat);
+            const at = moveIndex;
+            verts = mergeInto === null ? liveVerts() : verts.filter((_, i) => i !== at);
+            if (verts.length < 3) isPolygon = false;
+            // A moved seed is no longer proof it was dropped on the blue dot.
+            seedAtSelf = false;
         }
+        moveIndex = null;
+        mergeInto = null;
+        cursor = null;
+        render();
         moved = false;
     };
+    const enter = () => { hovering = true; glow(); };
+    const leave = () => { hovering = false; glow(); };
     const layerEvents = ["mousedown", "touchstart"] as const;
     const nodeLayers = ["measure-nodes-halo", "measure-nodes"];
     const mapEvents = [["mousemove", move], ["touchmove", move], ["mouseup", up], ["touchend", up]] as const;
     for (const l of nodeLayers) for (const ev of layerEvents) m.on(ev, l, down);
+    m.on("mouseenter", "measure-nodes-halo", enter);
+    m.on("mouseleave", "measure-nodes-halo", leave);
     for (const [ev, fn] of mapEvents) m.on(ev, fn);
     return () => {
         for (const l of nodeLayers) for (const ev of layerEvents) m.off(ev, l, down);
+        m.off("mouseenter", "measure-nodes-halo", enter);
+        m.off("mouseleave", "measure-nodes-halo", leave);
         for (const [ev, fn] of mapEvents) m.off(ev, fn);
     };
 });
@@ -1364,6 +1366,9 @@ $effect(() => {
     .measure-plot { color: #f2f2f2; }
     .measure-plot:active { background: color-mix(in srgb, #ffffff 14%, transparent); }
     :global(.rt-measure-grab) {
+        --rt-gold-edge: drop-shadow(1.5px 0 0 var(--rt-yellow)) drop-shadow(-1.5px 0 0 var(--rt-yellow))
+            drop-shadow(0 1.5px 0 var(--rt-yellow)) drop-shadow(0 -1.5px 0 var(--rt-yellow))
+            drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55));
         pointer-events: auto;
         cursor: grab;
         touch-action: none;
@@ -1377,9 +1382,9 @@ $effect(() => {
         filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55));
     }
     /* The hand under the fist: the same gold edging the cursor's own hand wears for a press. */
-    :global(.rt-measure-grab.rt-grabbed img) {
-        filter: drop-shadow(1.5px 0 0 var(--rt-yellow)) drop-shadow(-1.5px 0 0 var(--rt-yellow))
-            drop-shadow(0 1.5px 0 var(--rt-yellow)) drop-shadow(0 -1.5px 0 var(--rt-yellow))
-            drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55));
+    :global(.rt-measure-grab.rt-grabbed img) { filter: var(--rt-gold-edge); }
+    /* Hover tells a hand (grows the snake) from its node (moves). Mouse only: a tap leaves hover stuck on a phone. */
+    @media (hover: hover) {
+        :global(.rt-measure-grab:hover img) { filter: var(--rt-gold-edge); }
     }
 </style>

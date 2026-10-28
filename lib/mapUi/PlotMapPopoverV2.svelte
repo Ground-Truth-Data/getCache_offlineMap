@@ -261,7 +261,7 @@ function requestClose() {
 						title={m.ofmap_ui_edit()}
 						onclick={() => onOpenInForm(plotNo)}
 					>
-						{#snippet icon()}<ports.ui.Icon name="edit-tilt" size={18} />{/snippet}
+						{#snippet icon()}<ports.ui.Icon name="pen" size={18} />{/snippet}
 					</FancyButton>
 				</span>
 			{/if}
