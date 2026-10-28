@@ -86,7 +86,7 @@ that is mounted.
 | MapTiler photos at z16 | `lib/contract/satelliteSources.ts:47` |
 | MapTiler is the default photo source | `lib/contract/satelliteSources.ts:147` |
 | A covering source wins (USGS first) | `lib/contract/satelliteSources.ts:154` (`sourceAt`), `:159` (`coverOf`) |
-| Sentinel below, sharp from z12 | `lib/onPhone/satellite/onlineImagery.ts:18` (`SHARP_FROM_Z`), `:69` (Sentinel layer) |
+| Sentinel below, sharp fading in z10 → z12 | `lib/onPhone/satellite/onlineImagery.ts:18` (`SHARP_FROM_Z`, `FADE_IN`), `:113` (Sentinel layer, tuned to MapTiler) |
 | Esri (or a standby source that is on) is the one live layer | `lib/onPhone/satellite/onlineImagery.ts:35` |
 | No Esri tile inside a photo or USGS cover | `lib/onPhone/satellite/onlineImagery.ts:51` |
 | Worker: covered tile → 404 for a live source | `workers/worker-local-dev/src/index.ts:499` |

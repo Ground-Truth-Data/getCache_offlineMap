@@ -11,6 +11,8 @@ export interface SatelliteSource {
 	secret?: "GC_mapTiler_key" | "GC_esri_key" | "PUBLIC_GC_RT_mapbox_token";
 	/** past this the source has nothing sharper; the Worker refuses */
 	maxZ: number;
+	/** a tile's width in px when not 256; a map told the wrong size asks one zoom too deep */
+	tilePx?: 512;
 	/** the zoom a photo is baked from */
 	zoom: number;
 	/** canvas width in px across the photo's disc */
@@ -42,6 +44,7 @@ export const SATELLITE_SOURCES = {
 		tileUrl: (key, z, x, y) => `https://api.maptiler.com/tiles/satellite-v2/${z}/${x}/${y}.jpg?key=${key}`,
 		secret: "GC_mapTiler_key",
 		maxZ: 20,
+		tilePx: 512,
 		// Outside cities Maxar's real detail ends here; z17 is the same picture at 4x the tiles.
 		zoom: 16,
 		// Not 4096: 4096² is over WebKit's ~16.7 MP canvas ceiling, which bakes blank.

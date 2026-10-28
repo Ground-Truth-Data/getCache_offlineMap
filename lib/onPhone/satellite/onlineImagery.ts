@@ -16,6 +16,9 @@ const SENTINEL = "gc-sentinel";
 const LIVE = (Object.entries(SATELLITE_SOURCES) as [string, SatelliteSource][]).filter(([, s]) => s.live);
 /** Sentinel looks rough from here in; a sharper source takes over where one covers. */
 const SHARP_FROM_Z = 12;
+/** The sharp source fades in over Sentinel across these two zooms, so the hand-over is never a jump. */
+const FADE_FROM_Z = SHARP_FROM_Z - 2;
+const FADE_IN: maplibregl.RasterLayerSpecification["paint"] = { "raster-opacity": ["interpolate", ["linear"], ["zoom"], FADE_FROM_Z, 0, SHARP_FROM_Z, 1] };
 const FORCED = "gc-forced";
 const FORCED_KEY = "gc-forced-imagery";
 
@@ -82,7 +85,7 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 		const id = forcedImagery();
 		const src = id ? sourceOf(id) : undefined;
 		if (src) {
-			map.addSource(FORCED, { type: "raster", tiles: [`${tilesHost()}/satellite/${id}/{z}/{x}/{y}.jpg`], tileSize: 256, maxzoom: src.maxZ, attribution: src.attribution });
+			map.addSource(FORCED, { type: "raster", tiles: [`${tilesHost()}/satellite/${id}/{z}/{x}/{y}.jpg`], tileSize: src.tilePx ?? 256, maxzoom: src.maxZ, attribution: src.attribution });
 			map.addLayer({ id: FORCED, type: "raster", source: FORCED }, above);
 		}
 		void show();
@@ -106,7 +109,8 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 			maxzoom: sentinel.maxZ,
 			attribution: sentinel.attribution,
 		});
-		map.addLayer({ id: SENTINEL, type: "raster", source: SENTINEL }, MAPBOX_IMAGERY);
+		// Fitted to MapTiler's brightness, spread and colour over the same z11 ground, so the z12 hand-over doesn't jump.
+		map.addLayer({ id: SENTINEL, type: "raster", source: SENTINEL, paint: { "raster-contrast": -0.15, "raster-saturation": 0.4 } }, MAPBOX_IMAGERY);
 		// The Worker 404s what USGS covers and everything past 90% of the free tier, and Sentinel shows through.
 		// Each starts hidden, so no tile is asked for until `show` picks the one live source.
 		for (const [id, src] of LIVE) {
@@ -114,11 +118,11 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 				type: "raster",
 				tiles: [`${tilesHost()}/satellite/${id}/{z}/{x}/{y}.jpg`],
 				tileSize: 256,
-				minzoom: SHARP_FROM_Z,
+				minzoom: FADE_FROM_Z,
 				maxzoom: src.maxZ,
 				attribution: src.attribution,
 			});
-			map.addLayer({ id: `gc-${id}`, type: "raster", source: `gc-${id}`, minzoom: SHARP_FROM_Z, layout: { visibility: "none" } }, MAPBOX_IMAGERY);
+			map.addLayer({ id: `gc-${id}`, type: "raster", source: `gc-${id}`, minzoom: FADE_FROM_Z, layout: { visibility: "none" }, paint: FADE_IN }, MAPBOX_IMAGERY);
 		}
 		void pickLive();
 		for (const [id, src] of Object.entries(SATELLITE_SOURCES) as [string, SatelliteSource][])
@@ -131,11 +135,11 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 					tiles: [`${tilesHost()}/satellite/${id}/{z}/{x}/{y}.jpg`],
 					tileSize: 256,
 					bounds: [...bounds],
-					minzoom: SHARP_FROM_Z,
+					minzoom: FADE_FROM_Z,
 					maxzoom: src.maxZ,
 					attribution: src.attribution,
 				});
-				map.addLayer({ id: box, type: "raster", source: box, minzoom: SHARP_FROM_Z }, MAPBOX_IMAGERY);
+				map.addLayer({ id: box, type: "raster", source: box, minzoom: FADE_FROM_Z, paint: FADE_IN }, MAPBOX_IMAGERY);
 			});
 		map.removeLayer(MAPBOX_IMAGERY);
 		photos = createSatelliteMount(map, above ?? "", null);
