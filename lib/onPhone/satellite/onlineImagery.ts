@@ -8,6 +8,8 @@ import { onPhoto } from "../../../routes/offlinev10/satellite";
 import { createSatelliteMount, type SatelliteMount } from "./mountSatellite";
 import { PHOTO_COVERAGE_RADIUS_KM } from "./satelliteImage";
 import { kmToDegSpan } from "../../shared/kmGeo";
+import mapboxLogo from "./logos/mapbox.webp";
+import maptilerLogo from "./logos/maptiler.webp";
 
 /** The online style's IMAGERY_ANCHOR: the imagery goes in under it, then it goes. */
 const MAPBOX_IMAGERY = "satellite";
@@ -22,6 +24,12 @@ const FADE_IN: maplibregl.RasterLayerSpecification["paint"] = { "raster-opacity"
 const TONE: Record<string, maplibregl.RasterLayerSpecification["paint"]> = { sentinel: { "raster-contrast": -0.15, "raster-saturation": 0.4 } };
 const FORCED = "gc-forced";
 const FORCED_KEY = "gc-forced-imagery";
+/** Shown in the credits' corner while that source's tiles are. Mapbox requires its logo and forbids styling it;
+ * MapTiler's is owed only on a free plan, so it sits faded. Full credits stay in the ⓘ. */
+const LOGOS: Record<string, { src: string; href: string; opacity: number }> = {
+	mapbox: { src: mapboxLogo, href: "https://www.mapbox.com/", opacity: 1 },
+	maptiler: { src: maptilerLogo, href: "https://www.maptiler.com/", opacity: 0.55 },
+};
 
 /** Squirrel's hand test: one source drawn at every zoom over all other imagery, in this browser only. */
 export function forcedImagery(): string | null {
@@ -60,6 +68,26 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 	const boxes = new Map<string, readonly [number, number, number, number]>();
 	let above: string | undefined;
 	let loads = 0;
+	let picked: Record<MapBand, string> | null = null;
+	const logoBox = document.createElement("div");
+	logoBox.className = "maplibregl-ctrl";
+	logoBox.style.cssText = "display:flex;gap:6px;align-items:center";
+	const logoCtl: maplibregl.IControl = { onAdd: () => logoBox, onRemove: () => logoBox.remove() };
+	map.addControl(logoCtl, "bottom-left");
+	const showLogos = (ids: Set<string>): void => {
+		const want = [...ids].filter((id) => LOGOS[id]).sort();
+		if (want.join() === logoBox.dataset.ids) return;
+		logoBox.dataset.ids = want.join();
+		logoBox.replaceChildren(
+			...want.map((id) => {
+				const { src, href, opacity } = LOGOS[id];
+				const a = document.createElement("a");
+				Object.assign(a, { href, target: "_blank", rel: "noopener" });
+				a.innerHTML = `<img src="${src}" alt="${sourceOf(id)?.name}" style="height:20px;display:block;opacity:${opacity}">`;
+				return a;
+			}),
+		);
+	};
 
 	const show = async (): Promise<void> => {
 		const mount = photos;
@@ -86,6 +114,12 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 		// Every visible layer is credited, in view or not; a box out of view is hidden so its source isn't credited.
 		for (const [box, [w, s, e, n]] of boxes)
 			if (map.getLayer(box)) map.setLayoutProperty(box, "visibility", !forced && w < b.getEast() && e > b.getWest() && s < b.getNorth() && n > b.getSouth() ? "visible" : "none");
+		const z = map.getZoom();
+		const drawn = new Set<string>(forced ? [forcedImagery() ?? ""] : []);
+		if (picked && !forced && z < SHARP_FROM_Z) drawn.add(picked.far);
+		if (picked && !forced && !inside && z >= FADE_FROM_Z) drawn.add(picked.near);
+		for (const credit of mount.attributions()) for (const [id, src] of Object.entries(SATELLITE_SOURCES)) if (src.attribution === credit) drawn.add(id);
+		showLogos(drawn);
 	};
 
 	const force = (): void => {
@@ -107,12 +141,15 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 		const load = ++loads;
 		photos?.dispose();
 		photos = null;
+		picked = null;
+		showLogos(new Set());
 		if (!map.getLayer(MAPBOX_IMAGERY)) return onCredits([]);
 		const { far: [farId, far], near: [nearId, near] } = await mapPicks();
 		// The style loaded again while we asked; that load builds its own imagery.
 		if (load !== loads || !map.getLayer(MAPBOX_IMAGERY)) return;
 		const layers = map.getStyle().layers;
 		above = layers[layers.findIndex((l) => l.id === MAPBOX_IMAGERY) + 1]?.id;
+		picked = { far: farId, near: nearId };
 		map.addSource(FAR, raster(farId, far));
 		map.addLayer({ id: FAR, type: "raster", source: FAR, paint: TONE[farId] }, MAPBOX_IMAGERY);
 		// The Worker 404s what a box covers, a standby source not on the map and anything past 90% of a free tier;
@@ -153,5 +190,6 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 		offPhoto();
 		photos?.dispose();
 		photos = null;
+		map.removeControl(logoCtl);
 	};
 }

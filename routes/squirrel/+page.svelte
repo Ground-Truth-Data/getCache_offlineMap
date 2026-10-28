@@ -9,6 +9,9 @@ import { placeLabel } from "../offlinev10/places";
 import { type BlobPart, type PhotoInfo, blobParts, photoInfo } from "../offlinev10/satellite";
 import { type Region, listRegions } from "../offlinev10/store";
 import { rangeBox } from "../offlinev10/tiles";
+import mapboxLogo from "../../lib/onPhone/satellite/logos/mapbox.webp";
+import maptilerMark from "../../lib/onPhone/satellite/logos/maptiler-mark.webp";
+import sentinelMark from "../../lib/onPhone/satellite/logos/sentinel-mark.webp";
 
 type Counts = Record<string, number>;
 type Answer = { active: string; map: Record<MapBand, string>; cache: Record<string, boolean>; overrides: Record<string, string>; counts: { today: Counts; month: Counts; all: Counts } | null };
@@ -74,6 +77,9 @@ const LOOK: Record<string, { sub: string; lic: Lic; licText: string; lock?: stri
 	usgs: { sub: "ImageryOnly · US", lic: "ok", licText: "public domain" },
 	mapbox: { sub: "satellite · streamed", lic: "tos", licText: "stream only", lock: "Mapbox ToS: no caching outside the SDK" },
 };
+// Esri, USGS and the Province each license their logo only by request, so they keep their dot.
+// Mapbox forbids its icon alone, so its row carries the wordmark.
+const LOGO: Record<string, string> = { maptiler: maptilerMark, sentinel: sentinelMark, mapbox: mapboxLogo, "mapbox-loads": mapboxLogo };
 const BC_COLOR = "oklch(0.74 0.10 190)";
 const ROADS_COLOR = "#f3f1e9";
 
@@ -523,7 +529,7 @@ function toBody(node: HTMLElement) {
 					{/each}
 
 					{#each rows as s (s.id)}
-						<div class="first" title={s.licence}><span class="dot big" style="background:{s.color}"></span><span class="srcname"><b>{s.name}</b><i>{s.sub}</i>
+						<div class="first" title={s.licence}>{#if LOGO[s.id]}<img class="logo" src={LOGO[s.id]} alt="" />{:else}<span class="dot big" style="background:{s.color}"></span>{/if}<span class="srcname"><b>{s.name}</b><i>{s.sub}</i>
 							{#if s.onMap}<span class="onmap grn">on the map · {s.onMap}</span>{/if}</span></div>
 						<div>
 							<button class="tog" class:on={s.cache} class:locked={!!s.lock} disabled={!!s.lock || !answer} aria-label="cache {s.name} in R2" title={s.lock ?? `R2 ${s.cache ? "keeps" : "skips"} ${s.name}; the Worker follows within a minute`} onclick={() => flip(`/cache/${s.id}`, s.cache ? "off" : "on")}></button>
@@ -805,6 +811,7 @@ function toBody(node: HTMLElement) {
 .cardhead { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 18px; background: var(--panel2); border-bottom: 1px solid var(--border); white-space: nowrap; }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex: none; }
 .dot.big { width: 9px; height: 9px; }
+.logo { height: 20px; max-width: 84px; object-fit: contain; object-position: left; flex: none; }
 .title { font-weight: 800; font-size: 14px; letter-spacing: 0.06em; color: var(--gold); }
 .search { padding: 16px 18px; }
 .find { width: 100%; box-sizing: border-box; font-family: var(--mono); font-size: 18px; padding: 12px 16px; border-radius: 10px; border: 1px solid var(--gold); background: var(--panel3); color: var(--text); }
