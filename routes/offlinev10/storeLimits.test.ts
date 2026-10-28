@@ -29,6 +29,8 @@ import { rangeContains, rangeTiles, regionRange, tileKey } from "./tiles";
 
 // An IndexedDB sweep outruns waitFor's 1 s default when the whole suite loads the machine.
 const SWEEP = { timeout: 10_000 };
+// A test waits on several sweeps; vitest's 5 s default would cut it off before one could use its 10 s.
+vi.setConfig({ testTimeout: 30_000 });
 
 vi.stubGlobal("window", new EventTarget());
 vi.mock("./places", () => ({ nearestPlace: async () => null }));
