@@ -316,7 +316,7 @@ describe("offline areas are an LRU cache of the 16 MB test budget", () => {
 	it("A: a dropped pin stores its blob, its satellite photo asked for as its tiles start", async () => {
 		const at = far(5);
 		const stopPhotos = startPhotoService();
-		stop = startBlobService(host([at]));
+		stop = startBlobService({ ...host(), places: () => [{ anchors: [at], photo: true }] });
 		await vi.waitFor(async () => expect(await regionKnown(regionId(...at))).toBe(true), SWEEP);
 		expect((await checkRegions())[regionId(...at)]).toBe(0);
 		expect(await orphanTiles()).toEqual([]);
