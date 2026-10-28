@@ -42,12 +42,7 @@ interface Env {
   GC_mapTiler_key: string;
   GC_esri_key: string;
   PUBLIC_GC_RT_mapbox_token: string;
-  /** The import tiler container (../importTiler) and the key its Worker checks. */
-  GC_importTiler_url: string;
-  GC_importTiler_key: string;
 }
-
-const IMPORT_MAX_BYTES = 64 * 1024 * 1024;
 
 class R2Source implements Source {
   constructor(
@@ -350,24 +345,6 @@ export default {
       return json({ active, ...sw, counts: env.METER ? await totals(env.METER) : null });
     }
 
-    // POST /imports: an import too big for a GeoJSON source, as text/plain so the browser skips the preflight.
-    // Tiled once on Fly and kept under its content hash, so the same file twice is one job; the phone then fetches the name whole.
-    if (url.pathname === "/imports" && request.method === "POST") {
-      if (!env.GC_importTiler_key || !env.GC_importTiler_url)
-        return new Response("GC_importTiler_url / GC_importTiler_key are not configured on this Worker", { status: 500, headers: CORS_HEADERS });
-      const body = await request.arrayBuffer();
-      if (body.byteLength > IMPORT_MAX_BYTES)
-        return new Response(`Payload Too Large — imports stop at ${IMPORT_MAX_BYTES / 1024 / 1024} MB`, { status: 413, headers: CORS_HEADERS });
-      const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", body))].map((b) => b.toString(16).padStart(2, "0")).join("");
-      const name = `imports/${hash}.pmtiles`;
-      if (!(await env.TILES.head(name))) {
-        const tiled = await fetch(`${env.GC_importTiler_url}/tile`, { method: "POST", headers: { Authorization: `Bearer ${env.GC_importTiler_key}` }, body });
-        if (!tiled.ok) return new Response(`import tiler → ${tiled.status}: ${await tiled.text()}`, { status: 502, headers: CORS_HEADERS });
-        await env.TILES.put(name, await tiled.arrayBuffer());
-      }
-      return new Response(JSON.stringify({ name }), { headers: { ...CORS_HEADERS, "Content-Type": "application/json" } });
-    }
-
     if (request.method !== "GET" && request.method !== "HEAD") {
       return new Response("Method Not Allowed", {
         status: 405,
@@ -524,9 +501,9 @@ export default {
       });
     }
 
-    // /highways-vN.pmtiles (getCache's build-world-highways.mjs) and /imports/<sha256>.pmtiles, whole; each phone fetches one once.
-    // A rebuild is a new N and an import is named by its content, so each name is immutable.
-    const highways = /^\/(highways-v\d+\.pmtiles|imports\/[0-9a-f]{64}\.pmtiles)$/.exec(url.pathname);
+    // /highways-vN.pmtiles: the world's highways (getCache's build-world-highways.mjs), whole; each phone fetches it once.
+    // A rebuild is a new N, so each name is immutable.
+    const highways = /^\/(highways-v\d+\.pmtiles)$/.exec(url.pathname);
     if (highways) {
       const object = await env.TILES.get(highways[1]);
       if (!object) return new Response(`${highways[1]} is not in the bucket`, { status: 404, headers: CORS_HEADERS });
