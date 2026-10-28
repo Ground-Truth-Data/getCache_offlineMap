@@ -12,7 +12,7 @@ import {
   MAX_RADIUS_KM,
 } from "../../../lib/worker/firesWorker";
 import { mergeFires } from "../../../lib/worker/fireMerge";
-import { coverOf, DEFAULT_SOURCE, SATELLITE_SOURCES, type SatelliteSource, sourceOf } from "../../../lib/contract/satelliteSources";
+import { coverOf, DEFAULT_SOURCE, MAP_DEFAULT, MAP_PICKS, type MapBand, SATELLITE_SOURCES, type SatelliteSource, sourceOf } from "../../../lib/contract/satelliteSources";
 import {
   cellKeysForDisc,
   HOSPITAL_MAX_KM,
@@ -215,33 +215,30 @@ async function activeSource(env: Env): Promise<string> {
   return set ? await set.text() : DEFAULT_SOURCE;
 }
 
-// Squirrel's switches, each `_squirrel/<switch>/<id>` = "on" or "off"; a cache switch never written is the source's cacheToR2.
+// Squirrel's switches: `_squirrel/cache/<id>` = "on" or "off", a cache switch never written being the source's cacheToR2,
+// and `_squirrel/map/<band>` = the source the online map draws there, MAP_DEFAULT until written.
 // Re-read each minute, so a switch reaches every isolate within one.
-const SWITCHABLE = {
-  standby: (src: SatelliteSource) => !!src.standby,
-  // A live source's licence forbids keeping it, so it has no cache switch.
-  cache: (src: SatelliteSource) => !src.live,
-};
 /** `cache` is what the Worker does; `overrides` names every source where that is not what its toggle says, and why. */
-type Switches = { standby: string[]; cache: Record<string, boolean>; overrides: Record<string, string> };
-let switched = { at: 0, now: { standby: [], cache: {}, overrides: {} } as Switches };
+type Switches = { map: Record<MapBand, string>; cache: Record<string, boolean>; overrides: Record<string, string> };
+let switched = { at: 0, now: { map: { ...MAP_DEFAULT }, cache: {}, overrides: {} } as Switches };
 
 async function switches(env: Env): Promise<Switches> {
   const all = Object.entries(SATELLITE_SOURCES) as [string, SatelliteSource][];
   const bucket = env.SAT_CACHE;
   if (!bucket)
     return {
-      standby: [],
+      map: { ...MAP_DEFAULT },
       cache: Object.fromEntries(all.map(([id]) => [id, false])),
       overrides: Object.fromEntries(all.filter(([, s]) => s.cacheToR2).map(([id]) => [id, "this Worker has no R2 bucket, so it keeps nothing"])),
     };
   if (Date.now() - switched.at > 60_000) {
-    const says = (sw: string, id: string) => bucket.get(`_squirrel/${sw}/${id}`).then((o) => o?.text() ?? null);
-    const [standby, cache] = await Promise.all([Promise.all(all.map(([id, s]) => (s.standby ? says("standby", id) : null))), Promise.all(all.map(([id, s]) => (s.live ? null : says("cache", id))))]);
+    const says = (key: string) => bucket.get(`_squirrel/${key}`).then((o) => o?.text() ?? null);
+    // A live source's licence forbids keeping it, so it has no cache switch.
+    const [far, near, cache] = await Promise.all([says("map/far"), says("map/near"), Promise.all(all.map(([id, s]) => (s.live ? null : says(`cache/${id}`))))]);
     switched = {
       at: Date.now(),
       now: {
-        standby: all.filter((_, i) => standby[i] === "on").map(([id]) => id),
+        map: { far: far ?? MAP_DEFAULT.far, near: near ?? MAP_DEFAULT.near },
         cache: Object.fromEntries(all.map(([id, s], i) => [id, !s.live && (cache[i] === null ? s.cacheToR2 : cache[i] === "on")])),
         overrides: {},
       },
@@ -303,10 +300,11 @@ export default {
 
     // /squirrel: which source the photos bake from, and what each one served. A POST of a source id switches it;
     // only a Worker with the bucket keeps either.
-    // A POST of "on" or "off" to /squirrel/standby/<id> or /squirrel/cache/<id> flips that switch.
-    const switchPath = /^\/squirrel\/(standby|cache)\/([a-z0-9-]+)$/.exec(url.pathname);
+    // A POST of "on" or "off" to /squirrel/cache/<id> flips that switch; a source id to /squirrel/map/<band> puts it on the map.
+    const cachePath = /^\/squirrel\/cache\/([a-z0-9-]+)$/.exec(url.pathname);
+    const mapPath = /^\/squirrel\/map\/(far|near)$/.exec(url.pathname);
     const forget = /^\/squirrel\/forget\/([a-z0-9-]+)$/.exec(url.pathname);
-    if (url.pathname === "/squirrel" || url.pathname === "/squirrel/active" || switchPath || forget) {
+    if (url.pathname === "/squirrel" || url.pathname === "/squirrel/active" || cachePath || mapPath || forget) {
       const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json", "Cache-Control": "no-store" } });
       // CORS-open, so a write must carry an admin's Supabase sign-in.
       if (request.method === "POST" && !(await squirrelAdmin(request).catch(() => null))) return json({ error: "sign in as Chris on Get Cache to flip Squirrel's switches" }, 401);
@@ -318,16 +316,19 @@ export default {
         const edge = await Promise.all(names.map((n) => caches.default.delete(new Request(`${url.origin}/satellite/${n}`, { method: "GET" }))));
         return json({ edge: edge.filter(Boolean).length });
       }
-      if (switchPath) {
-        const sw = switchPath[1] as keyof typeof SWITCHABLE;
-        const id = switchPath[2];
-        if (request.method !== "POST") return json({ error: "POST on or off" }, 405);
+      if (cachePath || mapPath) {
+        if (request.method !== "POST") return json({ error: cachePath ? "POST on or off" : "POST a source id" }, 405);
         if (!env.SAT_CACHE) return json({ error: "this Worker has no bucket to keep a switch in" }, 409);
-        const src = sourceOf(id);
-        if (!src || !SWITCHABLE[sw](src)) return json({ error: `"${id}" has no ${sw} switch` }, 400);
-        const on = (await request.text()).trim();
-        if (on !== "on" && on !== "off") return json({ error: `send "on" or "off", not "${on}"` }, 400);
-        await env.SAT_CACHE.put(`_squirrel/${sw}/${id}`, on);
+        const said = (await request.text()).trim();
+        if (cachePath) {
+          const src = sourceOf(cachePath[1]);
+          if (!src || src.live) return json({ error: `"${cachePath[1]}" has no cache switch` }, 400);
+          if (said !== "on" && said !== "off") return json({ error: `send "on" or "off", not "${said}"` }, 400);
+          await env.SAT_CACHE.put(`_squirrel/cache/${cachePath[1]}`, said);
+        } else {
+          if (!MAP_PICKS.some((id) => id === said)) return json({ error: `the map draws one of ${MAP_PICKS.join(", ")}, not "${said}"` }, 400);
+          await env.SAT_CACHE.put(`_squirrel/map/${mapPath?.[1]}`, said);
+        }
         switched.at = 0;
         return json(await switches(env));
       }
@@ -521,8 +522,8 @@ export default {
       if (!src)
         return new Response(`Not Found — no satellite source "${id}"; there are: ${Object.keys(SATELLITE_SOURCES).join(", ")}`, { status: 404, headers: CORS_HEADERS });
       const sw = await switches(env);
-      if (src.standby && !sw.standby.includes(id))
-        return new Response(`Not Found — ${id} is a standby source and is switched off on /app/squirrel`, { status: 404, headers: CORS_HEADERS });
+      if (src.standby && sw.map.far !== id && sw.map.near !== id)
+        return new Response(`Not Found — ${id} is a standby source and /app/squirrel has not put it on the map`, { status: 404, headers: CORS_HEADERS });
       if (src.secret && !env[src.secret])
         return new Response(`${src.secret} is not configured on this Worker (wrangler secret put ${src.secret})`, { status: 500, headers: CORS_HEADERS });
       const span = 2 ** z;
