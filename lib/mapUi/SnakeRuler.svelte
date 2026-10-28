@@ -88,7 +88,9 @@ let isPolygon = $state(false);
 let dragFromHead = false;
 let dragAnchor: Lnglat | null = null;
 let atAnchor = false;
-let moveIndex: number | null = $state(null); // polygon vertex being reshaped
+let moveIndex: number | null = $state(null); // vertex being reshaped
+// The neighbour the reshaped node is parked on: let go there and the two become one.
+let mergeInto: number | null = null;
 let mapMoveSeq = $state(0);
 let spotBump = $state(0);
 let armed: "line" | "polygon" | "pin" | null = $state(null);
@@ -270,15 +272,13 @@ function buildTicksFC(ring: Lnglat[]): GeoJSON.FeatureCollection {
 }
 
 function liveVerts(): Lnglat[] {
-    if (isPolygon && moveIndex !== null && cursor) {
-        const v = [...verts];
-        v[moveIndex] = cursor;
-        return v;
-    }
-    return verts;
+    if (moveIndex === null || !cursor) return verts;
+    const v = [...verts];
+    v[moveIndex] = cursor;
+    return v;
 }
 function points(): Lnglat[] {
-    if (isPolygon) return liveVerts();
+    if (isPolygon || moveIndex !== null) return liveVerts();
     if (!cursor) return [...verts];
     return dragFromHead ? [cursor, ...verts] : [...verts, cursor];
 }
@@ -296,7 +296,7 @@ function render() {
         ? [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: r } }]
         : []));
     setData(MEASURE_TICKS_SRC, buildTicksFC(r));
-    setData(MEASURE_NODES_SRC, pointsFC(isPolygon ? pts : verts));
+    setData(MEASURE_NODES_SRC, pointsFC(liveVerts()));
     // Fill auto-closes the ring while still open; no visible line across the open side.
     setData(MEASURE_FILL_SRC, fc(pts.length >= 3
         ? [{ type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [[...pts, pts[0]]] } }]
@@ -642,6 +642,24 @@ function dropCorner(ll: Lnglat) {
     dragAnchor = ll;
     seedAtSelf = false;
 }
+// A reshaped node parks on a neighbour it touches and every node flashes; elsewhere it snaps as usual.
+function moveNode(lng: number, lat: number) {
+    const m = map;
+    if (moveIndex === null || !m) return;
+    const n = verts.length;
+    const p = m.project({ lng, lat });
+    const reach = (mergeInto === null ? MEASURE_SNAP_PX : MEASURE_UNSNAP_PX) ** 2;
+    const near = [moveIndex - 1, moveIndex + 1]
+        .map((i) => (isPolygon ? (i + n) % n : i))
+        .find((i) => {
+            if (i < 0 || i >= n || i === moveIndex) return false;
+            const q = m.project({ lng: verts[i][0], lat: verts[i][1] });
+            return (q.x - p.x) ** 2 + (q.y - p.y) ** 2 < reach;
+        }) ?? null;
+    if (near !== null && near !== mergeInto) flashCorners();
+    mergeInto = near;
+    cursor = near === null ? snap(lng, lat) : verts[near];
+}
 function commitAt(lng: number, lat: number) {
     if (!active) return;
     const ll = snap(lng, lat);
@@ -835,12 +853,13 @@ $effect(() => {
             const d = (q.x - e.point.x) ** 2 + (q.y - e.point.y) ** 2;
             if (d < nearestD) { nearestD = d; nearest = i; }
         }
-        if (isPolygon) {
+        const isHead = nearest === 0;
+        const isTail = nearest === verts.length - 1;
+        // An end node grows the line; any other node is picked up and moved.
+        if (isPolygon || (!isHead && !isTail)) {
             moveIndex = nearest;
+            mergeInto = null;
         } else {
-            const isHead = nearest === 0;
-            const isTail = nearest === verts.length - 1;
-            if (!isHead && !isTail) return;
             dragFromHead = isHead && !isTail;
             dragAnchor = verts[nearest];
             moveIndex = null;
@@ -856,7 +875,7 @@ $effect(() => {
         if (!dragging) return;
         moved = true;
         if (moveIndex !== null) {
-            cursor = snap(e.lngLat.lng, e.lngLat.lat);
+            moveNode(e.lngLat.lng, e.lngLat.lat);
             render();
         } else {
             hover(e.lngLat.lng, e.lngLat.lat);
@@ -868,11 +887,13 @@ $effect(() => {
         m.dragPan.enable();
         if (moveIndex !== null) {
             if (moved) {
-                const v = [...verts];
-                v[moveIndex] = snap(e.lngLat.lng, e.lngLat.lat);
-                verts = v;
+                moveNode(e.lngLat.lng, e.lngLat.lat);
+                const at = moveIndex;
+                verts = mergeInto === null ? liveVerts() : verts.filter((_, i) => i !== at);
+                if (verts.length < 3) isPolygon = false;
             }
             moveIndex = null;
+            mergeInto = null;
             cursor = null;
             render();
         } else if (moved) {
