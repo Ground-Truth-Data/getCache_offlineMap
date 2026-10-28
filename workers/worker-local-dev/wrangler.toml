@@ -28,10 +28,11 @@ remote = true
 binding = "SAT_CACHE"
 bucket_name = "gc-satellite-cache-prod"
 
-# Counts only, shared with tiles-dev: both spend the same MapTiler and Esri keys, so one meter holds the 90% stops.
+# Counts only, in a bucket of their own shared with tiles-dev: both spend the same MapTiler and Esri keys, so one
+# meter holds the 90% stops, and prod's stop never depends on a dev bucket.
 [[r2_buckets]]
 binding = "METER"
-bucket_name = "gc-satellite-cache"
+bucket_name = "gc-squirrel-meter"
 
 # ⚠️ PMTILES_KEY must match the uploaded object key in the
 # bucket — a mismatch silently reads as "no tiles".
@@ -52,14 +53,14 @@ enabled = true
 binding = "TILES"
 bucket_name = "offline-tiles"
 
-# Satellite tiles every phone shares, plus Squirrel's counts and switches.
+# Satellite tiles every phone shares, plus Squirrel's switches.
 [[env.dev.r2_buckets]]
 binding = "SAT_CACHE"
 bucket_name = "gc-satellite-cache"
 
 [[env.dev.r2_buckets]]
 binding = "METER"
-bucket_name = "gc-satellite-cache"
+bucket_name = "gc-squirrel-meter"
 
 [env.dev.vars]
 PMTILES_KEY = "planet.pmtiles"
