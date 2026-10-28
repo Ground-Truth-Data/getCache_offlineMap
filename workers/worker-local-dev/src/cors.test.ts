@@ -1,12 +1,6 @@
 // An unexposed header reads as null cross-origin, silently.
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-
-const src = readFileSync(
-  fileURLToPath(new URL("./index.ts", import.meta.url)),
-  "utf8",
-);
+import src from "./index.ts?raw";
 
 describe("CORS expose-headers", () => {
   it("⛔ every X- header the Worker SETS is also EXPOSED", () => {
