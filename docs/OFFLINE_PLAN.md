@@ -152,8 +152,8 @@ made from OpenStreetMap. The world base under the blobs is Natural Earth.
 - **The satellite is ONE image per blob, never a raster tile pyramid** — a
   pyramid swaps tiles and vanishes below its min zoom.
 - **Only imagery licensed for offline storage is cached.** Esri/Mapbox/Google
-  ToS forbid it. The source is MapTiler satellite-v2 on a paid account
-  (`lib/onPhone/satellite/photoSources.ts`).
+  ToS forbid it. The sources — MapTiler satellite-v2 on a paid account and
+  EOX's CC BY Sentinel-2 mosaic — are listed in `lib/contract/satelliteSources.ts`.
 
 ## Worker rules
 

@@ -73,7 +73,7 @@ The offline preview is V10, `routes/offlinev10/` (its `README.md`), served at
 `/app/offlinev10` by every parent. It downloads map tiles and satellite
 photos for blobs around pins, stores them in IndexedDB, and renders them
 (MapLibre GL) with no network. Tiles come from the Worker; satellite photos
-from the imagery registry in `lib/onPhone/satellite/photoSources.ts`.
+from the imagery registry in `lib/contract/satelliteSources.ts`.
 
 **The debugger IS the map.** Same component, docks beside it. Instruments
 attached to a stand-in produce confident wrong answers.
