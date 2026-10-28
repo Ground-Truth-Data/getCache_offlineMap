@@ -109,7 +109,10 @@ async function load(): Promise<void> {
 	try {
 		const res = await fetch(squirrelUrl() ?? "");
 		if (!res.ok) throw new Error(`HTTP ${res.status} ${await res.text()}`);
-		answer = (await res.json()) as Answer;
+		const got = (await res.json()) as Answer;
+		// A Worker deployed before the map picks names none, and every picker reads them.
+		if (!got.map) throw new Error("the Worker names no map picks: deploy it");
+		answer = got;
 	} catch (e) {
 		failure = String(e instanceof Error ? e.message : e);
 	}
@@ -178,7 +181,7 @@ function sourceRow(id: string, src: SatelliteSource): Row {
 		color: src.color,
 		lic: look.lic,
 		licText: look.licText,
-		licence: `${src.licence} · ${src.attribution}`,
+		licence: src.licence,
 		cache: keeps,
 		onMap: bandsOf(id),
 		stops: !!src.freeTilesPerMonth,
@@ -497,7 +500,7 @@ function toBody(node: HTMLElement) {
 						{@const owner = p.blobs[p.blobs.length - 1]}
 						<div class="cover" class:first={i === 0}>
 							<p class="big">{i === 0 ? "Offline imagery here:" : "Also covers it:"} <b>{p.info?.source ?? "photo not baked"}</b>{p.info ? ` · z${p.info.zoom} · ${(p.info.bytes / 1048576).toFixed(1)} MB` : ""}</p>
-							{#if p.info}<p>credit: {sourceNamed(p.info.source)?.attribution ?? "—"}</p>{/if}
+							{#if p.info}<p>credit: {@html sourceNamed(p.info.source)?.attribution ?? "—"}</p>{/if}
 							{#if p.info?.wire}<p>tiles: <span class="grn">{p.info.wire.hit} from R2</span> · <span class:amb={p.info.wire.miss > 0}>{p.info.wire.miss} upstream</span>{p.info.wire.disk ? ` · ${p.info.wire.disk} already on the phone` : ""}</p>{/if}
 							<p>photo <code>{p.key}</code> · {p.km.toFixed(2)} km from its centre · first saved by blob <button class="link" onclick={() => openBlob(owner.id)}><code>{owner.id}</code></button> {owner.place ? placeLabel(owner.place) : ""} · {when(owner.at)}{p.blobs.length > 1 ? ` · used by ${p.blobs.length} blobs` : ""}</p>
 						</div>

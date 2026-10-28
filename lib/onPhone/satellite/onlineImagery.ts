@@ -30,6 +30,8 @@ const LOGOS: Record<string, { src: string; href: string; opacity: number }> = {
 	mapbox: { src: mapboxLogo, href: "https://www.mapbox.com/", opacity: 1 },
 	maptiler: { src: maptilerLogo, href: "https://www.maptiler.com/", opacity: 0.55 },
 };
+/** Esri's credit "must not be covered or obstructed", so the ⓘ stays open while its tiles are. */
+const CREDITS_OPEN = "esri";
 
 /** Squirrel's hand test: one source drawn at every zoom over all other imagery, in this browser only. */
 export function forcedImagery(): string | null {
@@ -69,6 +71,8 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 	let above: string | undefined;
 	let loads = 0;
 	let picked: Record<MapBand, string> | null = null;
+	/** Each source the view should draw, with the map source drawing it; null for a mounted photo. */
+	let wants: [string, string | null][] = [];
 	const logoBox = document.createElement("div");
 	logoBox.className = "maplibregl-ctrl";
 	logoBox.style.cssText = "display:flex;gap:6px;align-items:center";
@@ -115,11 +119,19 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 		for (const [box, [w, s, e, n]] of boxes)
 			if (map.getLayer(box)) map.setLayoutProperty(box, "visibility", !forced && w < b.getEast() && e > b.getWest() && s < b.getNorth() && n > b.getSouth() ? "visible" : "none");
 		const z = map.getZoom();
-		const drawn = new Set<string>(forced ? [forcedImagery() ?? ""] : []);
-		if (picked && !forced && z < SHARP_FROM_Z) drawn.add(picked.far);
-		if (picked && !forced && !inside && z >= FADE_FROM_Z) drawn.add(picked.near);
-		for (const credit of mount.attributions()) for (const [id, src] of Object.entries(SATELLITE_SOURCES)) if (src.attribution === credit) drawn.add(id);
+		wants = forced ? [[forcedImagery() ?? "", FORCED]] : [];
+		if (picked && !forced && z < SHARP_FROM_Z) wants.push([picked.far, FAR]);
+		if (picked && !forced && !inside && z >= FADE_FROM_Z) wants.push([picked.near, NEAR]);
+		for (const credit of mount.attributions()) for (const [id, src] of Object.entries(SATELLITE_SOURCES)) if (src.attribution === credit) wants.push([id, null]);
+		onScreen();
+	};
+	// A source answering 404 (a box, a spent free tier) has no tile up, so it shows no logo and holds no ⓘ open.
+	const onScreen = (): void => {
+		const drawn = new Set(wants.filter(([, s]) => !s || !!map.style?.tileManagers[s]?.getRenderableIds().length).map(([id]) => id));
 		showLogos(drawn);
+		const credits = map.getContainer().querySelector(".maplibregl-ctrl-attrib.maplibregl-compact");
+		if (drawn.has(CREDITS_OPEN) && credits && !credits.classList.contains("maplibregl-compact-show"))
+			credits.querySelector<HTMLElement>(".maplibregl-ctrl-attrib-button")?.click();
 	};
 
 	const force = (): void => {
@@ -142,6 +154,7 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 		photos?.dispose();
 		photos = null;
 		picked = null;
+		wants = [];
 		showLogos(new Set());
 		if (!map.getLayer(MAPBOX_IMAGERY)) return onCredits([]);
 		const { far: [farId, far], near: [nearId, near] } = await mapPicks();
@@ -173,6 +186,7 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 	const moved = (): void => void show();
 	map.on("style.load", restyled);
 	map.on("moveend", moved);
+	map.on("idle", onScreen);
 	addEventListener("storage", forcedElsewhere);
 	addEventListener("online", moved);
 	addEventListener("offline", moved);
@@ -183,6 +197,7 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 		loads++;
 		map.off("style.load", restyled);
 		map.off("moveend", moved);
+		map.off("idle", onScreen);
 		removeEventListener("storage", forcedElsewhere);
 		removeEventListener("online", moved);
 		removeEventListener("offline", moved);

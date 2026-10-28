@@ -19,7 +19,7 @@ export interface SatelliteSource {
 	canvasPx: number;
 	/** WebP quality 0–1 */
 	quality: number;
-	/** shown on the map whenever its pixels are */
+	/** HTML for the map's ⓘ, shown whenever its pixels are: each provider's own wording and links */
 	attribution: string;
 	licence: string;
 	/** keep each tile in the shared R2 bucket */
@@ -50,7 +50,7 @@ export const SATELLITE_SOURCES = {
 		// Not 4096: 4096² is over WebKit's ~16.7 MP canvas ceiling, which bakes blank.
 		canvasPx: 3456,
 		quality: 0.92,
-		attribution: "© MapTiler © Maxar",
+		attribution: '<a href="https://www.maptiler.com/copyright/" target="_blank">&copy; MapTiler</a> <a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>',
 		licence: "MapTiler Cloud terms; approved for R2",
 		cacheToR2: true,
 		// Flex plan, per 1,000 requests past the included 500k.
@@ -66,7 +66,7 @@ export const SATELLITE_SOURCES = {
 		zoom: 14,
 		canvasPx: 512,
 		quality: 0.9,
-		attribution: "Sentinel-2 cloudless 2016 by EOX IT Services GmbH (contains modified Copernicus Sentinel data 2016)",
+		attribution: '<a href="https://cloudless.eox.at" target="_blank">EOxCloudless https://cloudless.eox.at</a> by <a href="https://eox.at" target="_blank">EOX IT Services GmbH</a> (Contains modified Copernicus Sentinel data 2016)',
 		licence: "CC BY 4.0",
 		cacheToR2: true,
 		usdPer1000: 0,
@@ -81,7 +81,7 @@ export const SATELLITE_SOURCES = {
 		// 256px tiles at z16 are 864px across the disc; a little over keeps edges soft.
 		canvasPx: 1024,
 		quality: 0.9,
-		attribution: "USGS The National Map: Orthoimagery",
+		attribution: 'The National Map orthoimagery courtesy of the <a href="https://www.usgs.gov/" target="_blank">U.S. Geological Survey</a>',
 		licence: "US public domain: \"Map services and data downloaded from The National Map are free and in the public domain.\"",
 		cacheToR2: true,
 		usdPer1000: 0,
@@ -114,7 +114,7 @@ export const SATELLITE_SOURCES = {
 		zoom: 17,
 		canvasPx: 3456,
 		quality: 0.9,
-		attribution: "Powered by Esri · Sources: Esri, Vantor, Earthstar Geographics, and the GIS User Community",
+		attribution: 'Powered by <a href="https://www.esri.com/" target="_blank">Esri</a> | Sources: Esri, Vantor, Earthstar Geographics, and the GIS User Community',
 		licence: "ArcGIS Location Platform: stream only — \"Customer may not otherwise scrape, download, or store Data.\"",
 		cacheToR2: false,
 		live: true,
@@ -132,7 +132,7 @@ export const SATELLITE_SOURCES = {
 		zoom: 17,
 		canvasPx: 3456,
 		quality: 0.9,
-		attribution: "© Mapbox © Maxar",
+		attribution: '<a href="https://www.mapbox.com/about/maps/" target="_blank">&copy; Mapbox</a> <a href="https://www.openstreetmap.org/about/" target="_blank">&copy; OpenStreetMap</a> <a href="https://apps.mapbox.com/feedback/" target="_blank"><strong>Improve this map</strong></a> <a href="https://www.maxar.com/" target="_blank">&copy; Maxar</a>',
 		licence: "Mapbox ToS: stream only, no caching outside the SDK",
 		cacheToR2: false,
 		live: true,

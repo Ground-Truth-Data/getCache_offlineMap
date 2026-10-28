@@ -74,17 +74,18 @@ z10, so the hand-over never jumps, and each layer credits its own source.
 
 ## Licence and attribution
 
-| Source | Licence | Attribution shown |
-|---|---|---|
-| Sentinel | CC BY 4.0 | Sentinel-2 cloudless 2016 by EOX IT Services GmbH (contains modified Copernicus Sentinel data 2016) |
-| Esri | ArcGIS Location Platform, stream only | Powered by Esri · Sources: Esri, Vantor, Earthstar Geographics, and the GIS User Community |
-| USGS | US public domain | USGS The National Map: Orthoimagery |
-| MapTiler | MapTiler Cloud terms; R2 caching approved | © MapTiler © Maxar |
-| Mapbox | Mapbox ToS, stream only | © Mapbox © Maxar |
+| Source | Licence | Credit in the ⓘ, each linked | Logo on the map |
+|---|---|---|---|
+| Sentinel | CC BY 4.0 | EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016) | None asked |
+| Esri | ArcGIS Location Platform, stream only | Powered by Esri \| Sources: Esri, Vantor, Earthstar Geographics, and the GIS User Community | Only under a link-logo agreement |
+| USGS | US public domain | The National Map orthoimagery courtesy of the U.S. Geological Survey | Partners only |
+| MapTiler | MapTiler Cloud terms; R2 caching approved | © MapTiler © OpenStreetMap contributors | Owed on the free plan only; shown faded |
+| Mapbox | Mapbox ToS, stream only | © Mapbox © OpenStreetMap Improve this map © Maxar | Required, unstyled |
 
 The online map credits a streamed source through its raster source's `attribution`. A box out of view is
 hidden, so it is not credited. A baked photo carries its source's name, and the map credits every photo
-that is mounted.
+that is mounted. A logo shows, and Esri holds the ⓘ open ("must not be covered or obstructed"), only while
+that source has a tile drawn, so a source answering 404 shows neither.
 
 ## Where each rule lives
 
@@ -96,6 +97,7 @@ that is mounted.
 | A covering source wins (USGS first) | `lib/contract/satelliteSources.ts:154` (`sourceAt`), `:159` (`coverOf`) |
 | The map's two picks and their defaults | `lib/contract/satelliteSources.ts` (`MAP_DEFAULT`, `MAP_PICKS`), `lib/onPhone/satellite/onlineImagery.ts:37` (`mapPicks`) |
 | `far` below, `near` fading in z10 → z12, Sentinel toned to MapTiler | `lib/onPhone/satellite/onlineImagery.ts:17` (`SHARP_FROM_Z`, `FADE_IN`, `TONE`), `:117` |
+| Logos, and the ⓘ held open for Esri, while a source has a tile drawn | `lib/onPhone/satellite/onlineImagery.ts` (`LOGOS`, `CREDITS_OPEN`, `onScreen`) |
 | No Esri tile inside a photo or USGS cover | `lib/onPhone/satellite/onlineImagery.ts:51` |
 | Worker: covered tile → 404 for a live source | `workers/worker-local-dev/src/index.ts:499` |
 | Worker: standby source not on the map → 404 | `workers/worker-local-dev/src/index.ts:525` |
