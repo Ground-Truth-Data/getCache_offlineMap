@@ -25,10 +25,10 @@ const TONE: Record<string, maplibregl.RasterLayerSpecification["paint"]> = { sen
 const FORCED = "gc-forced";
 const FORCED_KEY = "gc-forced-imagery";
 /** Shown in the credits' corner while that source's tiles are. Mapbox requires its logo and forbids styling it;
- * MapTiler's is owed only on a free plan, so it sits faded. Full credits stay in the ⓘ. */
-const LOGOS: Record<string, { src: string; href: string; opacity: number }> = {
-	mapbox: { src: mapboxLogo, href: "https://www.mapbox.com/", opacity: 1 },
-	maptiler: { src: maptilerLogo, href: "https://www.maptiler.com/", opacity: 0.55 },
+ * MapTiler's is owed only on a free plan, so it sits faded, haloed to read over bright ground. Full credits stay in the ⓘ. */
+const LOGOS: Record<string, { src: string; href: string; style: string }> = {
+	mapbox: { src: mapboxLogo, href: "https://www.mapbox.com/", style: "" },
+	maptiler: { src: maptilerLogo, href: "https://www.maptiler.com/", style: "opacity:0.55;filter:drop-shadow(0 0 1.5px #000)" },
 };
 /** Esri's credit "must not be covered or obstructed", so the ⓘ stays open while its tiles are. */
 const CREDITS_OPEN = "esri";
@@ -84,10 +84,10 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 		logoBox.dataset.ids = want.join();
 		logoBox.replaceChildren(
 			...want.map((id) => {
-				const { src, href, opacity } = LOGOS[id];
+				const { src, href, style } = LOGOS[id];
 				const a = document.createElement("a");
 				Object.assign(a, { href, target: "_blank", rel: "noopener" });
-				a.innerHTML = `<img src="${src}" alt="${sourceOf(id)?.name}" style="height:20px;display:block;opacity:${opacity}">`;
+				a.innerHTML = `<img src="${src}" alt="${sourceOf(id)?.name}" style="height:20px;display:block;${style}">`;
 				return a;
 			}),
 		);
