@@ -42,6 +42,8 @@ export interface MapHostSession {
 	lastTouchedAt: string;
 	/** Another phone's map, followed by link: nothing on it is added, edited, moved or deleted here. */
 	locked?: boolean;
+	/** Locked only until this phone picks a username: an edit link's map, whose every edit is signed. */
+	needsName?: boolean;
 	features: MapHostFeature[];
 }
 
