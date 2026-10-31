@@ -291,7 +291,19 @@ const tileLng = (x: number, z: number) => (x / 2 ** z) * 360 - 180;
 const tileLat = (y: number, z: number) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / 2 ** z))) * 180) / Math.PI;
 
 export default {
+  // A throw would answer with Cloudflare's own 500, which carries no CORS header: the browser can't read it and the app
+  // sees only "Failed to fetch (0)". Every answer goes out readable, with the reason.
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    try {
+      return await route(request, env, ctx);
+    } catch (err) {
+      console.error(`${request.method} ${new URL(request.url).pathname} threw`, err);
+      return new Response(`Worker failed: ${err instanceof Error ? err.message : String(err)}`, { status: 502, headers: CORS_HEADERS });
+    }
+  },
+} satisfies ExportedHandler<Env>;
+
+async function route(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
@@ -625,6 +637,5 @@ export default {
 
     const body = request.method === "HEAD" ? null : tile.data;
     return new Response(body, { status: 200, headers: responseHeaders });
-  },
-} satisfies ExportedHandler<Env>;
+}
 
