@@ -4,6 +4,7 @@ import type * as maplibregl from "maplibre-gl";
 import {
     PHOTO_COVERAGE_RADIUS_KM,
     getSatImageByKey,
+    photoEdge,
     type Bounds,
 } from "./satelliteImage";
 import { kmToDegSpan } from "../../shared/kmGeo";
@@ -42,6 +43,9 @@ export function satLayerId(key: string): string {
 /** The photo's raw source tiles over it: close in, the shrunk photo has no more pixels to give. */
 export const SAT_CLOSE_ID = "v4-sat-close";
 export const SAT_CLOSE_LAYER = `${SAT_CLOSE_ID}-l`;
+/** The one edge for everything the phone holds — a photo and a blob's vector ground alike — so where either stops
+ * reads as deliberate, not as data that failed. */
+export const HELD_EDGE: maplibregl.LineLayerSpecification["paint"] = { "line-color": "#f5a119", "line-opacity": 0.85, "line-width": 0.5 };
 
 // The viewport cull: RAM scales with photos on screen, not pin count. Two rings give hysteresis so a photo near the edge does not flap on every pan.
 
@@ -118,9 +122,20 @@ export function createSatelliteMount(
         );
     }
 
-    const mountSat = (key: string, blob: Blob, bounds: Bounds): void => {
+    const mountSat = (key: string, blob: Blob, bounds: Bounds, z: number): void => {
         if (disposed) return;
         const id = satLayerId(key);
+        // After the photo, so it draws over it: under the photo the edge is covered and only a sliver shows.
+        const drawEdge = (): void => {
+            const edge: GeoJSON.Feature = { type: "Feature", properties: {}, geometry: { type: "MultiLineString", coordinates: photoEdge(bounds, z) } };
+            const edgeSource = map.getSource(`${id}-edge`) as maplibregl.GeoJSONSource | undefined;
+            if (edgeSource) return void edgeSource.setData(edge);
+            map.addSource(`${id}-edge`, { type: "geojson", data: edge });
+            map.addLayer(
+                { id: `${id}-edge`, type: "line", source: `${id}-edge`, minzoom: SAT_MIN_Z, paint: HELD_EDGE },
+                map.getLayer(insertBefore) ? insertBefore : undefined,
+            );
+        };
         const existing = map.getSource(id) as
             | maplibregl.ImageSource
             | undefined;
@@ -146,6 +161,7 @@ export function createSatelliteMount(
                 // codestyle-allow-swallow: the previous image stays mounted; the next pass retries.
                 satUrls.set(key, prev ?? url);
             }
+            drawEdge();
             mountedSat.add(key);
             return;
         }
@@ -182,6 +198,7 @@ export function createSatelliteMount(
             } as mapboxgl.LayerSpecification,
             map.getLayer(SAT_CLOSE_LAYER) ? SAT_CLOSE_LAYER : map.getLayer(insertBefore) ? insertBefore : undefined,
         );
+        drawEdge();
         mountedSat.add(key);
     };
 
@@ -189,6 +206,8 @@ export function createSatelliteMount(
         const id = satLayerId(key);
         if (map.getLayer(`${id}-l`)) map.removeLayer(`${id}-l`);
         if (map.getSource(id)) map.removeSource(id);
+        if (map.getLayer(`${id}-edge`)) map.removeLayer(`${id}-edge`);
+        if (map.getSource(`${id}-edge`)) map.removeSource(`${id}-edge`);
         mountedSat.delete(key);
         sourceOf.delete(key);
         const u = satUrls.get(key);
@@ -204,7 +223,7 @@ export function createSatelliteMount(
             const img = await getSatImageByKey(key);
             if (img && !disposed) {
                 sourceOf.set(key, img.source);
-                mountSat(key, img.blob, img.bounds);
+                mountSat(key, img.blob, img.bounds, img.zoom ?? CLOSE_UP.zoom);
             }
         },
         closeUpChanged(): void {

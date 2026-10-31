@@ -20,7 +20,7 @@ const STORE = "photoDiscs";
 export type Bounds = [number, number, number, number]; // [w,s,e,n]
 
 /** Bump whenever bake geometry changes, or a mis-bounded photo stays pinned forever. */
-export const BAKE_VERSION = 10;
+export const BAKE_VERSION = 11;
 
 /** A source tile as fetched, keyed `z/x/y`: the close-up the shrunk photo cannot hold. */
 export type RawTile = [string, ArrayBuffer];
@@ -50,6 +50,23 @@ export function photoTilesFor(center: [number, number], z: number): DiscTile[] {
 			if (kmBetween([clng, clat], [cx, cy]) <= PHOTO_COVERAGE_RADIUS_KM) out.push({ x, y, w, e, n, s });
 		}
 	}
+	return out;
+}
+
+/** A photo's outline as line segments: every disc-tile side no other disc tile shares, clipped to the photo's bounds. */
+export function photoEdge([w, s, e, n]: Bounds, z: number): [number, number][][] {
+	const tiles = photoTilesFor([(w + e) / 2, (s + n) / 2], z);
+	const has = new Set(tiles.map((t) => `${t.x}/${t.y}`));
+	const at = (lng: number, lat: number): [number, number] => [Math.min(Math.max(lng, w), e), Math.min(Math.max(lat, s), n)];
+	const out: [number, number][][] = [];
+	for (const t of tiles)
+		for (const [dx, dy, a, b] of [
+			[0, -1, at(t.w, t.n), at(t.e, t.n)],
+			[0, 1, at(t.w, t.s), at(t.e, t.s)],
+			[-1, 0, at(t.w, t.s), at(t.w, t.n)],
+			[1, 0, at(t.e, t.s), at(t.e, t.n)],
+		] as const)
+			if (!has.has(`${t.x + dx}/${t.y + dy}`) && (a[0] !== b[0] || a[1] !== b[1])) out.push([a, b]);
 	return out;
 }
 
@@ -138,8 +155,12 @@ export function satImageKey(c: [number, number]): string {
 	return `${c[0].toFixed(4)},${c[1].toFixed(4)}`;
 }
 
-/** The bake's only way to tiles: `z/x/y` → bytes, from disk or the network. A key it cannot supply is simply absent. */
-export type PhotoTileSource = (keys: string[]) => Promise<Map<string, ArrayBuffer>>;
+/** The bake's only way to tiles: `z/x/y` → bytes from `source` (the photo's own when omitted). A key missing from the
+ * answer failed; an empty buffer is ground the source has no imagery for. */
+export type PhotoTileSource = (keys: string[], source?: string) => Promise<Map<string, ArrayBuffer>>;
+
+/** Fills ground the photo's source has no imagery for: free, and covers the whole world. */
+const FILL = "sentinel";
 
 type TileDraw = { buf: ArrayBuffer; dx: number; dy: number; dw: number; dh: number };
 type BakeRes = { id: number; blob: Blob | null; loaded: number };
@@ -246,7 +267,7 @@ export async function bakeSatelliteImage(
 	return out;
 }
 
-/** One source's bake. Null when fewer than 40% of the disc's tiles drew. */
+/** One source's bake. Null unless every tile of the disc drew. */
 async function bakeFrom(
 	src: SatelliteSource,
 	center: [number, number],
@@ -288,19 +309,36 @@ async function bakeFrom(
 	const yf = (lat: number) => ((yTop - mercY(lat)) / yExt) * H;
 	const keys = tileGeo.map((t) => `${z}/${t.x}/${t.y}`);
 	const have = await tiles(keys);
+	// A photo is saved whole or not at all: a stored photo is never baked again, so a hole saved now stays for good.
+	if (keys.some((k) => !have.has(k))) return null;
 	const tileDraw: TileDraw[] = [];
-	tileGeo.forEach((t, i) => {
-		const buf = have.get(keys[i]!);
-		if (!buf?.byteLength) return;
-		const dx = Math.floor(xf(t.w));
-		const dy = Math.floor(yf(t.n));
+	const draw = (buf: ArrayBuffer, w: number, e: number, n: number, s: number): void => {
+		const dx = Math.floor(xf(w));
+		const dy = Math.floor(yf(n));
 		// +1 px so adjacent tiles overlap (no plaid).
-		tileDraw.push({ buf, dx, dy, dw: Math.ceil(xf(t.e) - dx) + 1, dh: Math.ceil(yf(t.s) - dy) + 1 });
+		tileDraw.push({ buf, dx, dy, dw: Math.ceil(xf(e) - dx) + 1, dh: Math.ceil(yf(s) - dy) + 1 });
+	};
+	const lacking = keys.filter((k) => !have.get(k)!.byteLength);
+	if (lacking.length) {
+		// Drawn first, so the source's own tiles land over the parent squares' spare ground.
+		const fz = Math.min(z, SATELLITE_SOURCES[FILL].maxZ);
+		const parents = [...new Set(lacking.map((k) => {
+			const [, x, y] = k.split("/").map(Number) as [number, number, number];
+			return `${fz}/${x >> (z - fz)}/${y >> (z - fz)}`;
+		}))];
+		const fill = await tiles(parents, FILL);
+		for (const p of parents) {
+			const buf = fill.get(p);
+			if (!buf?.byteLength) return null;
+			const [, x, y] = p.split("/").map(Number) as [number, number, number];
+			draw(buf, tileToLng(x, fz), tileToLng(x + 1, fz), tileToLat(y, fz), tileToLat(y + 1, fz));
+		}
+	}
+	tileGeo.forEach((t, i) => {
+		const buf = have.get(keys[i]!)!;
+		if (buf.byteLength) draw(buf, t.w, t.e, t.n, t.s);
 	});
-
-	// A mostly-empty disc is a throttled fetch, not a photo; fail so the reconcile retries.
-	const minTiles = Math.max(1, Math.ceil(tileGeo.length * 0.4));
-	if (tileDraw.length < minTiles) return null;
+	const want = tileDraw.length;
 
 	let blob: Blob | null = null;
 	let loaded = 0;
@@ -327,7 +365,7 @@ async function bakeFrom(
 			canvas.toBlob((b) => r(b), "image/webp", src.quality),
 		);
 	}
-	if (!blob || loaded < minTiles) return null;
+	if (!blob || loaded < want) return null;
 
 	return {
 		blob,

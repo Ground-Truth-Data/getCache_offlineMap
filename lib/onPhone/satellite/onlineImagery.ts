@@ -1,5 +1,6 @@
-// The online map's imagery: the two sources Squirrel puts on the map, through our Worker where Mapbox's own satellite
-// was, and the phone's baked photos only while offline. Every satellite pixel is then a source Squirrel counts.
+// The online map's imagery over the Streets base: the phone's baked photos at every zoom they mount at, and live
+// imagery from the Worker only up close, outside those photos and never while following a route. Every satellite
+// pixel is then a source Squirrel counts.
 import type * as maplibregl from "maplibre-gl";
 import { coverOf, type MapBand, SATELLITE_SOURCES, type SatelliteSource, sourceOf } from "../../contract/satelliteSources";
 import { squirrelUrl, tilesHost } from "../../worker/tilesHost";
@@ -8,20 +9,17 @@ import { onPhoto } from "../../../routes/offlinev10/satellite";
 import { createSatelliteMount, type SatelliteMount } from "./mountSatellite";
 import { PHOTO_COVERAGE_RADIUS_KM } from "./satelliteImage";
 import { kmToDegSpan } from "../../shared/kmGeo";
+import { onFollowing } from "../../route/routeLayer";
 import mapboxLogo from "./logos/mapbox.webp";
 import maptilerLogo from "./logos/maptiler.webp";
 
 /** The online style's IMAGERY_ANCHOR: the imagery goes in under it, then it goes. */
 const MAPBOX_IMAGERY = "satellite";
-const FAR = "gc-far";
 const NEAR = "gc-near";
-/** `near` takes over from here in; a source with its own boxes (USGS) wins inside them. */
-const SHARP_FROM_Z = 12;
-/** `near` fades in over `far` across these two zooms, so the hand-over is never a jump. */
-const FADE_FROM_Z = SHARP_FROM_Z - 2;
-const FADE_IN: maplibregl.RasterLayerSpecification["paint"] = { "raster-opacity": ["interpolate", ["linear"], ["zoom"], FADE_FROM_Z, 0, SHARP_FROM_Z, 1] };
-/** Sentinel fitted to MapTiler's brightness, spread and colour over the same z11 ground. */
-const TONE: Record<string, maplibregl.RasterLayerSpecification["paint"]> = { sentinel: { "raster-contrast": -0.15, "raster-saturation": 0.4 } };
+/** Live imagery bills per tile, and planters only need the ground when working it: no live tile is asked for below this. */
+const LIVE_FROM_Z = 14;
+/** Live imagery fades in over Streets across half a zoom, so the hand-over is never a jump. */
+const FADE_IN: maplibregl.RasterLayerSpecification["paint"] = { "raster-opacity": ["interpolate", ["linear"], ["zoom"], LIVE_FROM_Z, 0, LIVE_FROM_Z + 0.5, 1] };
 const FORCED = "gc-forced";
 const FORCED_KEY = "gc-forced-imagery";
 /** Shown in the credits' corner while that source's tiles are. Mapbox requires its logo and forbids styling it;
@@ -43,15 +41,15 @@ export function forceImagery(id: string | null): void {
 	else localStorage.removeItem(FORCED_KEY);
 }
 
-/** Squirrel's picks for the map, asked once a style load, so a switch lands on every map's next one. */
-async function mapPicks(): Promise<Record<MapBand, [string, SatelliteSource]>> {
+/** Squirrel's live pick for the map, asked once a style load, so a switch lands on every map's next one. */
+async function livePick(): Promise<[string, SatelliteSource]> {
 	const res = await fetch(squirrelUrl("/active") ?? "");
 	if (!res.ok) throw new Error(`HTTP ${res.status} the Worker would not say which sources are on the map`);
 	const { map } = (await res.json()) as { map?: Record<MapBand, string> };
-	const [far, near] = [sourceOf(map?.far ?? ""), sourceOf(map?.near ?? "")];
-	if (!map || !far || !near || far.covers || near.covers)
+	const near = sourceOf(map?.near ?? "");
+	if (!map || !near || near.covers)
 		throw new Error(`The Worker named no map sources (${JSON.stringify(map)}); deploy the tiles Worker before the app`);
-	return { far: [map.far, far], near: [map.near, near] };
+	return [map.near, near];
 }
 
 const raster = (id: string, src: SatelliteSource, more: Partial<maplibregl.RasterSourceSpecification> = {}): maplibregl.RasterSourceSpecification => ({
@@ -70,7 +68,8 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 	const boxes = new Map<string, readonly [number, number, number, number]>();
 	let above: string | undefined;
 	let loads = 0;
-	let picked: Record<MapBand, string> | null = null;
+	let picked: string | null = null;
+	let following = false;
 	/** Each source the view should draw, with the map source drawing it; null for a mounted photo. */
 	let wants: [string, string | null][] = [];
 	const logoBox = document.createElement("div");
@@ -98,30 +97,27 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 		if (!mount) return;
 		const b = map.getBounds();
 		const sites = new Map<string, { key: string; center: [number, number] }>();
-		// Online, live imagery is the picture and a photo is never drawn; it is for when the network is gone.
-		if (!navigator.onLine)
-			for (const r of await listRegions())
-				if (!r.removed && r.photoKey && r.photoCenter) sites.set(r.photoKey, { key: r.photoKey, center: r.photoCenter });
+		// A photo the phone holds is drawn online too: that ground is paid for once, not again per view.
+		for (const r of await listRegions())
+			if (!r.removed && r.photoKey && r.photoCenter) sites.set(r.photoKey, { key: r.photoKey, center: r.photoCenter });
 		await mount.reconcile([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], [...sites.values()], map.getZoom());
 		if (mount !== photos) return;
 		onCredits(mount.attributions());
-		// `near` bills per tile, so it asks for none while the whole view is inside a covering source's box, or offline
-		// inside one photo; the square inside a photo's disc keeps the corners honest.
+		// `near` bills per tile, so it asks for none while the whole view is inside a covering source's box or one
+		// photo; the square inside a photo's disc keeps the corners honest. A hidden layer's source fetches nothing.
 		const inside = !!coverOf(b.getWest(), b.getSouth(), b.getEast(), b.getNorth()) || [...sites.values()].some(({ center: [lng, lat] }) => {
 			const { dLat, dLng } = kmToDegSpan(PHOTO_COVERAGE_RADIUS_KM / Math.SQRT2, lat);
 			return b.getWest() >= lng - dLng && b.getEast() <= lng + dLng && b.getSouth() >= lat - dLat && b.getNorth() <= lat + dLat;
 		});
 		// A forced source hides the rest, so nothing under it shows through a tile it 404s.
 		const forced = !!map.getLayer(FORCED);
-		if (map.getLayer(FAR)) map.setLayoutProperty(FAR, "visibility", forced ? "none" : "visible");
-		if (map.getLayer(NEAR)) map.setLayoutProperty(NEAR, "visibility", forced || inside ? "none" : "visible");
+		const live = !forced && !following;
+		if (map.getLayer(NEAR)) map.setLayoutProperty(NEAR, "visibility", live && !inside ? "visible" : "none");
 		// Every visible layer is credited, in view or not; a box out of view is hidden so its source isn't credited.
 		for (const [box, [w, s, e, n]] of boxes)
-			if (map.getLayer(box)) map.setLayoutProperty(box, "visibility", !forced && w < b.getEast() && e > b.getWest() && s < b.getNorth() && n > b.getSouth() ? "visible" : "none");
-		const z = map.getZoom();
+			if (map.getLayer(box)) map.setLayoutProperty(box, "visibility", live && w < b.getEast() && e > b.getWest() && s < b.getNorth() && n > b.getSouth() ? "visible" : "none");
 		wants = forced ? [[forcedImagery() ?? "", FORCED]] : [];
-		if (picked && !forced && z < SHARP_FROM_Z) wants.push([picked.far, FAR]);
-		if (picked && !forced && !inside && z >= FADE_FROM_Z) wants.push([picked.near, NEAR]);
+		if (picked && live && !inside && map.getZoom() >= LIVE_FROM_Z) wants.push([picked, NEAR]);
 		for (const credit of mount.attributions()) for (const [id, src] of Object.entries(SATELLITE_SOURCES)) if (src.attribution === credit) wants.push([id, null]);
 		onScreen();
 	};
@@ -157,25 +153,23 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 		wants = [];
 		showLogos(new Set());
 		if (!map.getLayer(MAPBOX_IMAGERY)) return onCredits([]);
-		const { far: [farId, far], near: [nearId, near] } = await mapPicks();
+		const [nearId, near] = await livePick();
 		// The style loaded again while we asked; that load builds its own imagery.
 		if (load !== loads || !map.getLayer(MAPBOX_IMAGERY)) return;
 		const layers = map.getStyle().layers;
 		above = layers[layers.findIndex((l) => l.id === MAPBOX_IMAGERY) + 1]?.id;
-		picked = { far: farId, near: nearId };
-		map.addSource(FAR, raster(farId, far));
-		map.addLayer({ id: FAR, type: "raster", source: FAR, paint: TONE[farId] }, MAPBOX_IMAGERY);
-		// The Worker 404s what a box covers, a standby source not on the map and anything past 90% of a free tier;
-		// `far` shows through.
-		map.addSource(NEAR, raster(nearId, near, { minzoom: FADE_FROM_Z }));
-		map.addLayer({ id: NEAR, type: "raster", source: NEAR, minzoom: FADE_FROM_Z, paint: { ...TONE[nearId], ...FADE_IN } }, MAPBOX_IMAGERY);
+		picked = nearId;
+		// The Worker 404s what a box covers, a standby source not on the map and anything past 90% of a free tier, and
+		// 204s ground the source has no imagery for; Streets shows through.
+		map.addSource(NEAR, raster(nearId, near, { minzoom: LIVE_FROM_Z }));
+		map.addLayer({ id: NEAR, type: "raster", source: NEAR, minzoom: LIVE_FROM_Z, paint: FADE_IN }, MAPBOX_IMAGERY);
 		for (const [id, src] of Object.entries(SATELLITE_SOURCES) as [string, SatelliteSource][])
 			src.covers?.forEach((bounds, i) => {
 				// One source per box: a raster source takes one bounds, and outside it no tile is asked for.
 				const box = `gc-${id}-${i}`;
 				boxes.set(box, bounds);
-				map.addSource(box, raster(id, src, { bounds: [...bounds], minzoom: FADE_FROM_Z }));
-				map.addLayer({ id: box, type: "raster", source: box, minzoom: FADE_FROM_Z, paint: FADE_IN }, MAPBOX_IMAGERY);
+				map.addSource(box, raster(id, src, { bounds: [...bounds], minzoom: LIVE_FROM_Z }));
+				map.addLayer({ id: box, type: "raster", source: box, minzoom: LIVE_FROM_Z, paint: FADE_IN }, MAPBOX_IMAGERY);
 			});
 		map.removeLayer(MAPBOX_IMAGERY);
 		photos = createSatelliteMount(map, above ?? "", null);
@@ -192,6 +186,10 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 	addEventListener("offline", moved);
 	const offRegions = onRegionsChanged(moved);
 	const offPhoto = onPhoto(moved);
+	const offFollow = onFollowing((on) => {
+		following = on;
+		void show();
+	});
 	if (map.isStyleLoaded()) restyled();
 	return () => {
 		loads++;
@@ -203,6 +201,7 @@ export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: st
 		removeEventListener("offline", moved);
 		offRegions();
 		offPhoto();
+		offFollow();
 		photos?.dispose();
 		photos = null;
 		map.removeControl(logoCtl);

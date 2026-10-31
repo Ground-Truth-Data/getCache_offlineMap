@@ -148,7 +148,7 @@ export type SourceId = keyof typeof SATELLITE_SOURCES;
 /** What a Worker serves when nobody has switched it; a switch lives in the Worker's R2 bucket. */
 export const DEFAULT_SOURCE: SourceId = "maptiler";
 
-/** The online map draws `far` below SHARP_FROM_Z and `near` from it, until Squirrel picks others. */
+/** The online map draws `near` from z14 over Streets, until Squirrel picks another; `far` is no longer drawn. */
 export const MAP_DEFAULT = { far: "sentinel", near: "maptiler" } as const satisfies Record<string, SourceId>;
 export type MapBand = keyof typeof MAP_DEFAULT;
 

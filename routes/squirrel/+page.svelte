@@ -61,15 +61,6 @@ const PINS_PER_USER = 20;
 const HIT_RATES = [0.5, 0.7, 0.9];
 // MapTiler Flex includes 500k requests a month; Esri's free tier is in the contract because the Worker stops at 90% of it.
 const INCLUDED: Record<string, number> = { maptiler: 500_000 };
-// Mapbox bills the online map per load, not per tile: 50k free, then $ per 1,000 falling by tier (mapbox.com/pricing, Oct 2026).
-const MAPBOX_LOADS = { free: 50_000, tiers: [[100_000, 5], [200_000, 4], [1_000_000, 3], [Infinity, 2.5]] as const };
-const OPENS_PER_DAY = 3;
-const loadsCost = (n: number) =>
-	MAPBOX_LOADS.tiers.reduce((usd, [upTo, per], i) => {
-		const from = i ? MAPBOX_LOADS.tiers[i - 1][0] : MAPBOX_LOADS.free;
-		return usd + (Math.max(0, Math.min(n, upTo) - from) / 1000) * per;
-	}, 0);
-const LOADS = USERS * OPENS_PER_DAY * 30;
 
 const LOOK: Record<string, { sub: string; lic: Lic; licText: string; lock?: string }> = {
 	maptiler: { sub: "satellite-v2 · pin photos", lic: "ok", licText: "R2 approved" },
@@ -80,7 +71,7 @@ const LOOK: Record<string, { sub: string; lic: Lic; licText: string; lock?: stri
 };
 // Esri, USGS and the Province each license their logo only by request, so they keep their dot.
 // Mapbox forbids its icon alone, so its row carries the wordmark.
-const LOGO: Record<string, string> = { maptiler: maptilerMark, sentinel: sentinelMark, mapbox: mapboxLogo, "mapbox-loads": mapboxLogo };
+const LOGO: Record<string, string> = { maptiler: maptilerMark, sentinel: sentinelMark, mapbox: mapboxLogo };
 const BC_COLOR = "oklch(0.74 0.10 190)";
 const ROADS_COLOR = "#f3f1e9";
 
@@ -137,7 +128,8 @@ async function flip(path: Parameters<typeof squirrelUrl>[0], body: string): Prom
 		failure = String(e instanceof Error ? e.message : e);
 	}
 }
-const BANDS: [MapBand, string][] = [["far", "below z12"], ["near", "z12 and up"]];
+// Only `near` is drawn: the online map is Streets with live imagery from z14. `far` is kept by the Worker, unused.
+const BANDS: [MapBand, string][] = [["near", "z14 and up"]];
 const bandsOf = (id: string) => (answer ? BANDS.filter(([b]) => answer?.map[b] === id).map(([, label]) => label).join(" · ") : null);
 
 /** `source|z|tier` counts for one source, summed over the tiers named. */
@@ -222,24 +214,6 @@ const rows = $derived<Row[]>([
 		price: "free",
 		unit: "",
 		free: null,
-	},
-	{
-		...blank,
-		id: "mapbox-loads",
-		name: "Mapbox map loads",
-		sub: "online map · billed per load",
-		color: SATELLITE_SOURCES.mapbox.color,
-		lic: "tos",
-		licText: "ToS forbids",
-		licence: "Mapbox ToS: no caching of map data outside the SDK",
-		cache: false,
-		lock: "Mapbox ToS: no caching outside the SDK",
-		override: null,
-		price: "$5→2.50",
-		unit: "/1k loads",
-		free: MAPBOX_LOADS.free,
-		proj: HIT_RATES.map(() => loadsCost(LOADS)),
-		projNote: `${k(LOADS)} loads · ${OPENS_PER_DAY} opens/user/day`,
 	},
 ]);
 
@@ -583,7 +557,7 @@ function toBody(node: HTMLElement) {
 					<div class="tot r">{@render dash(total.mtd, usd, "gold")}</div><div class="tot"></div><div class="tot r last dim">↓</div>
 
 					<div class="proj first"><span class="lbl gold">10K USERS / MO</span></div>
-					<div class="proj" style="grid-column:span 7"><span class="dim small">{n(USERS)} planters × {PINS_PER_USER} pin photos a month · crews share tiles, so 50–90% come from R2 · Mapbox map {OPENS_PER_DAY} opens a day · Esri held under its stop · BC unmeasured</span></div>
+					<div class="proj" style="grid-column:span 7"><span class="dim small">{n(USERS)} planters × {PINS_PER_USER} pin photos a month · crews share tiles, so 50–90% come from R2 · the map is Streets from our R2, live MapTiler only from z14 outside pin photos · Esri held under its stop · BC unmeasured</span></div>
 					<div class="proj"></div><div class="proj"></div><div class="proj"></div><div class="proj"></div><div class="proj"></div><div class="proj"></div>
 					<div class="proj r last proj-cell">{@render byHit(total.proj, "bigproj")}</div>
 				</div>
@@ -664,7 +638,7 @@ function toBody(node: HTMLElement) {
 							{#each stored as s (s.id)}
 								<span class="sw" style="background:{s.color}"></span><span>{s.name}</span><span class="dim r">{k(s.tiles ?? 0)}</span><span class="num r">{(s.gb ?? 0).toFixed(3)} GB</span><span class="dim r">— km²</span>
 							{/each}
-							{#each rows.filter((r) => !stored.includes(r) && r.id !== "mapbox-loads") as s (s.id)}
+							{#each rows.filter((r) => !stored.includes(r)) as s (s.id)}
 								<span class="sw" style="background:{s.color};opacity:.35"></span><span class="dim">{s.name}</span><span class="dim r">0</span><span class="small r" class:red={!s.cache} class:dim={s.cache}>{s.cache ? "nothing yet" : "not stored"}</span><span></span>
 							{/each}
 						</div>

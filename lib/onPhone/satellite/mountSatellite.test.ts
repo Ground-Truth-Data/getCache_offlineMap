@@ -54,7 +54,8 @@ describe("createSatelliteMount", () => {
 		expect(id).toBe("v4-sat-49_50000__119_60000");
 		const [w, s, e, nn] = bounds(NEAR.center);
 		expect(d.sources.get(id)).toMatchObject({ type: "image", url: "blob:" + n, coordinates: [[w, nn], [e, nn], [e, s], [w, s]] });
-		expect(d.layers.map((l) => l.id)).toEqual([`${id}-l`, SAT_CLOSE_LAYER, "roads"]);
+		expect(d.layers.map((l) => l.id)).toEqual([`${id}-l`, SAT_CLOSE_LAYER, `${id}-edge`, "roads"]);
+		expect(d.layers[2]).toMatchObject({ type: "line", paint: { "line-color": "#f5a119" } });
 		expect((d.layers[0]!.paint as Record<string, unknown[]>)["raster-opacity"]).toEqual(["interpolate", ["linear"], ["zoom"], SAT_MIN_Z, 0, SAT_MIN_Z + 0.5, 1]);
 		expect([...mount.mounted()]).toEqual([NEAR.key]);
 		await mount.display(NEAR);

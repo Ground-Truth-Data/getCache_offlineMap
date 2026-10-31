@@ -78,7 +78,8 @@ export async function photoTiles(keys: string[], owner: string, source: string =
 		await getEach(
 			urls as string[],
 			(i, b, cache) => {
-				if (!b) return;
+				// A 204: the source has no imagery for this ground, and the bake fills it from elsewhere.
+				if (!b) return void have.set(missing[i], new ArrayBuffer(0));
 				if (wire && cache === "HIT") wire.hit++;
 				else if (wire && cache === "MISS") wire.miss++;
 				got.push([missing[i], b]);
@@ -87,13 +88,13 @@ export async function photoTiles(keys: string[], owner: string, source: string =
 				spendBytes(b.byteLength);
 			},
 			() => sessionCap.tripped,
-			// MapTiler lacks some tiles; the bake already tolerates gaps.
-			true,
-			(e) => {
-				lastTileFailure = reasonOf(e);
-			},
+			false,
+			undefined,
 			SAT_IN_FLIGHT,
 		);
+	} catch (e) {
+		lastTileFailure = reasonOf(e);
+		throw e;
 	} finally {
 		if (keep) await putPhotoTiles(got, owner);
 	}
@@ -263,7 +264,7 @@ async function pass(asks: readonly PhotoAsk[]): Promise<number> {
 		let img: Awaited<ReturnType<typeof bakeSatelliteImage>> = null;
 		try {
 			const wire: PhotoWire = { disk: 0, hit: 0, miss: 0, kept: !!active[2][sid] };
-			img = await bakeSatelliteImage(photoKey, at, src, (keys) => photoTiles(keys, id, sid, wire), () => claimArea(id), wire);
+			img = await bakeSatelliteImage(photoKey, at, src, (keys, from = sid) => photoTiles(keys, id, from, wire), () => claimArea(id), wire);
 		} catch (error) {
 			if (error instanceof RateLimited) {
 				pausedUntil = Date.now() + error.ms;

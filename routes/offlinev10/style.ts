@@ -10,6 +10,7 @@ import type {
 	StyleSpecification,
 } from "maplibre-gl";
 import { HIGHWAY_Z } from "../../lib/route/roadGraph";
+import { HELD_EDGE } from "../../lib/onPhone/satellite/mountSatellite";
 import { HIGHWAY_TILES, PLANET_TILES } from "./protocol";
 import { ANCHOR_Z, MAX_Z, MIN_Z } from "./tiles";
 
@@ -20,7 +21,6 @@ export const REGIONS = "v10-regions";
 /** A blob's photo sits over the earth and landuse fills, under water, roads and labels. */
 export const PHOTO_INSERT_BEFORE = "water";
 
-const GOLD = "#f5a119";
 
 // Zoomed in, stock slate water sits at the same value as the road greys, so a creek reads as a track; it turns blue over a zoom span.
 const WATER_FAR = DARK.water;
@@ -41,7 +41,7 @@ export const legend = () =>
 	[
 		{ label: m.ofmap_v10_legend_roads(), color: DARK.major, swatch: "line" },
 		{ label: m.ofmap_v10_legend_water(), color: DARK.water, swatch: "line" },
-		{ label: m.ofmap_v10_legend_saved_edge(), color: GOLD, swatch: "line" },
+		{ label: m.ofmap_v10_legend_saved_edge(), color: HELD_EDGE!["line-color"] as string, swatch: "line" },
 	] as const;
 
 const BASE_TILES = "/mobileAssets/worldBase/base/tiles";
@@ -274,11 +274,7 @@ export function buildStyle(origin: string): StyleSpecification {
 			id: "regions-line",
 			type: "line",
 			source: REGIONS,
-			paint: {
-				"line-color": GOLD,
-				"line-opacity": 0.85,
-				"line-width": 0.5,
-			},
+			paint: HELD_EDGE,
 		},
 	];
 
