@@ -1,5 +1,6 @@
 /** Double-tap OR long-press → Snake Ruler, shared by the offline and online maps so the two never drift. */
 import type { MapMouseEvent, MapTouchEvent } from "maplibre-gl";
+import { DRAG_SLOP_PX } from "$gc/ShovelCursor.svelte";
 
 /** Both Mapbox and MapLibre satisfy this; on/off are loose because the two overload sets don't unify. */
 type TapMap = {
@@ -33,15 +34,32 @@ export function swallowNextClick(): void {
 // up the loupe; once the pointer has rested HOLD_MS the ruler seeds there, finger still down or not.
 export const ACTIVATE_MS = 260;
 export const HOLD_MS = 900;
-// Before the loupe, a move past this is a pan. After it, a move past this restarts the rest.
-const SLOP_PX = 8;
-const STILL_PX = 4;
+// Loupe or no loupe, a move past the hand's own slop is a drag for the rest of the press; under it, the hold counts on.
+// The map's clickTolerance is the same number (mapInit.ts), so it starts panning the moment the press becomes a drag.
+const SLOP_PX = DRAG_SLOP_PX;
 
 /** ShovelCursor (rapper) draws the hand and the loupe from these; a window event because a child can't import rapper's state. */
 export const emit = (phase: "arm" | "drag" | "end" | "aim" | "drop", x = 0, y = 0, extra = {}) =>
 	window.dispatchEvent(new CustomEvent("gc-press", { detail: { phase, x, y, ms: HOLD_MS, ...extra } }));
 
 export const coordLabel = (lng: number, lat: number) => `${lat.toFixed(5)}°, ${lng.toFixed(5)}°`;
+
+/** A press in canvas px, from the raw event: under CSS zoom the renderer's own touch `point` leaves y unscaled. */
+export function pressPoint(canvas: HTMLCanvasElement, ev: MouseEvent | TouchEvent): { x: number; y: number } {
+	const p = "touches" in ev ? ev.touches[0]! : ev;
+	const r = canvas.getBoundingClientRect();
+	const s = canvas.offsetWidth / r.width;
+	return { x: (p.clientX - r.left) * s, y: (p.clientY - r.top) * s };
+}
+
+/** Point the loupe at a node being dragged. The page is CSS-zoomed, so a canvas px is not a viewport px. */
+export function aimLoupe(map: { getCanvas(): HTMLCanvasElement; project(ll: { lng: number; lat: number }): { x: number; y: number } }, [lng, lat]: [number, number]): void {
+	const c = map.getCanvas();
+	const r = c.getBoundingClientRect();
+	const s = c.offsetWidth / r.width;
+	const p = map.project({ lng, lat });
+	emit("aim", r.left + p.x / s, r.top + p.y / s, { canvas: c, label: coordLabel(lng, lat) });
+}
 
 export interface DoubleTapToPinOpts {
 	/** Plant the first ruler node at the tap so it's immediately grabbable. */
@@ -77,8 +95,10 @@ export function attachDoubleTapToPin(
 	let pressStart: { x: number; y: number } | null = null;
 	let isTouch = false;
 	let pressTimer: ReturnType<typeof setTimeout> | null = null;
-	// Set while the loupe is up: where the pointer is, and where and when it last came to rest.
-	let aim: { at: { x: number; y: number }; anchor: { x: number; y: number }; since: number } | null = null;
+	// Set while the loupe is up: where the pointer is, and when the hold began.
+	let aim: { at: { x: number; y: number }; since: number } | null = null;
+	// The ruler seeded with the finger still down: the map holds still until it lifts.
+	let seeded = false;
 
 	// Arm on the raw DOM release, not the map's mouseup — seeding mounts DOM under the held pointer, which fires mouseout and wipes the bookkeeping first.
 	let disarmReleaseSwallow: (() => void) | null = null;
@@ -113,43 +133,35 @@ export function attachDoubleTapToPin(
 		if (!aim) return;
 		const at = toCanvas(aim.at);
 		aim = null;
-		map.dragPan.enable();
+		pressStart = null;
+		seeded = true;
+		map.dragPan.disable();
 		emit("end", 0, 0, { locked: true });
 		const ll = map.unproject(at);
 		opts.onMeasureSeed?.(ll.lng, ll.lat);
-	};
-	const rest = () => {
-		if (lockTimer) clearTimeout(lockTimer);
-		lockTimer = setTimeout(lock, HOLD_MS);
-		return performance.now();
 	};
 
 	const aimAt = (at: { x: number; y: number }) => {
 		if (!aim) return;
 		aim.at = at;
-		if (Math.hypot(at.x - aim.anchor.x, at.y - aim.anchor.y) > STILL_PX) {
-			aim.anchor = at;
-			aim.since = rest();
-		}
 		const ll = map.unproject(toCanvas(at));
 		emit("aim", at.x, at.y, { canvas: map.getCanvas(), since: aim.since, label: coordLabel(ll.lng, ll.lat) });
 	};
 
 	const startAim = () => {
 		if (!pressStart) return;
-		aim = { at: pressStart, anchor: pressStart, since: rest() };
+		aim = { at: pressStart, since: performance.now() };
+		lockTimer = setTimeout(lock, HOLD_MS);
 		armReleaseSwallow();
-		map.dragPan.disable();
 		aimAt(pressStart);
 	};
 
-	const endAim = () => {
+	const endAim = (extra = {}) => {
 		if (lockTimer) clearTimeout(lockTimer);
 		lockTimer = null;
 		if (!aim) return;
 		aim = null;
-		map.dragPan.enable();
-		emit("end");
+		emit("end", 0, 0, extra);
 	};
 
 	const killTimer = () => {
@@ -196,23 +208,32 @@ export function attachDoubleTapToPin(
 
 	const cancelPress = (why: string) => {
 		if (pressStart) log(`✖️ cancel (${why})`);
-		if (pressTimer) emit(why === "drag past slop" ? "drag" : "end");
+		if (pressTimer) emit("end");
 		endAim();
 		killTimer();
 		pressStart = null;
+		if (seeded) map.dragPan.enable();
+		seeded = false;
 	};
 
-	// Raw window events, not the map's: Mapbox mutes its mousemove the moment its pan takes over (3 px),
-	// which is before the slop, so a map-fed check never hears a drag and the timer fires mid-pan.
+	// The loupe leaves at once and the hand grabs; the map is already panning from this same press.
+	const toDrag = () => {
+		log("↔️ move past slop → DRAG for the rest of the press");
+		disarmReleaseSwallow?.();
+		endAim({ locked: true });
+		killTimer();
+		pressStart = null;
+		emit("drag");
+	};
+
+	// Raw window events, not the map's: Mapbox mutes its mousemove the moment its pan takes over,
+	// so a map-fed check never hears a drag.
 	const onMove = (evt: MouseEvent | TouchEvent) => {
-		if (aim && (!isTouchLike(evt) || evt.touches.length === 1)) return aimAt(getClientCoords(evt));
-		if (!pressStart || !pressTimer) return;
-		const coords = getClientCoords(evt);
-		const dist = Math.hypot(coords.x - pressStart.x, coords.y - pressStart.y);
-		if (dist > SLOP_PX) {
-			log("↔️ move past slop → DRAG, not press", { dist: Math.round(dist) });
-			cancelPress("drag past slop");
-		}
+		if (!pressStart || (!pressTimer && !aim)) return;
+		if (isTouchLike(evt) && evt.touches.length !== 1) return;
+		const at = getClientCoords(evt);
+		if (Math.hypot(at.x - pressStart.x, at.y - pressStart.y) > SLOP_PX) return toDrag();
+		aimAt(at);
 	};
 
 	const onUp = () => {
@@ -221,7 +242,6 @@ export function attachDoubleTapToPin(
 	};
 
 	const onMouseOut = () => cancelPress("mouseout");
-	// Mapbox's own dragstart is NOT a cancel: it fires at 3 px, and a settling thumb moves that much — the slop above decides.
 	const onTouchCancel = () => cancelPress("touchcancel");
 
 	map.on("dblclick", onDbl);

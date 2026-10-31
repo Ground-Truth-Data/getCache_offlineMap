@@ -84,18 +84,22 @@ describe("mouse: the hold, the drag, the tap", () => {
 		expect(r.seed()).toHaveBeenCalledTimes(1);
 	});
 
-	it("once the loupe is up, the pointer slides and the rest restarts where it stops", () => {
+	it("under the loupe a fat-finger wobble keeps the countdown; past the slop the ruler drops for a drag", () => {
+		const phases: string[] = [];
+		(g.window as EventTarget).addEventListener("gc-press", (e) => phases.push((e as CustomEvent).detail.phase));
 		r.map().fire("mousedown", new FakeMouseEvent("mousedown", 200, 300));
-		vi.advanceTimersByTime(ACTIVATE_MS + HOLD_MS - 100);
-		move(240, 330);
-		vi.advanceTimersByTime(HOLD_MS - 100);
-		r.map().fire("mouseup", new FakeMouseEvent("mouseup", 240, 330));
-		expect(r.seed()).not.toHaveBeenCalled();
+		vi.advanceTimersByTime(ACTIVATE_MS + 500);
+		move(202, 301);
+		vi.advanceTimersByTime(HOLD_MS - 500);
+		expect(r.seed()).toHaveBeenCalledWith(202, 301);
+		r.map().fire("mouseup", new FakeMouseEvent("mouseup", 202, 301));
 		r.map().fire("mousedown", new FakeMouseEvent("mousedown", 200, 300));
-		vi.advanceTimersByTime(ACTIVATE_MS);
-		move(240, 330);
-		vi.advanceTimersByTime(HOLD_MS);
-		expect(r.seed()).toHaveBeenCalledWith(240, 330);
+		vi.advanceTimersByTime(ACTIVATE_MS + 500);
+		phases.length = 0;
+		move(210, 300);
+		vi.advanceTimersByTime(HOLD_MS * 2);
+		expect(r.seed()).toHaveBeenCalledTimes(1);
+		expect(phases).toEqual(["end", "drag"]);
 	});
 
 	// A ruler hand is the handle: holding it must not also bring a loupe up over it.
@@ -124,14 +128,14 @@ describe("touch: the hold, the pinch, the tap", () => {
 	const touch = (type: string, ...pts: [number, number][]) => new FakeTouchEvent(type, pts);
 	const move = (x: number, y: number) => (g.window as EventTarget).dispatchEvent(touch("touchmove", [x, y]));
 
-	it("seeds under the finger, wherever it came to rest, with the finger still down", () => {
+	it("seeds under the finger, wobble and all, with the finger still down", () => {
 		r.map().fire("touchstart", touch("touchstart", [200, 300]));
 		vi.advanceTimersByTime(ACTIVATE_MS);
-		move(220, 310);
+		move(203, 302);
 		vi.advanceTimersByTime(HOLD_MS - 1);
 		expect(r.seed()).not.toHaveBeenCalled();
 		vi.advanceTimersByTime(1);
-		expect(r.seed()).toHaveBeenCalledWith(220, 310);
+		expect(r.seed()).toHaveBeenCalledWith(203, 302);
 		r.map().fire("touchend", touch("touchend"));
 		expect(r.seed()).toHaveBeenCalledTimes(1);
 	});
@@ -148,6 +152,14 @@ describe("touch: the hold, the pinch, the tap", () => {
 		r.map().fire("touchstart", touch("touchstart", [100, 100]));
 		move(300, 100);
 		vi.advanceTimersByTime(2000);
+		expect(r.seed()).not.toHaveBeenCalled();
+	});
+
+	// The hand fists at its own slop; a press moved that far can never also become a hold.
+	it("a push the hand already fisted for never brings the loupe, even if the map never panned", () => {
+		r.map().fire("touchstart", touch("touchstart", [100, 100]));
+		move(106, 100);
+		vi.advanceTimersByTime(ACTIVATE_MS + HOLD_MS + 2000);
 		expect(r.seed()).not.toHaveBeenCalled();
 	});
 
