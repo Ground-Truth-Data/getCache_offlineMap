@@ -3,7 +3,7 @@ import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HostPorts } from "../../lib/shared/hostPorts";
 import { configureTilesDevHost } from "../../lib/worker/tilesHost";
-import { blobBusy, onBlob, removeArea, removeStaleAreas, saveSpots, startBlobService, viewing } from "./blobService";
+import { blobBusy, onBlob, removeArea, removeStaleAreas, startBlobService, viewing } from "./blobService";
 import { startPhotoService } from "./satellite";
 import { BudgetError, fullMessage, isStale, OFFLINE_TILES_BYTES, setBudgetMb, STALE_AREA_MONTHS } from "./budget";
 import { downloadRegion, roomFor } from "./download";
@@ -378,50 +378,6 @@ describe("offline areas are an LRU cache of the 16 MB test budget", () => {
 		expect((failed[0] as Error).message).toBe(fullMessage());
 		expect(await ids()).toHaveLength(4);
 		off();
-	});
-
-	it("F: an import's pins wait until one is opened, and opening saves only that one", async () => {
-		const set = { key: "groote", name: "Groote" };
-		const imported = Array.from({ length: 21 }, (_, i) => far(10 + i));
-		const at = far(5);
-		const ports = host([at]);
-		const hand = ports.places;
-		ports.places = () => [...hand(), ...imported.map((a) => ({ anchors: [a], photo: true, set }))];
-		stop = startBlobService(ports);
-		await vi.waitFor(async () => expect(await ids()).toContain(regionId(...at)), SWEEP);
-		await vi.waitFor(() => expect(blobBusy()).toBe(false), SWEEP);
-		expect(await ids()).toEqual([...[0, 1, 2, 3].map((i) => regionId(...far(i))), regionId(...at)].sort());
-
-		await viewing(view(imported[0]), 12);
-		await vi.waitFor(() => expect(blobBusy()).toBe(false), SWEEP);
-		expect(await ids()).not.toContain(regionId(...imported[0]));
-
-		saveSpots([{ at: imported[0], photo: true }]);
-		await vi.waitFor(async () => expect(await ids()).toContain(regionId(...imported[0])), SWEEP);
-		await vi.waitFor(() => expect(blobBusy()).toBe(false), SWEEP);
-		expect(await ids()).not.toContain(regionId(...imported[1]));
-	});
-
-	it("G: a 10,000-pin import fetches nothing from MapTiler, browsed or not", async () => {
-		const set = { key: "big", name: "Big" };
-		const imported = Array.from({ length: 10_000 }, (_, i): [number, number] => [-130 + (i % 100) * 0.5, 30 + Math.floor(i / 100) * 0.3]);
-		const asked: string[] = [];
-		vi.stubGlobal("fetch", async (url: string) => {
-			asked.push(String(url));
-			return String(url).endsWith("/squirrel/active") ? new Response(JSON.stringify({ active: "maptiler" })) : new Response(new ArrayBuffer(10));
-		});
-		const ports = host();
-		ports.places = () => imported.map((a) => ({ anchors: [a], photo: true, set }));
-		const stopPhotos = startPhotoService();
-		stop = startBlobService(ports);
-		for (const a of imported.slice(0, 5)) await viewing(view(a), 12);
-		window.dispatchEvent(new Event("online"));
-		await new Promise((r) => setTimeout(r, 200));
-		await vi.waitFor(() => expect(blobBusy()).toBe(false), SWEEP);
-		expect(asked.filter((u) => u.includes("/satellite/maptiler/"))).toEqual([]);
-		expect(baked).toEqual([]);
-		expect(await ids()).toEqual([]);
-		stopPhotos();
 	});
 });
 

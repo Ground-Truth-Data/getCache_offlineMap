@@ -4,6 +4,7 @@ import * as maplibregl from "maplibre-gl";
 import { SATELLITE_SOURCES } from "../../contract/satelliteSources";
 import { listRegions, onRegionsChanged } from "../../../routes/offlinev10/store";
 import { onPhoto } from "../../../routes/offlinev10/satellite";
+import { MAP_HOME_CENTER } from "../../shared/homeCentre";
 import { pinLibraryUrl } from "../../shared/icons";
 import { createSatelliteMount, type SatelliteMount } from "./mountSatellite";
 import sampleImage from "./sample/mississippiLake.webp";
@@ -14,7 +15,7 @@ const ANCHOR = "satellite";
 /** A new planter's first look, drawn while the phone holds no area: Sentinel-2 (CC BY, so it may ship in the app) of
  * Mississippi Lake, Ontario, and one tree. Drawn only, never stored, so there is nothing of it to sync, delete or trip over. */
 export const SAMPLE = {
-	center: [-76.19, 45.035] as [number, number],
+	center: MAP_HOME_CENTER,
 	zoom: 12.8,
 	pin: [-76.18, 45.0465] as [number, number],
 	// The z14 tile edges it was stitched from.
@@ -24,7 +25,7 @@ export const SAMPLE = {
 const SAMPLE_ID = "gc-sample";
 
 /** Remounts the photos on every style load. `onCredits` hears the attributions of the imagery on the map. */
-export function attachOnlineImagery(map: maplibregl.Map, onCredits: (credits: string[]) => void): () => void {
+export function attachHeldPhotos(map: maplibregl.Map, onCredits: (credits: string[]) => void): () => void {
 	let photos: SatelliteMount | null = null;
 	let above: string | undefined;
 	let sample: maplibregl.Marker | null = null;

@@ -5,8 +5,6 @@ export interface HostPlace {
 	anchors: [number, number][];
 	/** Bakes a satellite photo at its anchor. Pins only: the photo source bills per tile, and a shape's anchors would each take one. */
 	photo: boolean;
-	/** An import too big to fetch unasked: the planter saves one pin or the whole set, after seeing its size. Absent = fetched on its own. */
-	set?: { key: string; name: string };
 }
 
 export interface HostPorts {

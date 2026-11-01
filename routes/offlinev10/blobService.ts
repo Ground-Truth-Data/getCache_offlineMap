@@ -31,8 +31,6 @@ export type BlobEvent =
 	| { kind: "removed"; id: string }
 	| { kind: "pins" };
 
-export type Spot = { at: [number, number]; photo: boolean };
-
 export interface InFlight {
 	at: [number, number];
 	progress: Progress | null;
@@ -221,21 +219,11 @@ async function look(box: Box): Promise<void> {
 		for (const r of rows)
 			if (touched.has(r.id) && ((missing[r.id] ?? 0) > 0 || (r.photoKey && (r.area || pins?.has(r.id)) && !isCurrentPhoto(await getSatImageByKey(r.photoKey))))) void repairBlob(r);
 	}
-	// Any row, a removed one included, means the planter once had this pin saved.
-	const saved = new Set(rows.map((r) => r.id));
 	for (const p of host?.places() ?? [])
 		for (const at of p.anchors) {
 			if (at[0] < box.w || at[0] > box.e || at[1] < box.s || at[1] > box.n) continue;
-			const id = regionId(at[0], at[1]);
-			// An import's pin waits until it is opened: a big import on screen would burst the imagery host.
-			if (p.set && !saved.has(id) && !queued.has(id)) continue;
 			void queueBlob(at[0], at[1], { photo: p.photo, pin: true, revive: true });
 		}
-}
-
-/** The planter opened these pins. */
-export function saveSpots(spots: readonly Spot[]): void {
-	for (const { at, photo } of spots) void queueBlob(at[0], at[1], { photo, pin: true, revive: true });
 }
 
 async function removeBlob(id: string): Promise<void> {
@@ -291,7 +279,7 @@ export function startBlobService(ports: HostPorts): () => void {
 		for (const p of ports.places()) {
 			for (const [lng, lat] of p.anchors) {
 				now.add(regionId(lng, lat));
-				if (!p.set) void queueBlob(lng, lat, { photo: p.photo, pin: true });
+				void queueBlob(lng, lat, { photo: p.photo, pin: true });
 			}
 		}
 		return now;

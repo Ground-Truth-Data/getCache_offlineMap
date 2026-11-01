@@ -79,12 +79,11 @@ with its `BudgetError`; nothing pops up over the map. Bytes are the only
 wall; there is no cap on the number of areas, since many maps with many pins
 each is normal.
 
-**An import of more than 20 features waits for the planter.** The host marks
-each feature of such an import with its `set` (`hostPorts.ts`); the engine
-fetches none of them on its own, and nothing offers them over the map: a pin
-is saved when the planter opens it (`saveSpots`). A pin once saved has a row, and
-from then on it is any other pin. Hand-dropped pins and imports of 20 or fewer
-download on their own.
+**An imported pin is any other pin.** Every pin of every map earns its blob,
+whoever made it. A pin within `PHOTO_REUSE_KM` of a held photo reuses it
+(`photoCovering` in `store.ts`, the one coverage test the SAVE AREA tile and
+the open rule also ask), so a dense import costs one photo per patch of
+ground, not one per pin.
 
 An evicted area keeps its row with `removed` set and its tiles and photo
 freed, so the engine does not fetch it straight back and push out the next one;

@@ -77,17 +77,23 @@ export function regionId(lng: number, lat: number): string {
 
 /** The one place a pin gets its photo: the nearest existing photo CENTRE within PHOTO_REUSE_KM, else a new one centred on the pin. Judged against centres, never pins, so a chain of nearby pins cannot drift off the ground a photo holds. Carried by value from here; nothing downstream rounds or parses a coordinate to rebuild it. */
 export function choosePhoto(at: [number, number], regions: readonly Region[]): { photoKey: string; photoCenter: [number, number] } {
-	let best: { photoKey: string; photoCenter: [number, number] } | null = null;
+	const r = photoCovering(at, regions);
+	return r ? { photoKey: r.photoKey!, photoCenter: r.photoCenter! } : { photoKey: satImageKey(at), photoCenter: at };
+}
+
+/** The one coverage test: the nearest held photo that reaches this spot. A pin, a saved area and the open rule all ask it. */
+export function photoCovering(at: [number, number], regions: readonly Region[]): Region | undefined {
+	let best: Region | undefined;
 	let bestKm = PHOTO_REUSE_KM;
 	for (const r of regions) {
 		if (r.removed || !r.photoKey || !r.photoCenter) continue;
 		const km = kmBetween(at, r.photoCenter);
 		if (km <= bestKm) {
 			bestKm = km;
-			best = { photoKey: r.photoKey, photoCenter: r.photoCenter };
+			best = r;
 		}
 	}
-	return best ?? { photoKey: satImageKey(at), photoCenter: at };
+	return best;
 }
 
 let dbp: Promise<IDBDatabase> | null = null;

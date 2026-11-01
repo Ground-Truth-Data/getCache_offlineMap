@@ -136,6 +136,21 @@ describe("blob service", () => {
 		expect(listening()).toBe(false);
 	});
 
+	it("every pin of an imported map earns its blob, not only the one opened first", async () => {
+		const pins: [number, number][] = [[-76.2, 45.05], [-76.17, 45.03], [-76.14, 45.01], [-76.11, 44.99], [-76.08, 44.97]];
+		const set = { key: "m1", name: "Five pins" };
+		const { ports } = fakePorts(() => pins.map((at) => ({ anchors: [at], photo: true, set })));
+		const stop = startBlobService(ports);
+		for (let i = 0; i < pins.length; i++) {
+			await tick();
+			await tick();
+			release?.();
+		}
+		await tick();
+		expect(downloads).toEqual(pins);
+		stop();
+	});
+
 	it("a shape bakes every anchor, roads only — no photo", async () => {
 		const list = [
 			{

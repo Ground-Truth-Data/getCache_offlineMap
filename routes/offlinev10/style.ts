@@ -301,7 +301,8 @@ export function buildStyle(origin: string): StyleSpecification {
 				minzoom: MIN_Z,
 				maxzoom: MAX_Z,
 				// ODbL: the credit and its link are owed wherever the data shows.
-				attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap contributors</a>',
+				// Letter for letter the tail of MapTiler's credit, so MapLibre drops this one while a MapTiler photo is up.
+				attribution: '<a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>',
 			},
 			[REGIONS]: {
 				type: "geojson",

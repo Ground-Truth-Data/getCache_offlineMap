@@ -76,7 +76,7 @@ A baked photo carries its source's name, and the map credits every photo that is
 |---|---|
 | The source list, licences, attributions, prices | `lib/contract/satelliteSources.ts` |
 | A covering source wins (USGS first) | `lib/contract/satelliteSources.ts` (`sourceAt`, `coverOf`) |
-| The online map draws held photos and the sample | `lib/onPhone/satellite/onlineImagery.ts` |
+| The online map draws held photos and the sample | `lib/onPhone/satellite/heldPhotos.ts` |
 | The open rule | `routes/offlinev10/areaOpens.ts` |
 | SAVE AREA, the cellular ask, the open camera | `../getCache_OnlineMap/lib/chrome/saveArea.svelte.ts` |
 | Worker: edge → R2 → upstream; R2 only when the cache switch says keep | `workers/worker-local-dev/src/index.ts` (`satelliteTile`) |
