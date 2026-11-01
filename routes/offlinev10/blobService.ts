@@ -24,7 +24,7 @@ import {
 import { ANCHOR_Z, type Box, boxesIntersect, rangeBox } from "./tiles";
 
 export type BlobEvent =
-	| { kind: "start"; at: [number, number]; id: string; photoKey?: string; photoCenter?: [number, number] }
+	| { kind: "start"; at: [number, number]; id: string; photoKey?: string; photoCenter?: [number, number]; area?: boolean }
 	| { kind: "progress"; progress: Progress }
 	| { kind: "landed"; region: Region }
 	| { kind: "failed"; at: [number, number]; error: unknown }
@@ -46,6 +46,7 @@ interface Ask {
 	/** a blob with no pin (follow-me) wants no photo; which photo is chosen when its download starts, against the rows then on disk */
 	photo: boolean;
 	pin?: boolean;
+	area?: boolean;
 	/** the row being repaired: its missing tiles are fetched and the row keeps its place */
 	keep?: Region;
 	/** back in view: a removed row is fetched again rather than left alone */
@@ -93,11 +94,11 @@ const whole = async (id: string): Promise<boolean> => {
 	return !!r && !r.removed && !r.filling;
 };
 
-/** True when actually queued; false when disk or the queue already has this spot. `photo: false` for a blob with no pin; `pin` for one that goes with its pin; `revive` fetches a removed one again. */
+/** True when actually queued; false when disk or the queue already has this spot. `photo: false` for a blob with no pin; `pin` for one that goes with its pin; `area` for ground asked for without one; `revive` fetches a removed one again. */
 export async function queueBlob(
 	lng: number,
 	lat: number,
-	opts: { photo?: boolean; pin?: boolean; revive?: boolean } = {},
+	opts: { photo?: boolean; pin?: boolean; area?: boolean; revive?: boolean } = {},
 ): Promise<boolean> {
 	const id = regionId(lng, lat);
 	if (queued.has(id)) return false;
@@ -105,7 +106,7 @@ export async function queueBlob(
 	// A second ask for the same spot can land during the await.
 	if (queued.has(id)) return false;
 	queued.add(id);
-	queue.push({ at: [lng, lat], id, photo: opts.photo !== false, pin: opts.pin, revive: opts.revive });
+	queue.push({ at: [lng, lat], id, photo: opts.photo !== false, pin: opts.pin, area: opts.area, revive: opts.revive });
 	void drain();
 	return true;
 }
@@ -114,7 +115,7 @@ export async function queueBlob(
 export async function repairBlob(r: Region): Promise<boolean> {
 	if (queued.has(r.id)) return false;
 	queued.add(r.id);
-	queue.push({ at: [r.lng, r.lat], id: r.id, photo: !!r.photoKey, pin: r.pin, keep: r });
+	queue.push({ at: [r.lng, r.lat], id: r.id, photo: !!r.photoKey, pin: r.pin, area: r.area, keep: r });
 	void drain();
 	return true;
 }
@@ -134,7 +135,7 @@ async function drain(): Promise<void> {
 	}
 }
 
-async function download({ at, id, photo, pin, keep }: Ask): Promise<void> {
+async function download({ at, id, photo, pin, area, keep }: Ask): Promise<void> {
 	try {
 		// Before "start": a refused area must not get its photo baked either.
 		await makeRoom(at, id);
@@ -145,7 +146,7 @@ async function download({ at, id, photo, pin, keep }: Ask): Promise<void> {
 	// A repair keeps the photo its row was born with; a new blob chooses against the rows on disk now, the one before it included.
 	const chosen = keep ? (keep.photoKey && keep.photoCenter ? { photoKey: keep.photoKey, photoCenter: keep.photoCenter } : undefined) : photo ? choosePhoto(at, await listRegions()) : undefined;
 	current = { at, progress: null, startedAt: performance.now() };
-	emit({ kind: "start", at, id, ...chosen });
+	emit({ kind: "start", at, id, ...chosen, area });
 	try {
 		const region = await downloadRegion(
 			at[0],
@@ -155,7 +156,7 @@ async function download({ at, id, photo, pin, keep }: Ask): Promise<void> {
 				if (current) current.progress = progress;
 				emit({ kind: "progress", progress });
 			},
-			{ id, ...chosen, pin, keep },
+			{ id, ...chosen, pin, area, keep },
 		);
 		say(
 			`[offlineV10] blob ${region.id}: ${region.fetched} new of ${region.tiles} tiles, ${((region.newBytes ?? 0) / 1048576).toFixed(1)} MB added (${(region.bytes / 1048576).toFixed(1)} MB on the ground), ${region.ms} ms to disk`,
@@ -218,7 +219,7 @@ async function look(box: Box): Promise<void> {
 		const missing = await checkRegions([...touched]);
 		const pins = photoIds();
 		for (const r of rows)
-			if (touched.has(r.id) && ((missing[r.id] ?? 0) > 0 || (r.photoKey && pins?.has(r.id) && !isCurrentPhoto(await getSatImageByKey(r.photoKey))))) void repairBlob(r);
+			if (touched.has(r.id) && ((missing[r.id] ?? 0) > 0 || (r.photoKey && (r.area || pins?.has(r.id)) && !isCurrentPhoto(await getSatImageByKey(r.photoKey))))) void repairBlob(r);
 	}
 	// Any row, a removed one included, means the planter once had this pin saved.
 	const saved = new Set(rows.map((r) => r.id));

@@ -175,14 +175,6 @@ export async function networkTile(key: string): Promise<ArrayBuffer | undefined>
 	return r.status === 204 ? new ArrayBuffer(0) : r.arrayBuffer();
 }
 
-const followers = new Set<(on: boolean) => void>();
-
-/** Hears route following start and stop: while it is on, the online map fetches no live satellite. */
-export function onFollowing(fn: (on: boolean) => void): () => void {
-	followers.add(fn);
-	return () => followers.delete(fn);
-}
-
 export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): RouteHandle {
 	let stops: LngLat[] = [];
 	let result: RouteResult | null = null;
@@ -271,7 +263,6 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	};
 
 	const stayAwake = (on: boolean): void => {
-		for (const fn of followers) fn(on);
 		if (!on) {
 			void wake?.release();
 			wake = null;

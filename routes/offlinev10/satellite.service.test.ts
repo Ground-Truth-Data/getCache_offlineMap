@@ -89,6 +89,24 @@ describe("startPhotoService", () => {
 	});
 });
 
+describe("a saved area", () => {
+	it("bakes its photo with no pin, at its start and when its row is swept", async () => {
+		h.notPins = new Set(["saved", "fresh"]);
+		h.regions = [{ id: "saved", photoKey: "pv", photoCenter: [-76.2, 45], area: true } as (typeof h.regions)[number]];
+		const landed = vi.fn();
+		const offLanded = onPhoto(landed);
+		const stop = startPhotoService();
+		h.blob!({ kind: "pins", id: "" });
+		await vi.waitFor(() => expect(landed).toHaveBeenCalledTimes(1));
+		h.blob!({ kind: "start", id: "fresh", photoKey: "pf", photoCenter: [-76.3, 45], area: true } as Parameters<NonNullable<typeof h.blob>>[0]);
+		await vi.waitFor(() => expect(landed).toHaveBeenCalledTimes(2));
+		expect(h.bake.mock.calls.map((c) => (c as unknown[])[0])).toEqual(["pv", "pf"]);
+		offLanded();
+		stop();
+		h.notPins = new Set();
+	});
+});
+
 describe("photo issue", () => {
 	it("says why photos stopped, once, and clears when one lands after the pause", async () => {
 		const heard = vi.fn();

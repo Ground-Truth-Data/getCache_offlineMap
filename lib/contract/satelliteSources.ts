@@ -1,4 +1,4 @@
-/** Every satellite imagery source, read by the tiles Worker, the photo bake and /app/squirrel alike.
+/** Every satellite imagery source — each one's licence lets us keep its tiles, so the map draws only what the phone holds. Read by the tiles Worker, the photo bake and /app/squirrel alike.
  * The id is the URL segment (`/satellite/<id>/z/x/y.jpg`) and heads every R2 key, so a new tileset is a new id. */
 
 export interface SatelliteSource {
@@ -8,7 +8,7 @@ export interface SatelliteSource {
 	color: string;
 	/** the Worker's request; `key` is the Worker secret named by `secret` */
 	tileUrl: (key: string, z: number, x: number, y: number) => string;
-	secret?: "GC_mapTiler_key" | "GC_esri_key" | "PUBLIC_GC_RT_mapbox_token";
+	secret?: "GC_mapTiler_key";
 	/** past this the source has nothing sharper; the Worker refuses */
 	maxZ: number;
 	/** a tile's width in px when not 256; a map told the wrong size asks one zoom too deep */
@@ -28,12 +28,6 @@ export interface SatelliteSource {
 	usdPer1000: number;
 	/** where it has imagery, [w, s, e, n]; a source with any wins there over the switched-on one */
 	covers?: readonly (readonly [number, number, number, number])[];
-	/** streamed only: never kept at the edge, in R2 or in a photo, and never the switched-on source */
-	live?: true;
-	/** the Worker serves it only while Squirrel has it on the online map, so it bills nothing until picked */
-	standby?: true;
-	/** what it gives free each month; the Worker stops serving it at 90% of this */
-	freeTilesPerMonth?: number;
 }
 
 export const SATELLITE_SOURCES = {
@@ -103,57 +97,12 @@ export const SATELLITE_SOURCES = {
 			[-67.3, 17.9, -65.2, 18.6],
 		],
 	},
-	esri: {
-		name: "Esri World Imagery",
-		color: "#d99a3d",
-		tileUrl: (key, z, x, y) => `https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}?token=${key}`,
-		secret: "GC_esri_key",
-		// z19 is cities only; past 18 the map stretches z18, at a quarter of the billed tiles.
-		maxZ: 18,
-		// Never baked (`live`); these only satisfy the shape.
-		zoom: 17,
-		canvasPx: 3456,
-		quality: 0.9,
-		attribution: 'Powered by <a href="https://www.esri.com/" target="_blank">Esri</a> | Sources: Esri, Vantor, Earthstar Geographics, and the GIS User Community',
-		licence: "ArcGIS Location Platform: stream only — \"Customer may not otherwise scrape, download, or store Data.\"",
-		cacheToR2: false,
-		live: true,
-		usdPer1000: 0.15,
-		freeTilesPerMonth: 2_000_000,
-	},
-	mapbox: {
-		name: "Mapbox Satellite",
-		color: "oklch(0.72 0.12 10)",
-		tileUrl: (key, z, x, y) => `https://api.mapbox.com/v4/mapbox.satellite/${z}/${x}/${y}.jpg90?access_token=${key}`,
-		secret: "PUBLIC_GC_RT_mapbox_token",
-		// Like Esri: past 18 the map stretches z18 rather than bill four tiles for each.
-		maxZ: 18,
-		// Never baked (`live`); these only satisfy the shape.
-		zoom: 17,
-		canvasPx: 3456,
-		quality: 0.9,
-		attribution: '<a href="https://www.mapbox.com/about/maps/" target="_blank">&copy; Mapbox</a> <a href="https://www.openstreetmap.org/about/" target="_blank">&copy; OpenStreetMap</a> <a href="https://apps.mapbox.com/feedback/" target="_blank"><strong>Improve this map</strong></a> <a href="https://www.maxar.com/" target="_blank">&copy; Maxar</a>',
-		licence: "Mapbox ToS: stream only, no caching outside the SDK",
-		cacheToR2: false,
-		live: true,
-		standby: true,
-		// Raster Tiles API, past the 750k free; $0.20 from 2M, $0.15 from 4M.
-		usdPer1000: 0.25,
-		freeTilesPerMonth: 750_000,
-	},
 } satisfies Record<string, SatelliteSource>;
 
 export type SourceId = keyof typeof SATELLITE_SOURCES;
 
 /** What a Worker serves when nobody has switched it; a switch lives in the Worker's R2 bucket. */
 export const DEFAULT_SOURCE: SourceId = "maptiler";
-
-/** The online map draws `near` from z14 over Streets, until Squirrel picks another; `far` is no longer drawn. */
-export const MAP_DEFAULT = { far: "sentinel", near: "maptiler" } as const satisfies Record<string, SourceId>;
-export type MapBand = keyof typeof MAP_DEFAULT;
-
-/** What Squirrel may put on the map: every source that draws the whole world, not only its own boxes. */
-export const MAP_PICKS = (Object.entries(SATELLITE_SOURCES) as [SourceId, SatelliteSource][]).filter(([, s]) => !s.covers).map(([id]) => id);
 
 export function sourceOf(id: string): SatelliteSource | undefined {
 	return (SATELLITE_SOURCES as Record<string, SatelliteSource>)[id];

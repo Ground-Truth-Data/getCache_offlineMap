@@ -1,126 +1,100 @@
 # Satellite sources
 
-Every satellite pixel on both maps comes from one of the sources below, through the tiles Worker, so
-`/app/squirrel` can count and price it. The list itself is `lib/contract/satelliteSources.ts`; the
-Worker, the photo bake and Squirrel all read it. When this page and that file disagree, the file wins
-and this page is fixed.
+Every satellite pixel on both maps is a photo the phone holds: nothing streams. A photo is baked once per
+blob (a pin, or an area the planter saved) from one of the sources below, through the tiles Worker, so
+`/app/squirrel` can count and price it. Every source's licence lets us keep its tiles. The list itself is
+`lib/contract/satelliteSources.ts`; the Worker, the photo bake and Squirrel all read it. When this page and
+that file disagree, the file wins and this page is fixed.
 
 ## Who serves what
 
-| Where | Source | Zooms | Kept | Cost |
+| Where | Source | Zoom baked | Kept | Cost |
 |---|---|---|---|---|
-| Browsing below z12 | Squirrel's pick; Sentinel by default | — | Per source | Per source |
-| Browsing z12+, outside pins and outside the US | Squirrel's pick, fading in from z10; MapTiler by default | — | Per source | Per source |
-| Browsing z12+ in the US | USGS | 12–16 | R2 | Free |
-| Pin blobs (the baked photo and its close-up) | MapTiler | 17 | R2, and on the phone | $0.15 per 1,000 |
-| Pin blobs in the US | USGS | 16 | R2, and on the phone | Free |
-| Only while Squirrel puts it on the map | Mapbox satellite | 0–18 | Never | $0.25 per 1,000 past 750k |
+| Blobs outside the US | MapTiler | 16 | R2, and on the phone | $0.15 per 1,000 past 500k a month |
+| Blobs in the US | USGS | 16 | R2, and on the phone | Free |
+| Ground the first source has no imagery for | Sentinel | 14 | R2, and on the phone | Free |
+| A new planter's sample area (Mississippi Lake, Ontario) | Sentinel, bundled in the app | 14 | In the app bundle (70 KB) | Free |
 | Off | BC Imagery | — | — | Not wired |
 
-### The online map: two picks
+Esri World Imagery and Mapbox Satellite were deleted on 1 Nov 2026: both licences forbid storing tiles
+outside their own SDKs, so neither can be a blob.
 
-Squirrel's SOURCES card picks the source drawn below z12 (`far`) and the one from z12 (`near`), from every source
-without coverage boxes: Sentinel, MapTiler, Esri, Mapbox. The Worker keeps each pick in R2, every isolate reads it
-within a minute, and each phone builds its imagery from it on its next style load. `near` fades in over `far` from
-z10, so the hand-over never jumps, and each layer credits its own source.
-
-### Sentinel — zoomed out by default
+### Sentinel
 
 - EOX `s2cloudless_3857`, the 2016 mosaic: 10 m pixels, 256 px tiles to z15.
-- As `far` it is drawn under everything, so it shows wherever a sharper source answers 404. Wherever it is
-  drawn it is toned (contrast −0.15, saturation +0.4) to match MapTiler over the same ground.
-- CC BY 4.0, so caching is allowed, and R2 keeps it (`cacheToR2: true`) until Squirrel's cache switch says
-  otherwise.
-- EOX's later years are non-commercial; only the unyeared (2016) layer may be used.
-
-### Esri — streamed when picked
-
-- ArcGIS Location Platform basemap tiles, read with the Worker secret `GC_esri_key`.
-- **Live only.** It is never put in the edge cache, R2 or a photo, and photos never bake from it.
-  Master Agreement E204 §3.2c: "Customer may not otherwise scrape, download, or store Data".
-- As `near`, no tile is asked for while the whole view sits inside a pin's photo or inside USGS cover.
-- **Free-tier guard.** The free tier is 2,000,000 tiles a month, spent by tiles-dev and tiles-prod on
-  one key, so both count into one `METER` bucket. At 90% of their sum each Worker answers 404 and
-  Sentinel shows through until the month resets. No card is on the account, so pay-as-you-go can
-  never start.
+- CC BY 4.0, so caching and shipping it in the app are allowed. EOX's later years are non-commercial; only
+  the unyeared (2016) layer may be used.
 
 ### USGS — the US
 
 - The National Map `USGSImageryOnly`: 256 px to z16. It 404s past z16 and blanks past the border, so
-  its coverage boxes stay inside the US.
-- Ranked first wherever it covers: the Worker 404s Esri and Mapbox there, and the phone draws USGS
-  instead.
-- Public domain, cached in R2: "Map services and data downloaded from The National Map are free and in
-  the public domain."
+  its coverage boxes stay inside the US. Ranked first wherever it covers (`sourceAt`).
+- Public domain: "Map services and data downloaded from The National Map are free and in the public domain."
 
-### MapTiler — pin blobs, and zoomed in by default
+### MapTiler — everywhere else
 
 - `satellite-v2`, already 512 px tiles. Photos bake at **z16** into a 3,456 px canvas across a 2 km
-  radius (~90 tiles per pin at 49° N). Outside cities Maxar's real detail ends at z16: z17 tiles are
-  the same picture enlarged, at 4x the tiles. The raw tiles stay on the phone for the close-up.
-- It is the default photo source; Squirrel can switch the photo source to another bakeable one.
-- Approved for R2: both Workers keep its tiles while its cache switch is on.
-- Inside USGS cover, a pin's photo bakes from USGS at z16 instead, on purpose: `sourceAt` takes the
-  covering source first. USGS is free and public domain, and z16 is its sharpest zoom.
+  radius. Outside cities Maxar's real detail ends at z16. The raw tiles stay on the phone for the close-up.
+- The default photo source; Squirrel can switch the photo source. Approved for R2.
 
-### Standby
+### Off
 
-- **Mapbox satellite** — streamed only, never cached (Mapbox ToS). The Worker 404s it unless Squirrel has it
-  on the map. 750k free tiles a month, then $0.25, $0.20 from 2M and $0.15 from 4M per 1,000. The 90%
-  guard covers it like Esri.
 - **BC Imagery Web Map Service** — off until the Province approves; not in the source list. Its
   catalogue licence is "Access Only", and the service "cannot be cascaded through another Web Map
   Service without the express written permission of the Province of British Columbia".
 
+## When a blob comes down
+
+The phone checks its location only when the map opens (a new session, or back after 30 min in the
+background), never in the background. An area is a z10 tile. `routes/offlinev10/areaOpens.ts` decides:
+
+- **First open, or back after 14 days:** the blob at the planter's fix downloads at once and the camera
+  jumps to it at z14. With location off, the Worker's `/where` (Cloudflare's IP lookup, no permission)
+  stands in at z13; a first open with location off shows the sample area instead.
+- **The same area on two occasions** (≥ 4 h apart, or on different days): its blob downloads. On Wi-Fi at
+  once; on cellular the SAVE AREA tile says so and a tap downloads it — never a popup.
+- **Skipped** where a held photo already reaches the spot (`PHOTO_REUSE_KM`).
+- **SAVE AREA** in the map drawer saves the map centre by hand.
+
+The open history is localStorage `gc-map-opens`. An area blob is a `Region` with `area: true`: it bakes a
+photo with no pin, and only the LRU or the dock removes it.
+
 ## Licence and attribution
 
-| Source | Licence | Credit in the ⓘ, each linked | Logo on the map |
+| Source | Licence | Credit in the ⓘ, each linked | Logo |
 |---|---|---|---|
 | Sentinel | CC BY 4.0 | EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016) | None asked |
-| Esri | ArcGIS Location Platform, stream only | Powered by Esri \| Sources: Esri, Vantor, Earthstar Geographics, and the GIS User Community | Only under a link-logo agreement |
-| USGS | US public domain | The National Map orthoimagery courtesy of the U.S. Geological Survey | Partners only |
-| MapTiler | MapTiler Cloud terms; R2 caching approved | © MapTiler © OpenStreetMap contributors | Owed on the free plan only; shown faded |
-| Mapbox | Mapbox ToS, stream only | © Mapbox © OpenStreetMap Improve this map © Maxar | Required, unstyled |
+| USGS | US public domain | The National Map orthoimagery courtesy of the U.S. Geological Survey | None asked |
+| MapTiler | MapTiler Cloud terms; R2 caching approved | © MapTiler © OpenStreetMap contributors | Owed on the free plan only; not shown |
+| Streets (planet PMTiles) | ODbL | © OpenStreetMap contributors | — |
 
-The online map credits a streamed source through its raster source's `attribution`. A box out of view is
-hidden, so it is not credited. A baked photo carries its source's name, and the map credits every photo
-that is mounted. A logo shows, and Esri holds the ⓘ open ("must not be covered or obstructed"), only while
-that source has a tile drawn, so a source answering 404 shows neither.
+A baked photo carries its source's name, and the map credits every photo that is mounted.
 
 ## Where each rule lives
 
 | Rule | Code |
 |---|---|
-| The source list, licences, attributions, prices | `lib/contract/satelliteSources.ts:38` (maptiler), `:57` (sentinel), `:72` (usgs), `:104` (esri), `:122` (mapbox) |
-| MapTiler photos at z16 | `lib/contract/satelliteSources.ts:47` |
-| MapTiler is the default photo source | `lib/contract/satelliteSources.ts:147` |
-| A covering source wins (USGS first) | `lib/contract/satelliteSources.ts:154` (`sourceAt`), `:159` (`coverOf`) |
-| The map's two picks and their defaults | `lib/contract/satelliteSources.ts` (`MAP_DEFAULT`, `MAP_PICKS`), `lib/onPhone/satellite/onlineImagery.ts:37` (`mapPicks`) |
-| `far` below, `near` fading in z10 → z12, Sentinel toned to MapTiler | `lib/onPhone/satellite/onlineImagery.ts:17` (`SHARP_FROM_Z`, `FADE_IN`, `TONE`), `:117` |
-| Logos, and the ⓘ held open for Esri, while a source has a tile drawn | `lib/onPhone/satellite/onlineImagery.ts` (`LOGOS`, `CREDITS_OPEN`, `onScreen`) |
-| No Esri tile inside a photo or USGS cover | `lib/onPhone/satellite/onlineImagery.ts:51` |
-| Worker: covered tile → 404 for a live source | `workers/worker-local-dev/src/index.ts:499` |
-| Worker: standby source not on the map → 404 | `workers/worker-local-dev/src/index.ts:525` |
-| Worker: 90% of the free tier → 404 | `workers/worker-local-dev/src/index.ts:257` (`freeTierSpent`), `:526` |
-| Worker: edge → R2 → upstream; R2 only when the cache switch says keep | `workers/worker-local-dev/src/index.ts:137` |
-| Squirrel's photo-source switch; map picks and cache switches (a live source has no cache switch) | `workers/worker-local-dev/src/index.ts:225` (`switches`) |
-| Only Chris's Supabase sign-in flips a switch, on either Worker | `workers/worker-local-dev/src/index.ts:267` (`squirrelAdmin`) |
-| A photo's tiles counted by X-Cache: disk, hit, upstream | `routes/offlinev10/satellite.ts:70`, `:82` |
-| Mounted photos' attributions | `lib/onPhone/satellite/mountSatellite.ts:230` |
-| Photo coverage radius (2 km) | `lib/onPhone/satellite/satelliteImage.ts:12` |
+| The source list, licences, attributions, prices | `lib/contract/satelliteSources.ts` |
+| A covering source wins (USGS first) | `lib/contract/satelliteSources.ts` (`sourceAt`, `coverOf`) |
+| The online map draws held photos and the sample | `lib/onPhone/satellite/onlineImagery.ts` |
+| The open rule | `routes/offlinev10/areaOpens.ts` |
+| SAVE AREA, the cellular ask, the open camera | `../getCache_OnlineMap/lib/chrome/saveArea.svelte.ts` |
+| Worker: edge → R2 → upstream; R2 only when the cache switch says keep | `workers/worker-local-dev/src/index.ts` (`satelliteTile`) |
+| Worker: `/where` | `workers/worker-local-dev/src/index.ts` |
+| Only Chris's Supabase sign-in flips a switch, on either Worker | `workers/worker-local-dev/src/index.ts` (`squirrelAdmin`) |
+| Mounted photos' attributions | `lib/onPhone/satellite/mountSatellite.ts` |
+| Photo coverage radius (2 km) | `lib/onPhone/satellite/satelliteImage.ts` |
 
 ## R2
 
-Bucket `gc-satellite-cache`, bound as `SAT_CACHE` (`workers/worker-cloud-dev/wrangler.toml:42`).
+Bucket `gc-satellite-cache`, bound as `SAT_CACHE` (`workers/worker-cloud-dev/wrangler.toml`).
 
 | Key | What |
 |---|---|
 | `<source>/<z>/<x>/<y>.jpg` | One tile, only from a source whose cache switch is on, only a 200. Locked indefinitely per source prefix in both buckets: never deleted, never overwritten |
-| `_squirrel/total/day/<YYYY-MM-DD>.json`, `_squirrel/total/month/<YYYY-MM>.json`, `_squirrel/total/all.json` | Squirrel's running tile counts per `source\|z\|tier`, added to every 100 tiles or 30 s; the meter reads the month's |
-| `_squirrel/counts/<YYYY-MM-DD>/<isolate>-<ms>.json` | The old per-flush counts, written until 27 Oct 2026 and summed into the totals; nothing reads them |
+| `_squirrel/total/day/<YYYY-MM-DD>.json`, `_squirrel/total/month/<YYYY-MM>.json`, `_squirrel/total/all.json` | Squirrel's running tile counts per `source\|z\|tier` |
 | `_squirrel/active` | The source photos bake from; absent means MapTiler |
-| `_squirrel/map/far`, `_squirrel/map/near` | The source the online map draws below z12 and from it; absent means `MAP_DEFAULT` (Sentinel, MapTiler) |
-| `_squirrel/standby/<source>` | The old Mapbox on/off switch, written until 28 Oct 2026; nothing reads it |
 | `_squirrel/cache/<source>` | `on` or `off`: keep its tiles in R2; absent means the source's `cacheToR2` |
+| `_squirrel/map/*`, `_squirrel/standby/*`, `_squirrel/counts/*` | Old switches and counts; nothing reads them |
 
 A new tileset is a new source id, so its tiles never mix with an old one's under the same key.

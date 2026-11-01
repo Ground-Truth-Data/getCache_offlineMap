@@ -220,6 +220,8 @@ export interface PhotoAsk {
 	id: string;
 	photoKey: string;
 	at: [number, number];
+	/** an area saved without a pin */
+	area?: boolean;
 }
 
 // Asks ride the queue as their row ids: primitives, so a re-ask dedupes. The asks themselves wait here, so no coordinate is ever turned into a key and back.
@@ -228,9 +230,9 @@ const askQueue = passQueue<string>((ids) => pass(ids.map((id) => asked.get(id) a
 
 /** Bake a photo for every ask without one; returns how many landed. */
 export function bakePhotos(asks: readonly PhotoAsk[]): Promise<number> {
-	// The one road to a billed photo tile. A row from before only-pins-bake still names a photo; it never gets one.
+	// The one road to a billed photo tile: a pin's or a saved area's. A row from before only-pins-bake still names a photo; it never gets one.
 	const pins = photoIds();
-	const wanted = asks.filter((a) => pins?.has(a.id));
+	const wanted = asks.filter((a) => a.area || pins?.has(a.id));
 	for (const a of wanted) asked.set(a.id, a);
 	return askQueue(wanted.map((a) => a.id));
 }
@@ -310,7 +312,7 @@ async function activeSource(): Promise<[string, SatelliteSource, Record<string, 
 
 export async function bakeAllPhotos(): Promise<number> {
 	const regions = await regionsSnapshot().regions;
-	return bakePhotos(regions.flatMap((r) => (r.photoKey && r.photoCenter ? [{ id: r.id, photoKey: r.photoKey, at: r.photoCenter }] : [])));
+	return bakePhotos(regions.flatMap((r) => (r.photoKey && r.photoCenter ? [{ id: r.id, photoKey: r.photoKey, at: r.photoCenter, area: r.area }] : [])));
 }
 
 export async function dropPhoto(photoKey: string): Promise<void> {
@@ -334,7 +336,7 @@ export function startPhotoService(): () => void {
 		if (e.kind === "pins") all();
 		// Beside the tiles, not after them: neither needs the other.
 		if (e.kind === "start" && e.photoKey && e.photoCenter)
-			bakePhotos([{ id: e.id, photoKey: e.photoKey, at: e.photoCenter }]).catch((err) => {
+			bakePhotos([{ id: e.id, photoKey: e.photoKey, at: e.photoCenter, area: e.area }]).catch((err) => {
 				console.warn("[photos] bake failed", err);
 			});
 	});

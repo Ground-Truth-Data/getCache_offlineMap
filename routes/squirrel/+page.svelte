@@ -1,8 +1,7 @@
 <!-- Squirrel: every imagery source side by side: what it served, pulled upstream, kept in R2 and costs. Dev only. Numbers are the Worker's counts and this browser's blobs; "—" means nothing measures it yet. -->
 <script lang="ts">
-import { MAP_PICKS, type MapBand, SATELLITE_SOURCES, type SatelliteSource, type SourceId, sourceNamed, sourceOf } from "../../lib/contract/satelliteSources";
+import { SATELLITE_SOURCES, type SatelliteSource, type SourceId, sourceNamed, sourceOf } from "../../lib/contract/satelliteSources";
 import { loadCamera, MAP_HOME_CENTER } from "../../lib/mapState/mapViewport";
-import { forcedImagery, forceImagery } from "../../lib/onPhone/satellite/onlineImagery";
 import { PHOTO_COVERAGE_RADIUS_KM, photoTilesFor } from "../../lib/onPhone/satellite/satelliteImage";
 import { type WorkerTarget, getWorkerTarget, satelliteTileUrl, setWorkerTarget, squirrelUrl } from "../../lib/worker/tilesHost";
 import { placeLabel } from "../offlinev10/places";
@@ -10,12 +9,11 @@ import { type BlobPart, type PhotoInfo, blobParts, photoInfo } from "../offlinev
 import { type Region, listRegions } from "../offlinev10/store";
 import { rangeBox } from "../offlinev10/tiles";
 import gcLogo from "$gc/assets/GC_fly_logo_transparent.webp";
-import mapboxLogo from "../../lib/onPhone/satellite/logos/mapbox.webp";
 import maptilerMark from "../../lib/onPhone/satellite/logos/maptiler-mark.webp";
 import sentinelMark from "../../lib/onPhone/satellite/logos/sentinel-mark.webp";
 
 type Counts = Record<string, number>;
-type Answer = { active: string; map: Record<MapBand, string>; cache: Record<string, boolean>; overrides: Record<string, string>; counts: { today: Counts; month: Counts; all: Counts } | null };
+type Answer = { active: string; cache: Record<string, boolean>; overrides: Record<string, string>; counts: { today: Counts; month: Counts; all: Counts } | null };
 type Lic = "ok" | "tos";
 type Row = {
 	id: string;
@@ -26,10 +24,6 @@ type Row = {
 	licText: string;
 	licence: string;
 	cache: boolean;
-	/** where the online map draws it, once the Worker answers */
-	onMap: string | null;
-	/** the Worker stops it at 90% of its free tier */
-	stops?: boolean;
 	/** why the toggle cannot be switched on */
 	lock: string | null;
 	/** the Worker ignores this row's toggle, and says why */
@@ -59,19 +53,16 @@ const USERS = 10_000;
 const PINS_PER_USER = 20;
 // Crews plant the same blocks, so most of a pin's tiles were already fetched by a crewmate.
 const HIT_RATES = [0.5, 0.7, 0.9];
-// MapTiler Flex includes 500k requests a month; Esri's free tier is in the contract because the Worker stops at 90% of it.
+// MapTiler Flex includes 500k requests a month.
 const INCLUDED: Record<string, number> = { maptiler: 500_000 };
 
 const LOOK: Record<string, { sub: string; lic: Lic; licText: string; lock?: string }> = {
 	maptiler: { sub: "satellite-v2 · pin photos", lic: "ok", licText: "R2 approved" },
-	sentinel: { sub: "cloudless 2016 · online map", lic: "ok", licText: "CC BY 4.0" },
-	esri: { sub: "World Imagery · streamed", lic: "tos", licText: "ToS forbids", lock: 'Esri E204 §3.2c: "may not … store Data"' },
+	sentinel: { sub: "cloudless 2016 · fills gaps", lic: "ok", licText: "CC BY 4.0" },
 	usgs: { sub: "ImageryOnly · US", lic: "ok", licText: "public domain" },
-	mapbox: { sub: "satellite · streamed", lic: "tos", licText: "stream only", lock: "Mapbox ToS: no caching outside the SDK" },
 };
-// Esri, USGS and the Province each license their logo only by request, so they keep their dot.
-// Mapbox forbids its icon alone, so its row carries the wordmark.
-const LOGO: Record<string, string> = { maptiler: maptilerMark, sentinel: sentinelMark, mapbox: mapboxLogo };
+// USGS and the Province each license their logo only by request, so they keep their dot.
+const LOGO: Record<string, string> = { maptiler: maptilerMark, sentinel: sentinelMark };
 const BC_COLOR = "oklch(0.74 0.10 190)";
 const ROADS_COLOR = "#f3f1e9";
 
@@ -100,10 +91,7 @@ async function load(): Promise<void> {
 	try {
 		const res = await fetch(squirrelUrl() ?? "");
 		if (!res.ok) throw new Error(`HTTP ${res.status} ${await res.text()}`);
-		const got = (await res.json()) as Answer;
-		// A Worker deployed before the map picks names none, and every picker reads them.
-		if (!got.map) throw new Error("the Worker names no map picks: deploy it");
-		answer = got;
+		answer = (await res.json()) as Answer;
 	} catch (e) {
 		failure = String(e instanceof Error ? e.message : e);
 	}
@@ -116,21 +104,18 @@ async function load(): Promise<void> {
 
 $effect(() => void load());
 
-/** Every switch answers with all of them; the map's picks reach each phone on its next style load. */
+/** Every switch answers with all of them. */
 async function flip(path: Parameters<typeof squirrelUrl>[0], body: string): Promise<void> {
 	failure = null;
 	try {
 		const res = await post(path, body);
 		if (!res.ok) throw new Error(`HTTP ${res.status} ${await res.text()}`);
-		const { map, cache, overrides } = (await res.json()) as Pick<Answer, "map" | "cache" | "overrides">;
-		if (answer) answer = { ...answer, map, cache, overrides };
+		const { cache, overrides } = (await res.json()) as Pick<Answer, "cache" | "overrides">;
+		if (answer) answer = { ...answer, cache, overrides };
 	} catch (e) {
 		failure = String(e instanceof Error ? e.message : e);
 	}
 }
-// Only `near` is drawn: the online map is Streets with live imagery from z14. `far` is kept by the Worker, unused.
-const BANDS: [MapBand, string][] = [["near", "z14 and up"]];
-const bandsOf = (id: string) => (answer ? BANDS.filter(([b]) => answer?.map[b] === id).map(([, label]) => label).join(" · ") : null);
 
 /** `source|z|tier` counts for one source, summed over the tiers named. */
 const tiers = (c: Counts | undefined, id: string, ...want: string[]) =>
@@ -150,7 +135,7 @@ function sourceRow(id: string, src: SatelliteSource): Row {
 	const month = c ? (c.month[`${id}|served`] ?? 0) : null;
 	const up = c ? tiers(c.month, id, "upstream") : null;
 	const hits = c ? tiers(c.month, id, "edge", "r2") : null;
-	const free = src.freeTilesPerMonth ?? INCLUDED[id] ?? null;
+	const free = INCLUDED[id] ?? null;
 	const billed = (n: number) => (Math.max(0, n - (free ?? 0)) / 1000) * src.usdPer1000;
 	const zs = zooms(c?.month, id);
 	// The Worker's switch once it answers; the contract's default until then.
@@ -158,8 +143,7 @@ function sourceRow(id: string, src: SatelliteSource): Row {
 	let proj = HIT_RATES.map(() => 0);
 	let projNote: string | undefined;
 	let projTiles: number | undefined;
-	if (src.live) projNote = !bandsOf(id) ? "not on the map: streams nothing" : `stops at ${k(0.9 * (free ?? 0))}, then the layer under it shows`;
-	else if (src.usdPer1000 > 0) {
+	if (src.usdPer1000 > 0) {
 		const perPin = photoTilesFor([-120, 50], src.zoom).length;
 		const asked = USERS * PINS_PER_USER * perPin;
 		proj = HIT_RATES.map((hr) => billed(asked * (keeps ? 1 - hr : 1)));
@@ -175,8 +159,6 @@ function sourceRow(id: string, src: SatelliteSource): Row {
 		licText: look.licText,
 		licence: src.licence,
 		cache: keeps,
-		onMap: bandsOf(id),
-		stops: !!src.freeTilesPerMonth,
 		lock: look.lock ?? null,
 		override: answer?.overrides[id] ?? null,
 		z: zs.length ? `z${Math.min(...zs)}–${Math.max(...zs)}` : c ? "none" : null,
@@ -196,7 +178,7 @@ function sourceRow(id: string, src: SatelliteSource): Row {
 	};
 }
 
-const blank = { onMap: null, z: null, today: null, month: null, up: null, hits: null, tiles: null, gb: null, mtd: null, proj: null };
+const blank = { z: null, today: null, month: null, up: null, hits: null, tiles: null, gb: null, mtd: null, proj: null };
 const rows = $derived<Row[]>([
 	...Object.entries(SATELLITE_SOURCES).map(([id, src]) => sourceRow(id, src as SatelliteSource)),
 	{
@@ -348,18 +330,12 @@ const freeTone = (p: number) => (p > 1 ? "var(--red)" : p > 0.7 ? "var(--amber)"
 const host = $derived(squirrelUrl()?.replace(/^https?:\/\//, "").replace(/\/squirrel$/, "") ?? "no tiles host");
 const today = new Date();
 
-// Hand test: force one source onto the online map, and fetch ten tiles through the Worker twice.
-const HAND = ["sentinel", "esri", "usgs", "bc", "maptiler", "mapbox"];
+// Hand test: fetch ten tiles through the Worker twice.
+const HAND = ["sentinel", "usgs", "bc", "maptiler"];
 const TEST_Z = 15;
 type Probe = { at: [number, number]; tiles: { zxy: string; first: string; second: string }[]; note: string | null };
-let forced = $state(forcedImagery());
 let probes = $state<Record<string, Probe | "running">>({});
 let forgot = $state<Record<string, string>>({});
-
-function setForced(id: string): void {
-	forced = forced === id ? null : id;
-	forceImagery(forced);
-}
 
 /** Ten tiles around the online map's last centre, moved into the source's coverage when it has one and the centre is outside it. */
 function testTiles(src: SatelliteSource): { at: [number, number]; zxy: string[] } {
@@ -416,9 +392,8 @@ async function copyLog(): Promise<void> {
 	const log = {
 		page: "/app/squirrel",
 		at: new Date().toISOString(),
-		worker: { host, failure, active: answer?.active ?? null, map: answer?.map ?? null },
-		forcedOnThisBrowser: forced,
-		sources: rows.map(({ id, cache, onMap, lock, override, z, today, month, up, hits, tiles, gb, free, mtd }) => ({ id, cache, onMap, lock, override, z, today, month, upstream: up, hits, r2Tiles: tiles, r2Gb: gb, freeTier: free, usdMonthToDate: mtd })),
+		worker: { host, failure, active: answer?.active ?? null },
+		sources: rows.map(({ id, cache, lock, override, z, today, month, up, hits, tiles, gb, free, mtd }) => ({ id, cache, lock, override, z, today, month, upstream: up, hits, r2Tiles: tiles, r2Gb: gb, freeTier: free, usdMonthToDate: mtd })),
 		handTest: probes,
 		deleted: forgot,
 	};
@@ -490,13 +465,6 @@ function toBody(node: HTMLElement) {
 				<span class="dot" style="background:var(--green)"></span><span class="title">SOURCES</span>
 				<span class="hnote">{rows.length} rows · {rows.filter((r) => r.cache).length} caching · {rows.filter((r) => r.lic === "tos").length} ToS-flagged</span>
 				<span class="spacer"></span>
-				{#each BANDS as [band, label] (band)}
-					<label class="hnote">online map {label}
-						<select class="refresh" value={answer?.map[band] ?? ""} disabled={!answer} aria-label="online map source {label}" onchange={(e) => flip(`/map/${band}`, e.currentTarget.value)}>
-							{#each MAP_PICKS as id (id)}<option value={id}>{SATELLITE_SOURCES[id].name}</option>{/each}
-						</select>
-					</label>
-				{/each}
 				<span class="hnote">month to date · {today.toLocaleString("en-US", { month: "short" })} 1–{today.getDate()} UTC</span>
 			</div>
 			<div class="scroll">
@@ -507,8 +475,7 @@ function toBody(node: HTMLElement) {
 					{/each}
 
 					{#each rows as s (s.id)}
-						<div class="first" title={s.licence}>{#if LOGO[s.id]}<img class="logo" src={LOGO[s.id]} alt="" />{:else}<span class="dot big" style="background:{s.color}"></span>{/if}<span class="srcname"><b>{s.name}</b><i>{s.sub}</i>
-							{#if s.onMap}<span class="onmap grn">on the map · {s.onMap}</span>{/if}</span></div>
+						<div class="first" title={s.licence}>{#if LOGO[s.id]}<img class="logo" src={LOGO[s.id]} alt="" />{:else}<span class="dot big" style="background:{s.color}"></span>{/if}<span class="srcname"><b>{s.name}</b><i>{s.sub}</i></span></div>
 						<div>
 							<button class="tog" class:on={s.cache} class:locked={!!s.lock} disabled={!!s.lock || !answer} aria-label="cache {s.name} in R2" title={s.lock ?? `R2 ${s.cache ? "keeps" : "skips"} ${s.name}; the Worker follows within a minute`} onclick={() => flip(`/cache/${s.id}`, s.cache ? "off" : "on")}></button>
 							{#if s.override}<span class="why red" role="alert">overridden: {s.override}</span>{/if}
@@ -537,7 +504,7 @@ function toBody(node: HTMLElement) {
 							{:else}
 								{@const used = s.up}
 								<div class="free">
-									<div class="track">{#if used !== null}<i style="width:{Math.min(used / s.free, 1) * 100}%;background:{freeTone(used / s.free)}"></i>{/if}{#if s.stops}<b class="stop" title="the Worker refuses past 90%"></b>{/if}</div>
+									<div class="track">{#if used !== null}<i style="width:{Math.min(used / s.free, 1) * 100}%;background:{freeTone(used / s.free)}"></i>{/if}</div>
 									<div class="lab">{#if used === null}<span class="dim">—</span>{:else}<span class="b" style="color:{freeTone(used / s.free)}">{((used / s.free) * 100).toFixed(1)}%</span>{/if}<span>of {k(s.free)}{s.id === "maptiler" ? " incl." : ""}</span></div>
 								</div>
 							{/if}
@@ -557,7 +524,7 @@ function toBody(node: HTMLElement) {
 					<div class="tot r">{@render dash(total.mtd, usd, "gold")}</div><div class="tot"></div><div class="tot r last dim">↓</div>
 
 					<div class="proj first"><span class="lbl gold">10K USERS / MO</span></div>
-					<div class="proj" style="grid-column:span 7"><span class="dim small">{n(USERS)} planters × {PINS_PER_USER} pin photos a month · crews share tiles, so 50–90% come from R2 · the map is Streets from our R2, live MapTiler only from z14 outside pin photos · Esri held under its stop · BC unmeasured</span></div>
+					<div class="proj" style="grid-column:span 7"><span class="dim small">{n(USERS)} planters × {PINS_PER_USER} pin photos a month · crews share tiles, so 50–90% come from R2 · the map draws only photos the phone holds · BC unmeasured</span></div>
 					<div class="proj"></div><div class="proj"></div><div class="proj"></div><div class="proj"></div><div class="proj"></div><div class="proj"></div>
 					<div class="proj r last proj-cell">{@render byHit(total.proj, "bigproj")}</div>
 				</div>
@@ -574,36 +541,28 @@ function toBody(node: HTMLElement) {
 		<div class="card">
 			<div class="cardhead">
 				<span class="dot" style="background:var(--amber)"></span><span class="title">HAND TEST</span>
-				<span class="hnote">force the online map to one source · 10 tiles at z{TEST_Z} around its last centre, fetched twice through {host}</span>
+				<span class="hnote">10 tiles at z{TEST_Z} around its last centre, fetched twice through {host}</span>
 			</div>
 			<div class="scroll">
 				<div class="hgrid">
-					<div class="hd">source</div><div class="hd">force map</div><div class="hd">cache test</div><div class="hd">10 tiles · 1st → 2nd</div><div class="hd">test tiles</div>
+					<div class="hd">source</div><div class="hd">cache test</div><div class="hd">10 tiles · 1st → 2nd</div><div class="hd">test tiles</div>
 					{#each HAND as id (id)}
 						{@const src = sourceOf(id)}
 						{@const p = probes[id]}
 						<div><span class="dot big" style="background:{src?.color ?? BC_COLOR}"></span><b>{src?.name ?? "BC Imagery"}</b></div>
 						{#if !src}
-							<div><button class="tog locked" disabled aria-label="force BC"></button></div>
 							<div class="red small" style="grid-column:span 3">not wired: needs the Province's written permission</div>
 						{:else}
-							<div class="hcell">
-								<button class="tog" class:on={forced === id} aria-label="force the online map to {src.name}" onclick={() => setForced(id)}></button>
-								<span class="small" class:grn={forced === id} class:dim={forced !== id}>{forced === id ? "forced" : "off"}</span>
-								{#if src.standby && answer && !bandsOf(id)}<span class="amb small">not on the map: the Worker 404s it</span>{/if}
-							</div>
 							<div><button class="refresh" disabled={p === "running"} onclick={() => testCache(id, src)}>{p === "running" ? "testing…" : "test cache"}</button></div>
 							<div class="hcell">
 								{#if p && p !== "running"}
 									<span class="chips">{#each p.tiles as t (t.zxy)}<span class="chip" title={t.zxy}><i class={short(t.first)}>{short(t.first)}</i>→<i class={short(t.second)}>{short(t.second)}</i></span>{/each}</span>
 									<span class="dim small">at {ll(p.at[1])}, {ll(p.at[0])}</span>
-									{#if src.live}<span class="amb small">live only — not cached</span>{/if}
 									{#if p.note}<span class="red small" title={p.note}>{p.note.slice(0, 140)}</span>{/if}
-								{:else if src.live}<span class="amb small">live only — not cached</span>{/if}
+								{/if}
 							</div>
 							<div class="hcell">
-								{#if src.live}<span class="dim small">nothing kept</span>
-								{:else}<button class="refresh" onclick={() => forgetTiles(id, src)}>drop from edge</button>{#if forgot[id]}<span class="dim small">{forgot[id]}</span>{/if}{/if}
+								<button class="refresh" onclick={() => forgetTiles(id, src)}>drop from edge</button>{#if forgot[id]}<span class="dim small">{forgot[id]}</span>{/if}
 							</div>
 						{/if}
 					{/each}
@@ -827,7 +786,6 @@ function toBody(node: HTMLElement) {
 .tog::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: var(--muted2); }
 .tog.on { background: rgba(127, 191, 106, 0.18); border-color: rgba(127, 191, 106, 0.55); }
 .tog.on::after { left: 17px; background: var(--green); }
-.onmap { display: block; margin-top: 3px; font-size: 10px; font-weight: 700; }
 .tog:not(:disabled) { cursor: pointer; }
 .tog.locked { border-color: rgba(226, 85, 63, 0.45); }
 .tog.locked::before { content: "🔒"; position: absolute; right: -17px; top: 1px; font-size: 10px; }
@@ -843,7 +801,6 @@ function toBody(node: HTMLElement) {
 .free { display: flex; flex-direction: column; gap: 4px; width: 100%; }
 .free .track { height: 8px; border-radius: 3px; background: var(--panel3); border: 1px solid var(--border); position: relative; overflow: hidden; }
 .free .track i { position: absolute; left: 0; top: 0; bottom: 0; }
-.free .track .stop { position: absolute; left: 90%; top: -1px; bottom: -1px; width: 2px; background: var(--red); }
 .free .lab { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
 .tag { font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 5px; border: 1px solid; width: max-content; }
 .tag.r2 { color: var(--green); border-color: rgba(127, 191, 106, 0.4); }
@@ -855,7 +812,7 @@ function toBody(node: HTMLElement) {
 .hitrow { display: flex; align-items: baseline; gap: 6px; }
 .hitrow i { font-style: normal; font-size: 9.5px; color: var(--muted2); }
 .bigproj { font-size: 15px; font-weight: 800; color: var(--gold); }
-.hgrid { display: grid; grid-template-columns: 220px 230px 130px 1fr 300px; min-width: 1100px; }
+.hgrid { display: grid; grid-template-columns: 220px 130px 1fr 300px; min-width: 870px; }
 .hgrid .refresh { white-space: nowrap; }
 .hgrid > div { padding: 10px 14px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
 .hgrid > .hd { border-top: 0; }

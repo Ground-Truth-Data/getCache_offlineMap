@@ -22,7 +22,7 @@ const bucket = {
   },
   list: async ({ prefix }: { prefix: string }) => ({ objects: [...kept.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key })), truncated: false }),
 };
-const env = (more = {}) => ({ GC_mapTiler_key: "k", GC_esri_key: "e", PUBLIC_GC_RT_mapbox_token: "m", SAT_CACHE: bucket, METER: bucket, ...more }) as never;
+const env = (more = {}) => ({ GC_mapTiler_key: "k", SAT_CACHE: bucket, METER: bucket, ...more }) as never;
 const ctx = { waitUntil: (p: Promise<unknown>) => void waits.push(p), passThroughOnException() {} } as never;
 
 // A Supabase access token is header.payload.signature; the Worker reads only `iss`, then asks that project who it is.
@@ -114,49 +114,47 @@ describe("/satellite through the shared R2 cache", () => {
   });
 });
 
-describe("esri: streamed only, and stopped at 90% of its free tier", () => {
-  // Ethiopia: nothing covers it but Sentinel.
-  const outside = "/satellite/esri/14/9874/7811.jpg";
-  let asked: number;
+describe("the meter: running totals by day, month and all time", () => {
+  // Ethiopia.
+  const outside = "/satellite/sentinel/14/9874/7811.jpg";
   beforeEach(() => {
-    asked = 0;
-    stubFetch(async () => (asked++, new Response(new Uint8Array(1000), { status: 200 })));
+    stubFetch(async () => new Response(new Uint8Array(1000), { status: 200 }));
     // The meter re-reads the counts every 5 min; each test starts past that.
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime((clock += 6 * 60_000));
   });
   afterEach(() => vi.useRealTimers());
   const month = () => `_squirrel/total/month/${new Date().toISOString().slice(0, 7)}.json`;
-  const spentThisMonth = (n: number) => kept.set(month(), JSON.stringify({ "esri|17|upstream": n }));
   const total = (key: string) => JSON.parse(String(kept.get(key)));
+  const counted = { "sentinel|14|upstream": 1, "sentinel|served": 1, "sentinel|stored|tiles": 1, "sentinel|stored|bytes": 1000 };
 
   it("reads the month's running total and never lists the bucket, however many tiles it counted", async () => {
-    spentThisMonth(1_800_000);
+    kept.set(month(), JSON.stringify({ "sentinel|17|upstream": 1_800_000 }));
     const list = vi.spyOn(bucket, "list");
-    expect((await call(outside)).status).toBe(404);
+    expect((await call(outside)).status).toBe(200);
     expect((await call("/squirrel")).status).toBe(200);
     expect(list).not.toHaveBeenCalled();
     list.mockRestore();
   });
 
   it("starts a new day's, month's and all-time total at zero and adds each flush to all three", async () => {
-    kept.set("_squirrel/total/all.json", JSON.stringify({ "esri|17|upstream": 40 }));
+    kept.set("_squirrel/total/all.json", JSON.stringify({ "sentinel|17|upstream": 40 }));
     expect((await call(outside)).status).toBe(200);
-    expect(total(month())).toEqual({ "esri|14|upstream": 1, "esri|served": 1 });
+    expect(total(month())).toEqual(counted);
     expect(total(`_squirrel/total/day/${new Date().toISOString().slice(0, 10)}.json`)).toEqual(total(month()));
-    expect(total("_squirrel/total/all.json")).toEqual({ "esri|17|upstream": 40, "esri|14|upstream": 1, "esri|served": 1 });
+    expect(total("_squirrel/total/all.json")).toEqual({ "sentinel|17|upstream": 40, ...counted });
   });
 
   it("adds again when another Worker wrote the total between its read and its write", async () => {
-    spentThisMonth(10);
+    kept.set(month(), JSON.stringify({ "sentinel|17|upstream": 10 }));
     const put = bucket.put;
     let raced = false;
     vi.spyOn(bucket, "put").mockImplementation(async (k, v, o) => {
-      if (k === month() && !raced) (raced = true), kept.set(k, JSON.stringify({ "esri|17|upstream": 20 }));
+      if (k === month() && !raced) (raced = true), kept.set(k, JSON.stringify({ "sentinel|17|upstream": 20 }));
       return put(k, v, o);
     });
     expect((await call(outside)).status).toBe(200);
-    expect(total(month())).toEqual({ "esri|17|upstream": 20, "esri|14|upstream": 1, "esri|served": 1 });
+    expect(total(month())).toEqual({ "sentinel|17|upstream": 20, ...counted });
     vi.mocked(bucket.put).mockRestore();
   });
 
@@ -164,63 +162,16 @@ describe("esri: streamed only, and stopped at 90% of its free tier", () => {
     const put = bucket.put;
     let raced = false;
     vi.spyOn(bucket, "put").mockImplementation(async (k, v, o) => {
-      if (k === month() && !raced) (raced = true), kept.set(k, JSON.stringify({ "esri|17|upstream": 7 }));
+      if (k === month() && !raced) (raced = true), kept.set(k, JSON.stringify({ "sentinel|17|upstream": 7 }));
       return put(k, v, o);
     });
     expect((await call(outside)).status).toBe(200);
-    expect(total(month())).toEqual({ "esri|17|upstream": 7, "esri|14|upstream": 1, "esri|served": 1 });
+    expect(total(month())).toEqual({ "sentinel|17|upstream": 7, ...counted });
     vi.mocked(bucket.put).mockRestore();
   });
 
-  it("serves one tile short of the stop, then refuses at 1.8 of its 2 million without asking Esri", async () => {
-    spentThisMonth(1_799_999);
-    expect((await call(outside)).status).toBe(200);
-    expect(asked).toBe(1);
-    vi.setSystemTime((clock += 6 * 60_000));
-    spentThisMonth(1_800_000);
-    const res = await call(outside);
-    expect(res.status).toBe(404);
-    expect(await res.text()).toMatch(/90% of its free tier/);
-    expect(asked).toBe(1);
-  });
-
-  it("is refused outright on a Worker with no bucket to meter it", async () => {
-    expect((await call(outside, env({ METER: undefined }))).status).toBe(404);
-    expect(asked).toBe(0);
-  });
-
-  it("stops prod on what dev spent too: one key, one meter, whatever each Worker caches", async () => {
-    const prodTiles = { ...bucket, get: async () => null, put: async () => {}, list: async () => ({ objects: [], truncated: false }) };
-    vi.setSystemTime((clock += 6 * 60_000));
-    spentThisMonth(1_800_000);
-    const res = await call(outside, env({ SAT_CACHE: prodTiles }));
-    expect(res.status).toBe(404);
-    expect(await res.text()).toMatch(/90% of its free tier/);
-    expect(asked).toBe(0);
-  });
-
-  it("is never kept, in R2 or at the edge", async () => {
-    const put = vi.fn(async () => {});
-    vi.stubGlobal("caches", { default: { match: async () => undefined, put } });
-    expect((await call(outside)).status).toBe(200);
-    expect(tiles()).toEqual([]);
-    expect(put).not.toHaveBeenCalled();
-  });
-
-  it("lets the browser hold it a day at most, while a keepable source's tile is held a year", async () => {
-    expect((await call(outside)).headers.get("Cache-Control")).toBe("public, max-age=86400");
-    expect((await ask("sentinel")).headers.get("Cache-Control")).toBe("public, max-age=31536000, immutable");
-    expect((await ask("usgs")).headers.get("Cache-Control")).toBe("public, max-age=31536000, immutable");
-  });
-
-  it("is never asked for a tile USGS covers", async () => {
-    // Seattle.
-    expect((await call("/satellite/esri/14/2627/5718.jpg")).status).toBe(404);
-    expect(asked).toBe(0);
-  });
-
-  it("can never be the source photos bake from", async () => {
-    expect((await call("/squirrel/active", env(), { method: "POST", body: "esri" })).status).toBe(400);
+  it("serves only sources whose licence lets us keep tiles: nothing streams", async () => {
+    for (const id of ["esri", "mapbox"]) expect((await call(`/satellite/${id}/14/9874/7811.jpg`)).status).toBe(404);
   });
 });
 
@@ -235,7 +186,7 @@ describe("the cache switch: Squirrel decides what R2 keeps", () => {
   const setCache = (id: string, to: string) => call(`/squirrel/cache/${id}`, env(), { method: "POST", body: to });
 
   it("follows cacheToR2 until switched, then keeps what the switch says", async () => {
-    expect(await (await call("/squirrel/active")).json()).toMatchObject({ cache: { maptiler: true, sentinel: true, usgs: true, esri: false, mapbox: false } });
+    expect(await (await call("/squirrel/active")).json()).toMatchObject({ cache: { maptiler: true, sentinel: true, usgs: true } });
     expect(await (await setCache("sentinel", "off")).json()).toMatchObject({ cache: { sentinel: false } });
     await ask("sentinel");
     expect(tiles()).toEqual([]);
@@ -261,9 +212,7 @@ describe("the cache switch: Squirrel decides what R2 keeps", () => {
     expect(await (await call("/squirrel/active")).json()).toMatchObject({ overrides: {} });
   });
 
-  it("has no switch for a source whose licence forbids keeping it", async () => {
-    expect((await setCache("esri", "on")).status).toBe(400);
-    expect((await setCache("mapbox", "on")).status).toBe(400);
+  it("has no switch for a source it does not know", async () => {
     expect((await setCache("bing", "on")).status).toBe(400);
   });
 
@@ -272,62 +221,19 @@ describe("the cache switch: Squirrel decides what R2 keeps", () => {
   });
 });
 
-describe("the online map: Squirrel picks the source below z12 and the one from it", () => {
-  // Ethiopia: nothing covers it but Sentinel.
-  const outside = "/satellite/mapbox/14/9874/7811.jpg";
-  let asked: string[];
-  const pick = (band: string, id: string) => call(`/squirrel/map/${band}`, env(), { method: "POST", body: id });
-  beforeEach(() => {
-    asked = [];
-    stubFetch(async (u: string) => (asked.push(u), new Response(new Uint8Array(1000), { status: 200 })));
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime((clock += 6 * 60_000));
-  });
-  // The picks are remembered in the isolate; put the defaults back for the tests after.
-  afterEach(async () => {
-    await pick("far", "sentinel");
-    await pick("near", "maptiler");
-    vi.useRealTimers();
+describe("/where: the caller's rough spot, with no location permission", () => {
+  const where = (cf?: object) => worker.fetch(Object.assign(new Request("https://tiles.test/where"), { cf }) as never, env(), ctx);
+
+  it("answers Cloudflare's IP lookup of the caller, never cached", async () => {
+    const res = await where({ latitude: "45.0412", longitude: "-76.2005" });
+    expect(await res.json()).toEqual({ lng: -76.2005, lat: 45.0412 });
+    expect(res.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
   });
 
-  it("draws Sentinel below z12 and MapTiler from it until Squirrel picks others", async () => {
-    expect(await (await call("/squirrel/active")).json()).toMatchObject({ map: { far: "sentinel", near: "maptiler" } });
-  });
-
-  it("refuses Mapbox while it is not on the map, without asking Mapbox", async () => {
-    const res = await call(outside);
-    expect(res.status).toBe(404);
-    expect(await res.text()).toMatch(/not put it on the map/);
-    expect(asked).toEqual([]);
-  });
-
-  it("streams Mapbox once picked for either band, kept nowhere, and stops when picked away", async () => {
-    expect(await (await pick("near", "mapbox")).json()).toMatchObject({ map: { far: "sentinel", near: "mapbox" } });
-    expect((await call(outside)).status).toBe(200);
-    expect(asked[0]).toMatch(/^https:\/\/api\.mapbox\.com\/v4\/mapbox\.satellite\/14\/9874\/7811\.jpg90\?access_token=/);
-    expect(tiles()).toEqual([]);
-    await pick("near", "esri");
-    expect((await call(outside)).status).toBe(404);
-    await pick("far", "mapbox");
-    expect((await call(outside)).status).toBe(200);
-    expect(asked).toHaveLength(2);
-  });
-
-  it("stops Mapbox at 90% of its 750k free tiles", async () => {
-    await pick("near", "mapbox");
-    kept.set(`_squirrel/total/month/${new Date().toISOString().slice(0, 7)}.json`, JSON.stringify({ "mapbox|17|upstream": 675_000 }));
-    const res = await call(outside);
-    expect(res.status).toBe(404);
-    expect(await res.text()).toMatch(/90% of its free tier/);
-    expect(asked).toEqual([]);
-  });
-
-  it("puts only a whole-world source on the map, in one of two bands", async () => {
-    expect((await pick("near", "usgs")).status).toBe(400);
-    expect((await pick("near", "bing")).status).toBe(400);
-    expect((await pick("middle", "esri")).status).toBe(405);
-    expect((await call("/squirrel/active", env(), { method: "POST", body: "mapbox" })).status).toBe(400);
-    expect(await (await call("/squirrel/active")).json()).toMatchObject({ map: { far: "sentinel", near: "maptiler" } });
+  it("says nothing when Cloudflare could not place the caller", async () => {
+    expect((await where({})).status).toBe(204);
+    expect((await where()).status).toBe(204);
   });
 });
 
@@ -367,13 +273,12 @@ describe("/squirrel", () => {
     for (const headers of [{}, STRANGER, elsewhere, signedIn("not-a-jwt")]) {
       expect((await call("/squirrel/active", env(), { method: "POST", body: "sentinel", headers })).status).toBe(401);
       expect((await call("/squirrel/cache/sentinel", env(), { method: "POST", body: "on", headers })).status).toBe(401);
-      expect((await call("/squirrel/map/near", env(), { method: "POST", body: "mapbox", headers })).status).toBe(401);
     }
     expect([...kept.keys()].filter((k) => !k.startsWith("_squirrel/total/"))).toEqual([]);
   });
 
   it("serves the default source and no counts on a Worker without the bucket", async () => {
-    expect(await (await call("/squirrel", env({ SAT_CACHE: undefined, METER: undefined }))).json()).toEqual({ active: "maptiler", map: { far: "sentinel", near: "maptiler" }, cache: { maptiler: false, sentinel: false, usgs: false, esri: false, mapbox: false },
+    expect(await (await call("/squirrel", env({ SAT_CACHE: undefined, METER: undefined }))).json()).toEqual({ active: "maptiler", cache: { maptiler: false, sentinel: false, usgs: false },
       overrides: { maptiler: "this Worker has no R2 bucket, so it keeps nothing", sentinel: "this Worker has no R2 bucket, so it keeps nothing", usgs: "this Worker has no R2 bucket, so it keeps nothing" },
       counts: null,
     });
