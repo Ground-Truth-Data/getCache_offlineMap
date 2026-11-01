@@ -148,7 +148,7 @@ async function satelliteTile(env: Env, ctx: ExecutionContext, origin: string, id
     return { body, tier: "r2" };
   }
   const upstream = await fetch(src.tileUrl(src.secret ? env[src.secret] : "", z, x, y));
-  if (!upstream.ok) throw new UpstreamRefused(upstream.status, upstream.headers.get("Retry-After"), `${id} responded ${upstream.status} for ${z}/${x}/${y}`);
+  if (!upstream.ok || upstream.status === 204) throw new UpstreamRefused(upstream.status, upstream.headers.get("Retry-After"), `${id} responded ${upstream.status} for ${z}/${x}/${y}`);
   const body = await upstream.arrayBuffer();
   if (!src.live) ctx.waitUntil(caches.default.put(edge, new Response(body, { status: 200, headers: SAT_HEADERS })));
   if (bucket) {
@@ -291,7 +291,19 @@ const tileLng = (x: number, z: number) => (x / 2 ** z) * 360 - 180;
 const tileLat = (y: number, z: number) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / 2 ** z))) * 180) / Math.PI;
 
 export default {
+  // A throw would answer with Cloudflare's own 500, which carries no CORS header: the browser can't read it and the app
+  // sees only "Failed to fetch (0)". Every answer goes out readable, with the reason.
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    try {
+      return await route(request, env, ctx);
+    } catch (err) {
+      console.error(`${request.method} ${new URL(request.url).pathname} threw`, err);
+      return new Response(`Worker failed: ${err instanceof Error ? err.message : String(err)}`, { status: 502, headers: CORS_HEADERS });
+    }
+  },
+} satisfies ExportedHandler<Env>;
+
+async function route(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
@@ -540,6 +552,10 @@ export default {
         tile = await satelliteTile(env, ctx, url.origin, id, src, sw.cache[id], z, x, y);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        // The source has no imagery for this ground: a 204, so the map draws what lies under and a photo bake fills it
+        // from elsewhere. Any other refusal is a failure the phone retries.
+        if (err instanceof UpstreamRefused && (err.status === 404 || err.status === 204))
+          return new Response(null, { status: 204, headers: { ...CORS_HEADERS, "X-Tile-Source": id } });
         // A 429 stays a 429, so the phone waits it out instead of retrying into it.
         if (err instanceof UpstreamRefused && err.status === 429)
           return new Response(`Satellite fetch failed: ${message}`, {
@@ -621,6 +637,5 @@ export default {
 
     const body = request.method === "HEAD" ? null : tile.data;
     return new Response(body, { status: 200, headers: responseHeaders });
-  },
-} satisfies ExportedHandler<Env>;
+}
 
