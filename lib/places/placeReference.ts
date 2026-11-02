@@ -100,6 +100,24 @@ export function nearestInTier(
 	return best;
 }
 
+/** The nearest city or regional seat — the scale a whole map's end is named at; a village there names nothing. */
+export function prominentNear(
+	at: readonly [number, number],
+	places: readonly PlaceRow[],
+): PlaceRow | null {
+	let best: PlaceRow | null = null;
+	let bestKm = Number.POSITIVE_INFINITY;
+	for (const p of places) {
+		if (p[3] > TIER_NOTABLE) continue;
+		const km = distanceKm(at, [p[1], p[2]]);
+		if (km <= TIER_RADIUS_KM[p[3]]! && km < bestKm) {
+			best = p;
+			bestKm = km;
+		}
+	}
+	return best;
+}
+
 /** Province/state of the nearest place within REGION_ANCHOR_KM — last-resort orientation, beats bare coordinates. */
 export function regionNear(
 	at: readonly [number, number],
