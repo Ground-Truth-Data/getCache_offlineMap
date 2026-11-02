@@ -83,21 +83,3 @@ describe("a photo is whole or not saved", () => {
 		expect(saved.has(KEY)).toBe(false);
 	});
 });
-
-describe("the rust edge", () => {
-	it("is one closed outline inside the photo, with no line across its middle", async () => {
-		const { photoEdge, photoTilesFor } = await import("./satelliteImage");
-		const tiles = photoTilesFor(PIN, 16);
-		const bounds: [number, number, number, number] = [PIN[0] - 0.026, PIN[1] - 0.018, PIN[0] + 0.026, PIN[1] + 0.018];
-		const segs = photoEdge(bounds, 16);
-		expect(segs.length).toBeGreaterThan(8);
-		expect(segs.length).toBeLessThan(tiles.length);
-		const degree = new Map<string, number>();
-		for (const seg of segs)
-			for (const [lng, lat] of seg) {
-				expect(lng >= bounds[0] && lng <= bounds[2] && lat >= bounds[1] && lat <= bounds[3]).toBe(true);
-				degree.set(`${lng},${lat}`, (degree.get(`${lng},${lat}`) ?? 0) + 1);
-			}
-		expect([...degree.values()].every((d) => d % 2 === 0)).toBe(true);
-	});
-});

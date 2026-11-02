@@ -53,23 +53,6 @@ export function photoTilesFor(center: [number, number], z: number): DiscTile[] {
 	return out;
 }
 
-/** A photo's outline as line segments: every disc-tile side no other disc tile shares, clipped to the photo's bounds. */
-export function photoEdge([w, s, e, n]: Bounds, z: number): [number, number][][] {
-	const tiles = photoTilesFor([(w + e) / 2, (s + n) / 2], z);
-	const has = new Set(tiles.map((t) => `${t.x}/${t.y}`));
-	const at = (lng: number, lat: number): [number, number] => [Math.min(Math.max(lng, w), e), Math.min(Math.max(lat, s), n)];
-	const out: [number, number][][] = [];
-	for (const t of tiles)
-		for (const [dx, dy, a, b] of [
-			[0, -1, at(t.w, t.n), at(t.e, t.n)],
-			[0, 1, at(t.w, t.s), at(t.e, t.s)],
-			[-1, 0, at(t.w, t.s), at(t.w, t.n)],
-			[1, 0, at(t.e, t.s), at(t.e, t.n)],
-		] as const)
-			if (!has.has(`${t.x + dx}/${t.y + dy}`) && (a[0] !== b[0] || a[1] !== b[1])) out.push([a, b]);
-	return out;
-}
-
 export interface SatImage {
 	blob: Blob;
 	bounds: Bounds;
