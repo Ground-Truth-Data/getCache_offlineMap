@@ -10,10 +10,10 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 import area from "@turf/area";
 import turfLength from "@turf/length";
 import { markerCtor } from "../shared/rendererOf";
-import { coordLabel, emit as emitPress, swallowNextClick } from "../shared/doubleTapToPin";
+import { aimLoupe, emit as emitPress, pressPoint, swallowNextClick } from "../shared/doubleTapToPin";
 import { DRAW_LIMIT_NOTE, mayAddVertex } from "$gc/drawLimit";
 import { BORDER_RUST, POLYGON_FILL, POLYGON_OUTLINE, STROKE } from "$gc/drawDials";
-import { type Lnglat, type SnapKind, type SnapRings, snapLngLat, snapRings } from "$gc/snapToShapes";
+import { type Lnglat, type SnapKind, type SnapRings, sideAt, snapLngLat, snapRings } from "$gc/snapToShapes";
 import { formatArea, formatLength } from "$gc/units.svelte";
 import { keptLegLabels } from "./legLabelCrowding";
 import { type Rect, mapKeepOutRects, readFloorY, readTopBarH, rectsOverlap, shiftClear } from "../shared/mapKeepOut";
@@ -130,8 +130,10 @@ const MEASURE_NODES_SRC = "measure-nodes";
 const MEASURE_FILL_SRC = "measure-fill";
 const MEASURE_TICKS_SRC = "measure-ticks";
 const MEASURE_ENDDOTS_SRC = "measure-end-dots";
-const ALL_SRCS = [MEASURE_FILL_SRC, MEASURE_LINE_SRC, MEASURE_TICKS_SRC, MEASURE_NODES_SRC, MEASURE_ENDDOTS_SRC];
+const MEASURE_SIDE_SRC = "measure-side-dot";
+const ALL_SRCS = [MEASURE_FILL_SRC, MEASURE_LINE_SRC, MEASURE_TICKS_SRC, MEASURE_NODES_SRC, MEASURE_ENDDOTS_SRC, MEASURE_SIDE_SRC];
 const MEASURE_SNAP_PX = 18;
+const NODE_GRAB_PX = 16; // = the node halo: inside it a press grabs the node, not the side
 const SELF_SNAP_PX = 22; // ≈44px touch target
 const FINISH_TAP_PX = 22;
 const MEASURE_UNSNAP_PX = 34; // hysteresis: un-snaps only past this
@@ -194,6 +196,11 @@ function ensureLayers() {
             "circle-radius": ["case", ["==", ["get", "_snapped"], true], 5, 2],
             "circle-color": ["case", ["==", ["get", "_snapped"], true], "#ffffff", "#c97a4a"],
         },
+    });
+    // The white dot on a side: where a press drops a new node, and under the finger while it is dragged.
+    map.addLayer({
+        id: "measure-side-dot", type: "circle", source: MEASURE_SIDE_SRC,
+        paint: { "circle-radius": 6, "circle-color": "#ffffff", "circle-stroke-color": "rgba(14,16,8,0.55)", "circle-stroke-width": 1.5 },
     });
     map.addLayer({
         id: "measure-close-flash", type: "circle", source: MEASURE_NODES_SRC,
@@ -377,12 +384,7 @@ function wireHandDrag(el: HTMLElement, which: "head" | "tail") {
         const [lng, lat] = pendingLL;
         hover(lng, lat);
         // The loupe rides the end being dragged, so the drop lands where the eye says. No clock: a drag is not a hold.
-        const node = cursor ?? [lng, lat];
-        const c = map.getCanvas();
-        const r = c.getBoundingClientRect();
-        const s = c.offsetWidth / r.width;
-        const p = map.project({ lng: node[0], lat: node[1] });
-        emitPress("aim", r.left + p.x / s, r.top + p.y / s, { canvas: c, label: coordLabel(node[0], node[1]) });
+        aimLoupe(map, cursor ?? [lng, lat]);
     };
     const onMove = (e: PointerEvent) => {
         if (!map) return;
@@ -855,17 +857,15 @@ $effect(() => {
             m.setPaintProperty("measure-nodes-halo", "circle-opacity", HALO_OPACITY[hovering || dragging ? 1 : 0]);
         }
     };
-    // A node is picked up and moved, ends included; only a hand grows the snake.
-    const down = (e: maplibregl.MapLayerMouseEvent | maplibregl.MapLayerTouchEvent) => {
-        if (!active || verts.length === 0) return;
-        let nearest = -1;
-        let nearestD = Number.POSITIVE_INFINITY;
-        for (let i = 0; i < verts.length; i++) {
-            const q = m.project({ lng: verts[i][0], lat: verts[i][1] });
-            const d = (q.x - e.point.x) ** 2 + (q.y - e.point.y) ** 2;
-            if (d < nearestD) { nearestD = d; nearest = i; }
-        }
-        moveIndex = nearest;
+    // A node pressed on a side, not yet dragged: let go without moving and it was never there.
+    let born = false;
+    const sideDot = (ll: Lnglat | null) => setData(MEASURE_SIDE_SRC, fc(ll ? [{ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: ll } }] : []));
+    const side = (pt: { x: number; y: number }) =>
+        active && !dragging && verts.length >= 2 && mayAddVertex(verts.length)
+            ? sideAt(m, verts, isPolygon, pt, MEASURE_SNAP_PX, NODE_GRAB_PX)
+            : null;
+    const grab = (i: number, e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) => {
+        moveIndex = i;
         mergeInto = null;
         e.preventDefault();
         dragging = true;
@@ -874,11 +874,42 @@ $effect(() => {
         lastSnap = null;
         m.dragPan.disable();
         glow();
+        emitPress("drag");
+        aimLoupe(m, verts[i]);
     };
-    const move = (e: { lngLat: { lng: number; lat: number } }) => {
-        if (!dragging) return;
+    // A node is picked up and moved, ends included; only a hand grows the snake.
+    const down = (e: maplibregl.MapLayerMouseEvent | maplibregl.MapLayerTouchEvent) => {
+        if (!active || verts.length === 0 || dragging) return;
+        let nearest = -1;
+        let nearestD = Number.POSITIVE_INFINITY;
+        for (let i = 0; i < verts.length; i++) {
+            const q = m.project({ lng: verts[i][0], lat: verts[i][1] });
+            const d = (q.x - e.point.x) ** 2 + (q.y - e.point.y) ** 2;
+            if (d < nearestD) { nearestD = d; nearest = i; }
+        }
+        grab(nearest, e);
+    };
+    // A press on a side drops a node there and drags it, so a straight side bends where it is held.
+    const sideDown = (e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) => {
+        if ("points" in e && e.points.length > 1) return; // a pinch across the snake
+        const s = side(pressPoint(m.getCanvas(), e.originalEvent));
+        if (!s) return;
+        verts = [...verts.slice(0, s.i + 1), s.ll, ...verts.slice(s.i + 1)];
+        born = true;
+        sideDot(s.ll);
+        grab(s.i + 1, e);
+        render();
+    };
+    const move = (e: { type: string; lngLat: { lng: number; lat: number }; point: { x: number; y: number } }) => {
+        if (!dragging) {
+            // A mouse sees the dot before it presses; a finger sees it when it lands.
+            if (e.type === "mousemove") sideDot(side(e.point)?.ll ?? null);
+            return;
+        }
         moved = true;
         moveNode(e.lngLat.lng, e.lngLat.lat);
+        if (cursor) aimLoupe(m, cursor);
+        if (born) sideDot(cursor);
         render();
     };
     const up = (e: { lngLat: { lng: number; lat: number } }) => {
@@ -886,6 +917,14 @@ $effect(() => {
         dragging = false;
         m.dragPan.enable();
         glow();
+        sideDot(null);
+        emitPress("end", 0, 0, { locked: moved });
+        // A tap on a side is aimed at the snake: it must not land as a tap away that dismisses it.
+        if (born && !moved) {
+            verts = verts.filter((_, i) => i !== moveIndex);
+            swallowNextClick();
+        }
+        born = false;
         if (moved) {
             moveNode(e.lngLat.lng, e.lngLat.lat);
             const at = moveIndex;
@@ -906,11 +945,13 @@ $effect(() => {
     const nodeLayers = ["measure-nodes-halo", "measure-nodes"];
     const mapEvents = [["mousemove", move], ["touchmove", move], ["mouseup", up], ["touchend", up]] as const;
     for (const l of nodeLayers) for (const ev of layerEvents) m.on(ev, l, down);
+    for (const ev of layerEvents) m.on(ev, sideDown);
     m.on("mouseenter", "measure-nodes-halo", enter);
     m.on("mouseleave", "measure-nodes-halo", leave);
     for (const [ev, fn] of mapEvents) m.on(ev, fn);
     return () => {
         for (const l of nodeLayers) for (const ev of layerEvents) m.off(ev, l, down);
+        for (const ev of layerEvents) m.off(ev, sideDown);
         m.off("mouseenter", "measure-nodes-halo", enter);
         m.off("mouseleave", "measure-nodes-halo", leave);
         for (const [ev, fn] of mapEvents) m.off(ev, fn);
