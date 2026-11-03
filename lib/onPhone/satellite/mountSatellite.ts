@@ -18,8 +18,6 @@ export interface PhotoSite {
 }
 
 export interface SatelliteMount {
-    /** Mount the already-baked photo for this site, if one is on disk. */
-    display(site: PhotoSite): Promise<void>;
     /** New close-up tiles are on disk; MapLibre remembers the 404s until told. */
     closeUpChanged(): void;
     /** Mount the photos near this camera, unmount the far ones; returns how many are on the map. */
@@ -28,7 +26,6 @@ export interface SatelliteMount {
         sites: readonly PhotoSite[],
         zoom?: number,
     ): Promise<number>;
-    unmount(key: string): void;
     mounted(): ReadonlySet<string>;
     /** Each mounted photo's source attribution, once; the map must show them while those photos are up. */
     attributions(): string[];
@@ -132,38 +129,8 @@ export function createSatelliteMount(
     }
 
     const mountSat = (key: string, blob: Blob, bounds: Bounds, z: number): void => {
-        if (disposed) return;
         footprint.set(key, { bounds, z });
         const id = satLayerId(key);
-        const existing = map.getSource(id) as
-            | maplibregl.ImageSource
-            | undefined;
-        if (existing) {
-            // A re-bake can move the bounds; a stale mount pins the old footprint.
-            const [uw, us, ue, un] = bounds;
-            const url = URL.createObjectURL(blob);
-            const prev = satUrls.get(key);
-            satUrls.set(key, url);
-            try {
-                existing.updateImage({
-                    url,
-                    coordinates: [
-                        [uw, un],
-                        [ue, un],
-                        [ue, us],
-                        [uw, us],
-                    ] as never,
-                });
-                // Revoking a URL the source is still reading blanks the photo.
-                if (prev) URL.revokeObjectURL(prev);
-            } catch {
-                // codestyle-allow-swallow: the previous image stays mounted; the next pass retries.
-                satUrls.set(key, prev ?? url);
-            }
-            mountedSat.add(key);
-            drawEdge();
-            return;
-        }
         const url = URL.createObjectURL(blob);
         satUrls.set(key, url);
         const [w, s, e, n] = bounds;
@@ -198,7 +165,6 @@ export function createSatelliteMount(
             [SAT_CLOSE_LAYER, SAT_EDGE_ID, insertBefore].find((l) => map.getLayer(l)),
         );
         mountedSat.add(key);
-        drawEdge();
     };
 
     const unmount = (key: string): void => {
@@ -207,7 +173,7 @@ export function createSatelliteMount(
         if (map.getSource(id)) map.removeSource(id);
         mountedSat.delete(key);
         sourceOf.delete(key);
-        if (footprint.delete(key) && !disposed) drawEdge();
+        footprint.delete(key);
         const u = satUrls.get(key);
         if (u) {
             URL.revokeObjectURL(u);
@@ -216,14 +182,6 @@ export function createSatelliteMount(
     };
 
     return {
-        async display({ key }: PhotoSite): Promise<void> {
-            if (disposed || mountedSat.has(key)) return;
-            const img = await getSatImageByKey(key);
-            if (img && !disposed) {
-                sourceOf.set(key, img.source);
-                mountSat(key, img.blob, img.bounds, img.zoom ?? CLOSE_UP.zoom);
-            }
-        },
         closeUpChanged(): void {
             if (!disposed && closeUpTiles) (map.getSource(SAT_CLOSE_ID) as maplibregl.RasterTileSource | undefined)?.setTiles([closeUpTiles]);
         },
@@ -233,16 +191,24 @@ export function createSatelliteMount(
             zoom: number = SAT_MIN_Z,
         ): Promise<number> {
             const { mount, keep } = photoCullPlan(camera, sites, zoom);
-            for (const key of [...mountedSat]) if (!keep.has(key)) unmount(key);
-            let shown = 0;
-            for (const s of mount) {
-                if (disposed) break;
-                await this.display(s);
-                if (mountedSat.has(s.key)) shown++;
-            }
-            return shown;
+            const gone = [...mountedSat].filter((key) => !keep.has(key));
+            for (const key of gone) unmount(key);
+            // Read all at once and mount together: one at a time, a screenful arrived photo by photo.
+            const missing = mount.filter((s) => !mountedSat.has(s.key));
+            const imgs = await Promise.all(missing.map((s) => getSatImageByKey(s.key)));
+            if (disposed) return 0;
+            let added = 0;
+            missing.forEach(({ key }, i) => {
+                const img = imgs[i];
+                // An overlapping pass may have mounted it while this one read.
+                if (!img || mountedSat.has(key)) return;
+                sourceOf.set(key, img.source);
+                mountSat(key, img.blob, img.bounds, img.zoom ?? CLOSE_UP.zoom);
+                added++;
+            });
+            if (gone.length || added) drawEdge();
+            return mount.filter((s) => mountedSat.has(s.key)).length;
         },
-        unmount,
         mounted: () => mountedSat,
         attributions: () => [...new Set([...sourceOf.values()].map((n) => sourceNamed(n)?.attribution).filter((a): a is string => !!a))],
         dispose(): void {

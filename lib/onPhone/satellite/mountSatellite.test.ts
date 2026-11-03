@@ -6,10 +6,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mapDouble } from "$gc/mapDouble";
 
 const images = vi.hoisted(() => new Map<string, { blob: Blob; bounds: [number, number, number, number] }>());
-vi.mock("./satelliteImage", async (orig) => ({
-	...(await orig<typeof import("./satelliteImage")>()),
-	getSatImageByKey: async (k: string) => images.get(k),
-}));
+const edges = vi.hoisted(() => ({ n: 0 }));
+vi.mock("./satelliteImage", async (orig) => {
+	const real = await orig<typeof import("./satelliteImage")>();
+	return {
+		...real,
+		getSatImageByKey: async (k: string) => images.get(k),
+		heldEdge: (p: Parameters<typeof real.heldEdge>[0]) => (edges.n++, real.heldEdge(p)),
+	};
+});
 
 import { createSatelliteMount, SAT_CLOSE_ID, SAT_CLOSE_LAYER, SAT_EDGE_ID, SAT_MIN_Z, satLayerId } from "./mountSatellite";
 
@@ -58,7 +63,7 @@ describe("createSatelliteMount", () => {
 		expect(d.layers[2]).toMatchObject({ type: "line", paint: { "line-color": "#f5a119" } });
 		expect((d.layers[0]!.paint as Record<string, unknown[]>)["raster-opacity"]).toEqual(["interpolate", ["linear"], ["zoom"], SAT_MIN_Z, 0, SAT_MIN_Z + 0.5, 1]);
 		expect([...mount.mounted()]).toEqual([NEAR.key]);
-		await mount.display(NEAR);
+		expect(await mount.reconcile(CAMERA, [NEAR, FAR], 12)).toBe(1);
 		expect(created).toHaveLength(1);
 
 		expect(await mount.reconcile(CAMERA, [NEAR], 6)).toBe(0);
@@ -66,37 +71,27 @@ describe("createSatelliteMount", () => {
 		expect(d.layers.map((l) => l.id)).toEqual([SAT_CLOSE_LAYER, SAT_EDGE_ID, "roads"]);
 		expect((d.sources.get(SAT_EDGE_ID) as unknown as { geometry: { coordinates: unknown[] } }).geometry.coordinates).toEqual([]);
 		expect(revoked).toEqual([created[0]]);
-		mount.unmount("never-mounted");
-		expect(revoked).toHaveLength(1);
 	});
 
-	it("re-points a source already on the map, and keeps the old image if the swap throws", async () => {
-		const { d, mount } = rig();
-		d.raw.addSource(satLayerId(NEAR.key), { type: "image" });
-		const src = d.raw.getSource(satLayerId(NEAR.key))!;
-		await mount.display(NEAR);
-		expect(src.updateImage).toHaveBeenCalledWith({ url: created[0], coordinates: expect.any(Array) });
-		mount.unmount(NEAR.key);
-		d.raw.addSource(satLayerId(NEAR.key), { type: "image" });
-		const third = d.raw.getSource(satLayerId(NEAR.key))!;
-		(third.updateImage as ReturnType<typeof vi.fn>).mockImplementation(() => {
-			throw new Error("style swapping");
-		});
-		await mount.display(NEAR);
-		expect(mount.mounted().has(NEAR.key)).toBe(true);
-		expect(revoked).not.toContain(created.at(-1));
+	it("draws the edge once a pass, however many photos it mounts", async () => {
+		const { mount } = rig();
+		const sites = [-119.62, -119.6, -119.58].map((lng) => ({ key: `49.5,${lng}`, center: [lng, 49.5] as [number, number] }));
+		for (const s of sites) images.set(s.key, { blob: new Blob(["s"]), bounds: bounds(s.center) });
+		edges.n = 0;
+		expect(await mount.reconcile(CAMERA, sites, 12)).toBe(3);
+		expect(edges.n).toBe(1);
+		await mount.reconcile(CAMERA, sites, 12);
+		expect(edges.n).toBe(1);
 	});
 
 	it("closeUpChanged re-sets the tiles; dispose revokes every URL and stops mounting", async () => {
 		const { d, mount } = rig();
 		mount.closeUpChanged();
 		expect(d.raw.getSource(SAT_CLOSE_ID)!.setTiles).toHaveBeenCalledWith(["v10://photo/{z}/{x}/{y}"]);
-		await mount.display(NEAR);
-		await mount.display({ key: "missing", center: [0, 0] });
+		await mount.reconcile(CAMERA, [NEAR, { key: "missing", center: [-119.6, 49.5] }], 12);
 		mount.dispose();
 		expect(revoked).toEqual(created);
 		expect(mount.mounted().size).toBe(0);
-		await mount.display(FAR);
 		expect(await mount.reconcile(CAMERA, [NEAR], 12)).toBe(0);
 		mount.closeUpChanged();
 		expect(d.raw.getSource(SAT_CLOSE_ID)!.setTiles).toHaveBeenCalledTimes(1);
