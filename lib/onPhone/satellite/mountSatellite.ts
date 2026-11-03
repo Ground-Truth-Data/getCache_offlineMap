@@ -4,6 +4,7 @@ import type * as maplibregl from "maplibre-gl";
 import {
     PHOTO_COVERAGE_RADIUS_KM,
     getSatImageByKey,
+    heldEdge,
     type Bounds,
 } from "./satelliteImage";
 import { kmToDegSpan } from "../../shared/kmGeo";
@@ -42,8 +43,8 @@ export function satLayerId(key: string): string {
 /** The photo's raw source tiles over it: close in, the shrunk photo has no more pixels to give. */
 export const SAT_CLOSE_ID = "v4-sat-close";
 export const SAT_CLOSE_LAYER = `${SAT_CLOSE_ID}-l`;
-/** The edge where a blob's vector ground stops, so it reads as deliberate, not as data that failed. Photos draw none:
- * where two overlap, one's edge would cut across the other. */
+export const SAT_EDGE_ID = "v4-sat-edge";
+/** The edge where a blob's ground or the photos stop, so it reads as deliberate, not as data that failed. */
 export const HELD_EDGE: maplibregl.LineLayerSpecification["paint"] = { "line-color": "#f5a119", "line-opacity": 0.85, "line-width": 0.5 };
 
 // The viewport cull: RAM scales with photos on screen, not pin count. Two rings give hysteresis so a photo near the edge does not flap on every pan.
@@ -111,6 +112,15 @@ export function createSatelliteMount(
     // createObjectURL pins the blob in memory until revoked.
     const satUrls = new Map<string, string>();
     const sourceOf = new Map<string, string | undefined>();
+    const footprint = new Map<string, { bounds: Bounds; z: number }>();
+    // One outline for every mounted photo, over all of them: drawn per photo, one's edge cut across the other.
+    const drawEdge = (): void => {
+        const data: GeoJSON.Feature = { type: "Feature", properties: {}, geometry: { type: "MultiLineString", coordinates: heldEdge(footprint.values()) } };
+        const source = map.getSource(SAT_EDGE_ID) as maplibregl.GeoJSONSource | undefined;
+        if (source) return void source.setData(data);
+        map.addSource(SAT_EDGE_ID, { type: "geojson", data });
+        map.addLayer({ id: SAT_EDGE_ID, type: "line", source: SAT_EDGE_ID, minzoom: SAT_MIN_Z, paint: HELD_EDGE }, map.getLayer(insertBefore) ? insertBefore : undefined);
+    };
 
     if (closeUpTiles) {
         const z = CLOSE_UP.zoom;
@@ -121,8 +131,9 @@ export function createSatelliteMount(
         );
     }
 
-    const mountSat = (key: string, blob: Blob, bounds: Bounds): void => {
+    const mountSat = (key: string, blob: Blob, bounds: Bounds, z: number): void => {
         if (disposed) return;
+        footprint.set(key, { bounds, z });
         const id = satLayerId(key);
         const existing = map.getSource(id) as
             | maplibregl.ImageSource
@@ -150,6 +161,7 @@ export function createSatelliteMount(
                 satUrls.set(key, prev ?? url);
             }
             mountedSat.add(key);
+            drawEdge();
             return;
         }
         const url = URL.createObjectURL(blob);
@@ -183,9 +195,10 @@ export function createSatelliteMount(
                     ],
                 },
             } as mapboxgl.LayerSpecification,
-            map.getLayer(SAT_CLOSE_LAYER) ? SAT_CLOSE_LAYER : map.getLayer(insertBefore) ? insertBefore : undefined,
+            [SAT_CLOSE_LAYER, SAT_EDGE_ID, insertBefore].find((l) => map.getLayer(l)),
         );
         mountedSat.add(key);
+        drawEdge();
     };
 
     const unmount = (key: string): void => {
@@ -194,6 +207,7 @@ export function createSatelliteMount(
         if (map.getSource(id)) map.removeSource(id);
         mountedSat.delete(key);
         sourceOf.delete(key);
+        if (footprint.delete(key) && !disposed) drawEdge();
         const u = satUrls.get(key);
         if (u) {
             URL.revokeObjectURL(u);
@@ -207,7 +221,7 @@ export function createSatelliteMount(
             const img = await getSatImageByKey(key);
             if (img && !disposed) {
                 sourceOf.set(key, img.source);
-                mountSat(key, img.blob, img.bounds);
+                mountSat(key, img.blob, img.bounds, img.zoom ?? CLOSE_UP.zoom);
             }
         },
         closeUpChanged(): void {
@@ -236,6 +250,7 @@ export function createSatelliteMount(
             for (const u of satUrls.values()) URL.revokeObjectURL(u);
             satUrls.clear();
             mountedSat.clear();
+            footprint.clear();
         },
     };
 }

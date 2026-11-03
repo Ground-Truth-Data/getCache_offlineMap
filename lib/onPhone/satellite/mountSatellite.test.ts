@@ -11,7 +11,7 @@ vi.mock("./satelliteImage", async (orig) => ({
 	getSatImageByKey: async (k: string) => images.get(k),
 }));
 
-import { createSatelliteMount, SAT_CLOSE_ID, SAT_CLOSE_LAYER, SAT_MIN_Z, satLayerId } from "./mountSatellite";
+import { createSatelliteMount, SAT_CLOSE_ID, SAT_CLOSE_LAYER, SAT_EDGE_ID, SAT_MIN_Z, satLayerId } from "./mountSatellite";
 
 let n = 0;
 const created: string[] = [];
@@ -54,8 +54,8 @@ describe("createSatelliteMount", () => {
 		expect(id).toBe("v4-sat-49_50000__119_60000");
 		const [w, s, e, nn] = bounds(NEAR.center);
 		expect(d.sources.get(id)).toMatchObject({ type: "image", url: "blob:" + n, coordinates: [[w, nn], [e, nn], [e, s], [w, s]] });
-		// No outline: where two photos overlap, one's edge would cut across the other.
-		expect(d.layers.map((l) => l.id)).toEqual([`${id}-l`, SAT_CLOSE_LAYER, "roads"]);
+		expect(d.layers.map((l) => l.id)).toEqual([`${id}-l`, SAT_CLOSE_LAYER, SAT_EDGE_ID, "roads"]);
+		expect(d.layers[2]).toMatchObject({ type: "line", paint: { "line-color": "#f5a119" } });
 		expect((d.layers[0]!.paint as Record<string, unknown[]>)["raster-opacity"]).toEqual(["interpolate", ["linear"], ["zoom"], SAT_MIN_Z, 0, SAT_MIN_Z + 0.5, 1]);
 		expect([...mount.mounted()]).toEqual([NEAR.key]);
 		await mount.display(NEAR);
@@ -63,7 +63,8 @@ describe("createSatelliteMount", () => {
 
 		expect(await mount.reconcile(CAMERA, [NEAR], 6)).toBe(0);
 		expect(d.sources.has(id)).toBe(false);
-		expect(d.layers.map((l) => l.id)).toEqual([SAT_CLOSE_LAYER, "roads"]);
+		expect(d.layers.map((l) => l.id)).toEqual([SAT_CLOSE_LAYER, SAT_EDGE_ID, "roads"]);
+		expect((d.sources.get(SAT_EDGE_ID) as unknown as { geometry: { coordinates: unknown[] } }).geometry.coordinates).toEqual([]);
 		expect(revoked).toEqual([created[0]]);
 		mount.unmount("never-mounted");
 		expect(revoked).toHaveLength(1);

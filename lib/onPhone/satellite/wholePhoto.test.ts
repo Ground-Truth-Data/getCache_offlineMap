@@ -83,3 +83,41 @@ describe("a photo is whole or not saved", () => {
 		expect(saved.has(KEY)).toBe(false);
 	});
 });
+
+describe("the held edge", () => {
+	it("rings two overlapping photos once, with no line inside either", async () => {
+		const { heldEdge } = await import("./satelliteImage");
+		const box = ([x, y]: [number, number]): [number, number, number, number] => [x - 0.026, y - 0.018, x + 0.026, y + 0.018];
+		const a = box(PIN);
+		const b = box([PIN[0] + 0.03, PIN[1]]);
+		const segs = heldEdge([{ bounds: a, z: 16 }, { bounds: b, z: 16 }]);
+		const { kmBetween } = await import("../../shared/kmGeo");
+		// Well inside the round photo: its tiles cover everything within 2 km of the centre.
+		const inside = (p: [number, number], [w, s, e, n]: number[]) => kmBetween(p, [(w + e) / 2, (s + n) / 2]) < 1.5;
+		const mid = ([p, q]: [number, number][]): [number, number] => [(p![0] + q![0]) / 2, (p![1] + q![1]) / 2];
+		expect(segs.length).toBeGreaterThan(8);
+		expect(segs.filter((seg) => inside(mid(seg), a) && inside(mid(seg), b))).toEqual([]);
+	});
+
+	it("runs only where photo meets nothing, across zooms and box cuts", async () => {
+		const { heldEdge, photoTilesFor } = await import("./satelliteImage");
+		const photos = [
+			{ bounds: [PIN[0] - 0.02, PIN[1] - 0.015, PIN[0] + 0.02, PIN[1] + 0.015] as [number, number, number, number], z: 16 },
+			{ bounds: [PIN[0] + 0.005, PIN[1] - 0.025, PIN[0] + 0.045, PIN[1] + 0.005] as [number, number, number, number], z: 15 },
+		];
+		const covered = ([lng, lat]: [number, number]) =>
+			photos.some(({ bounds: [w, s, e, n], z }) =>
+				lng > w && lng < e && lat > s && lat < n &&
+				photoTilesFor([(w + e) / 2, (s + n) / 2], z).some((t) => lng > t.w && lng < t.e && lat > t.s && lat < t.n),
+			);
+		const segs = heldEdge(photos);
+		expect(segs.length).toBeGreaterThan(8);
+		const d = 1e-6;
+		const wrong = segs.filter(([[x0, y0], [x1, y1]]) => {
+			const [mx, my] = [(x0 + x1) / 2, (y0 + y1) / 2];
+			const sides: [[number, number], [number, number]] = x0 === x1 ? [[mx - d, my], [mx + d, my]] : [[mx, my - d], [mx, my + d]];
+			return covered(sides[0]) === covered(sides[1]);
+		});
+		expect(wrong).toEqual([]);
+	});
+});

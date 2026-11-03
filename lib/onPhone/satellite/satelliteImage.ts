@@ -53,6 +53,52 @@ export function photoTilesFor(center: [number, number], z: number): DiscTile[] {
 	return out;
 }
 
+/** The outline of every held photo together: each visible piece's side, minus the stretches some piece of any photo
+ * covers beyond it. A piece is a disc tile cut to its photo's box, so photos of any zoom or crop meet cleanly. */
+export function heldEdge(photos: Iterable<{ bounds: Bounds; z: number }>): [number, number][][] {
+	const pieces: Bounds[] = [];
+	for (const { bounds: [w, s, e, n], z } of photos)
+		for (const t of photoTilesFor([(w + e) / 2, (s + n) / 2], z)) {
+			const p: Bounds = [Math.max(t.w, w), Math.max(t.s, s), Math.min(t.e, e), Math.min(t.n, n)];
+			if (p[0] < p[2] && p[1] < p[3]) pieces.push(p);
+		}
+	const EPS = 1e-9;
+	// A coarse grid, so a side is tested only against the pieces near it.
+	const CELL = 0.02;
+	const cells = new Map<string, Bounds[]>();
+	const cellsOf = ([w, s, e, n]: Bounds) => {
+		const keys: string[] = [];
+		for (let i = Math.floor((w - EPS) / CELL); i <= Math.floor((e + EPS) / CELL); i++)
+			for (let j = Math.floor((s - EPS) / CELL); j <= Math.floor((n + EPS) / CELL); j++) keys.push(`${i},${j}`);
+		return keys;
+	};
+	for (const p of pieces) for (const k of cellsOf(p)) (cells.get(k) ?? cells.set(k, []).get(k)!).push(p);
+	const out: [number, number][][] = [];
+	// Each side: the line it sits on, its span, and whether a covering piece reaches past it the positive way.
+	for (const piece of pieces) {
+		const [w, s, e, n] = piece;
+		const near = new Set(cellsOf(piece).flatMap((k) => cells.get(k)!));
+		for (const [vertical, at, lo, hi, up] of [
+			[false, n, w, e, true],
+			[false, s, w, e, false],
+			[true, e, s, n, true],
+			[true, w, s, n, false],
+		] as const) {
+			let open: [number, number][] = [[lo, hi]];
+			for (const [qw, qs, qe, qn] of near) {
+				const [a0, a1, b0, b1] = vertical ? [qw, qe, qs, qn] : [qs, qn, qw, qe];
+				if (!(up ? a0 <= at + EPS && a1 > at + EPS : a1 >= at - EPS && a0 < at - EPS)) continue;
+				open = open.flatMap(([x, y]): [number, number][] =>
+					b1 <= x + EPS || b0 >= y - EPS ? [[x, y]] : ([[x, Math.max(x, b0)], [Math.min(y, b1), y]] as [number, number][]).filter(([u, v]) => v - u > EPS),
+				);
+				if (!open.length) break;
+			}
+			for (const [x, y] of open) out.push(vertical ? [[at, x], [at, y]] : [[x, at], [y, at]]);
+		}
+	}
+	return out;
+}
+
 export interface SatImage {
 	blob: Blob;
 	bounds: Bounds;
