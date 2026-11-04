@@ -36,17 +36,4 @@ describe("the satellite sources", () => {
 		] as [number, number][])
 			expect(sourceAt([lng, lat], "maptiler")).toBe("maptiler");
 	});
-
-	it("no source asks for a canvas a phone cannot allocate", () => {
-		// 4096 px is 16.8 MP, over WebKit's ~16.7 MP ceiling: the phone hands back a blank canvas, not an error.
-		for (const [, s] of all) expect((s.canvasPx * s.canvasPx) / 1e6).toBeLessThanOrEqual(12);
-	});
-
-	it("each canvas keeps roughly half its source's pixels, never more than the source has", () => {
-		for (const [, s] of all) {
-			// metres per source pixel at z, mid-latitudes ≈ 40075 km / 256 / 2^z × cos 45°
-			const srcMpp = ((40075.016686 / 256 / 2 ** s.zoom) * 1000) / Math.SQRT2;
-			expect(4000 / s.canvasPx).toBeGreaterThanOrEqual(srcMpp * 0.3);
-		}
-	});
 });

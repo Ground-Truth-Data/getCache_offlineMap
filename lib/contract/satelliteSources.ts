@@ -13,12 +13,8 @@ export interface SatelliteSource {
 	maxZ: number;
 	/** a tile's width in px when not 256; a map told the wrong size asks one zoom too deep */
 	tilePx?: 512;
-	/** the zoom a photo is baked from */
+	/** the zoom a held area's close tiles are kept at */
 	zoom: number;
-	/** canvas width in px across the photo's disc */
-	canvasPx: number;
-	/** WebP quality 0–1 */
-	quality: number;
 	/** HTML for the map's ⓘ, shown whenever its pixels are: each provider's own wording and links */
 	attribution: string;
 	licence: string;
@@ -41,9 +37,6 @@ export const SATELLITE_SOURCES = {
 		tilePx: 512,
 		// Outside cities Maxar's real detail ends here; z17 is the same picture at 4x the tiles.
 		zoom: 16,
-		// Not 4096: 4096² is over WebKit's ~16.7 MP canvas ceiling, which bakes blank.
-		canvasPx: 3456,
-		quality: 0.92,
 		attribution: '<a href="https://www.maptiler.com/copyright/" target="_blank">&copy; MapTiler</a> <a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>',
 		licence: "MapTiler Cloud terms; approved for R2",
 		cacheToR2: true,
@@ -58,8 +51,6 @@ export const SATELLITE_SOURCES = {
 		maxZ: 15,
 		// 10 m pixels: z14 is the last zoom with new detail.
 		zoom: 14,
-		canvasPx: 512,
-		quality: 0.9,
 		attribution: '<a href="https://cloudless.eox.at" target="_blank">EOxCloudless https://cloudless.eox.at</a> by <a href="https://eox.at" target="_blank">EOX IT Services GmbH</a> (Contains modified Copernicus Sentinel data 2016)',
 		licence: "CC BY 4.0",
 		cacheToR2: true,
@@ -72,9 +63,6 @@ export const SATELLITE_SOURCES = {
 		// It lists LODs to 23 but 404s past 16.
 		maxZ: 16,
 		zoom: 16,
-		// 256px tiles at z16 are 864px across the disc; a little over keeps edges soft.
-		canvasPx: 1024,
-		quality: 0.9,
 		attribution: 'The National Map orthoimagery courtesy of the <a href="https://www.usgs.gov/" target="_blank">U.S. Geological Survey</a>',
 		licence: "US public domain: \"Map services and data downloaded from The National Map are free and in the public domain.\"",
 		cacheToR2: true,
@@ -123,9 +111,3 @@ export function coverOf(w: number, s: number, e: number, n: number): string | un
 export function sourceNamed(name: string | undefined): SatelliteSource | undefined {
 	return Object.values(SATELLITE_SOURCES).find((s) => s.name === name);
 }
-
-/** WebKit hands back a blank canvas over ~16.7 MP; 12 leaves room for a non-square crop near the poles. */
-const MAX_CANVAS_MP = 12;
-for (const src of Object.values(SATELLITE_SOURCES) as SatelliteSource[])
-	if ((src.canvasPx * src.canvasPx) / 1e6 > MAX_CANVAS_MP)
-		throw new Error(`Satellite source "${src.name}" asks for a ${src.canvasPx}px² canvas, over the ${MAX_CANVAS_MP} MP a phone can hold; it would bake blank.`);

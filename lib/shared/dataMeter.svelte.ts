@@ -3,8 +3,7 @@
  * Bytes are PerformanceResourceTiming.transferSize (compressed wire size, not
  * body length); it's 0 for a cache hit or a cross-origin response without
  * Timing-Allow-Origin, so a total is a FLOOR. The tile hosts send no such
- * header, and satBakeWorker.ts fetches on its own thread with its own
- * timeline, so those two report through noteBytes at the fetch instead.
+ * header, so they report through noteBytes at the fetch instead.
  */
 
 import { SvelteMap } from "svelte/reactivity";

@@ -1,7 +1,7 @@
 /** Which photo a new blob uses: the nearest existing photo CENTRE within the reuse radius, else its own. */
 import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { CLOSE_UP, PHOTO_COVERAGE_RADIUS_KM, PHOTO_EDGE_MARGIN_KM, PHOTO_REUSE_KM, photoTilesFor, satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
+import { areaTileKeys, PHOTO_COVERAGE_RADIUS_KM, PHOTO_EDGE_MARGIN_KM, PHOTO_REUSE_KM, satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
 import { kmToDegSpan } from "../../lib/shared/kmGeo";
 const dropped: string[] = [];
 vi.mock("../../lib/onPhone/satellite/satelliteImage", async (orig) => ({
@@ -107,9 +107,8 @@ describe("removing every user of a photo at once", () => {
 	});
 });
 
-describe("what a blob's close-up put on the phone", () => {
-	const Z = CLOSE_UP.zoom;
-	const tilesOf = (c: [number, number]) => photoTilesFor(c, Z).map((t) => `${Z}/${t.x}/${t.y}`);
+describe("what a blob's satellite tiles put on the phone", () => {
+	const tilesOf = (c: [number, number]) => areaTileKeys(c, 16);
 
 	beforeEach(async () => {
 		await wipe();
@@ -119,8 +118,8 @@ describe("what a blob's close-up put on the phone", () => {
 	async function store(r: Region): Promise<void> {
 		await putRegion(r);
 		const have = new Set((await allTileKeys()).values());
-		const fresh = tilesOf(r.photoCenter as [number, number]).filter((k) => !have.has(PHOTO_PREFIX + k));
-		await putPhotoTiles(fresh.map((k) => [k, new ArrayBuffer(10)]), r.id);
+		const fresh = tilesOf(r.photoCenter as [number, number]).filter((k) => !have.has(`${PHOTO_PREFIX}maptiler/${k}`));
+		await putPhotoTiles(fresh.map((k) => [k, new ArrayBuffer(10)]), r.id, "maptiler");
 	}
 
 	it("a blob reusing an earlier photo added nothing; the one that fetched it added every tile", async () => {

@@ -95,8 +95,8 @@ async function drop(lng, lat, label) {
 					const c = r.result.transaction("photoDiscs").objectStore("photoDiscs").openCursor();
 					c.onsuccess = () => {
 						const cur = c.result;
-						if (!cur) return res(out);
-						out.push(`${cur.key} ${cur.value.source} z${cur.value.zoom} ${cur.value.canvasPx}px ${(cur.value.blob.size / 1048576).toFixed(2)}MB`);
+						if (!cur) return (r.result.close(), res(out));
+						out.push(`${cur.key} ${cur.value.source} z${cur.value.zoom}`);
 						cur.continue();
 					};
 				};

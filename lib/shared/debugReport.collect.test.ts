@@ -25,7 +25,7 @@ describe("collectFocusedBlobReport", () => {
 		expect(r.env.devicePixelRatio).toBe(1);
 		expect(r.layers.map((l) => l.key)).toEqual(LAYER_TOGGLES.map((t) => t.key));
 		expect(row(r, "sat")).toMatchObject({ on: true, status: "idle", askedAt: null, reason: expect.stringContaining("not requested since this page loaded") });
-		expect(row(r, "sat").expects).toContain("one satellite photo per pin");
+		expect(row(r, "sat").expects).toContain("satellite tiles ~2 km around each pin");
 		expect(row(r, "fires").expects).toContain("FIRE_RADIUS_KM");
 		expect(row(r, "vector").expects).toContain("pack ships");
 		expect(r.summary.timeToDownload).toContain("nothing downloaded since this page loaded");

@@ -1,14 +1,15 @@
 # Satellite sources
 
-Every satellite pixel on both maps is a photo the phone holds: nothing streams. A photo is baked once per
-blob (a pin, or an area the planter saved) from one of the sources below, through the tiles Worker, so
-`/app/squirrel` can count and price it. Every source's licence lets us keep its tiles. The list itself is
-`lib/contract/satelliteSources.ts`; the Worker, the photo bake and Squirrel all read it. When this page and
-that file disagree, the file wins and this page is fixed.
+Every satellite pixel on both maps is a tile the phone holds: nothing streams. Each blob (a pin, or an area
+the planter saved) holds its source's tiles once — the 2 km disc at the source's zoom and the z10–12 tiles
+over it — fetched through the tiles Worker, so `/app/squirrel` can count, price and switch them. They live in
+the tile store as `p/<source>/z/x/y` and MapLibre draws them through `v10://photo/<source>/…`. Every source's
+licence lets us keep its tiles. The list itself is `lib/contract/satelliteSources.ts`; the Worker, the phone
+and Squirrel all read it. When this page and that file disagree, the file wins and this page is fixed.
 
 ## Who serves what
 
-| Where | Source | Zoom baked | Kept | Cost |
+| Where | Source | Close zoom | Kept | Cost |
 |---|---|---|---|---|
 | Blobs outside the US | MapTiler | 16 | R2, and on the phone | $0.15 per 1,000 past 500k a month |
 | Blobs in the US | USGS | 16 | R2, and on the phone | Free |
@@ -33,8 +34,8 @@ outside their own SDKs, so neither can be a blob.
 
 ### MapTiler — everywhere else
 
-- `satellite-v2`, already 512 px tiles. Photos bake at **z16** into a 3,456 px canvas across a 2 km
-  radius. Outside cities Maxar's real detail ends at z16. The raw tiles stay on the phone for the close-up.
+- `satellite-v2`, already 512 px tiles, held at **z16** across a 2 km radius. Outside cities Maxar's real
+  detail ends at z16.
 - The default photo source; Squirrel can switch the photo source. Approved for R2.
 
 ### Off
@@ -68,7 +69,7 @@ photo with no pin, and only the LRU or the dock removes it.
 | MapTiler | MapTiler Cloud terms; R2 caching approved | © MapTiler © OpenStreetMap contributors | Owed on the free plan only; not shown |
 | Streets (planet PMTiles) | ODbL | © OpenStreetMap contributors | — |
 
-A baked photo carries its source's name, and the map credits every photo that is mounted.
+A held area's record carries its source's name, and the map credits every source held near the camera.
 
 ## Where each rule lives
 

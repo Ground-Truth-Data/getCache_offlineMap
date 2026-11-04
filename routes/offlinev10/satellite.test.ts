@@ -12,7 +12,6 @@ let probeTiles = false;
 vi.mock(
 	"../../lib/onPhone/satellite/satelliteImage",
 	() => ({
-		CLOSE_UP: {},
 		PHOTO_COVERAGE_RADIUS_KM: 2,
 		getSatImageByKey: async (k: string) => onDisk.get(k),
 		isCurrentPhoto: (img?: { source?: string }) => !!img && img.source !== "USGS",
@@ -22,7 +21,7 @@ vi.mock(
 				bytes: v.blob.size,
 				source: v.source,
 			})),
-		bakeSatelliteImage: async (
+		saveAreaTiles: async (
 			key: string,
 			center: [number, number],
 			_src: unknown,
@@ -43,7 +42,6 @@ vi.mock(
 	}),
 );
 
-let photoBytesReported = -1;
 // The real claim: a row with exactly this id, not removed. Anything else throws, with the reason.
 const { rows, AreaGone } = vi.hoisted(() => ({
 	rows: new Map<string, { removed?: number }>(),
@@ -64,12 +62,10 @@ vi.mock("./store", () => ({
 		if (!r || r.removed) throw new AreaGone(id, r ? "removed" : "missing");
 	},
 	regionsSnapshot: () => ({ regions: Promise.resolve(regions) }),
-	notePhotoBytes: (n: number) => {
-		photoBytesReported = n;
-	},
 	putPhotoTiles: async () => undefined,
 	getPhotoTiles: async () => new Map(),
-	photoTileBytes: async () => new Map(),
+	// Every blob's tiles: 2048 bytes on disk.
+	photoTileBytes: async (rs: { id: string }[]) => new Map(rs.map((r) => [r.id, { tiles: 1, bytes: 2048, addedTiles: 1, addedBytes: 2048 }])),
 }));
 vi.mock("./blobService", () => ({ onBlob: () => () => undefined, photoIds: () => ({ has: () => true }) }));
 
@@ -212,7 +208,7 @@ describe("the photo pass", () => {
 		expect(onDisk.has(askOf(PENTICTON).photoKey)).toBe(false);
 	});
 
-	it("photoInfo reads bytes per key without touching the pixels", async () => {
+	it("photoInfo sizes each area by its tiles in the tile store", async () => {
 		// the pause tests above leave the pass paused into real time
 		vi.useFakeTimers();
 		vi.advanceTimersByTime(PHOTO_RETRY_MS + 1);
@@ -220,10 +216,7 @@ describe("the photo pass", () => {
 		regions = [askOf(PENTICTON)];
 		await bakePhotos([askOf(PENTICTON)]);
 		const sizes = await photoInfo();
-		expect(sizes[askOf(PENTICTON).photoKey].bytes).toBe(2048);
-		expect(photoBytesReported).toBe(
-			Object.values(sizes).reduce((a, p) => a + p.bytes, 0),
-		);
+		expect(sizes[askOf(PENTICTON).photoKey]).toMatchObject({ bytes: 2048, addedBytes: 2048 });
 	});
 
 	it("a host that refuses every tile leaves its reason in photoIssue, and a landed photo clears it", async () => {

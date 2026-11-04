@@ -196,8 +196,7 @@ $effect(() => {
 								{#if p.name === "roads"}<span class="grn">R2 hit</span>
 								{:else if p.note || p.tiles === null}<span class="dim">{p.note ?? "—"}</span>
 								{:else if p.wire}<span class="grn">{p.wire.hit} hit</span> · <span class:amb={p.wire.miss > 0}>{p.wire.miss} upstream</span>{#if p.wire.miss}{#if p.wire.kept}<span class="dim"> · written to R2</span>{:else}<span class="red"> · not saved</span>{/if}{/if}
-								{:else if p.name === "close-up"}<span class="dim">with the photo's</span>
-								{:else}<span class="dim">baked before counting</span>{/if}
+								{:else}<span class="dim">saved before counting</span>{/if}
 								{#if p.tiles !== null}<span class="dim"> · {p.tiles} tiles</span>{/if}
 							</span>
 							<span class="mb">{p.bytes === null ? "—" : mb(p.bytes)}</span>

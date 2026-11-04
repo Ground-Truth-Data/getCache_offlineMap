@@ -1,18 +1,16 @@
 /**
- * The photo pass: one small satellite photo per blob, baked once. A blob in the wilderness
- * is a green field with a pin on it; the photo is the frame of reference.
+ * The photo pass: each blob's satellite ground, its source's tiles held once. A blob in the wilderness
+ * is a green field with a pin on it; the imagery is the frame of reference.
  */
 
 import { DEFAULT_SOURCE, SATELLITE_SOURCES, type SatelliteSource, sourceAt, sourceOf } from "../../lib/contract/satelliteSources";
 import {
 	PHOTO_COVERAGE_RADIUS_KM,
-	bakeSatelliteImage,
 	deleteSatImage,
 	getSatImageByKey,
-	CLOSE_UP,
 	isCurrentPhoto,
 	type PhotoWire,
-	photoTilesFor,
+	saveAreaTiles,
 	satImageMeta,
 } from "../../lib/onPhone/satellite/satelliteImage";
 import { noteSatelliteTiles } from "../../lib/onPhone/store/downloadGuard";
@@ -27,7 +25,6 @@ import {
 	claimArea,
 	type CloseUp,
 	getPhotoTiles,
-	notePhotoBytes,
 	photoTileBytes,
 	putPhotoTiles,
 	type Region,
@@ -61,12 +58,11 @@ const reasonOf = (e: unknown): string =>
 		.replace(/ for \d+\/\d+\/\d+$/, "")
 		.trim() || "tile request failed";
 
-/** A photo's tiles from `source`: disk first, the rest one GET each, each counted into `wire` by where it came from.
- * Only the close-up source's are kept, under `owner`'s row, before they are drawn. */
+/** An area's tiles from `source`: disk first, the rest one GET each through the tiles Worker, which honours Squirrel's
+ * switches, each counted into `wire` by where it came from and kept under `owner`'s row before this answers. */
 export async function photoTiles(keys: string[], owner: string, source: string = DEFAULT_SOURCE, wire?: PhotoWire): Promise<Map<string, ArrayBuffer>> {
-	const keep = sourceOf(source) === CLOSE_UP;
 	lastTileFailure = null;
-	const have = keep ? await getPhotoTiles(keys) : new Map<string, ArrayBuffer>();
+	const have = await getPhotoTiles(keys, source);
 	if (wire) wire.disk += have.size;
 	const missing = keys.filter((k) => !have.has(k));
 	if (missing.length === 0 || (typeof navigator !== "undefined" && navigator.onLine === false)) return have;
@@ -78,12 +74,13 @@ export async function photoTiles(keys: string[], owner: string, source: string =
 		await getEach(
 			urls as string[],
 			(i, b, cache) => {
-				// A 204: the source has no imagery for this ground, and the bake fills it from elsewhere.
-				if (!b) return void have.set(missing[i], new ArrayBuffer(0));
+				// A 204: the source has no imagery for this ground, and the save fills it from elsewhere.
+				const buf = b ?? new ArrayBuffer(0);
+				got.push([missing[i], buf]);
+				have.set(missing[i], buf);
+				if (!b) return;
 				if (wire && cache === "HIT") wire.hit++;
 				else if (wire && cache === "MISS") wire.miss++;
-				got.push([missing[i], b]);
-				have.set(missing[i], b);
 				noteBytes("satellite", b.byteLength);
 				spendBytes(b.byteLength);
 			},
@@ -96,7 +93,7 @@ export async function photoTiles(keys: string[], owner: string, source: string =
 		lastTileFailure = reasonOf(e);
 		throw e;
 	} finally {
-		if (keep) await putPhotoTiles(got, owner);
+		await putPhotoTiles(got, owner, source);
 	}
 	return have;
 }
@@ -115,92 +112,77 @@ export const PHOTO_RETRY_MS = 60_000;
 const SAT_IN_FLIGHT = 6;
 export const PHOTO_SPEC = {
 	radiusKm: PHOTO_COVERAGE_RADIUS_KM,
-	sources: Object.values(SATELLITE_SOURCES).map(({ name, zoom, canvasPx }) => ({
-		name,
-		zoom,
-		canvasPx,
-	})),
+	sources: Object.values(SATELLITE_SOURCES).map(({ name, zoom }) => ({ name, zoom })),
 };
 
-export interface PhotoInfo {
-	bytes: number;
+/** A held area: its record, and what its tiles take in the tile store — `tiles`/`bytes` all it covers, the `added` pair
+ * what its blobs put on the phone. */
+export interface PhotoInfo extends CloseUp {
 	source: string;
 	zoom: number;
-	canvasPx: number;
-	/** download + bake; absent on a photo baked before it was timed */
+	/** ask → every tile on disk */
 	ms?: number;
-	/** The raw source tiles kept for the close-up; they live in the tile store, so its budget already counts them. */
-	closeUp: CloseUp;
 	wire?: PhotoWire;
 }
 
 const WORLD = SATELLITE_SOURCES[DEFAULT_SOURCE];
 
-/** The earliest blob on a photo stored it; a later one on the same photo reuses it and added nothing. */
+/** The earliest blob on an area saved it; a later one on the same area reuses it and added nothing. */
 export const ownsPhoto = (r: Region, regions: readonly Region[]): boolean =>
 	!!r.photoKey && !regions.some((o) => o.id !== r.id && o.photoKey === r.photoKey && (o.at < r.at || (o.at === r.at && o.id < r.id)));
 
 export interface BlobPart {
-	name: "roads" | "photo" | "close-up";
+	name: "roads" | "photo";
 	/** what served it; "planet roads" is our own R2 */
 	source: string;
 	/** the satellite source's id, when it is one */
 	id?: string;
-	/** what this blob added; null when unknown or not baked yet */
+	/** what this blob added; null when unknown or not saved yet */
 	tiles: number | null;
 	bytes: number | null;
 	zoom: string;
 	/** why there is nothing to count */
 	note?: string;
-	/** the photo's tiles by origin, counted at its bake */
+	/** the area's tiles by origin, counted at its save */
 	wire?: PhotoWire;
 }
 
-/** A blob's three parts as stored: roads, its photo, and the close-up tiles it added. */
+/** A blob's two parts as stored: roads, and the satellite tiles it added. */
 export function blobParts(r: Region, photos: Record<string, PhotoInfo>, regions: readonly Region[]): BlobPart[] {
 	const p = r.photoKey ? photos[r.photoKey] : undefined;
 	const id = p ? Object.entries(SATELLITE_SOURCES).find(([, s]) => s.name === p.source)?.[0] : undefined;
 	const owns = ownsPhoto(r, regions);
-	const part = (name: "photo" | "close-up", tiles: number, bytes: number): BlobPart =>
-		!r.photoKey
-			? { name, source: "none", tiles: null, bytes: null, zoom: "", note: "follow-me · no pin" }
-			: !p
-				? { name, source: "not baked", tiles: null, bytes: null, zoom: "" }
-				: { name, source: p.source, id, tiles: owns ? tiles : 0, bytes: owns ? bytes : 0, zoom: `z${p.zoom}`, note: owns ? undefined : "reuses an earlier blob's" };
-	return [
-		{ name: "roads", source: "planet roads", tiles: r.fetched, bytes: r.newBytes ?? null, zoom: "z0–13" },
-		{ ...part("photo", p && r.photoCenter ? photoTilesFor(r.photoCenter, p.zoom).length : 0, p?.bytes ?? 0), wire: owns ? p?.wire : undefined },
-		part("close-up", p?.closeUp.addedTiles ?? 0, p?.closeUp.addedBytes ?? 0),
-	];
+	const photo: BlobPart = !r.photoKey
+		? { name: "photo", source: "none", tiles: null, bytes: null, zoom: "", note: "follow-me · no pin" }
+		: !p
+			? { name: "photo", source: "not saved", tiles: null, bytes: null, zoom: "" }
+			: owns
+				? { name: "photo", source: p.source, id, tiles: p.addedTiles, bytes: p.addedBytes, zoom: `z${p.zoom}`, wire: p.wire }
+				: { name: "photo", source: p.source, id, tiles: 0, bytes: 0, zoom: `z${p.zoom}`, note: "reuses an earlier blob's" };
+	return [{ name: "roads", source: "planet roads", tiles: r.fetched, bytes: r.newBytes ?? null, zoom: "z0–13" }, photo];
 }
 
-/** Metadata per photo key, never the pixels; the total is reported to the tile store's budget. */
+/** Each area's record and tile sizes, never the pixels. */
 export async function photoInfo(): Promise<Record<string, PhotoInfo>> {
 	const regions = await regionsSnapshot().regions;
-	const [meta, close] = await Promise.all([satImageMeta(), photoTileBytes(regions)]);
-	// Blobs sharing a photo share its tiles: the covered totals agree, and what was added is the sum of what each credited.
-	const closeByKey = new Map<string, CloseUp>();
+	const [meta, sizes] = await Promise.all([satImageMeta(), photoTileBytes(regions)]);
+	// Blobs sharing an area share its tiles: the covered totals agree, and what was added is the sum of what each credited.
+	const byKey = new Map<string, CloseUp>();
 	for (const r of regions) {
-		const c = r.photoKey ? close.get(r.id) : undefined;
+		const c = r.photoKey ? sizes.get(r.id) : undefined;
 		if (!r.photoKey || !c) continue;
-		const have = closeByKey.get(r.photoKey);
-		closeByKey.set(r.photoKey, have ? { ...c, addedTiles: have.addedTiles + c.addedTiles, addedBytes: have.addedBytes + c.addedBytes } : c);
+		const have = byKey.get(r.photoKey);
+		byKey.set(r.photoKey, have ? { ...c, addedTiles: have.addedTiles + c.addedTiles, addedBytes: have.addedBytes + c.addedBytes } : c);
 	}
 	const out: Record<string, PhotoInfo> = {};
-	let total = 0;
-	for (const m of meta) {
-		total += m.bytes;
+	for (const m of meta)
 		out[m.key] = {
-			bytes: m.bytes,
+			...(byKey.get(m.key) ?? { tiles: 0, bytes: 0, addedTiles: 0, addedBytes: 0 }),
 			source: m.source ?? WORLD.name,
 			zoom: m.zoom ?? WORLD.zoom,
-			canvasPx: m.canvasPx ?? WORLD.canvasPx,
 			ms: m.ms,
 			wire: m.wire,
-			closeUp: closeByKey.get(m.key) ?? { tiles: 0, bytes: 0, addedTiles: 0, addedBytes: 0 },
 		};
-	}
-	notePhotoBytes(total);
 	return out;
 }
 
@@ -263,10 +245,10 @@ async function pass(asks: readonly PhotoAsk[]): Promise<number> {
 			say(`[offlineV10] photo: ${id} already has its photo`);
 			continue;
 		}
-		let img: Awaited<ReturnType<typeof bakeSatelliteImage>> = null;
+		let img: Awaited<ReturnType<typeof saveAreaTiles>> = null;
 		try {
 			const wire: PhotoWire = { disk: 0, hit: 0, miss: 0, kept: !!active[2][sid] };
-			img = await bakeSatelliteImage(photoKey, at, src, (keys, from = sid) => photoTiles(keys, id, from, wire), () => claimArea(id), wire);
+			img = await saveAreaTiles(photoKey, at, src, (keys, from = sid) => photoTiles(keys, id, from, wire), () => claimArea(id), wire);
 		} catch (error) {
 			if (error instanceof RateLimited) {
 				pausedUntil = Date.now() + error.ms;
@@ -291,7 +273,7 @@ async function pass(asks: readonly PhotoAsk[]): Promise<number> {
 		}
 		setIssue(null);
 		landed++;
-		say(`[offlineV10] photo: ${PHOTO_COVERAGE_RADIUS_KM} km around ${id} (${(img.blob.size / 1024).toFixed(0)} KB)`);
+		say(`[offlineV10] photo: ${PHOTO_COVERAGE_RADIUS_KM} km around ${id} from ${img.source}`);
 		for (const fn of listeners) fn();
 	}
 	return landed;

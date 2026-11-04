@@ -11,7 +11,7 @@ import { attachCameraPersistence, loadCamera, MAP_HOME_CENTER } from "../../lib/
 import { attachDoubleTapToPin } from "../../lib/shared/doubleTapToPin";
 import { FIRE_LAYER_ID_LIST, type FireLayerHandle, attachFireLayer } from "../../lib/onPhone/render/fireLayer";
 import { creditsControl, setPhotoCredits } from "../../lib/onPhone/satellite/photoCredits";
-import { SAT_CLOSE_LAYER, type SatelliteMount, createSatelliteMount, satLayerId } from "../../lib/onPhone/satellite/mountSatellite";
+import { SAT_LAYERS, type SatelliteMount, createSatelliteMount } from "../../lib/onPhone/satellite/mountSatellite";
 import { NiceScaleBarControl } from "$gc/mapScaleBar";
 import { safeFlyTo } from "$gc/safeMap";
 import { mapboxLocale } from "$gc/mapboxLocale";
@@ -196,7 +196,7 @@ function onPhotoLanded(): void {
 		wait.photo = true;
 		endWait();
 	}
-	photos?.closeUpChanged();
+	photos?.tilesChanged();
 	reconcilePhotos();
 	void photoInfo().then((p) => {
 		photoMeta = p;
@@ -205,9 +205,7 @@ function onPhotoLanded(): void {
 
 const PHOTO_ROW = "photo";
 
-function photoIds(): string[] {
-	return [...(photos?.mounted() ?? [])].map((k) => `${satLayerId(k)}-l`);
-}
+let photosNear = 0;
 
 function reconcilePhotos(): void {
 	const m = map;
@@ -217,9 +215,9 @@ function reconcilePhotos(): void {
 		.reconcile(
 			[b.getWest(), b.getSouth(), b.getEast(), b.getNorth()],
 			[...new Map(regions.flatMap((r) => (r.photoKey && r.photoCenter ? [[r.photoKey, { key: r.photoKey, center: r.photoCenter }] as const] : []))).values()],
-			m.getZoom(),
 		)
-		.then(() => {
+		.then((n) => {
+			photosNear = n;
 			if (map === m) enforceOff(m);
 			setPhotoCredits(credits, photos?.attributions() ?? []);
 		});
@@ -429,7 +427,7 @@ function buildLayerRows(m: maplibregl.Map): void {
 }
 
 function rowIds(r: LayerRow): string[] {
-	return r.key === PHOTO_ROW ? [...photoIds(), SAT_CLOSE_LAYER] : r.ids;
+	return r.key === PHOTO_ROW ? SAT_LAYERS : r.ids;
 }
 
 function toggleLayer(key: string): void {
@@ -458,7 +456,7 @@ function markPainted(m: maplibregl.Map): void {
 		painted:
 			r.on &&
 			(r.key === PHOTO_ROW
-				? photoIds().length > 0
+				? photosNear > 0
 				: m.queryRenderedFeatures({ layers: r.ids.filter((id) => m.getLayer(id)) }).length > 0),
 	}));
 }

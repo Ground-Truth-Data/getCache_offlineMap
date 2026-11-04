@@ -1,7 +1,8 @@
-// The online map's imagery over the Streets base: only the photos the phone holds. Nothing streams, so every satellite
+// The online map's imagery over the Streets base: only the tiles the phone holds. Nothing streams, so every satellite
 // pixel on screen works with no signal and was paid for once.
 import * as maplibregl from "maplibre-gl";
 import { SATELLITE_SOURCES } from "../../contract/satelliteSources";
+import { installProtocol, PHOTO_TILES } from "../../../routes/offlinev10/protocol";
 import { listRegions, onRegionsChanged } from "../../../routes/offlinev10/store";
 import { onPhoto } from "../../../routes/offlinev10/satellite";
 import { MAP_HOME_CENTER } from "../../shared/homeCentre";
@@ -38,7 +39,7 @@ export function attachHeldPhotos(map: maplibregl.Map, onCredits: (credits: strin
 		const sites = new Map<string, { key: string; center: [number, number] }>();
 		for (const r of await listRegions())
 			if (!r.removed && r.photoKey && r.photoCenter) sites.set(r.photoKey, { key: r.photoKey, center: r.photoCenter });
-		await mount.reconcile([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], [...sites.values()], map.getZoom());
+		await mount.reconcile([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], [...sites.values()]);
 		if (mount === photos) credit();
 	};
 	const paintSample = (): void => {
@@ -54,15 +55,19 @@ export function attachHeldPhotos(map: maplibregl.Map, onCredits: (credits: strin
 		const layers = map.getStyle().layers;
 		above = layers[layers.findIndex((l) => l.id === ANCHOR) + 1]?.id;
 		map.removeLayer(ANCHOR);
-		photos = createSatelliteMount(map, above ?? "", null);
+		photos = createSatelliteMount(map, above ?? "", PHOTO_TILES);
 		paintSample();
 		void show();
 	};
 	const moved = (): void => void show();
+	installProtocol();
 	map.on("style.load", restyled);
 	map.on("moveend", moved);
 	const offRegions = onRegionsChanged(moved);
-	const offPhoto = onPhoto(moved);
+	const offPhoto = onPhoto(() => {
+		photos?.tilesChanged();
+		void show();
+	});
 	if (map.isStyleLoaded()) restyled();
 	let live = true;
 	void listRegions().then((held) => {

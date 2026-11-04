@@ -57,8 +57,8 @@ nothing to look at.
 Three things decide whether the map is still there out of coverage.
 
 **The budget** (`budget.ts`, 1 GB) is enforced at the store's write boundary:
-`putTiles` refuses the batch that would cross it, tiles and photos together
-(the photo store reports its total through `notePhotoBytes`). The download
+`putTiles` refuses the batch that would cross it, road and satellite tiles
+together in one store. The download
 stops fetching as soon as its own bytes pass the room it had, and a download
 that fails for ANY reason — budget, network, Worker — deletes every tile it
 wrote, so no tile is ever on disk without a blob. The failure is a red line on
@@ -125,7 +125,7 @@ not in it. A row with no `place` gets one on the page's next refresh.
 | `style.ts` | Protomaps DARK over the blobs; a gold line on the outline of the saved tiles at every zoom, no fill; `LEGEND` rows for the drawer |
 | `blobService.ts` | THE blob engine, app-wide: one queue, one download at a time; started by the (getcache) layout, so a pin dropped on the ONLINE map earns its blob right away |
 | fires | not here — the pass is the child's `getCache_OfflineMap/routes/fires/fireService.ts`, started by the `(getcache)` layout with every blob centre and the blob-landed signal, into the shared `rt-fire-cache`; the page paints it with the child's `attachFireLayer`, a `fires` row in the LAYERS card switches it |
-| `satellite.ts` | the photo pass: one 2 km satellite photo per blob, baked by `bakeSatelliteImage` (`lib/onPhone/satellite/`) into the shared photo store (`gc-offlineSatellite`) — from whichever source Squirrel switches on, through the Worker's `/satellite/<id>/z/x/y.jpg` route (`lib/contract/satelliteSources.ts`), and the photo remembers its source for the dock — once per blob and again only when its geometry stamp changes; the page mounts it with `createSatelliteMount` under the planet's `water` layer, so the earth and landuse fills sit under the photo and the water, roads and labels over it; a `photo` row in the LAYERS card switches it; a blob's photo goes when the blob goes |
+| `satellite.ts` | the photo pass: each blob's 2 km disc and z10–12 overview, held as its source's raw tiles by `saveAreaTiles` (`lib/onPhone/satellite/`) in the tile store under `p/<source>/`, with a small record in `gc-offlineSatellite` once every tile is on disk — from whichever source Squirrel switches on, through the Worker's `/satellite/<id>/z/x/y.jpg` route (`lib/contract/satelliteSources.ts`); the page draws them with `createSatelliteMount` (raster layers over `v10://photo/<source>/…`) under the planet's `water` layer, so the earth and landuse fills sit under the imagery and the water, roads and labels over it; a `photo` row in the LAYERS card switches it; a blob's tiles go when no other blob covers them |
 | hospitals | not here — the pass, cache, layer and card are the child's `getCache_OfflineMap/routes/hospitals/`; the `(getcache)` layout starts the pass with the anchors and the blob-landed signal; a `hospitals` row in the LAYERS card switches the layer |
 | which Worker | the child's tiles-host seam (`getCache_OfflineMap/lib/worker/tilesHost.ts`): tiles, fires and hospitals all read one target; the CONFIG card switches it (dev only, sessionStorage); shipped builds are locked to prod |
 | `SessionDock.svelte` | CURRENT SESSION: memory now/avg/peak + sparkline, live download, reads, json export |

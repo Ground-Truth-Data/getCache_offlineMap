@@ -12,9 +12,8 @@ const h = vi.hoisted(() => ({
 	notPins: new Set<string>(),
 }));
 vi.mock("../../lib/onPhone/satellite/satelliteImage", () => ({
-	CLOSE_UP: {},
 	PHOTO_COVERAGE_RADIUS_KM: 2,
-	bakeSatelliteImage: h.bake,
+	saveAreaTiles: h.bake,
 	deleteSatImage: h.drop,
 	getSatImageByKey: async () => undefined,
 	isCurrentPhoto: () => false,
@@ -28,7 +27,6 @@ vi.mock("./store", () => ({
 	AreaGone: class extends Error {},
 	claimArea: async () => {},
 	getPhotoTiles: async () => new Map(),
-	notePhotoBytes: () => {},
 	photoTileBytes: async () => new Map(),
 	putPhotoTiles: async () => {},
 	regionsSnapshot: () => ({ version: 1, regions: Promise.resolve(h.regions) }),

@@ -1,7 +1,8 @@
 /** The tile store: one IndexedDB store keyed `z/x/y`, one copy per tile
  * however many blobs cover it; a second store lists the blobs. */
 
-import { CLOSE_UP, deleteSatImage, PHOTO_REUSE_KM, photoTilesFor, type RawTile, satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
+import { SATELLITE_SOURCES } from "../../lib/contract/satelliteSources";
+import { areaTileKeys, deleteSatImage, PHOTO_REUSE_KM, type RawTile, satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
 import { kmBetween } from "../../lib/shared/kmGeo";
 import { BudgetError, budgetBytes } from "./budget";
 import type { Place } from "./places";
@@ -14,8 +15,8 @@ import {
 } from "./tiles";
 
 export const DB_NAME = "gc-offlineV10";
-/** Bump when what a blob IS changes; an older blob is then wiped, never half-drawn. */
-const DB_VERSION = 6;
+/** Bump when what a blob IS changes; an older blob is then wiped, never half-drawn. 7 keeps 6's blobs: it only names the source in a photo tile's key. */
+const DB_VERSION = 7;
 const TILES = "tiles";
 const REGIONS = "regions";
 
@@ -102,8 +103,21 @@ function open(): Promise<IDBDatabase> {
 	if (dbp) return dbp;
 	dbp = new Promise((resolve, reject) => {
 		const req = indexedDB.open(DB_NAME, DB_VERSION);
-		req.onupgradeneeded = () => {
+		req.onupgradeneeded = (e) => {
 			const db = req.result;
+			// Only MapTiler's tiles were kept before, as `p/z/x/y`: moved inside the upgrade, so a kill mid-way moves none.
+			if (e.oldVersion === 6) {
+				const st = req.transaction!.objectStore(TILES);
+				const cur = st.openCursor(IDBKeyRange.bound(`${PHOTO_PREFIX}0`, `${PHOTO_PREFIX}9￿`));
+				cur.onsuccess = () => {
+					const c = cur.result;
+					if (!c) return;
+					st.put(c.value, `${PHOTO_PREFIX}maptiler/${(c.key as string).slice(PHOTO_PREFIX.length)}`);
+					c.delete();
+					c.continue();
+				};
+				return;
+			}
 			for (const name of [TILES, REGIONS])
 				if (db.objectStoreNames.contains(name)) db.deleteObjectStore(name);
 			db.createObjectStore(TILES);
@@ -147,9 +161,8 @@ export async function getTile(key: string): Promise<ArrayBuffer | undefined> {
 	);
 }
 
-// Running total so the budget check costs nothing per write; photos live in another store and report here.
+// Running total so the budget check costs nothing per write.
 let tileBytes: Promise<number> | null = null;
-let photoBytes = 0;
 
 function scanTileBytes(): Promise<number> {
 	if (tileBytes) return tileBytes;
@@ -175,14 +188,9 @@ function scanTileBytes(): Promise<number> {
 	return tileBytes;
 }
 
-/** The photo store's bytes, counted against the same budget; reported by whoever reads that store. */
-export function notePhotoBytes(bytes: number): void {
-	photoBytes = bytes;
-}
-
-/** Bytes the budget sees: tiles on disk plus the photos last reported. */
-export async function usedBytes(): Promise<number> {
-	return (await scanTileBytes()) + photoBytes;
+/** Bytes the budget sees: every tile on disk, roads and satellite. */
+export function usedBytes(): Promise<number> {
+	return scanTileBytes();
 }
 
 /** Size on disk of these tiles; shared tiles count for every blob covering them. Cursor, never getAll(). */
@@ -238,37 +246,38 @@ async function putNow(entries: Array<[string, ArrayBuffer]>, owner: string): Pro
 	await done(tx).catch((e) => {
 		throw gone ?? e;
 	});
-	tileBytes = Promise.resolve(used - photoBytes + adding);
+	tileBytes = Promise.resolve(used + adding);
 }
 
-/** Photo tiles share the road tiles' store and budget; the prefix keeps a z13 photo tile off a z13 road tile. */
+/** Satellite tiles share the road tiles' store and budget, keyed `p/<source>/z/x/y`; the prefix keeps them off a road tile. */
 export const PHOTO_PREFIX = "p/";
 
-export function putPhotoTiles(tiles: RawTile[], owner: string): Promise<void> {
-	return putTiles(tiles.map(([k, b]) => [PHOTO_PREFIX + k, b]), owner);
+/** An empty buffer is kept too: it records ground the source has no imagery for. */
+export function putPhotoTiles(tiles: RawTile[], owner: string, source: string): Promise<void> {
+	return putTiles(tiles.map(([k, b]) => [`${PHOTO_PREFIX}${source}/${k}`, b]), owner);
 }
 
-/** The photo tiles on disk among `keys` (`z/x/y`), one transaction. */
-export async function getPhotoTiles(keys: readonly string[]): Promise<Map<string, ArrayBuffer>> {
+/** `source`'s tiles on disk among `keys` (`z/x/y`), one transaction. */
+export async function getPhotoTiles(keys: readonly string[], source: string): Promise<Map<string, ArrayBuffer>> {
 	const db = await open();
 	const tx = db.transaction(TILES, "readonly");
 	const st = tx.objectStore(TILES);
 	const out = new Map<string, ArrayBuffer>();
 	for (const k of keys) {
-		const req = st.get(PHOTO_PREFIX + k) as IDBRequest<ArrayBuffer | undefined>;
+		const req = st.get(`${PHOTO_PREFIX}${source}/${k}`) as IDBRequest<ArrayBuffer | undefined>;
 		req.onsuccess = () => {
-			if (req.result?.byteLength) out.set(k, req.result);
+			if (req.result) out.set(k, req.result);
 		};
 	}
 	await done(tx);
 	return out;
 }
 
-/** The photo tiles under a blob's photo, wherever it is centred; none for a follow-me blob. */
+/** Every satellite tile a blob's area could hold, from any source: geometry, so a delete needs no record. None for a follow-me blob. */
 function photoKeysOf(r: Region): string[] {
-	if (!r.photoCenter) return [];
-	const z = CLOSE_UP.zoom;
-	return photoTilesFor(r.photoCenter, z).map((t) => `${PHOTO_PREFIX}${z}/${t.x}/${t.y}`);
+	const c = r.photoCenter;
+	if (!c) return [];
+	return Object.entries(SATELLITE_SOURCES).flatMap(([id, s]) => areaTileKeys(c, s.zoom).map((k) => `${PHOTO_PREFIX}${id}/${k}`));
 }
 
 /** What a blob's photo tiles are: `tiles`/`bytes` all it covers, `addedTiles`/`addedBytes` only those no earlier blob already covers — what it put on the phone. One cursor pass. */

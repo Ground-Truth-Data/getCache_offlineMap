@@ -83,7 +83,7 @@ attached to a stand-in produce confident wrong answers.
 | Layer | Source | Always on? | Radius per pin |
 |---|---|---|---|
 | Vector roads — plus water, town labels, hospital/campsite POIs, all in the same blob | One Cloudflare R2 bucket (`offline-tiles`) holding a full-planet OpenStreetMap extract (`planet.pmtiles`); the Worker range-reads it and serves one tile per request | highways and major roads yes; small roads and water only inside a disc from z11 / z10 | `RADIUS_KM` (`routes/offlinev10`) |
-| Satellite photo | **MapTiler** satellite-v2 at z17 (`lib/onPhone/satellite/photoSources.ts`), baked on the phone, proxied through the Worker's `/satellite` route so the key stays a Worker secret | yes | 2 km per photo; photos along a line overlap into a ribbon (`lib/onPhone/satellite/satelliteImage.ts`) |
+| Satellite | The active Squirrel source (`lib/contract/satelliteSources.ts`) through the Worker's `/satellite` route so the key stays a Worker secret; kept as raw z/x/y tiles, served by `v10://photo` | yes | 2 km disc at the source's close zoom plus z10–12 around each held area (`lib/onPhone/satellite/satelliteImage.ts`) |
 | Fires | NASA FIRMS — VIIRS on NOAA-20, NOAA-21 and Suomi-NPP, last 48 h, proxied through the Worker's `/fires` route so the API key stays a Worker secret | yes — `attachFireLayer` (`lib/onPhone/render/fireLayer.ts`) | 500 km (`lib/shared/fireContract.ts`) |
 | Hospitals | the Worker's `/hospitals` route, from the world list bundled in the Worker | yes | 500 km |
 

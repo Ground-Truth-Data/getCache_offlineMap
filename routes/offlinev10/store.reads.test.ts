@@ -12,7 +12,6 @@ import {
 	deleteTiles,
 	getTile,
 	listRegions,
-	notePhotoBytes,
 	putRegion,
 	putTiles,
 	type Region,
@@ -36,23 +35,21 @@ const row = (id: string, more: Partial<Region> = {}): Region => ({ id, lng: -119
 
 beforeEach(async () => {
 	await wipe();
-	notePhotoBytes(0);
 });
 
 describe("reads", () => {
-	it("a tile reads back by key; sizes add up per key set, in total and with the photos", async () => {
+	it("a tile reads back by key; sizes add up per key set and in total, satellite tiles included", async () => {
 		await putRegion(row("a"));
-		await putTiles([[keys[0]!, buf(10)], [keys[1]!, buf(20)], ["p/13/1/1", buf(5)]], "a");
+		await putTiles([[keys[0]!, buf(10)], [keys[1]!, buf(20)], ["p/maptiler/13/1/1", buf(5)]], "a");
 		expect((await getTile(keys[0]!))!.byteLength).toBe(10);
 		expect(await getTile("0/9/9")).toBeUndefined();
 		expect(await bytesOfTiles([])).toBe(0);
 		expect(await bytesOfTiles([keys[1]!, "nope"])).toBe(20);
 		expect(await stats()).toEqual({ tiles: 3, bytes: 35 });
-		notePhotoBytes(1000);
-		expect(await usedBytes()).toBe(1035);
+		expect(await usedBytes()).toBe(35);
 		await deleteTiles([]);
 		await deleteTiles([keys[0]!]);
-		expect(await usedBytes()).toBe(1025);
+		expect(await usedBytes()).toBe(25);
 	});
 
 	it("checkRegions counts each blob's missing tiles and sizes a blob saved without a size", async () => {

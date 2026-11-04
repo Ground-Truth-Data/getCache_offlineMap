@@ -660,9 +660,7 @@ function toBody(node: HTMLElement) {
 											<span><span class="badge"><i style="background:{p.color}"></i>{p.source}</span></span>
 											<span>
 												{#if p.name === "roads"}<span class="tag r2">R2</span>
-												{:else if p.wire}<span class="grn">{p.wire.hit} hit</span><span class="dim"> · </span><span class:amb={p.wire.miss > 0} class:dim={!p.wire.miss}>{p.wire.miss} upstream</span>{#if p.wire.disk}<span class="dim"> · {p.wire.disk} disk</span>{/if}
-												{:else if p.name === "close-up" && p.tiles}<span class="dim">with the photo's</span>
-												{:else}<span class="dim">—</span>{/if}
+												{:else if p.wire}<span class="grn">{p.wire.hit} hit</span><span class="dim"> · </span><span class:amb={p.wire.miss > 0} class:dim={!p.wire.miss}>{p.wire.miss} upstream</span>{#if p.wire.disk}<span class="dim"> · {p.wire.disk} disk</span>{/if}												{:else}<span class="dim">—</span>{/if}
 											</span>
 											<span>
 												{#if p.name === "roads"}<span class="dim">no · already there</span>

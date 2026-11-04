@@ -35,7 +35,6 @@ const withPhoto = (r: Region) => {
 		photoBytes: p?.bytes ?? null,
 		photoSource: p?.source ?? null,
 		photoZoom: p?.zoom ?? null,
-		photoPx: p?.canvasPx ?? null,
 		photoMs: p?.ms ?? null,
 	};
 };
@@ -266,7 +265,7 @@ onMount(() => {
 			<tbody>
 				<tr><td class="name">tap → on screen</td><td class="num took">{last.msWait == null ? "…" : secs(last.msWait)}</td><td class="dim">what you waited</td></tr>
 				<tr><td class="name">ask → disk</td><td class="num">{secs(last.ms)}</td><td class="dim">{last.fetched} fetched</td></tr>
-				{#if lastPhoto}<tr><td class="name">photo ask → disk</td><td class="num">{lastPhoto.ms == null ? "…" : secs(lastPhoto.ms)}</td><td class="dim">download + bake</td></tr>{/if}
+				{#if lastPhoto}<tr><td class="name">photo ask → disk</td><td class="num">{lastPhoto.ms == null ? "…" : secs(lastPhoto.ms)}</td><td class="dim">download</td></tr>{/if}
 				<tr><td class="name">disk → painted</td><td class="num">{last.msPaint == null ? "…" : secs(last.msPaint)}</td><td class="dim">map idle</td></tr>
 			</tbody>
 		</table>

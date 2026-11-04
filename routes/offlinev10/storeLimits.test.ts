@@ -33,12 +33,12 @@ const SWEEP = { timeout: 10_000 };
 vi.stubGlobal("window", new EventTarget());
 vi.mock("./places", () => ({ nearestPlace: async () => null }));
 const photosDropped = vi.hoisted(() => [] as string[]);
-// The photo's pixels come from MapTiler through a canvas; here the bake only records what it was asked for.
+// An area's tiles come from MapTiler; here the save only records what it was asked for.
 const baked = vi.hoisted(() => [] as string[]);
 vi.mock("../../lib/onPhone/satellite/satelliteImage", async (orig) => ({
 	...(await orig<typeof import("../../lib/onPhone/satellite/satelliteImage")>()),
 	deleteSatImage: async (k: string) => void photosDropped.push(k),
-	bakeSatelliteImage: async (k: string) => (baked.push(k), { blob: new Blob(["x"]) }),
+	saveAreaTiles: async (k: string) => (baked.push(k), { source: "MapTiler", zoom: 16, bakeVersion: 12 }),
 }));
 
 const MB = 1048576;

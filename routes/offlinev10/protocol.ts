@@ -13,12 +13,12 @@ import { ANCHOR_Z, rangeBox, rangeContains, toMerc } from "./tiles";
 
 export const SCHEME = "v10";
 export const PLANET_TILES = `${SCHEME}://planet/{z}/{x}/{y}`;
-/** The satellite photo's own source tiles, served raw. */
-export const PHOTO_TILES = `${SCHEME}://photo/{z}/{x}/{y}`;
+/** A held area's satellite tiles, served raw; `{source}` is the source's id. */
+export const PHOTO_TILES = `${SCHEME}://photo/{source}/{z}/{x}/{y}`;
 /** The world's highways file, drawn under the blobs. */
 export const HIGHWAY_TILES = `${SCHEME}://highways/{z}/{x}/{y}`;
 
-const RE = /^v10:\/\/(planet|photo|highways)\/(\d+)\/(\d+)\/(\d+)/;
+const RE = /^v10:\/\/(planet|photo\/\w+|highways)\/(\d+)\/(\d+)\/(\d+)/;
 
 export interface ReadCounts {
 	hit: number;
@@ -95,10 +95,10 @@ export function installProtocol(): void {
 		if (!m) throw notFound(params.url);
 		if (m[1] === "highways")
 			return { data: (await highwayTile(Number(m[2]), Number(m[3]), Number(m[4]))) ?? new ArrayBuffer(0) };
-		const photo = m[1] === "photo";
+		const photo = m[1] !== "planet";
 		const key = `${m[2]}/${m[3]}/${m[4]}`;
 		const [z, x, y] = [Number(m[2]), Number(m[3]), Number(m[4])];
-		const buf = await getTile(photo ? PHOTO_PREFIX + key : key);
+		const buf = await getTile(photo ? `${PHOTO_PREFIX}${m[1].slice(6)}/${key}` : key);
 		if (buf && buf.byteLength > 0) {
 			const data = !photo && z < ANCHOR_Z ? await clippedTile(key, z, x, y, buf) : buf;
 			if (data) {
