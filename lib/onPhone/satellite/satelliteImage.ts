@@ -111,6 +111,67 @@ export interface SatImage {
 	ms?: number;
 	/** where its tiles came from; absent on a photo baked before this was counted */
 	wire?: PhotoWire;
+	/** The photo at 1/LEVELS[i] of its width, same bounds; absent until first needed. */
+	levels?: Blob[];
+}
+
+/** A zoomed-out map paints a 3456 px photo across a few dozen screen pixels, so it mounts one of these instead. */
+export const LEVELS = [4, 16];
+const SHRINKS_AT_ONCE = 2;
+let shrinkSlots = SHRINKS_AT_ONCE;
+const shrinkQueue: (() => void)[] = [];
+const shrinking = new Map<string, Promise<Blob[] | null>>();
+const unshrinkable = new Set<string>();
+
+/** One full decode, each level drawn from the one above it. */
+async function shrink(blob: Blob): Promise<Blob[]> {
+	const bm = await createImageBitmap(blob);
+	const out: Blob[] = [];
+	let from: ImageBitmap | OffscreenCanvas = bm;
+	try {
+		for (const d of LEVELS) {
+			const c = new OffscreenCanvas(Math.max(1, Math.round(bm.width / d)), Math.max(1, Math.round(bm.height / d)));
+			const g = c.getContext("2d")!;
+			g.imageSmoothingQuality = "high";
+			g.drawImage(from, 0, 0, c.width, c.height);
+			out.push(await c.convertToBlob({ type: "image/webp", quality: 0.8 }));
+			from = c;
+		}
+	} finally {
+		bm.close();
+	}
+	return out;
+}
+
+/** The photo's levels, made from its own blob and stored once on first need; null when they cannot be made (warned once). */
+export function photoLevels(key: string, img: SatImage): Promise<Blob[] | null> {
+	if (img.levels) return Promise.resolve(img.levels);
+	if (unshrinkable.has(key)) return Promise.resolve(null);
+	const had = shrinking.get(key);
+	if (had) return had;
+	const run = (async () => {
+		// Each shrink holds a whole decoded photo (~48 MB): a screenful at once would not fit on a phone.
+		if (shrinkSlots) shrinkSlots--;
+		else await new Promise<void>((r) => shrinkQueue.push(r));
+		try {
+			const levels = await shrink(img.blob);
+			// Removed or re-baked while it shrank: writing back would bring the old photo back.
+			const now = await idb.get(key);
+			if (now && !now.levels && now.blob.size === img.blob.size) await idb.put(key, { ...now, levels });
+			return levels;
+		} catch (e) {
+			unshrinkable.add(key);
+			console.warn(`[photo] cannot make the smaller levels of ${key}; it stays at full size`, e);
+			return null;
+		} finally {
+			const next = shrinkQueue.shift();
+			if (next) next();
+			else shrinkSlots++;
+			shrinking.delete(key);
+		}
+	})();
+	shrinking.set(key, run);
+	return run;
 }
 
 /** A bake's tiles by origin: this phone's disk, a Worker cache hit (X-Cache HIT), or the source (MISS); `kept` says the Worker wrote those misses to R2. */
@@ -164,7 +225,7 @@ export async function satImageMeta(): Promise<
 	const [keys, meta] = await Promise.all([
 		idb.keys(),
 		idb.getAllProjected((v) => ({
-			bytes: v.blob.size,
+			bytes: (v.levels ?? []).reduce((n, b) => n + b.size, v.blob.size),
 			bakeVersion: v.bakeVersion,
 			source: v.source,
 			zoom: v.zoom,
@@ -293,6 +354,8 @@ export async function bakeSatelliteImage(
 	out.wire = wire;
 	await beforeSave?.();
 	await idb.put(key, out);
+	// After the put, so the planter waiting on this photo never waits on its levels.
+	void photoLevels(key, out);
 	return out;
 }
 

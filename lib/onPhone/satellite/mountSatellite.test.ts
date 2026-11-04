@@ -5,13 +5,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mapDouble } from "$gc/mapDouble";
 
-const images = vi.hoisted(() => new Map<string, { blob: Blob; bounds: [number, number, number, number] }>());
+const images = vi.hoisted(() => new Map<string, { blob: Blob; bounds: [number, number, number, number]; canvasPx?: number; levels?: Blob[] }>());
 const edges = vi.hoisted(() => ({ n: 0 }));
 vi.mock("./satelliteImage", async (orig) => {
 	const real = await orig<typeof import("./satelliteImage")>();
 	return {
 		...real,
 		getSatImageByKey: async (k: string) => images.get(k),
+		photoLevels: async (_k: string, img: { levels?: Blob[] }) => img.levels ?? null,
 		heldEdge: (p: Parameters<typeof real.heldEdge>[0]) => (edges.n++, real.heldEdge(p)),
 	};
 });
@@ -21,11 +22,12 @@ import { createSatelliteMount, SAT_CLOSE_ID, SAT_CLOSE_LAYER, SAT_EDGE_ID, SAT_M
 let n = 0;
 const created: string[] = [];
 const revoked: string[] = [];
+const blobAt = new Map<string, Blob>();
 beforeEach(() => {
 	images.clear();
 	created.length = revoked.length = 0;
 	vi.stubGlobal("URL", Object.assign(URL, {
-		createObjectURL: () => (created.push(`blob:${++n}`), `blob:${n}`),
+		createObjectURL: (b: Blob) => (created.push(`blob:${++n}`), blobAt.set(`blob:${n}`, b), `blob:${n}`),
 		revokeObjectURL: (u: string) => void revoked.push(u),
 	}));
 });
@@ -82,6 +84,24 @@ describe("createSatelliteMount", () => {
 		expect(edges.n).toBe(1);
 		await mount.reconcile(CAMERA, sites, 12);
 		expect(edges.n).toBe(1);
+	});
+
+	it("mounts the level the zoom needs and swaps it in the same source on a zoom", async () => {
+		const { d, mount } = rig();
+		const [full, quarter, sixteenth] = [new Blob(["full"]), new Blob(["1/4"]), new Blob(["1/16"])];
+		// 0.02° wide: 15 px at z9, 233 at z13, 1864 at z16.
+		images.set(NEAR.key, { blob: full, bounds: bounds(NEAR.center), canvasPx: 3456, levels: [quarter, sixteenth] });
+		const id = satLayerId(NEAR.key);
+		const shown = () => blobAt.get(created.at(-1)!);
+		await mount.reconcile(CAMERA, [NEAR], 9);
+		expect(shown()).toBe(sixteenth);
+		await mount.reconcile(CAMERA, [NEAR], 13);
+		expect(shown()).toBe(quarter);
+		await mount.reconcile(CAMERA, [NEAR], 16);
+		expect(shown()).toBe(full);
+		expect(d.raw.getSource(id)!.updateImage).toHaveBeenLastCalledWith({ url: created.at(-1) });
+		expect(d.layers.filter((l) => l.id === `${id}-l`)).toHaveLength(1);
+		expect(revoked).toEqual(created.slice(0, 2));
 	});
 
 	it("closeUpChanged re-sets the tiles; dispose revokes every URL and stops mounting", async () => {

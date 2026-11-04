@@ -2,9 +2,11 @@
 import type * as mapboxgl from "maplibre-gl";
 import type * as maplibregl from "maplibre-gl";
 import {
+    LEVELS,
     PHOTO_COVERAGE_RADIUS_KM,
     getSatImageByKey,
     heldEdge,
+    photoLevels,
     type Bounds,
 } from "./satelliteImage";
 import { kmToDegSpan } from "../../shared/kmGeo";
@@ -73,6 +75,13 @@ function discIntersects(center: [number, number], b: Bounds): boolean {
     );
 }
 
+/** Pure: the smallest level (0 = the full photo, i = 1/LEVELS[i-1]) with a pixel for every device pixel the photo covers at this zoom. */
+export function photoLevel(bounds: Bounds, canvasPx: number, zoom: number, dpr: number): number {
+    const screenPx = ((bounds[2] - bounds[0]) / 360) * 512 * 2 ** zoom * dpr;
+    for (let i = LEVELS.length; i > 0; i--) if (canvasPx / LEVELS[i - 1]! >= screenPx) return i;
+    return 0;
+}
+
 export interface PhotoCullPlan {
     mount: PhotoSite[];
     /** A mounted photo outside this set gets unmounted. */
@@ -106,10 +115,11 @@ export function createSatelliteMount(
 ): SatelliteMount {
     const mountedSat = new Set<string>();
     let disposed = false;
+    let passes = 0;
     // createObjectURL pins the blob in memory until revoked.
     const satUrls = new Map<string, string>();
     const sourceOf = new Map<string, string | undefined>();
-    const footprint = new Map<string, { bounds: Bounds; z: number }>();
+    const footprint = new Map<string, { bounds: Bounds; z: number; px: number; level: number }>();
     // One outline for every mounted photo, over all of them: drawn per photo, one's edge cut across the other.
     const drawEdge = (): void => {
         const data: GeoJSON.Feature = { type: "Feature", properties: {}, geometry: { type: "MultiLineString", coordinates: heldEdge(footprint.values()) } };
@@ -128,12 +138,12 @@ export function createSatelliteMount(
         );
     }
 
-    const mountSat = (key: string, blob: Blob, bounds: Bounds, z: number): void => {
-        footprint.set(key, { bounds, z });
+    const mountSat = (key: string, blob: Blob, at: { bounds: Bounds; z: number; px: number; level: number }): void => {
+        footprint.set(key, at);
         const id = satLayerId(key);
         const url = URL.createObjectURL(blob);
         satUrls.set(key, url);
-        const [w, s, e, n] = bounds;
+        const [w, s, e, n] = at.bounds;
         map.addSource(id, {
             type: "image",
             url,
@@ -191,21 +201,45 @@ export function createSatelliteMount(
             zoom: number = SAT_MIN_Z,
         ): Promise<number> {
             const { mount, keep } = photoCullPlan(camera, sites, zoom);
+            const pass = ++passes;
             const gone = [...mountedSat].filter((key) => !keep.has(key));
             for (const key of gone) unmount(key);
+            const dpr = globalThis.devicePixelRatio || 1;
+            // Unmounted, or mounted at another zoom's level.
+            const due = mount.filter((s) => {
+                const f = footprint.get(s.key);
+                return !f || f.level !== photoLevel(f.bounds, f.px, zoom, dpr);
+            });
             // Read all at once and mount together: one at a time, a screenful arrived photo by photo.
-            const missing = mount.filter((s) => !mountedSat.has(s.key));
-            const imgs = await Promise.all(missing.map((s) => getSatImageByKey(s.key)));
+            const got = await Promise.all(due.map(async ({ key }) => {
+                const img = await getSatImageByKey(key);
+                if (!img) return null;
+                const px = img.canvasPx ?? CLOSE_UP.canvasPx;
+                const level = photoLevel(img.bounds, px, zoom, dpr);
+                const blob = level ? (await photoLevels(key, img))?.[level - 1] : img.blob;
+                return { key, img, px, ...(blob ? { level, blob } : { level: 0, blob: img.blob }) };
+            }));
             if (disposed) return 0;
             let added = 0;
-            missing.forEach(({ key }, i) => {
-                const img = imgs[i];
-                // An overlapping pass may have mounted it while this one read.
-                if (!img || mountedSat.has(key)) return;
-                sourceOf.set(key, img.source);
-                mountSat(key, img.blob, img.bounds, img.zoom ?? CLOSE_UP.zoom);
+            // A newer pass has its own camera: a slow shrink here must not swap a zoomed-in photo back down.
+            for (const g of pass === passes ? got : []) {
+                if (!g) continue;
+                const f = footprint.get(g.key);
+                // Its levels could not be made, so it stays as it is.
+                if (f?.level === g.level) continue;
+                if (f) {
+                    // The same source, so the layer, its fade and its place in the stack stay put.
+                    const next = URL.createObjectURL(g.blob);
+                    (map.getSource(satLayerId(g.key)) as maplibregl.ImageSource).updateImage({ url: next });
+                    URL.revokeObjectURL(satUrls.get(g.key)!);
+                    satUrls.set(g.key, next);
+                    f.level = g.level;
+                    continue;
+                }
+                sourceOf.set(g.key, g.img.source);
+                mountSat(g.key, g.blob, { bounds: g.img.bounds, z: g.img.zoom ?? CLOSE_UP.zoom, px: g.px, level: g.level });
                 added++;
-            });
+            }
             if (gone.length || added) drawEdge();
             return mount.filter((s) => mountedSat.has(s.key)).length;
         },
