@@ -11,7 +11,7 @@ import area from "@turf/area";
 import turfLength from "@turf/length";
 import { markerCtor } from "../shared/rendererOf";
 import { aimLoupe, emit as emitPress, pressPoint, swallowNextClick } from "../shared/doubleTapToPin";
-import { DRAW_LIMIT_NOTE, mayAddVertex, OVER_CAP_DRAW_NOTE, overPhotoCap } from "$gc/drawLimit";
+import { DRAW_LIMIT_NOTE, mayAddVertex } from "$gc/drawLimit";
 import { BORDER_RUST, POLYGON_FILL, POLYGON_OUTLINE, STROKE } from "$gc/drawDials";
 import { type Lnglat, type SnapKind, type SnapRings, sideAt, snapLngLat, snapRings } from "$gc/snapToShapes";
 import { formatArea, formatLength } from "$gc/units.svelte";
@@ -736,7 +736,7 @@ export function discard() {
 }
 let lastCommitAt = 0;
 function persist(share: boolean, format?: MapShareFormat) {
-    if (!canFinish || (isPolygon && overCap)) return;
+    if (!canFinish) return;
     lastCommitAt = performance.now();
     const kind: "line" | "polygon" = isPolygon ? "polygon" : "line";
     // `verts` holds $state proxies; a shallow copy still hands proxies across and breaks structuredClone in the store.
@@ -1116,11 +1116,6 @@ $effect(() => {
     }
 });
 
-let overCap = $derived.by(() => {
-    const pts = active ? points() : [];
-    return pts.length >= 3 && overPhotoCap({ type: "Polygon", coordinates: [[...pts, pts[0]]] });
-});
-
 let totalText = $derived.by(() => {
     if (!active) return null;
     const pts = points();
@@ -1225,11 +1220,10 @@ $effect(() => {
 {#if active && totalText && popAnchor && !fading}
     <div
         class="rt-line-label rt-line-label-total measure-total"
-        class:rt-over-cap={overCap}
         class:measure-gliding={!!cursor}
         class:measure-below={popAnchor.below || popAnchor.beside}
         style="left:{popAnchor.totalX}px; top:{popAnchor.totalY}px;"
-    >{totalText}{#if overCap}{` — ${OVER_CAP_DRAW_NOTE}`}{:else if !mayAddVertex(verts.length)} · {DRAW_LIMIT_NOTE}{/if}</div>
+    >{totalText}{#if !mayAddVertex(verts.length)} · {DRAW_LIMIT_NOTE}{/if}</div>
 {/if}
 
 {#if active && popAnchor && (canFinish || singlePoint) && !fading}
@@ -1279,7 +1273,7 @@ $effect(() => {
                         {/snippet}
                     </ports.ui.SharePicker>
                 {/if}
-                <button class="measure-btn measure-save" disabled={isPolygon && overCap} onclick={() => persist(false)} title={m.ofmap_ui_save()}>
+                <button class="measure-btn measure-save" onclick={() => persist(false)} title={m.ofmap_ui_save()}>
                     <img class="measure-pin-ic" src={iconPath(isPolygon ? "poly" : "line")} alt="" />
                     {m.ofmap_ui_save()}
                 </button>
