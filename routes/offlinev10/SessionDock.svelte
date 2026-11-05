@@ -52,7 +52,7 @@ let hit = $state(0);
 let miss = $state(0);
 let net = $state(0);
 let wire = $state({ n: 0, rtt: 0, worker: 0 });
-let exportState = $state<"idle" | "busy" | "ok" | "err">("idle");
+let exportState = $state<"idle" | "ok" | "err">("idle");
 
 interface Freeze {
 	/** ms since the dock mounted */
@@ -98,31 +98,29 @@ function resetPeaks(): void {
 	freezeCount = 0;
 }
 
-async function exportJson(): Promise<void> {
-	exportState = "busy";
-	try {
-		const report = {
-			page: "offlineV10",
-			at: new Date().toISOString(),
-			tier,
-			memoryMb: { now: heap, avg, peak },
-			readsLastBurst: { disk: hit, miss, net },
-			freezes: { count: freezeCount, worstMs: worstFreeze, last: freezes },
-			storage: {
-				kept,
-				budgetMb,
-				tilesMb: Number(mb(bytes)),
-				photosMb: Number(mb(Object.values(photos).reduce((a, p) => a + p.bytes, 0))),
-			},
-			photo: PHOTO_SPEC,
-			lastBlob: last ? withPhoto(last) : null,
-			blobs: regions.map(withPhoto),
-		};
-		await navigator.clipboard.writeText(JSON.stringify(report));
-		exportState = "ok";
-	} catch {
-		exportState = "err";
-	}
+/** Opens the report in a new tab: a phone browser's clipboard can fail silently, a tab cannot. */
+function exportJson(): void {
+	const report = {
+		page: "offlineV10",
+		at: new Date().toISOString(),
+		tier,
+		memoryMb: { now: heap, avg, peak },
+		readsLastBurst: { disk: hit, miss, net },
+		freezes: { count: freezeCount, worstMs: worstFreeze, last: freezes },
+		storage: {
+			kept,
+			budgetMb,
+			tilesMb: Number(mb(bytes)),
+			photosMb: Number(mb(Object.values(photos).reduce((a, p) => a + p.bytes, 0))),
+		},
+		photo: PHOTO_SPEC,
+		lastBlob: last ? withPhoto(last) : null,
+		blobs: regions.map(withPhoto),
+	};
+	const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }));
+	// null when the browser blocked the tab: say so rather than claim it opened.
+	exportState = window.open(url, "_blank") ? "ok" : "err";
+	setTimeout(() => URL.revokeObjectURL(url), 60_000);
 	setTimeout(() => (exportState = "idle"), 1500);
 }
 
@@ -178,8 +176,8 @@ onMount(() => {
 <div class="meter dev-card">
 	<div class="dev-card__head">
 		<span class="dev-card__title">current session</span>
-		<button class="export" onclick={exportJson} title="copy a JSON report of this session to the clipboard">
-			{#if exportState === "ok"}<span class="et-ok">✓</span>{:else if exportState === "busy"}…{:else if exportState === "err"}✕{:else}↥{/if}
+		<button class="export" onclick={exportJson} title="open a JSON report of this session in a new tab">
+			{#if exportState === "ok"}<span class="et-ok">✓</span>{:else if exportState === "err"}✕{:else}↥{/if}
 			<span class="et-label">json</span>
 		</button>
 	</div>
