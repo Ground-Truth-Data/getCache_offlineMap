@@ -26,9 +26,10 @@ const sourceId = (id: string) => `v4-sat-${id}`;
 export const SAT_LAYERS = IDS.map((id) => `${sourceId(id)}-l`);
 export const SAT_EDGE_ID = "v4-sat-edge";
 const SAT_SHADOW_ID = "v4-sat-shadow";
-const SHADOW: maplibregl.LineLayerSpecification["paint"] = { "line-color": "#000", "line-opacity": 0.5, "line-width": 16, "line-blur": 12 };
+// Blur equal to width feathers from the core outward; a narrower blur leaves a hard marker stroke.
+const SHADOW: maplibregl.LineLayerSpecification["paint"] = { "line-color": "#000", "line-opacity": 0.22, "line-width": 14, "line-blur": 14 };
 /** The edge where held ground stops, so it reads as deliberate, not as data that failed. */
-export const HELD_EDGE: maplibregl.LineLayerSpecification["paint"] = { "line-color": "#f5a119", "line-opacity": 0.85, "line-width": 0.5 };
+export const HELD_EDGE: maplibregl.LineLayerSpecification["paint"] = { "line-color": "#c97a4a", "line-opacity": 0.9, "line-width": 1 };
 
 /** Camera zoom below which no edge is drawn: an area is a few pixels there. */
 export const SAT_MIN_Z = 7.5;
@@ -36,6 +37,36 @@ const SAT_FADE_MS = 300;
 
 /** Whole viewports per side of the camera whose areas are credited. */
 const SAT_MOUNT_VIEWPORTS = 1;
+
+/** Tile sides joined end to end into runs: a corner inside a run takes the round join, where two butt-capped sides left a notch. */
+export function chained(segments: [number, number][][]): [number, number][][] {
+    const key = ([x, y]: [number, number]) => `${x.toFixed(9)},${y.toFixed(9)}`;
+    const at = new Map<string, number[]>();
+    segments.forEach((s, i) => {
+        for (const p of [s[0]!, s[s.length - 1]!]) (at.get(key(p)) ?? at.set(key(p), []).get(key(p))!).push(i);
+    });
+    const used = new Set<number>();
+    const next = (p: [number, number]): [number, number][] | undefined => {
+        const i = at.get(key(p))!.find((j) => !used.has(j));
+        if (i === undefined) return;
+        used.add(i);
+        const s = segments[i]!;
+        return key(s[0]!) === key(p) ? s : [...s].reverse();
+    };
+    const runs: [number, number][][] = [];
+    segments.forEach((s, i) => {
+        if (used.has(i)) return;
+        used.add(i);
+        const run = [...s];
+        for (let t = next(run[run.length - 1]!); t; t = next(run[run.length - 1]!)) run.push(...t.slice(1));
+        for (let t = next(run[0]!); t; t = next(run[0]!)) run.unshift(...[...t].reverse().slice(0, -1));
+        if (run.length < 3 || key(run[0]!) !== key(run[run.length - 1]!)) return void runs.push(run);
+        // A closed run's ends are caps, not a join: start it mid-side, where flush butt caps leave no notch.
+        const mid: [number, number] = [(run[0]![0] + run[1]![0]) / 2, (run[0]![1] + run[1]![1]) / 2];
+        runs.push([mid, ...run.slice(1), mid]);
+    });
+    return runs;
+}
 
 function expanded(camera: Bounds, n: number): Bounds {
     const [w, s, e, no] = camera;
@@ -75,13 +106,13 @@ export function createSatelliteMount(
         map.addLayer({ id, type: "raster", source: id.slice(0, -2), paint: { "raster-fade-duration": SAT_FADE_MS } }, before());
 
     const drawEdge = (areas: { ring: [number, number][]; z: number }[]): void => {
-        const data: GeoJSON.Feature = { type: "Feature", properties: {}, geometry: { type: "MultiLineString", coordinates: heldEdge(areas) } };
+        const data: GeoJSON.Feature = { type: "Feature", properties: {}, geometry: { type: "MultiLineString", coordinates: chained(heldEdge(areas)) } };
         const source = map.getSource(SAT_EDGE_ID) as maplibregl.GeoJSONSource | undefined;
         if (source) return void source.setData(data);
         map.addSource(SAT_EDGE_ID, { type: "geojson", data });
         map.addLayer({ id: SAT_EDGE_ID, type: "line", source: SAT_EDGE_ID, minzoom: SAT_MIN_Z, paint: HELD_EDGE }, before());
         // Under the photos, so they cover its inside half: only the outside shows, a card's shadow along the staircase.
-        map.addLayer({ id: SAT_SHADOW_ID, type: "line", source: SAT_EDGE_ID, minzoom: SAT_MIN_Z, paint: SHADOW }, SAT_LAYERS[0]);
+        map.addLayer({ id: SAT_SHADOW_ID, type: "line", source: SAT_EDGE_ID, minzoom: SAT_MIN_Z, layout: { "line-join": "round" }, paint: SHADOW }, SAT_LAYERS[0]);
     };
 
     return {
