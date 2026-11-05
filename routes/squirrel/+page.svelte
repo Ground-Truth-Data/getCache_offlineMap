@@ -290,7 +290,7 @@ const here = $derived.by(() => {
 	const km = ([x, y]: [number, number]) => Math.hypot((x - lng) * cos, y - lat) * KM_PER_DEG;
 	const byKey = new Map<string, { key: string; km: number; info?: PhotoInfo; blobs: Region[] }>();
 	for (const r of regions) {
-		const ring = r.photoRing;
+		const ring = r.photoRings?.flat();
 		if (!r.photoKey || !ring) continue;
 		const xs = ring.map((p) => p[0]);
 		const ys = ring.map((p) => p[1]);
@@ -319,7 +319,7 @@ const foot = $derived.by(() => {
 	const y = (lat: number) => H / 2 - (lat - r.lat) * KM_PER_DEG * pxPerKm;
 	return {
 		roads: { x: x(b.w), y: y(b.n), w: wKm * pxPerKm, h: hKm * pxPerKm },
-		piece: (r.photoRing ?? []).map(([lng, lat]) => `${x(lng)},${y(lat)}`).join(" "),
+		piece: (r.photoRings?.[0] ?? []).map(([lng, lat]) => `${x(lng)},${y(lat)}`).join(" "),
 		pin: { x: x(r.lng), y: y(r.lat) },
 		kmWide: W / pxPerKm,
 	};
