@@ -39,7 +39,7 @@ export const SATELLITE_SOURCES = {
 		tilePx: 512,
 		// Outside cities Maxar's real detail ends here; z17 is the same picture at 4x the tiles.
 		zoom: 16,
-		attribution: '<a href="https://www.maptiler.com/copyright/" target="_blank">&copy; MapTiler</a> <a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>',
+		attribution: '<a href="https://www.maptiler.com/copyright/" target="_blank">&copy; MapTiler</a> <a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap</a>',
 		licence: "MapTiler Cloud terms; approved for R2",
 		cacheToR2: true,
 		// Flex plan, per 1,000 requests past the included 500k.
@@ -53,7 +53,7 @@ export const SATELLITE_SOURCES = {
 		maxZ: 15,
 		// 10 m pixels: z14 is the last zoom with new detail.
 		zoom: 14,
-		attribution: '<a href="https://cloudless.eox.at" target="_blank">&copy; EOX</a> · modified Copernicus Sentinel 2016',
+		attribution: '<a href="https://s2maps.eu" target="_blank">&copy; EOX</a>',
 		licence: "CC BY 4.0",
 		cacheToR2: true,
 		usdPer1000: 0,
