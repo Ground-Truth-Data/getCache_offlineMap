@@ -24,6 +24,8 @@ export interface SatelliteSource {
 	usdPer1000: number;
 	/** where it has imagery, [w, s, e, n]; a source with any wins there over the switched-on one */
 	covers?: readonly (readonly [number, number, number, number])[];
+	/** what Squirrel calls the ground its `covers` box in */
+	region?: string;
 }
 
 export const SATELLITE_SOURCES = {
@@ -67,6 +69,7 @@ export const SATELLITE_SOURCES = {
 		licence: "US public domain: \"Map services and data downloaded from The National Map are free and in the public domain.\"",
 		cacheToR2: true,
 		usdPer1000: 0,
+		region: "United States",
 		// Kept inside the border: past it USGS answers 404 or blank, and a pin there would bake nothing.
 		covers: [
 			[-124.4, 32.75, -67.0, 41.3],
@@ -84,6 +87,75 @@ export const SATELLITE_SOURCES = {
 			[-160.3, 18.9, -154.7, 22.3],
 			[-67.3, 17.9, -65.2, 18.6],
 		],
+	},
+	nsw: {
+		name: "NSW Spatial Services imagery",
+		color: "oklch(0.75 0.13 60)",
+		tileUrl: (_key, z, x, y) => `https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Imagery/MapServer/tile/${z}/${y}/${x}`,
+		// Cities go to z21; the bush 404s past z18.
+		maxZ: 18,
+		zoom: 18,
+		attribution: '&copy; State of New South Wales (<a href="https://www.spatial.nsw.gov.au/" target="_blank">Spatial Services, DCS</a>)',
+		// Some NSW sheets say BY-ND: we keep and serve the bytes unaltered, which ND allows.
+		licence: "CC BY 4.0: \"Data accessed through these Web Services are subject to a Creative Commons Attribution By Licence\"",
+		cacheToR2: true,
+		usdPer1000: 0,
+		region: "New South Wales",
+		covers: [
+			[141.1, -33.9, 148.9, -29.1],
+			[144.5, -35.5, 150.0, -33.9],
+			[150.0, -34.9, 150.85, -33.9],
+			[149.0, -33.9, 151.2, -29.1],
+			[151.2, -32.5, 152.4, -29.2],
+		],
+	},
+	ign: {
+		name: "IGN BD ORTHO",
+		color: "oklch(0.7 0.12 250)",
+		tileUrl: (_key, z, x, y) =>
+			`https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&TILEMATRIXSET=PM&FORMAT=image/jpeg&TILEMATRIX=${z}&TILEROW=${y}&TILECOL=${x}`,
+		maxZ: 19,
+		zoom: 18,
+		attribution: '&copy; <a href="https://www.ign.fr/" target="_blank">IGN</a> – BD ORTHO&reg;, Licence Ouverte Etalab 2.0',
+		licence: "Licence Ouverte / Etalab 2.0: \"l'intégralité des données publiques de l'IGN sont placées sous la licence ouverte Etalab\"",
+		cacheToR2: true,
+		usdPer1000: 0,
+		region: "France",
+		covers: [
+			[-1.0, 43.5, 6.0, 49.0],
+			[-4.3, 47.9, -1.0, 48.5],
+		],
+	},
+	pdok: {
+		name: "PDOK Luchtfoto",
+		color: "oklch(0.72 0.14 30)",
+		tileUrl: (_key, z, x, y) => `https://service.pdok.nl/hwh/luchtfotorgb/wmts/v1_0/Actueel_orthoHR/EPSG:3857/${z}/${x}/${y}.jpeg`,
+		maxZ: 21,
+		zoom: 18,
+		attribution: 'Luchtfoto &copy; <a href="https://www.beeldmateriaal.nl/" target="_blank">Beeldmateriaal Nederland</a> / <a href="https://www.pdok.nl/" target="_blank">PDOK</a> (CC BY 4.0)',
+		licence: "CC BY 4.0",
+		cacheToR2: true,
+		usdPer1000: 0,
+		region: "Netherlands",
+		covers: [
+			[4.7, 51.7, 5.9, 52.6],
+			[5.9, 52.0, 6.7, 53.0],
+			[5.6, 53.0, 6.9, 53.3],
+		],
+	},
+	pnoa: {
+		name: "IGN España PNOA",
+		color: "oklch(0.75 0.14 90)",
+		tileUrl: (_key, z, x, y) =>
+			`https://www.ign.es/wmts/pnoa-ma?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=OI.OrthoimageCoverage&STYLE=default&TILEMATRIXSET=GoogleMapsCompatible&TILEMATRIX=${z}&TILEROW=${y}&TILECOL=${x}&FORMAT=image/jpeg`,
+		maxZ: 20,
+		zoom: 18,
+		attribution: 'PNOA cedido por &copy; <a href="https://www.ign.es/" target="_blank">Instituto Geográfico Nacional</a> (CC BY 4.0 scne.es)',
+		licence: "CC BY 4.0: \"el uso de los productos y servicios de información geográfica del IGN… conlleva la aceptación por el usuario de una licencia CC-BY 4.0\"",
+		cacheToR2: true,
+		usdPer1000: 0,
+		region: "Spain",
+		covers: [[-6.9, 38.0, -1.0, 42.5]],
 	},
 } satisfies Record<string, SatelliteSource>;
 

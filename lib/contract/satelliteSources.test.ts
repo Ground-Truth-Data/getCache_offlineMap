@@ -4,9 +4,33 @@ import { DEFAULT_SOURCE, SATELLITE_SOURCES, type SatelliteSource, sourceAt, sour
 const all = Object.entries(SATELLITE_SOURCES) as [string, SatelliteSource][];
 
 describe("the satellite sources", () => {
-	it("default to MapTiler, and only MapTiler, Sentinel and USGS keep their tiles in R2", () => {
+	it("default to MapTiler, and every source keeps its tiles in R2", () => {
 		expect(DEFAULT_SOURCE).toBe("maptiler");
-		expect(all.filter(([, s]) => s.cacheToR2).map(([id]) => id)).toEqual(["maptiler", "sentinel", "usgs"]);
+		expect(all.filter(([, s]) => s.cacheToR2).map(([id]) => id)).toEqual(["maptiler", "sentinel", "usgs", "nsw", "ign", "pdok", "pnoa"]);
+	});
+
+	it("each regional source wins inside its own ground and nowhere else", () => {
+		for (const [at, id] of [
+			[[148.6, -32.25], "nsw"], // Dubbo
+			[[150.3, -34.5], "nsw"], // Bowral
+			[[2.5, 45.5], "ign"], // Massif Central
+			[[-3.0, 48.2], "ign"], // Brittany
+			[[5.3, 52.1], "pdok"], // Utrecht
+			[[-3.7, 40.4], "pnoa"], // Madrid
+			[[144.96, -37.81], "maptiler"], // Melbourne: Victoria's imagery is paid
+			[[147.3, -42.9], "maptiler"], // Hobart: Tasmania's is non-commercial
+			[[153.03, -27.47], "maptiler"], // Brisbane: Queensland's fill is all rights reserved
+			[[-123.1, 49.28], "maptiler"], // Vancouver: BC's is Access Only
+			[[4.35, 50.85], "maptiler"], // Brussels
+			[[-9.14, 38.72], "maptiler"], // Lisbon
+		] as [[number, number], string][])
+			expect(sourceAt(at, "maptiler")).toBe(id);
+	});
+
+	it("no two sources claim the same ground", () => {
+		const boxes = all.flatMap(([id, s]) => (s.covers ?? []).map((b) => [id, b] as const));
+		for (const [a, [aw, as, ae, an]] of boxes)
+			for (const [b, [bw, bs, be, bn]] of boxes) if (a !== b) expect(aw < be && bw < ae && as < bn && bs < an).toBe(false);
 	});
 
 	it("each name its attribution and licence, and is found again by the name a photo stores", () => {

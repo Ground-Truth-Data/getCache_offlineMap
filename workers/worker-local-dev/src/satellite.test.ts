@@ -90,6 +90,18 @@ describe("/satellite through the shared R2 cache", () => {
     expect(source.mock.calls[0][0]).toBe("https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/14/5718/2627.jpg");
   });
 
+  it("keeps each regional source under its own id, asking ArcGIS and WMTS hosts in their own axis order", async () => {
+    const source = vi.fn(async (_u: string) => new Response(new Uint8Array([9]), { status: 200 }));
+    stubFetch(source);
+    for (const id of ["nsw", "ign", "pdok", "pnoa"]) expect((await ask(id)).headers.get("X-Cache")).toBe("MISS");
+    expect(tiles()).toEqual(["nsw/14/2627/5718.jpg", "ign/14/2627/5718.jpg", "pdok/14/2627/5718.jpg", "pnoa/14/2627/5718.jpg"]);
+    const [nsw, ign, pdok, pnoa] = source.mock.calls.map(([u]) => u);
+    expect(nsw).toMatch(/NSW_Imagery\/MapServer\/tile\/14\/5718\/2627$/);
+    expect(ign).toContain("TILEMATRIX=14&TILEROW=5718&TILECOL=2627");
+    expect(pdok).toMatch(/EPSG:3857\/14\/2627\/5718\.jpeg$/);
+    expect(pnoa).toContain("TILEMATRIX=14&TILEROW=5718&TILECOL=2627");
+  });
+
   it("passes a 429 through with the source's Retry-After and keeps nothing", async () => {
     stubFetch(async () => new Response("slow down", { status: 429, headers: { "Retry-After": "30" } }));
     const res = await ask();
@@ -278,8 +290,11 @@ describe("/squirrel", () => {
   });
 
   it("serves the default source and no counts on a Worker without the bucket", async () => {
-    expect(await (await call("/squirrel", env({ SAT_CACHE: undefined, METER: undefined }))).json()).toEqual({ active: "maptiler", cache: { maptiler: false, sentinel: false, usgs: false },
-      overrides: { maptiler: "this Worker has no R2 bucket, so it keeps nothing", sentinel: "this Worker has no R2 bucket, so it keeps nothing", usgs: "this Worker has no R2 bucket, so it keeps nothing" },
+    const none = "this Worker has no R2 bucket, so it keeps nothing";
+    const ids = ["maptiler", "sentinel", "usgs", "nsw", "ign", "pdok", "pnoa"];
+    expect(await (await call("/squirrel", env({ SAT_CACHE: undefined, METER: undefined }))).json()).toEqual({ active: "maptiler",
+      cache: Object.fromEntries(ids.map((id) => [id, false])),
+      overrides: Object.fromEntries(ids.map((id) => [id, none])),
       counts: null,
     });
   });

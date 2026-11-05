@@ -1,6 +1,6 @@
 <!-- Squirrel: every imagery source side by side: what it served, pulled upstream, kept in R2 and costs. Dev only. Numbers are the Worker's counts and this browser's blobs; "—" means nothing measures it yet. -->
 <script lang="ts">
-import { SATELLITE_SOURCES, type SatelliteSource, type SourceId, sourceNamed, sourceOf } from "../../lib/contract/satelliteSources";
+import { DEFAULT_SOURCE, SATELLITE_SOURCES, type SatelliteSource, type SourceId, sourceNamed, sourceOf } from "../../lib/contract/satelliteSources";
 import { loadCamera, MAP_HOME_CENTER } from "../../lib/mapState/mapViewport";
 import { coverTiles } from "../../lib/onPhone/satellite/satelliteImage";
 import { type WorkerTarget, getWorkerTarget, satelliteTileUrl, setWorkerTarget, squirrelUrl } from "../../lib/worker/tilesHost";
@@ -60,9 +60,16 @@ const LOOK: Record<string, { sub: string; lic: Lic; licText: string; lock?: stri
 	maptiler: { sub: "satellite-v2 · pin photos", lic: "ok", licText: "R2 approved" },
 	sentinel: { sub: "cloudless 2016 · fills gaps", lic: "ok", licText: "CC BY 4.0" },
 	usgs: { sub: "ImageryOnly · US", lic: "ok", licText: "public domain" },
+	nsw: { sub: "NSW_Imagery · New South Wales", lic: "ok", licText: "CC BY" },
+	ign: { sub: "BD ORTHO · France", lic: "ok", licText: "Etalab 2.0" },
+	pdok: { sub: "Actueel_orthoHR · Netherlands", lic: "ok", licText: "CC BY 4.0" },
+	pnoa: { sub: "PNOA · Spain", lic: "ok", licText: "CC BY 4.0" },
 };
 // USGS and the Province each license their logo only by request, so they keep their dot.
 const LOGO: Record<string, string> = { maptiler: maptilerMark, sentinel: sentinelMark };
+const REGIONAL = (Object.entries(SATELLITE_SOURCES) as [string, SatelliteSource][]).filter(
+	(e): e is [string, SatelliteSource & Required<Pick<SatelliteSource, "covers" | "region">>] => !!e[1].covers && !!e[1].region,
+);
 const BC_COLOR = "oklch(0.74 0.10 190)";
 const ROADS_COLOR = "#f3f1e9";
 
@@ -544,6 +551,27 @@ function toBody(node: HTMLElement) {
 
 		<div class="card">
 			<div class="cardhead">
+				<span class="dot" style="background:var(--blue)"></span><span class="title">REGIONS</span>
+				<span class="hnote">inside its boxes a regional source wins · everywhere else photos bake from <b>{SATELLITE_SOURCES[DEFAULT_SOURCE].name}</b> · Sentinel streams under them only when a planter switches it on</span>
+			</div>
+			<div class="regions">
+				<svg viewBox="-180 -90 360 180" class="world" role="img" aria-label="where each regional source covers">
+					<rect x="-180" y="-90" width="360" height="180" class="sea" />
+					{#each REGIONAL as [id, src] (id)}
+						{#each src.covers as [w, s, e, n], i (i)}<rect x={w} y={-n} width={e - w} height={n - s} fill={src.color}><title>{src.region}: [{w}, {s}, {e}, {n}]</title></rect>{/each}
+					{/each}
+				</svg>
+				<div class="rlist">
+					{#each REGIONAL as [id, src] (id)}
+						<p><span class="dot big" style="background:{src.color}"></span><b>{src.region}</b> → {src.name} · z{src.zoom} · {src.covers.length} box{src.covers.length === 1 ? "" : "es"}</p>
+						<p class="dim small boxes">{#each src.covers as c, i (i)}<code>[{c.join(", ")}]</code> {/each}</p>
+					{/each}
+				</div>
+			</div>
+		</div>
+
+		<div class="card">
+			<div class="cardhead">
 				<span class="dot" style="background:var(--amber)"></span><span class="title">HAND TEST</span>
 				<span class="hnote">10 tiles at z{TEST_Z} around its last centre, fetched twice through {host}</span>
 			</div>
@@ -747,6 +775,15 @@ function toBody(node: HTMLElement) {
 .fail { margin: 12px 28px 0; color: var(--red); font-family: var(--mono); font-size: 12px; }
 .page { padding: 16px 8px 80px; display: flex; flex-direction: column; gap: 18px; }
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+.regions { display: flex; flex-wrap: wrap; gap: 16px; padding: 12px 16px; }
+.world { width: 360px; max-width: 100%; height: auto; align-self: flex-start; border: 1px solid var(--border); border-radius: 6px; }
+.world .sea { fill: var(--panel3); }
+.world rect:not(.sea) { fill-opacity: 0.75; }
+.rlist { flex: 1; min-width: 240px; }
+.rlist p { margin: 0 0 4px; }
+.rlist .dot { display: inline-block; margin-right: 6px; }
+.rlist .boxes { margin-bottom: 10px; }
+.rlist .boxes code { margin-right: 8px; }
 .cardhead { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 18px; background: var(--panel2); border-bottom: 1px solid var(--border); white-space: nowrap; }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex: none; }
 .dot.big { width: 9px; height: 9px; }
