@@ -38,15 +38,15 @@ drawn at every zoom, is what says so.
 
 Tiles are stored once, keyed `z/x/y`; a second blob over the same ground
 fetches only what is missing; deleting a blob drops only tiles under no
-surviving blob's anchor tiles. A blob is its pin's SPOT, not its ground: a
-pin dropped inside an older blob's tiles still earns its own row (0 fetched,
-all shared) and its own photo. Only a pin at the very same spot is skipped.
-A deleted pin takes its blob and photo with it. A pin's blob is stored
-`pin: true`; on the host's first ready read the engine diffs the pin-born
-rows on disk against the pins, so a pin deleted while the app was closed
-(or on another phone) still takes its blob, and after that it diffs pin
-change against pin change. Blobs with no pin — map centre, follow-me —
-only the dock deletes. Every tile is written under its blob's live row,
+surviving blob's anchor tiles. A blob is its feature's SPOT, not its ground:
+a pin, piece or block anchored inside an older blob's tiles still earns its
+own row (0 fetched, all shared) and its own photo. Only the very same spot
+is skipped. A deleted feature takes its blob and photo with it. A feature's
+blob is stored with its `kind`; on the host's first ready read the engine
+diffs the rows that have one against the features, so a feature deleted
+while the app was closed (or on another phone) still takes its blob, and
+after that it diffs change against change. Blobs with no kind — map
+centre, follow-me — only the dock deletes. Every tile is written under its blob's live row,
 checked in the write's own transaction: a blob removed mid-download stops
 the download at its next write, and its photo is never saved.
 A follow-me blob is stored `photo: false` and never gets a photo: no pin,

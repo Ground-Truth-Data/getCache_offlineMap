@@ -13,7 +13,7 @@ import {
 	deleteRegion,
 	keepStorage,
 	listRegions,
-	pinAreas,
+	featureAreas,
 	type Region,
 	regionId,
 	regionKnown,
@@ -42,7 +42,6 @@ interface Ask {
 	id: string;
 	/** the pieces' outer rings this blob photographs; absent for a pin, a line or follow-me */
 	rings?: [number, number][][];
-	pin?: boolean;
 	kind?: string;
 	/** the row being repaired: its missing tiles are fetched and the row keeps its place */
 	keep?: Region;
@@ -95,7 +94,7 @@ const whole = async (id: string): Promise<boolean> => {
 export async function queueBlob(
 	lng: number,
 	lat: number,
-	opts: { rings?: [number, number][][] | null; pin?: boolean; kind?: string; revive?: boolean } = {},
+	opts: { rings?: [number, number][][] | null; kind?: string; revive?: boolean } = {},
 ): Promise<boolean> {
 	const id = regionId(lng, lat);
 	if (queued.has(id)) return false;
@@ -103,7 +102,7 @@ export async function queueBlob(
 	// A second ask for the same spot can land during the await.
 	if (queued.has(id)) return false;
 	queued.add(id);
-	queue.push({ at: [lng, lat], id, rings: opts.rings ?? undefined, pin: opts.pin, kind: opts.kind, revive: opts.revive });
+	queue.push({ at: [lng, lat], id, rings: opts.rings ?? undefined, kind: opts.kind, revive: opts.revive });
 	void drain();
 	return true;
 }
@@ -112,7 +111,7 @@ export async function queueBlob(
 export async function repairBlob(r: Region): Promise<boolean> {
 	if (queued.has(r.id)) return false;
 	queued.add(r.id);
-	queue.push({ at: [r.lng, r.lat], id: r.id, pin: r.pin, keep: r });
+	queue.push({ at: [r.lng, r.lat], id: r.id, kind: r.kind, keep: r });
 	void drain();
 	return true;
 }
@@ -132,7 +131,7 @@ async function drain(): Promise<void> {
 	}
 }
 
-async function download({ at, id, rings, pin, kind, keep }: Ask): Promise<void> {
+async function download({ at, id, rings, kind, keep }: Ask): Promise<void> {
 	try {
 		// Before "start": a refused area must not get its photo baked either.
 		await makeRoom(at, id);
@@ -154,7 +153,7 @@ async function download({ at, id, rings, pin, kind, keep }: Ask): Promise<void> 
 				if (current) current.progress = progress;
 				emit({ kind: "progress", progress });
 			},
-			{ id, ...chosen, pin, kind, keep },
+			{ id, ...chosen, kind, keep },
 		);
 		say(
 			`[offlineV10] blob ${region.id}: ${region.fetched} new of ${region.tiles} tiles, ${((region.newBytes ?? 0) / 1048576).toFixed(1)} MB added (${(region.bytes / 1048576).toFixed(1)} MB on the ground), ${region.ms} ms to disk`,
@@ -222,7 +221,7 @@ async function look(box: Box): Promise<void> {
 	for (const p of host?.places() ?? [])
 		p.anchors.forEach((at, i) => {
 			if (at[0] < box.w || at[0] > box.e || at[1] < box.s || at[1] > box.n) return;
-			void queueBlob(at[0], at[1], { rings: p.rings?.[i], pin: true, kind: p.kind, revive: true });
+			void queueBlob(at[0], at[1], { rings: p.rings?.[i], kind: p.kind, revive: true });
 		});
 }
 
@@ -267,7 +266,7 @@ export function startBlobService(ports: HostPorts): () => void {
 			/* the first start's stop owns shutdown */
 		};
 	host = ports;
-	say("[offlineV10] blob engine on — every pin earns a blob");
+	say("[offlineV10] blob engine on — every pin, piece and block earns a blob");
 	void removeStaleAreas().catch((e) => console.error("[offlineV10] stale sweep failed", e));
 	// A spot that leaves this set was deleted or moved. Until the first ready read it is the pin-born rows on
 	// disk, so a pin deleted while the engine was not watching still takes its area.
@@ -279,7 +278,7 @@ export function startBlobService(ports: HostPorts): () => void {
 		for (const p of ports.places()) {
 			p.anchors.forEach(([lng, lat], i) => {
 				now.add(regionId(lng, lat));
-				void queueBlob(lng, lat, { rings: p.rings?.[i], pin: true, kind: p.kind });
+				void queueBlob(lng, lat, { rings: p.rings?.[i], kind: p.kind });
 			});
 		}
 		return now;
@@ -291,7 +290,7 @@ export function startBlobService(ports: HostPorts): () => void {
 		// The map's first look can land before the pins load, and an import lands under a still camera.
 		if (shown) void look(shown);
 		// Only a place change deletes; a reconnect never does.
-		const before = seen ?? pinAreas().then((rows) => new Set(rows.map((r) => r.id)));
+		const before = seen ?? featureAreas().then((rows) => new Set(rows.map((r) => r.id)));
 		seen = Promise.resolve(now);
 		void before.then((ids) => {
 			for (const id of ids) if (!now.has(id)) void removeBlob(id);

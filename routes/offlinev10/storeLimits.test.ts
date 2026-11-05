@@ -200,8 +200,8 @@ describe("an area lives and dies with its pin", () => {
 	it("a pin gone while nobody watched takes its area, its photo and its row once the map store is ready", async () => {
 		const [p, t, f] = SPOTS;
 		const now = Date.now();
-		const pinned = region(regionId(...p), now, ...p, { pin: true });
-		const tomb = region(regionId(...t), now, ...t, { pin: true, removed: now });
+		const pinned = region(regionId(...p), now, ...p, { kind: "pin" });
+		const tomb = region(regionId(...t), now, ...t, { kind: "pin", removed: now });
 		const follow = region(regionId(...f), now, ...f, { photoKey: undefined, photoRings: undefined });
 		for (const r of [pinned, tomb, follow]) await putRegion(r);
 		await putTiles([[ownTile(pinned), new ArrayBuffer(1024)]], pinned.id);
@@ -276,7 +276,7 @@ describe("offline areas are an LRU cache of the 16 MB test budget", () => {
 		setBudgetMb(16);
 		const now = Date.now();
 		const fill = [0, 1, 2, 3].map((i) => {
-			const r = region(regionId(...far(i)), now - (40 - i) * DAY, ...far(i), { lastOpened: now - (30 - i) * DAY, pin: true });
+			const r = region(regionId(...far(i)), now - (40 - i) * DAY, ...far(i), { lastOpened: now - (30 - i) * DAY, kind: "pin" });
 			return { ...r, fetched: rangeTiles(r.range).length, newBytes: 4 * MB };
 		});
 		for (const r of fill) {

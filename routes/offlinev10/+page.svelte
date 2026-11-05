@@ -604,7 +604,7 @@ onMount(() => {
 			{photoProblem}
 			follow={fix ? { at: fix, margin: margin ?? Number.NEGATIVE_INFINITY } : null}
 			onAddHere={() => { const c = map?.getCenter(); if (c) void queueBlob(c.lng, c.lat); }}
-			onAddForPins={touchInView}
+			onAddForFeatures={touchInView}
 			onDelete={removeBlob}
 			onWipe={wipeAll}
 			onFly={(r) => { if (map) safeFlyTo(map, { center: [r.lng, r.lat], zoom: 11 }); }}

@@ -282,7 +282,7 @@ onMount(() => {
 	{/if}
 
 	<div class="foot">
-		<span class="dim">DROP PIN TO START · LONG PRESS ON MAP</span>
+		<span class="dim">DRAW A PIECE OR DROP A PIN · DOUBLE-TAP THE MAP</span>
 		<button onclick={() => { hit = miss = net = 0; }}>clear counts</button>
 	</div>
 </div>

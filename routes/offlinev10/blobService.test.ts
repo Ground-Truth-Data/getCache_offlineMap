@@ -13,7 +13,7 @@ vi.stubGlobal("window", new EventTarget());
 let keepAsked = 0;
 vi.mock("./store", () => ({
 	AreaGone: class AreaGone extends Error {},
-	pinAreas: async () => disk.filter((r) => r.pin),
+	featureAreas: async () => disk.filter((r) => r.kind),
 	regionsSnapshot: () => ({ version: 0, regions: Promise.resolve([...disk]) }),
 	regionKnown: async (id: string) => disk.some((r) => r.id === id),
 	listRegions: async () => [...disk],
@@ -61,7 +61,7 @@ vi.mock("./download", () => ({
 			region.photoKey = opts.photoKey;
 			region.photoRings = opts.photoRings;
 		}
-		if (opts.pin) region.pin = true;
+		if (opts.kind) region.kind = opts.kind;
 		disk.push(region);
 		return region;
 	},

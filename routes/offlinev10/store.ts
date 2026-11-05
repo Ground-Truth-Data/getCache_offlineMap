@@ -14,8 +14,8 @@ import {
 } from "./tiles";
 
 export const DB_NAME = "gc-offlineV10";
-/** Bump when what a blob IS changes; an older blob is then wiped, never half-drawn. 7 keeps 6's blobs: it only names the source in a photo tile's key. 9: a photo is its pieces' rings, not a pin's disc. */
-const DB_VERSION = 9;
+/** Bump when what a blob IS changes; an older blob is then wiped, never half-drawn. 7 keeps 6's blobs: it only names the source in a photo tile's key. 9: a photo is its pieces' rings, not a pin's disc. 10: a feature's blob carries its kind, not a bare pin flag. */
+const DB_VERSION = 10;
 const TILES = "tiles";
 const REGIONS = "regions";
 
@@ -49,17 +49,15 @@ export interface Region {
 	place?: Place | null;
 	/** ms epoch the map last showed it; absent = never, so `at` stands in */
 	lastOpened?: number;
-	/** ms epoch it was removed. The row stays so the engine does not fetch the pin's blob straight back. */
+	/** ms epoch it was removed. The row stays so the engine does not fetch the feature's blob straight back. */
 	removed?: number;
 	/** Born before its first tile so no tile is ever on disk unnamed; still set means the download stopped and the engine fetches the rest. */
 	filling?: true;
-	/** Born from a pin at this spot; once the host is ready, a pin-born area with no pin here goes. Absent on follow-me. */
-	pin?: true;
-	/** the host feature it was born from, by the host's glyph name; absent on follow-me */
+	/** The host feature it was born from, by the host's glyph name; once the host is ready, a blob whose feature is gone goes. Absent on follow-me. */
 	kind?: string;
 }
 
-/** The area a write names has no live row. `removed`: the row says so, a pin was deleted or a download failed. `missing`: no row at all, so whoever named it holds an id no blob was born with. */
+/** The area a write names has no live row. `removed`: the row says so, a feature was deleted or a download failed. `missing`: no row at all, so whoever named it holds an id no blob was born with. */
 export class AreaGone extends Error {
 	constructor(
 		readonly id: string,
@@ -332,12 +330,12 @@ export async function claimArea(id: string): Promise<void> {
 	if (!r || r.removed) throw new AreaGone(id, r ? "removed" : "missing");
 }
 
-/** Every pin-born row, removed ones included: what the engine judges against the pins once the host is ready. */
-export async function pinAreas(): Promise<Region[]> {
+/** Every feature-born row, removed ones included: what the engine judges against the features once the host is ready. */
+export async function featureAreas(): Promise<Region[]> {
 	const db = await open();
 	const tx = db.transaction(REGIONS, "readonly");
 	const rows = await result(tx.objectStore(REGIONS).getAll() as IDBRequest<Region[]>);
-	return rows.filter((r) => r.pin);
+	return rows.filter((r) => r.kind);
 }
 
 export async function regionRow(id: string): Promise<Region | undefined> {
@@ -481,7 +479,7 @@ export async function stats(): Promise<{ tiles: number; bytes: number }> {
 }
 
 /** Delete a blob, its photo, and only the tiles no other blob still covers — coverage is geometry, so no refcount to drift.
- * `keepRow` leaves a `removed` row behind so the pin's blob is not fetched straight back; without it a removed row goes too.
+ * `keepRow` leaves a `removed` row behind so the feature's blob is not fetched straight back; without it a removed row goes too.
  * Null when the spot has no row. */
 // Marked before the first await, so a download in flight stops at its next fetch, not its next write.
 const removing = new Set<string>();

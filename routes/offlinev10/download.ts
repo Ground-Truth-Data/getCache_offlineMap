@@ -45,7 +45,6 @@ export interface DownloadOpts {
 	/** absent unless the blob anchors a piece: no photo */
 	photoKey?: string;
 	photoRings?: [number, number][][];
-	pin?: boolean;
 	kind?: string;
 	/** a repair keeps the row's birth time */
 	keep?: Region;
@@ -89,7 +88,6 @@ export async function downloadRegion(
 		born.photoKey = opts.photoKey;
 		born.photoRings = opts.photoRings;
 	}
-	if (opts.pin) born.pin = true;
 	if (opts.kind) born.kind = opts.kind;
 	if (!opts.keep) await putRegion(born);
 	const have = await allTileKeys();

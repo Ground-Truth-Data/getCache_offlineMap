@@ -1,5 +1,5 @@
 <script lang="ts">
-/** What is on disk: the newest pin blob open, each part naming its source; the rest folded. Squirrel holds the full log. */
+/** What is on disk: the newest feature blob open, each part naming its source; the rest folded. Squirrel holds the full log. */
 import area from "@turf/area";
 import { onDestroy, untrack } from "svelte";
 import { SATELLITE_SOURCES, type SourceId } from "../../lib/contract/satelliteSources";
@@ -24,7 +24,7 @@ let {
 	failure = null,
 	photoProblem = null,
 	onAddHere,
-	onAddForPins,
+	onAddForFeatures,
 	onDelete,
 	onWipe,
 	onFly,
@@ -48,7 +48,7 @@ let {
 	/** why photos are not baking, in the host's words; null while they are */
 	photoProblem?: string | null;
 	onAddHere: () => void;
-	onAddForPins: () => void;
+	onAddForFeatures: () => void;
 	onDelete: (id: string) => void;
 	onWipe: () => void;
 	onFly: (r: Region) => void;
@@ -93,7 +93,7 @@ const nameOf = (r: Region): string => (r.place ? placeLabel(r.place) : r.id);
 const KIND: Record<string, string> = { poly: "piece", block: "block", pin: "pin", line: "line", track: "track" };
 /** What the blob was born from; a piece or block adds its size and its photo's zoom and tiles. */
 function whatOf(r: Region): string {
-	const kind = r.kind ? (KIND[r.kind] ?? r.kind) : r.pin ? "kind not recorded" : "follow-me";
+	const kind = r.kind ? (KIND[r.kind] ?? r.kind) : "follow-me";
 	if (!r.photoRings) return kind;
 	const ha = r.photoRings.reduce((a, ring) => a + area({ type: "Polygon", coordinates: [ring] }), 0) / 10_000;
 	const photo = partsOf(r)[1]!;
@@ -105,11 +105,11 @@ const when = (t: number) => {
 	return `${d.toLocaleString("en-US", { month: "short", day: "2-digit" })} · ${d.toTimeString().slice(0, 5)}`;
 };
 const ll = (v: number) => v.toFixed(4).replace("-", "−");
-// A pin blob wins over a follow-me blob, which keeps writing wherever the walker is; within a bucket, newest first.
+// A feature's blob wins over a follow-me blob, which keeps writing wherever the walker is; within a bucket, newest first.
 const ordered = $derived(
 	[...regions].sort((a, b) => {
-		const ap = a.pin ? 0 : 1;
-		const bp = b.pin ? 0 : 1;
+		const ap = a.kind ? 0 : 1;
+		const bp = b.kind ? 0 : 1;
 		return ap !== bp ? ap - bp : b.at - a.at;
 	}),
 );
@@ -159,7 +159,7 @@ $effect(() => {
 		<div class="fail" title="the photo pass retries every minute and on reload; blobs without a photo get theirs when it clears">✕ photos not baking: {photoProblem}</div>
 	{/if}
 	<button class="add" onclick={onAddHere} disabled={busy}>{busy ? "downloading…" : "+ blob at map centre"}</button>
-	<button class="add" onclick={onAddForPins} disabled={busy}>+ blobs for features in view</button>
+	<button class="add" onclick={onAddForFeatures} disabled={busy}>+ blobs for features in view</button>
 	<div class="hint">each blob: roads {RADIUS_KM} km around it on whole z{ANCHOR_Z} tiles · z{MIN_Z}–z{MAX_Z}</div>
 	<div class="follow" class:low={follow !== null && follow.margin <= FOLLOW_MARGIN_KM}>
 		📡

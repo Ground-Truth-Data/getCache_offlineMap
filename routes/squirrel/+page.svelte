@@ -677,7 +677,7 @@ function toBody(node: HTMLElement) {
 						{#each log as { r, parts, hits } (r.id)}
 							<button id="blob-{r.id}" class="lrow" class:open={open.has(r.id)} class:sel={picked?.r.id === r.id} onclick={() => toggle(r.id)}>
 								<span class="chev">▶</span>
-								<span class="pin">{r.place ? placeLabel(r.place) : r.pin ? r.id : "follow-me"}</span>
+								<span class="pin">{r.place ? placeLabel(r.place) : r.kind ? r.id : "follow-me"}</span>
 								<span class="dim">{ll(r.lat)}, {ll(r.lng)}</span>
 								<span class:num={r === regions[0]} class:dim={r !== regions[0]}>{when(r.at)}</span>
 								<span class="dotsrow"><span class="dots">{#each parts as p (p.name)}<i style="background:{p.color}"></i>{/each}</span><span class:grn={hits !== null} class:dim={hits === null}>{hits === null ? "—" : `${hits}% photo hits`}</span></span>
