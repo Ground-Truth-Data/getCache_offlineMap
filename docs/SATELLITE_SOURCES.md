@@ -95,7 +95,7 @@ photo with no pin, and only the LRU or the dock removes it.
 
 | Source | Licence | Credit in the ⓘ, each linked | Logo |
 |---|---|---|---|
-| Sentinel | CC BY 4.0 | EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016) | None asked |
+| Sentinel | CC BY 4.0 | © EOX (linked to cloudless.eox.at) · modified Copernicus Sentinel 2016 | None asked |
 | USGS | US public domain | The National Map orthoimagery courtesy of the U.S. Geological Survey | None asked |
 | MapTiler | MapTiler Cloud terms; R2 caching approved | © MapTiler © OpenStreetMap contributors | Owed on the free plan only; not shown |
 | Streets (planet PMTiles) | ODbL | © OpenStreetMap contributors | — |

@@ -53,7 +53,7 @@ export const SATELLITE_SOURCES = {
 		maxZ: 15,
 		// 10 m pixels: z14 is the last zoom with new detail.
 		zoom: 14,
-		attribution: '<a href="https://cloudless.eox.at" target="_blank">EOxCloudless https://cloudless.eox.at</a> by <a href="https://eox.at" target="_blank">EOX IT Services GmbH</a> (Contains modified Copernicus Sentinel data 2016)',
+		attribution: '<a href="https://cloudless.eox.at" target="_blank">&copy; EOX</a> · modified Copernicus Sentinel 2016',
 		licence: "CC BY 4.0",
 		cacheToR2: true,
 		usdPer1000: 0,
