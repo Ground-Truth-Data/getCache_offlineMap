@@ -4,7 +4,8 @@
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SATELLITE_SOURCES } from "../../lib/contract/satelliteSources";
-import { getSatImageByKey, pieceKey, pieceTileKeys } from "../../lib/onPhone/satellite/satelliteImage";
+import { coverTiles, FAR_ZOOMS, getSatImageByKey, pieceKey, pieceTileKeys } from "../../lib/onPhone/satellite/satelliteImage";
+import { piecesOf } from "../../lib/shared/anchors";
 import { configureTilesDevHost } from "../../lib/worker/tilesHost";
 import { setBudgetMb } from "./budget";
 import { bakePhotos, photoTiles } from "./satellite";
@@ -151,5 +152,29 @@ describe("Squirrel's switch decides every tile, the z10–12 overview included",
 		expect(tiles).toHaveLength(keysOf(E, 14).length);
 		// Counted as Squirrel counts it: every tile a miss the Worker was told not to keep.
 		expect((await getSatImageByKey(E.photoKey!))?.wire).toEqual({ disk: 0, hit: 0, miss: tiles.length, kept: false });
+	});
+
+	it("a 12-piece shape on ten blobs holds every piece's cover tiles at every photo zoom, shared tiles included", async () => {
+		// 0.03° apart: each piece owns its close-up tiles, so a dropped ring shows; the z10–12 overview is shared.
+		const parts = Array.from({ length: 12 }, (_, i): [number, number][][] => {
+			const x = -76.2 + i * 0.03;
+			return [[[x, 45.07], [x + 0.002, 45.07], [x + 0.002, 45.0715], [x, 45.07]]];
+		});
+		const blobs = piecesOf({ type: "MultiPolygon", coordinates: parts }).map((p, i) => ({ id: `twelve-${i}`, photoKey: pieceKey(p.rings), rings: p.rings }));
+		expect(blobs).toHaveLength(10);
+		for (const b of blobs) await putRegion({ ...region(b.id, ...b.rings[0]![0]!), photoKey: b.photoKey, photoRings: b.rings });
+		vi.stubGlobal("fetch", vi.fn(async (url: string) =>
+			url === `${HOST}/squirrel/active`
+				? new Response(JSON.stringify({ active: "sentinel", cache: { sentinel: false } }))
+				: { ok: true, status: 200, headers: new Headers({ "X-Cache": "MISS" }), arrayBuffer: async () => new ArrayBuffer(7) }));
+		await bakePhotos(blobs);
+
+		const held = new Set(await onDisk());
+		const zoom = SATELLITE_SOURCES.sentinel.zoom;
+		const short = parts.flatMap(([ring], i) =>
+			[...FAR_ZOOMS, zoom].flatMap((z) => coverTiles(ring!, z).map((t) => `${PHOTO_PREFIX}sentinel/${z}/${t.x}/${t.y}`)).filter((k) => !held.has(k)).map((k) => `part ${i + 1}: ${k}`));
+		expect(short).toEqual([]);
+		const perBlob = blobs.map((b) => pieceTileKeys(b.rings, zoom));
+		expect(perBlob.flat().length).toBeGreaterThan(new Set(perBlob.flat()).size);
 	});
 });
