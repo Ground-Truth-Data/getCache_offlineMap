@@ -17,7 +17,7 @@ and Squirrel all read it. When this page and that file disagree, the file wins a
 | Blobs in France | IGN BD ORTHO | 18 | R2, and on the phone | Free |
 | Blobs in the Netherlands | PDOK Luchtfoto | 18 | R2, and on the phone | Free |
 | Blobs in Spain | IGN España PNOA | 18 | R2, and on the phone | Free |
-| Anywhere, when the planter switches it on (BASEMAP → Sentinel satellite; off by default, per device) | Sentinel, streamed under the held photos | 15 | R2 | Free |
+| Anywhere, when the planter switches it on (BASEMAP → Sentinel satellite; off on every cold start, kept through sleep and background) | Sentinel, streamed under the held photos | 15 | R2 | Free |
 | Ground the first source has no imagery for | Sentinel | 14 | R2, and on the phone | Free |
 | A new planter's sample area (Mississippi Lake, Ontario) | Sentinel, bundled in the app | 14 | In the app bundle (70 KB) | Free |
 | Off | BC Imagery | — | — | Not wired |
