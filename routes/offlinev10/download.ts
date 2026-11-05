@@ -44,7 +44,7 @@ export interface DownloadOpts {
 	id: string;
 	/** absent unless the blob anchors a piece: no photo */
 	photoKey?: string;
-	photoRing?: [number, number][];
+	photoRings?: [number, number][][];
 	pin?: boolean;
 	/** a repair keeps the row's birth time */
 	keep?: Region;
@@ -84,9 +84,9 @@ export async function downloadRegion(
 	const tiles = rangeTiles(range);
 	const at = opts.keep?.at ?? Date.now();
 	const born: Region = { id, lng, lat, range, at, tiles: tiles.length, fetched: 0, bytes: 0, ms: 0, filling: true };
-	if (opts.photoKey && opts.photoRing) {
+	if (opts.photoKey && opts.photoRings) {
 		born.photoKey = opts.photoKey;
-		born.photoRing = opts.photoRing;
+		born.photoRings = opts.photoRings;
 	}
 	if (opts.pin) born.pin = true;
 	if (!opts.keep) await putRegion(born);

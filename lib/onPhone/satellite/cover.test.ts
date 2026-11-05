@@ -35,7 +35,7 @@ describe("the cover rule: every tile the filled outer ring touches", () => {
 	it("a ring with a hole holds the tiles under the hole too", () => {
 		const outer = square(-120.02, 50, -119.98, 50.02);
 		const hole = square(-120.01, 50.005, -119.99, 50.015);
-		const rings = piecesOf({ type: "Polygon", coordinates: [outer, hole] }).map((p) => p.ring);
+		const rings = piecesOf({ type: "Polygon", coordinates: [outer, hole] }).flatMap((p) => p.rings);
 		expect(rings).toEqual([outer]);
 		const got = keys(rings[0]!);
 		for (const p of inside(hole, 0.0005)) expect(got.has(tileOf(p))).toBe(true);
@@ -67,7 +67,7 @@ describe("the cover rule: every tile the filled outer ring touches", () => {
 	it("a MultiPolygon is each part's outer ring, holes dropped", () => {
 		const a = square(-120.02, 50, -120.01, 50.01);
 		const b = square(-119.9, 50.1, -119.89, 50.11);
-		const rings = piecesOf({ type: "MultiPolygon", coordinates: [[a, square(-120.018, 50.002, -120.012, 50.008)], [b]] }).map((p) => p.ring);
+		const rings = piecesOf({ type: "MultiPolygon", coordinates: [[a, square(-120.018, 50.002, -120.012, 50.008)], [b]] }).flatMap((p) => p.rings);
 		expect(rings).toEqual([a, b]);
 		for (const r of rings) for (const p of inside(r, 0.0005)) expect(keys(r).has(tileOf(p))).toBe(true);
 	});

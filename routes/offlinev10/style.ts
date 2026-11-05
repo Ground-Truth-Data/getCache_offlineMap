@@ -18,8 +18,8 @@ export const PLANET = "planet";
 export const BASE = "world-base";
 const HIGHWAYS = "highways";
 export const REGIONS = "v10-regions";
-/** A blob's photo sits over the earth and landuse fills, under water, roads and labels. */
-export const PHOTO_INSERT_BEFORE = "water";
+/** A piece's photo sits over every base fill, water included, so held ground shows no blue; streams, roads and labels stay on top. */
+export const PHOTO_INSERT_BEFORE = "water_stream";
 
 
 // Zoomed in, stock slate water sits at the same value as the road greys, so a creek reads as a track; it turns blue over a zoom span.

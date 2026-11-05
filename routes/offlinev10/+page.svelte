@@ -214,7 +214,7 @@ function reconcilePhotos(): void {
 	void photos
 		.reconcile(
 			[b.getWest(), b.getSouth(), b.getEast(), b.getNorth()],
-			[...new Map(regions.flatMap((r) => (r.photoKey && r.photoRing ? [[r.photoKey, { key: r.photoKey, ring: r.photoRing }] as const] : []))).values()],
+			[...new Map(regions.flatMap((r) => (r.photoKey && r.photoRings ? [[r.photoKey, { key: r.photoKey, rings: r.photoRings }] as const] : []))).values()],
 		)
 		.then((n) => {
 			photosNear = n;

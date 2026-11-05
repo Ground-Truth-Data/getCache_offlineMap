@@ -36,7 +36,7 @@ vi.mock("./download", () => ({
 		lng: number,
 		lat: number,
 		_p: unknown,
-		opts: { id: string; photoKey?: string; photoRing?: [number, number][]; pin?: boolean },
+		opts: { id: string; photoKey?: string; photoRings?: [number, number][][]; pin?: boolean },
 	) => {
 		downloads.push([lng, lat]);
 		if (failNext) {
@@ -59,7 +59,7 @@ vi.mock("./download", () => ({
 		};
 		if (opts.photoKey) {
 			region.photoKey = opts.photoKey;
-			region.photoRing = opts.photoRing;
+			region.photoRings = opts.photoRings;
 		}
 		if (opts.pin) region.pin = true;
 		disk.push(region);
@@ -185,7 +185,7 @@ describe("blob service", () => {
 	});
 
 	it("a piece takes a PHOTO keyed by its ring, where a pin of the same age does not", async () => {
-		const list = [{ anchors: [PENTICTON], rings: [RING], lastTouchedAt: ago() }];
+		const list = [{ anchors: [PENTICTON], rings: [[RING]], lastTouchedAt: ago() }];
 		const { ports, listening } = fakePorts(() => list);
 		const stop = startBlobService(ports);
 		expect(listening()).toBe(true);
@@ -194,7 +194,7 @@ describe("blob service", () => {
 		release?.();
 		await tick();
 		await tick();
-		expect(disk.map((r) => [r.photoKey, r.photoRing])).toEqual([[pieceKey(RING), RING]]);
+		expect(disk.map((r) => [r.photoKey, r.photoRings])).toEqual([[pieceKey([RING]), [RING]]]);
 		stop();
 	});
 
@@ -223,8 +223,8 @@ describe("blob service", () => {
 	it("a deleted piece takes its blob and its photo; a place with no blob takes nothing", async () => {
 		const events: string[] = [];
 		const off = onBlob((e) => events.push(e.kind));
-		const list: { anchors: [number, number][]; rings?: [number, number][][]; lastTouchedAt: string }[] = [
-			{ anchors: [PENTICTON], rings: [RING], lastTouchedAt: ago() },
+		const list: { anchors: [number, number][]; rings?: [number, number][][][]; lastTouchedAt: string }[] = [
+			{ anchors: [PENTICTON], rings: [[RING]], lastTouchedAt: ago() },
 			{ anchors: [SPOKANE], lastTouchedAt: soon() },
 		];
 		const { ports, changed } = fakePorts(() => list);
@@ -246,7 +246,7 @@ describe("blob service", () => {
 		await tick();
 		await tick();
 		expect(disk).toEqual([]);
-		expect(photosDropped).toEqual([pieceKey(RING)]);
+		expect(photosDropped).toEqual([pieceKey([RING])]);
 		expect(events.at(-1)).toBe("removed");
 		stop();
 		off();
@@ -258,12 +258,12 @@ describe("blob service", () => {
 		release?.();
 		await tick();
 		await tick();
-		expect(await queueBlob(...SPOKANE, { ring: RING })).toBe(true);
+		expect(await queueBlob(...SPOKANE, { rings: [RING] })).toBe(true);
 		await tick();
 		release?.();
 		await tick();
 		await tick();
-		expect(disk.map((r) => r.photoKey)).toEqual([undefined, pieceKey(RING)]);
+		expect(disk.map((r) => r.photoKey)).toEqual([undefined, pieceKey([RING])]);
 	});
 
 	it("a pin dropped with no signal earns its blob when signal returns; a reconnect deletes nothing", async () => {

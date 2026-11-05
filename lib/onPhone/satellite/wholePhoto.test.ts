@@ -32,7 +32,7 @@ async function save(answer: (keys: string[], source: string | undefined) => Map<
 	const { saveAreaTiles } = await import("./satelliteImage");
 	const { SATELLITE_SOURCES } = await import("../../contract/satelliteSources");
 	const asked: { keys: string[]; source: string | undefined }[] = [];
-	const img = await saveAreaTiles(KEY, RING, SATELLITE_SOURCES.maptiler, async (keys, source) => {
+	const img = await saveAreaTiles(KEY, [RING], SATELLITE_SOURCES.maptiler, async (keys, source) => {
 		asked.push({ keys, source });
 		return answer(keys, source);
 	});

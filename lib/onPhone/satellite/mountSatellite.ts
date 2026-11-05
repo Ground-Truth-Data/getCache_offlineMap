@@ -3,10 +3,10 @@ import type * as maplibregl from "maplibre-gl";
 import { FAR_ZOOMS, getSatImageByKey, heldEdge, type Bounds } from "./satelliteImage";
 import { SATELLITE_SOURCES, sourceNamed } from "../../contract/satelliteSources";
 
-/** A held piece as its record names it: the stored key and the outer ring, never rebuilt from each other. */
+/** A held photo as its record names it: the stored key and its pieces' outer rings, never rebuilt from each other. */
 export interface PhotoSite {
     key: string;
-    ring: [number, number][];
+    rings: [number, number][][];
 }
 
 export interface SatelliteMount {
@@ -43,9 +43,9 @@ function expanded(camera: Bounds, n: number): Bounds {
     return [w - dx, s - dy, e + dx, no + dy];
 }
 
-function ringIntersects(ring: [number, number][], b: Bounds): boolean {
-    const xs = ring.map((p) => p[0]);
-    const ys = ring.map((p) => p[1]);
+function ringsIntersect(rings: [number, number][][], b: Bounds): boolean {
+    const xs = rings.flat().map((p) => p[0]);
+    const ys = rings.flat().map((p) => p[1]);
     return Math.max(...xs) >= b[0] && Math.min(...xs) <= b[2] && Math.max(...ys) >= b[1] && Math.min(...ys) <= b[3];
 }
 
@@ -101,9 +101,9 @@ export function createSatelliteMount(
             const id = held.map((s) => s.key).sort().join("|");
             if (id !== ringed) {
                 ringed = id;
-                drawEdge(held.map((s) => ({ ring: s.ring, z: zoomOf.get(s.key)!.z })));
+                drawEdge(held.flatMap((s) => s.rings.map((ring) => ({ ring, z: zoomOf.get(s.key)!.z }))));
             }
-            const shown = held.filter((s) => ringIntersects(s.ring, near));
+            const shown = held.filter((s) => ringsIntersect(s.rings, near));
             credits = [...new Set(shown.map((s) => sourceNamed(zoomOf.get(s.key)!.source)?.attribution).filter((a): a is string => !!a))];
             return shown.length;
         },

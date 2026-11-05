@@ -18,8 +18,8 @@ vi.mock("./satelliteImage", async (orig) => {
 import { createSatelliteMount, SAT_EDGE_ID, SAT_LAYERS, SAT_MIN_Z } from "./mountSatellite";
 
 const sq = (x: number, y: number): [number, number][] => [[x, y], [x + 0.01, y], [x + 0.01, y + 0.007], [x, y + 0.007], [x, y]];
-const NEAR = { key: "piece:near", ring: sq(-119.6, 49.5) };
-const FAR = { key: "piece:far", ring: sq(-117.42, 47.65) };
+const NEAR = { key: "piece:near", rings: [sq(-119.6, 49.5)] };
+const FAR = { key: "piece:far", rings: [sq(-117.42, 47.65)] };
 const CAMERA: [number, number, number, number] = [-119.7, 49.4, -119.5, 49.6];
 
 beforeEach(() => {
@@ -50,14 +50,14 @@ describe("createSatelliteMount", () => {
 		const { d, mount } = rig();
 		expect(await mount.reconcile(CAMERA, [NEAR, FAR])).toBe(1);
 		expect(edges.n).toBe(1);
-		expect(edges.last).toEqual([{ ring: NEAR.ring, z: 16 }, { ring: FAR.ring, z: 16 }]);
+		expect(edges.last).toEqual([{ ring: NEAR.rings[0], z: 16 }, { ring: FAR.rings[0], z: 16 }]);
 		expect(d.layers.at(-2)).toMatchObject({ id: SAT_EDGE_ID, type: "line", minzoom: SAT_MIN_Z, paint: { "line-color": "#f5a119" } });
 		expect(mount.attributions()).toHaveLength(1);
 		expect(await mount.reconcile([-117.5, 47.6, -117.3, 47.7], [NEAR, FAR])).toBe(1);
 		expect(edges.n).toBe(1);
 		await mount.reconcile(CAMERA, [NEAR]);
 		expect(edges.n).toBe(2);
-		expect(edges.last).toEqual([{ ring: NEAR.ring, z: 16 }]);
+		expect(edges.last).toEqual([{ ring: NEAR.rings[0], z: 16 }]);
 	});
 
 	it("an area with no current record is not ringed or credited", async () => {

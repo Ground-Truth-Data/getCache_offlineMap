@@ -17,10 +17,10 @@ configureTilesDevHost(HOST);
 
 function region(id: string, lng: number, lat: number): Region {
 	const ring: [number, number][] = [[lng, lat], [lng + 0.02, lat], [lng + 0.02, lat + 0.012], [lng, lat + 0.012], [lng, lat]];
-	return { id, lng, lat, range: regionRange(lng, lat), at: 1, tiles: 1, fetched: 1, bytes: 0, ms: 1, photoKey: pieceKey(ring), photoRing: ring };
+	return { id, lng, lat, range: regionRange(lng, lat), at: 1, tiles: 1, fetched: 1, bytes: 0, ms: 1, photoKey: pieceKey([ring]), photoRings: [ring] };
 }
 
-const keysOf = (r: Region, z: number = SATELLITE_SOURCES.maptiler.zoom) => pieceTileKeys(r.photoRing!, z);
+const keysOf = (r: Region, z: number = SATELLITE_SOURCES.maptiler.zoom) => pieceTileKeys(r.photoRings!, z);
 const onDisk = async () => [...(await allTileKeys())].filter((k) => k.startsWith(PHOTO_PREFIX));
 
 // Ailsa Craig, and a piece 1 km east: the two overlap.
@@ -57,7 +57,7 @@ describe("an area's tiles on disk", () => {
 	});
 
 	it("a pin's blob has no piece, so deleting it touches none", async () => {
-		const follow = { ...region("f", -81.5076, 43.1136), photoKey: undefined, photoRing: undefined };
+		const follow = { ...region("f", -81.5076, 43.1136), photoKey: undefined, photoRings: undefined };
 		await putRegion(follow);
 		await deleteRegion("f");
 		expect((await onDisk()).length).toBe(new Set([...keysOf(A), ...keysOf(B)]).size);
@@ -142,7 +142,7 @@ describe("Squirrel's switch decides every tile, the z10–12 overview included",
 			if (url === `${HOST}/squirrel/active`) return new Response(JSON.stringify({ active: "sentinel", cache: { sentinel: false } }));
 			return { ok: true, status: 200, headers: new Headers({ "X-Cache": "MISS" }), arrayBuffer: async () => new ArrayBuffer(7) };
 		}));
-		expect(await bakePhotos([{ id: E.id, photoKey: E.photoKey!, ring: E.photoRing! }])).toBe(1);
+		expect(await bakePhotos([{ id: E.id, photoKey: E.photoKey!, rings: E.photoRings! }])).toBe(1);
 
 		const [first, ...tiles] = urls;
 		expect(first).toBe(`${HOST}/squirrel/active`);

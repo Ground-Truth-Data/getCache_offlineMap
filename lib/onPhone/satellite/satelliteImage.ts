@@ -87,16 +87,16 @@ export function coverTiles(ring: Pt[], z: number): CoverTile[] {
 	return out;
 }
 
-/** Every `z/x/y` a piece holds from a source whose close zoom is `z`: the overview zooms, then the close cover. */
-export function pieceTileKeys(ring: Pt[], z: number): string[] {
-	return [...FAR_ZOOMS, z].flatMap((tz) => coverTiles(ring, tz).map((t) => `${tz}/${t.x}/${t.y}`));
+/** Every `z/x/y` a blob's pieces hold from a source whose close zoom is `z`: the overview zooms, then the close covers, once each. */
+export function pieceTileKeys(rings: Pt[][], z: number): string[] {
+	return [...new Set([...FAR_ZOOMS, z].flatMap((tz) => rings.flatMap((r) => coverTiles(r, tz).map((t) => `${tz}/${t.x}/${t.y}`))))];
 }
 
-/** A piece's photo key: its outer ring, so an edited piece is a new photo. */
-export function pieceKey(ring: Pt[]): string {
+/** A blob's photo key: its pieces' outer rings, so an edited piece is a new photo. */
+export function pieceKey(rings: Pt[][]): string {
 	let h = 0x811c9dc5;
-	for (const c of ring.map((p) => `${p[0].toFixed(6)},${p[1].toFixed(6)}`).join(";")) h = Math.imul(h ^ c.charCodeAt(0), 0x01000193);
-	return `piece:${(h >>> 0).toString(36)}:${ring.length}`;
+	for (const c of rings.map((r) => r.map((p) => `${p[0].toFixed(6)},${p[1].toFixed(6)}`).join(";")).join("|")) h = Math.imul(h ^ c.charCodeAt(0), 0x01000193);
+	return `piece:${(h >>> 0).toString(36)}:${rings.length}`;
 }
 
 /** The jagged outline of every held piece together: each cover tile's side, minus the stretches another piece's cover covers beyond it. */
@@ -219,7 +219,7 @@ const FILL = "sentinel";
  * that did are kept, so the next pass asks only for the rest. `beforeSave` throws to keep the record off disk. */
 export async function saveAreaTiles(
 	key: string,
-	ring: Pt[],
+	rings: Pt[][],
 	src: SatelliteSource,
 	tiles: PhotoTileSource,
 	beforeSave?: () => Promise<void>,
@@ -230,8 +230,9 @@ export async function saveAreaTiles(
 	if (sessionCap.tripped) return null;
 
 	const t0 = performance.now();
-	const keys = pieceTileKeys(ring, src.zoom);
-	guardBakeGrid(keys.length, { key, z: src.zoom });
+	const keys = pieceTileKeys(rings, src.zoom);
+	// Per piece: one blob may carry many pieces, each held to the cap on its own.
+	for (const r of rings) guardBakeGrid(pieceTileKeys([r], src.zoom).length, { key, z: src.zoom });
 	const have = await tiles(keys);
 	if (keys.some((k) => !have.has(k))) return null;
 	const fz = SATELLITE_SOURCES[FILL].zoom;

@@ -14,8 +14,8 @@ import {
 } from "./tiles";
 
 export const DB_NAME = "gc-offlineV10";
-/** Bump when what a blob IS changes; an older blob is then wiped, never half-drawn. 7 keeps 6's blobs: it only names the source in a photo tile's key. 8: a photo is a piece's ring, not a pin's disc. */
-const DB_VERSION = 8;
+/** Bump when what a blob IS changes; an older blob is then wiped, never half-drawn. 7 keeps 6's blobs: it only names the source in a photo tile's key. 9: a photo is its pieces' rings, not a pin's disc. */
+const DB_VERSION = 9;
 const TILES = "tiles";
 const REGIONS = "regions";
 
@@ -43,8 +43,8 @@ export interface Region {
 	paintMoved?: true;
 	/** Where this blob's piece photo lives in the photo store, set once at birth. Absent on a pin's or line's blob: no photo. */
 	photoKey?: string;
-	/** The piece's outer ring that photo covers. Set with `photoKey`. */
-	photoRing?: [number, number][];
+	/** The outer rings of the pieces that photo covers. Set with `photoKey`. */
+	photoRings?: [number, number][][];
 	/** null when its tiles hold no town; absent before it was looked up */
 	place?: Place | null;
 	/** ms epoch the map last showed it; absent = never, so `at` stands in */
@@ -251,9 +251,9 @@ export async function getPhotoTiles(keys: readonly string[], source: string): Pr
 
 /** Every satellite tile a blob's piece could hold, from any source: geometry, so a delete needs no record. None without a piece. */
 function photoKeysOf(r: Region): string[] {
-	const ring = r.photoRing;
-	if (!ring) return [];
-	return Object.entries(SATELLITE_SOURCES).flatMap(([id, s]) => pieceTileKeys(ring, s.zoom).map((k) => `${PHOTO_PREFIX}${id}/${k}`));
+	const rings = r.photoRings;
+	if (!rings) return [];
+	return Object.entries(SATELLITE_SOURCES).flatMap(([id, s]) => pieceTileKeys(rings, s.zoom).map((k) => `${PHOTO_PREFIX}${id}/${k}`));
 }
 
 /** What a blob's photo tiles are: `tiles`/`bytes` all it covers, `addedTiles`/`addedBytes` only those no earlier blob already covers — what it put on the phone. One cursor pass. */

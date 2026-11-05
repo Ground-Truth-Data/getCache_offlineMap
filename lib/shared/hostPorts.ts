@@ -3,9 +3,9 @@
 export interface HostPlace {
 	/** [lng, lat]. A point has one; a line has many. */
 	anchors: [number, number][];
-	/** Beside each anchor, the outer ring its piece photographs; absent or null bakes no photo. Blocks and pieces under the
-	 * photo cap only: the photo source bills per tile. */
-	rings?: ([number, number][] | null)[];
+	/** Beside each anchor, the outer rings of the pieces its blob photographs; absent or null bakes no photo. Blocks and
+	 * pieces under the photo cap only: the photo source bills per tile. */
+	rings?: ([number, number][][] | null)[];
 }
 
 export interface HostPorts {

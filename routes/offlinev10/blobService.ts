@@ -23,7 +23,7 @@ import {
 import { ANCHOR_Z, type Box, boxesIntersect, rangeBox } from "./tiles";
 
 export type BlobEvent =
-	| { kind: "start"; at: [number, number]; id: string; photoKey?: string; photoRing?: [number, number][] }
+	| { kind: "start"; at: [number, number]; id: string; photoKey?: string; photoRings?: [number, number][][] }
 	| { kind: "progress"; progress: Progress }
 	| { kind: "landed"; region: Region }
 	| { kind: "failed"; at: [number, number]; error: unknown }
@@ -40,8 +40,8 @@ interface Ask {
 	at: [number, number];
 	/** born once in queueBlob; nothing downstream re-derives it from `at` */
 	id: string;
-	/** the piece's outer ring this blob photographs; absent for a pin, a line or follow-me */
-	ring?: [number, number][];
+	/** the pieces' outer rings this blob photographs; absent for a pin, a line or follow-me */
+	rings?: [number, number][][];
 	pin?: boolean;
 	/** the row being repaired: its missing tiles are fetched and the row keeps its place */
 	keep?: Region;
@@ -90,11 +90,11 @@ const whole = async (id: string): Promise<boolean> => {
 	return !!r && !r.removed && !r.filling;
 };
 
-/** True when actually queued; false when disk or the queue already has this spot. `ring` for a piece's blob, which bakes its photo; `pin` for one that goes with its place; `revive` fetches a removed one again. */
+/** True when actually queued; false when disk or the queue already has this spot. `rings` for a piece's blob, which bakes its photo; `pin` for one that goes with its place; `revive` fetches a removed one again. */
 export async function queueBlob(
 	lng: number,
 	lat: number,
-	opts: { ring?: [number, number][] | null; pin?: boolean; revive?: boolean } = {},
+	opts: { rings?: [number, number][][] | null; pin?: boolean; revive?: boolean } = {},
 ): Promise<boolean> {
 	const id = regionId(lng, lat);
 	if (queued.has(id)) return false;
@@ -102,7 +102,7 @@ export async function queueBlob(
 	// A second ask for the same spot can land during the await.
 	if (queued.has(id)) return false;
 	queued.add(id);
-	queue.push({ at: [lng, lat], id, ring: opts.ring ?? undefined, pin: opts.pin, revive: opts.revive });
+	queue.push({ at: [lng, lat], id, rings: opts.rings ?? undefined, pin: opts.pin, revive: opts.revive });
 	void drain();
 	return true;
 }
@@ -131,7 +131,7 @@ async function drain(): Promise<void> {
 	}
 }
 
-async function download({ at, id, ring, pin, keep }: Ask): Promise<void> {
+async function download({ at, id, rings, pin, keep }: Ask): Promise<void> {
 	try {
 		// Before "start": a refused area must not get its photo baked either.
 		await makeRoom(at, id);
@@ -140,8 +140,8 @@ async function download({ at, id, ring, pin, keep }: Ask): Promise<void> {
 		return;
 	}
 	// A repair keeps the photo its row was born with.
-	const photoRing = keep ? keep.photoRing : ring;
-	const chosen = photoRing ? { photoKey: keep?.photoKey ?? pieceKey(photoRing), photoRing } : undefined;
+	const photoRings = keep ? keep.photoRings : rings;
+	const chosen = photoRings ? { photoKey: keep?.photoKey ?? pieceKey(photoRings), photoRings } : undefined;
 	current = { at, progress: null, startedAt: performance.now() };
 	emit({ kind: "start", at, id, ...chosen });
 	try {
@@ -221,7 +221,7 @@ async function look(box: Box): Promise<void> {
 	for (const p of host?.places() ?? [])
 		p.anchors.forEach((at, i) => {
 			if (at[0] < box.w || at[0] > box.e || at[1] < box.s || at[1] > box.n) return;
-			void queueBlob(at[0], at[1], { ring: p.rings?.[i], pin: true, revive: true });
+			void queueBlob(at[0], at[1], { rings: p.rings?.[i], pin: true, revive: true });
 		});
 }
 
@@ -278,7 +278,7 @@ export function startBlobService(ports: HostPorts): () => void {
 		for (const p of ports.places()) {
 			p.anchors.forEach(([lng, lat], i) => {
 				now.add(regionId(lng, lat));
-				void queueBlob(lng, lat, { ring: p.rings?.[i], pin: true });
+				void queueBlob(lng, lat, { rings: p.rings?.[i], pin: true });
 			});
 		}
 		return now;

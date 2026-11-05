@@ -107,10 +107,15 @@ function thinToCeiling<T>(pts: T[]): T[] {
 	return out;
 }
 
-/** Each piece (a Polygon, or one MultiPolygon part): its anchor and its outer ring, holes dropped. */
-export function piecesOf(g: GeoJSON.Polygon | GeoJSON.MultiPolygon): { at: Pt; ring: Pt[] }[] {
+/** A shape's anchors, each with the outer rings (holes dropped) of every piece nearest it: the anchors are capped
+ * like any feature's, the rings never are, so every piece is photographed. */
+export function piecesOf(g: GeoJSON.Polygon | GeoJSON.MultiPolygon): { at: Pt; rings: Pt[][] }[] {
 	const parts = (g.type === "Polygon" ? [g.coordinates] : g.coordinates) as Pt[][][];
-	return thinToCeiling(parts.flatMap((rings) => polygonAnchor(rings).map((at) => ({ at, ring: rings[0] ?? [] }))));
+	const all = parts.flatMap((rings) => polygonAnchor(rings).map((at) => ({ at, ring: rings[0] ?? [] })));
+	const kept = thinToCeiling(all).map(({ at }) => ({ at, rings: [] as Pt[][] }));
+	const d = (a: Pt, b: Pt) => (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2;
+	for (const { at, ring } of all) kept.reduce((best, k) => (d(k.at, at) < d(best.at, at) ? k : best)).rings.push(ring);
+	return kept;
 }
 
 /** The offline-coverage anchors for ANY feature, capped at {@link MAX_ANCHORS_PER_FEATURE}. */

@@ -196,11 +196,11 @@ export function onPhoto(fn: () => void): () => void {
 
 let pausedUntil = 0;
 
-/** A photo to bake as its blob's record names it: the row id that owns the tiles, the key it is stored under, the piece's outer ring. */
+/** A photo to bake as its blob's record names it: the row id that owns the tiles, the key it is stored under, its pieces' outer rings. */
 export interface PhotoAsk {
 	id: string;
 	photoKey: string;
-	ring: [number, number][];
+	rings: [number, number][][];
 }
 
 // Asks ride the queue as their row ids: primitives, so a re-ask dedupes. The asks themselves wait here, so no coordinate is ever turned into a key and back.
@@ -235,8 +235,8 @@ async function pass(asks: readonly PhotoAsk[]): Promise<number> {
 		return 0;
 	}
 	let landed = 0;
-	for (const { id, photoKey, ring } of asks) {
-		const sid = sourceAt(ring[0]!, active[0]);
+	for (const { id, photoKey, rings } of asks) {
+		const sid = sourceAt(rings[0]![0]!, active[0]);
 		const src = sid === active[0] ? active[1] : sourceOf(sid)!;
 		if (isCurrentPhoto(await getSatImageByKey(photoKey))) {
 			say(`[offlineV10] photo: ${id} already has its photo`);
@@ -245,7 +245,7 @@ async function pass(asks: readonly PhotoAsk[]): Promise<number> {
 		let img: Awaited<ReturnType<typeof saveAreaTiles>> = null;
 		try {
 			const wire: PhotoWire = { disk: 0, hit: 0, miss: 0, kept: !!active[2][sid] };
-			img = await saveAreaTiles(photoKey, ring, src, (keys, from = sid) => photoTiles(keys, id, from, wire), () => claimArea(id), wire);
+			img = await saveAreaTiles(photoKey, rings, src, (keys, from = sid) => photoTiles(keys, id, from, wire), () => claimArea(id), wire);
 		} catch (error) {
 			if (error instanceof RateLimited) {
 				pausedUntil = Date.now() + error.ms;
@@ -291,7 +291,7 @@ async function activeSource(): Promise<[string, SatelliteSource, Record<string, 
 
 export async function bakeAllPhotos(): Promise<number> {
 	const regions = await regionsSnapshot().regions;
-	return bakePhotos(regions.flatMap((r) => (r.photoKey && r.photoRing ? [{ id: r.id, photoKey: r.photoKey, ring: r.photoRing }] : [])));
+	return bakePhotos(regions.flatMap((r) => (r.photoKey && r.photoRings ? [{ id: r.id, photoKey: r.photoKey, rings: r.photoRings }] : [])));
 }
 
 export async function dropPhoto(photoKey: string): Promise<void> {
@@ -314,8 +314,8 @@ export function startPhotoService(): () => void {
 		// Not at boot: until the host lists its pins, every ask would be dropped.
 		if (e.kind === "pins") all();
 		// Beside the tiles, not after them: neither needs the other.
-		if (e.kind === "start" && e.photoKey && e.photoRing)
-			bakePhotos([{ id: e.id, photoKey: e.photoKey, ring: e.photoRing }]).catch((err) => {
+		if (e.kind === "start" && e.photoKey && e.photoRings)
+			bakePhotos([{ id: e.id, photoKey: e.photoKey, rings: e.photoRings }]).catch((err) => {
 				console.warn("[photos] bake failed", err);
 			});
 	});
