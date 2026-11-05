@@ -25,6 +25,8 @@ const sourceId = (id: string) => `v4-sat-${id}`;
 /** Each source's photos, bottom to top. */
 export const SAT_LAYERS = IDS.map((id) => `${sourceId(id)}-l`);
 export const SAT_EDGE_ID = "v4-sat-edge";
+const SAT_SHADOW_ID = "v4-sat-shadow";
+const SHADOW: maplibregl.LineLayerSpecification["paint"] = { "line-color": "#000", "line-opacity": 0.5, "line-width": 16, "line-blur": 12 };
 /** The edge where held ground stops, so it reads as deliberate, not as data that failed. */
 export const HELD_EDGE: maplibregl.LineLayerSpecification["paint"] = { "line-color": "#f5a119", "line-opacity": 0.85, "line-width": 0.5 };
 
@@ -78,6 +80,8 @@ export function createSatelliteMount(
         if (source) return void source.setData(data);
         map.addSource(SAT_EDGE_ID, { type: "geojson", data });
         map.addLayer({ id: SAT_EDGE_ID, type: "line", source: SAT_EDGE_ID, minzoom: SAT_MIN_Z, paint: HELD_EDGE }, before());
+        // Under the photos, so they cover its inside half: only the outside shows, a card's shadow along the staircase.
+        map.addLayer({ id: SAT_SHADOW_ID, type: "line", source: SAT_EDGE_ID, minzoom: SAT_MIN_Z, paint: SHADOW }, SAT_LAYERS[0]);
     };
 
     return {

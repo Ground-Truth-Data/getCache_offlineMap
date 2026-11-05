@@ -50,6 +50,10 @@ describe("createSatelliteMount", () => {
 		expect(await mount.reconcile(CAMERA, [NEAR, FAR])).toBe(1);
 		expect(edges.n).toBe(1);
 		expect(edges.last).toEqual([{ ring: NEAR.rings[0], z: 16 }, { ring: FAR.rings[0], z: 16 }]);
+		// The shadow traces the same edge, under every photo, so the photos hide its inside half.
+		const ids = d.layers.map((l) => l.id);
+		expect(ids.indexOf("v4-sat-shadow")).toBe(ids.indexOf(SAT_LAYERS[0]!) - 1);
+		expect(d.layers.find((l) => l.id === "v4-sat-shadow")).toMatchObject({ source: SAT_EDGE_ID });
 		expect(d.layers.find((l) => l.id === SAT_EDGE_ID)).toMatchObject({ id: SAT_EDGE_ID, type: "line", minzoom: SAT_MIN_Z, paint: { "line-color": "#f5a119" } });
 		expect(mount.attributions()).toHaveLength(1);
 		expect(await mount.reconcile([-117.5, 47.6, -117.3, 47.7], [NEAR, FAR])).toBe(1);
