@@ -1,4 +1,4 @@
-/** A piece is held whole or not at all: its cover and its z10–12 overview, asked of the tile source once, a tile the
+/** A piece is held whole or not at all: its cover at the source's own zoom, asked of the tile source once, a tile the
  * source lacks filled from Sentinel, and nothing asked once the session byte cap trips. */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -42,13 +42,13 @@ async function save(answer: (keys: string[], source: string | undefined) => Map<
 const all = (keys: string[]) => new Map(keys.map((k) => [k, new ArrayBuffer(8)]));
 
 describe("a piece is whole or not saved", () => {
-	it("every tile arrived: one ask, the cover at z16 and the overview at z10–12, and the record is saved", async () => {
+	it("every tile arrived: one ask, the cover at z16 and no coarser tile, and the record is saved", async () => {
 		const { img, asked } = await save(all);
 		expect(img).toMatchObject({ source: "MapTiler", zoom: 16 });
 		expect(saved.has(KEY)).toBe(true);
 		expect(asked).toHaveLength(1);
 		const zooms = new Set(asked[0]!.keys.map((k) => Number(k.split("/")[0])));
-		expect([...zooms].sort((a, b) => a - b)).toEqual([10, 11, 12, 16]);
+		expect([...zooms]).toEqual([16]);
 		expect(asked[0]!.keys.length).toBeLessThanOrEqual(MAX_TILES_PER_AREA);
 	});
 

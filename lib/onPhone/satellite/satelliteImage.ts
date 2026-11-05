@@ -10,10 +10,7 @@ const STORE = "photoDiscs";
 export type Bounds = [number, number, number, number]; // [w,s,e,n]
 
 /** Bump whenever what an area holds changes: an older record is not current, so the pass saves the area again. */
-export const BAKE_VERSION = 13;
-
-/** Every held area also keeps its source's tiles at these zooms, so a zoomed-out map has its ground. */
-export const FAR_ZOOMS = [10, 11, 12] as const;
+export const BAKE_VERSION = 14;
 
 /** A source tile as fetched, keyed `z/x/y`. */
 export type RawTile = [string, ArrayBuffer];
@@ -87,9 +84,9 @@ export function coverTiles(ring: Pt[], z: number): CoverTile[] {
 	return out;
 }
 
-/** Every `z/x/y` a blob's pieces hold from a source whose close zoom is `z`: the overview zooms, then the close covers, once each. */
+/** Every `z/x/y` a blob's pieces hold at their source's zoom `z`, once each; zoomed out, the same tiles are stitched, never coarser ones. */
 export function pieceTileKeys(rings: Pt[][], z: number): string[] {
-	return [...new Set([...FAR_ZOOMS, z].flatMap((tz) => rings.flatMap((r) => coverTiles(r, tz).map((t) => `${tz}/${t.x}/${t.y}`))))];
+	return [...new Set(rings.flatMap((r) => coverTiles(r, z).map((t) => `${z}/${t.x}/${t.y}`)))];
 }
 
 /** A blob's photo key: its pieces' outer rings, so an edited piece is a new photo. */

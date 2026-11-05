@@ -11,7 +11,7 @@ import { attachCameraPersistence, loadCamera, MAP_HOME_CENTER } from "../../lib/
 import { attachDoubleTapToPin } from "../../lib/shared/doubleTapToPin";
 import { FIRE_LAYER_ID_LIST, type FireLayerHandle, attachFireLayer } from "../../lib/onPhone/render/fireLayer";
 import { creditsControl, setPhotoCredits } from "../../lib/onPhone/satellite/photoCredits";
-import { SAT_LAYERS, type SatelliteMount, createSatelliteMount } from "../../lib/onPhone/satellite/mountSatellite";
+import { SAT_LAYERS, SAT_PIECE, type SatelliteMount, createSatelliteMount } from "../../lib/onPhone/satellite/mountSatellite";
 import { NiceScaleBarControl } from "$gc/mapScaleBar";
 import { safeFlyTo } from "$gc/safeMap";
 import { mapboxLocale } from "$gc/mapboxLocale";
@@ -427,7 +427,7 @@ function buildLayerRows(m: maplibregl.Map): void {
 }
 
 function rowIds(r: LayerRow): string[] {
-	return r.key === PHOTO_ROW ? SAT_LAYERS : r.ids;
+	return r.key === PHOTO_ROW ? [...SAT_LAYERS, ...(map?.getStyle().layers.map((l) => l.id).filter((id) => id.startsWith(SAT_PIECE)) ?? [])] : r.ids;
 }
 
 function toggleLayer(key: string): void {

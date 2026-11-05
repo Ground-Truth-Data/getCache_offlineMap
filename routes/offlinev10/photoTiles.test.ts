@@ -4,7 +4,7 @@
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SATELLITE_SOURCES } from "../../lib/contract/satelliteSources";
-import { coverTiles, FAR_ZOOMS, getSatImageByKey, pieceKey, pieceTileKeys } from "../../lib/onPhone/satellite/satelliteImage";
+import { coverTiles, getSatImageByKey, pieceKey, pieceTileKeys } from "../../lib/onPhone/satellite/satelliteImage";
 import { piecesOf } from "../../lib/shared/anchors";
 import { configureTilesDevHost } from "../../lib/worker/tilesHost";
 import { setBudgetMb } from "./budget";
@@ -131,10 +131,10 @@ describe("what an area's tiles cost on the wire", () => {
 	});
 });
 
-describe("Squirrel's switch decides every tile, the z10–12 overview included", () => {
+describe("Squirrel's switch decides every tile", () => {
 	afterEach(() => vi.unstubAllGlobals());
 
-	it("the pass asks the Worker which source is on, then fetches every tile, z10–12 too, through its /satellite route", async () => {
+	it("the pass asks the Worker which source is on, then fetches every tile at that source's zoom and no coarser, through its /satellite route", async () => {
 		const E = region("e", -95.1, 55.3);
 		await putRegion(E);
 		const urls: string[] = [];
@@ -148,14 +148,14 @@ describe("Squirrel's switch decides every tile, the z10–12 overview included",
 		const [first, ...tiles] = urls;
 		expect(first).toBe(`${HOST}/squirrel/active`);
 		const zooms = new Set(tiles.map((u) => Number(new RegExp(`^${HOST}/satellite/sentinel/(\\d+)/\\d+/\\d+\\.jpg$`).exec(u)?.[1])));
-		expect([...zooms].sort((a, b) => a - b)).toEqual([10, 11, 12, 14]);
+		expect([...zooms]).toEqual([14]);
 		expect(tiles).toHaveLength(keysOf(E, 14).length);
 		// Counted as Squirrel counts it: every tile a miss the Worker was told not to keep.
 		expect((await getSatImageByKey(E.photoKey!))?.wire).toEqual({ disk: 0, hit: 0, miss: tiles.length, kept: false });
 	});
 
-	it("a 12-piece shape on ten blobs holds every piece's cover tiles at every photo zoom, shared tiles included", async () => {
-		// 0.03° apart: each piece owns its close-up tiles, so a dropped ring shows; the z10–12 overview is shared.
+	it("a 12-piece shape on ten blobs holds every piece's cover tiles at its source's zoom, and none coarser", async () => {
+		// 0.03° apart: each piece owns its tiles, so a dropped ring shows.
 		const parts = Array.from({ length: 12 }, (_, i): [number, number][][] => {
 			const x = -76.2 + i * 0.03;
 			return [[[x, 45.07], [x + 0.002, 45.07], [x + 0.002, 45.0715], [x, 45.07]]];
@@ -172,9 +172,9 @@ describe("Squirrel's switch decides every tile, the z10–12 overview included",
 		const held = new Set(await onDisk());
 		const zoom = SATELLITE_SOURCES.sentinel.zoom;
 		const short = parts.flatMap(([ring], i) =>
-			[...FAR_ZOOMS, zoom].flatMap((z) => coverTiles(ring!, z).map((t) => `${PHOTO_PREFIX}sentinel/${z}/${t.x}/${t.y}`)).filter((k) => !held.has(k)).map((k) => `part ${i + 1}: ${k}`));
+			coverTiles(ring!, zoom).map((t) => `${PHOTO_PREFIX}sentinel/${zoom}/${t.x}/${t.y}`).filter((k) => !held.has(k)).map((k) => `part ${i + 1}: ${k}`));
 		expect(short).toEqual([]);
-		const perBlob = blobs.map((b) => pieceTileKeys(b.rings, zoom));
-		expect(perBlob.flat().length).toBeGreaterThan(new Set(perBlob.flat()).size);
+		const baked = [...held].filter((k) => !k.startsWith(`${PHOTO_PREFIX}maptiler/`));
+		expect(baked.filter((k) => !k.startsWith(`${PHOTO_PREFIX}sentinel/${zoom}/`))).toEqual([]);
 	});
 });

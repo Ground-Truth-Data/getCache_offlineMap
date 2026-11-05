@@ -75,7 +75,7 @@ export interface FocusedBlobReport {
 // Pack rows are derived from contract/packLayers.ts, so they cannot disagree with the layers the map reads
 const PACK_WHERE = "in the blob's z0–z13 tiles, keyed z/x/y in gc-offlineV10";
 const EXPECTS_FIXED: Record<string, string> = {
-	sat: "satellite tiles ~2 km around each pin plus z10–12 overview, keyed p/<source>/z/x/y in gc-offlineV10",
+	sat: "satellite tiles each piece's outer ring touches, at its source's own zoom, keyed p/<source>/z/x/y in gc-offlineV10",
 	fires: "hotspots within FIRE_RADIUS_KM of the pin, in the fires store",
 };
 function expectsFor(t: (typeof LAYER_TOGGLES)[number]): string {
