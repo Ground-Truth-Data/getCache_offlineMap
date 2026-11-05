@@ -43,6 +43,7 @@ interface Ask {
 	/** the pieces' outer rings this blob photographs; absent for a pin, a line or follow-me */
 	rings?: [number, number][][];
 	pin?: boolean;
+	kind?: string;
 	/** the row being repaired: its missing tiles are fetched and the row keeps its place */
 	keep?: Region;
 	/** back in view: a removed row is fetched again rather than left alone */
@@ -94,7 +95,7 @@ const whole = async (id: string): Promise<boolean> => {
 export async function queueBlob(
 	lng: number,
 	lat: number,
-	opts: { rings?: [number, number][][] | null; pin?: boolean; revive?: boolean } = {},
+	opts: { rings?: [number, number][][] | null; pin?: boolean; kind?: string; revive?: boolean } = {},
 ): Promise<boolean> {
 	const id = regionId(lng, lat);
 	if (queued.has(id)) return false;
@@ -102,7 +103,7 @@ export async function queueBlob(
 	// A second ask for the same spot can land during the await.
 	if (queued.has(id)) return false;
 	queued.add(id);
-	queue.push({ at: [lng, lat], id, rings: opts.rings ?? undefined, pin: opts.pin, revive: opts.revive });
+	queue.push({ at: [lng, lat], id, rings: opts.rings ?? undefined, pin: opts.pin, kind: opts.kind, revive: opts.revive });
 	void drain();
 	return true;
 }
@@ -131,7 +132,7 @@ async function drain(): Promise<void> {
 	}
 }
 
-async function download({ at, id, rings, pin, keep }: Ask): Promise<void> {
+async function download({ at, id, rings, pin, kind, keep }: Ask): Promise<void> {
 	try {
 		// Before "start": a refused area must not get its photo baked either.
 		await makeRoom(at, id);
@@ -153,7 +154,7 @@ async function download({ at, id, rings, pin, keep }: Ask): Promise<void> {
 				if (current) current.progress = progress;
 				emit({ kind: "progress", progress });
 			},
-			{ id, ...chosen, pin, keep },
+			{ id, ...chosen, pin, kind, keep },
 		);
 		say(
 			`[offlineV10] blob ${region.id}: ${region.fetched} new of ${region.tiles} tiles, ${((region.newBytes ?? 0) / 1048576).toFixed(1)} MB added (${(region.bytes / 1048576).toFixed(1)} MB on the ground), ${region.ms} ms to disk`,
@@ -221,7 +222,7 @@ async function look(box: Box): Promise<void> {
 	for (const p of host?.places() ?? [])
 		p.anchors.forEach((at, i) => {
 			if (at[0] < box.w || at[0] > box.e || at[1] < box.s || at[1] > box.n) return;
-			void queueBlob(at[0], at[1], { rings: p.rings?.[i], pin: true, revive: true });
+			void queueBlob(at[0], at[1], { rings: p.rings?.[i], pin: true, kind: p.kind, revive: true });
 		});
 }
 
@@ -278,7 +279,7 @@ export function startBlobService(ports: HostPorts): () => void {
 		for (const p of ports.places()) {
 			p.anchors.forEach(([lng, lat], i) => {
 				now.add(regionId(lng, lat));
-				void queueBlob(lng, lat, { rings: p.rings?.[i], pin: true });
+				void queueBlob(lng, lat, { rings: p.rings?.[i], pin: true, kind: p.kind });
 			});
 		}
 		return now;

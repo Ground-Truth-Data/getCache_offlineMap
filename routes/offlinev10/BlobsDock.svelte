@@ -1,5 +1,6 @@
 <script lang="ts">
 /** What is on disk: the newest pin blob open, each part naming its source; the rest folded. Squirrel holds the full log. */
+import area from "@turf/area";
 import { onDestroy, untrack } from "svelte";
 import { SATELLITE_SOURCES, type SourceId } from "../../lib/contract/satelliteSources";
 import type { MapUiPorts } from "../../lib/shared/mapHostPorts";
@@ -89,6 +90,15 @@ const unusedBytes = $derived(unusedPhotos.reduce((a, k) => a + photos[k].bytes, 
 const used = $derived(bytes + photoTotal);
 const broken = $derived(regions.filter((r) => (missing[r.id] ?? 0) > 0).length);
 const nameOf = (r: Region): string => (r.place ? placeLabel(r.place) : r.id);
+const KIND: Record<string, string> = { poly: "piece", block: "block", pin: "pin", line: "line", track: "track" };
+/** What the blob was born from; a piece or block adds its size and its photo's zoom and tiles. */
+function whatOf(r: Region): string {
+	const kind = r.kind ? (KIND[r.kind] ?? r.kind) : r.pin ? "kind not recorded" : "follow-me";
+	if (!r.photoRings) return kind;
+	const ha = r.photoRings.reduce((a, ring) => a + area({ type: "Polygon", coordinates: [ring] }), 0) / 10_000;
+	const photo = partsOf(r)[1]!;
+	return `${kind} · ${ha.toFixed(1)} ha · ${photo.zoom || "no photo"}${photo.tiles === null ? "" : ` · ${photo.tiles} photo tiles`}`;
+}
 const secs = (ms: number | undefined) => (ms == null ? "—" : `${(ms / 1000).toFixed(1)}s`);
 const when = (t: number) => {
 	const d = new Date(t);
@@ -149,8 +159,8 @@ $effect(() => {
 		<div class="fail" title="the photo pass retries every minute and on reload; blobs without a photo get theirs when it clears">✕ photos not baking: {photoProblem}</div>
 	{/if}
 	<button class="add" onclick={onAddHere} disabled={busy}>{busy ? "downloading…" : "+ blob at map centre"}</button>
-	<button class="add" onclick={onAddForPins} disabled={busy}>+ blobs for pins in view</button>
-	<div class="hint">or drop a pin · {RADIUS_KM} km radius on whole z{ANCHOR_Z} tiles · z{MIN_Z}–z{MAX_Z}</div>
+	<button class="add" onclick={onAddForPins} disabled={busy}>+ blobs for features in view</button>
+	<div class="hint">each blob: roads {RADIUS_KM} km around it on whole z{ANCHOR_Z} tiles · z{MIN_Z}–z{MAX_Z}</div>
 	<div class="follow" class:low={follow !== null && follow.margin <= FOLLOW_MARGIN_KM}>
 		📡
 		{#if follow === null}
@@ -166,12 +176,12 @@ $effect(() => {
 	</div>
 
 	{#if !focus}
-		<div class="empty">nothing on disk<div class="dim">drop a pin to download the first blob</div></div>
+		<div class="empty">nothing on disk<div class="dim">draw a piece or drop a pin to download the first blob</div></div>
 	{:else}
 		<div class="rows">
 			<div class="latest">
 				<div class="ltop">
-					<span class="tagpill">● {focus.pin ? "LATEST PIN" : "LATEST · NO PIN"} · {when(focus.at)}</span>
+					<span class="tagpill">● LATEST BLOB · {when(focus.at)}</span>
 					<span class="spacer"></span>
 					{#if (missing[focus.id] ?? 0) > 0}
 						<button class="repair" onclick={() => onRepair(focus)} disabled={busy} title="fetch the {missing[focus.id]} missing tiles">{missing[focus.id]} missing · repair</button>
@@ -186,6 +196,7 @@ $effect(() => {
 					<button class="name" onclick={() => onFly(focus)} title="fly there · {focus.id}">{nameOf(focus)}</button>
 					<span class="bsize" title="what this blob added to the phone">{mb(added(focus))}</span>
 				</div>
+				<div class="bkind">{whatOf(focus)}</div>
 				<div class="bcoord">{ll(focus.lat)}, {ll(focus.lng)} · {health(focus)}</div>
 				<div class="plines">
 					{#each partsOf(focus) as p (p.name)}
@@ -263,6 +274,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .line1 { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .name { all: unset; cursor: pointer; font-weight: 700; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bsize { font-family: "JetBrains Mono", ui-monospace, monospace; font-weight: 700; font-size: 14px; color: #eab627; white-space: nowrap; }
+.bkind { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; font-weight: 700; color: var(--gold); margin-top: 4px; }
 .bcoord { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; color: var(--muted); margin-top: 4px; }
 .plines { margin-top: 10px; display: flex; flex-direction: column; border-top: 1px solid rgba(255, 255, 255, 0.1); }
 .pl { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 7px 0; border-bottom: 1px dashed rgba(255, 255, 255, 0.1); font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; }

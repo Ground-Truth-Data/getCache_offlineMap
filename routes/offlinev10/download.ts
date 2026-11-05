@@ -46,6 +46,7 @@ export interface DownloadOpts {
 	photoKey?: string;
 	photoRings?: [number, number][][];
 	pin?: boolean;
+	kind?: string;
 	/** a repair keeps the row's birth time */
 	keep?: Region;
 }
@@ -89,6 +90,7 @@ export async function downloadRegion(
 		born.photoRings = opts.photoRings;
 	}
 	if (opts.pin) born.pin = true;
+	if (opts.kind) born.kind = opts.kind;
 	if (!opts.keep) await putRegion(born);
 	const have = await allTileKeys();
 	// Coarse first, then outward from the pin, so the blob fills in from the middle.

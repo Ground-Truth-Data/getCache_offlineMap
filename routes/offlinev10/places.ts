@@ -87,5 +87,5 @@ export async function nearestPlace(
 }
 
 export function placeLabel(p: Place): string {
-	return p.km < 1.5 ? p.name : `${p.name} · ${Math.round(p.km)} km`;
+	return p.km < 1.5 ? p.name : `${Math.round(p.km)} km from ${p.name}`;
 }

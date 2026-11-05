@@ -97,6 +97,6 @@ describe("localitiesIn", () => {
 describe("placeLabel", () => {
 	it("the town alone when the pin is in it, with the distance when it is not", () => {
 		expect(placeLabel({ name: "Oliver", km: 0.4 })).toBe("Oliver");
-		expect(placeLabel({ name: "Oliver", km: 12.4 })).toBe("Oliver · 12 km");
+		expect(placeLabel({ name: "Oliver", km: 12.4 })).toBe("12 km from Oliver");
 	});
 });

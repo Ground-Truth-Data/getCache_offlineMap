@@ -55,6 +55,8 @@ export interface Region {
 	filling?: true;
 	/** Born from a pin at this spot; once the host is ready, a pin-born area with no pin here goes. Absent on follow-me. */
 	pin?: true;
+	/** the host feature it was born from, by the host's glyph name; absent on follow-me */
+	kind?: string;
 }
 
 /** The area a write names has no live row. `removed`: the row says so, a pin was deleted or a download failed. `missing`: no row at all, so whoever named it holds an id no blob was born with. */

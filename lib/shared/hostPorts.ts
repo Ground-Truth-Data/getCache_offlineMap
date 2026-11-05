@@ -3,6 +3,8 @@
 export interface HostPlace {
 	/** [lng, lat]. A point has one; a line has many. */
 	anchors: [number, number][];
+	/** What the feature is, as the host's own glyph names it: "pin", "poly" (a piece), "block", "line", "track". */
+	kind: string;
 	/** Beside each anchor, the outer rings of the pieces its blob photographs; absent or null bakes no photo. Blocks and
 	 * pieces under the photo cap only: the photo source bills per tile. */
 	rings?: ([number, number][][] | null)[];
