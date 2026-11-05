@@ -103,6 +103,17 @@ export async function shrunkPhoto(source: string, top: number, z: number, x: num
 	return (await canvas.convertToBlob({ type: "image/png" })).arrayBuffer();
 }
 
+let blank: Promise<ArrayBuffer> | null = null;
+// MapLibre transfers the buffer it is handed, so each handout is a copy.
+const blankPng = async (): Promise<ArrayBuffer> => {
+	if (!blank) {
+		const c = new OffscreenCanvas(1, 1);
+		c.getContext("2d");
+		blank = c.convertToBlob({ type: "image/png" }).then((b) => b.arrayBuffer());
+	}
+	return (await blank).slice(0);
+};
+
 let installed = false;
 
 export function installProtocol(): void {
@@ -119,13 +130,7 @@ export function installProtocol(): void {
 		const key = `${m[2]}/${m[3]}/${m[4]}`;
 		const [z, x, y] = [Number(m[2]), Number(m[3]), Number(m[4])];
 		const top = photo ? sourceOf(m[1].slice(6))?.zoom : undefined;
-		if (top !== undefined && z < top) {
-			const data = await shrunkPhoto(m[1].slice(6), top, z, x, y);
-			counts[data ? "hit" : "miss"]++;
-			if (data) return { data };
-			throw notFound(params.url);
-		}
-		const buf = await getTile(photo ? `${PHOTO_PREFIX}${m[1].slice(6)}/${key}` : key);
+		const buf = top !== undefined && z < top ? await shrunkPhoto(m[1].slice(6), top, z, x, y) : await getTile(photo ? `${PHOTO_PREFIX}${m[1].slice(6)}/${key}` : key);
 		if (buf && buf.byteLength > 0) {
 			const data = !photo && z < ANCHOR_Z ? await clippedTile(key, z, x, y, buf) : buf;
 			if (data) {
@@ -134,6 +139,9 @@ export function installProtocol(): void {
 			}
 		}
 		counts.miss++;
+		// A photo 404 sends MapLibre to the nearest ancestor that loaded, as far up as z10: magnified ~20x, its photo edge
+		// smears dark across the empty tile. An empty tile is drawn as nothing.
+		if (photo) return { data: await blankPng() };
 		throw notFound(params.url);
 	});
 }

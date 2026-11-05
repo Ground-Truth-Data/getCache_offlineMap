@@ -1,6 +1,7 @@
 // `v10://` reads the tile store: a road tile under the anchor zoom comes out
 // clipped to the blobs it belongs to (and cached until the blob list
-// changes), a photo tile comes out raw, and a miss or a bad URL is a 404.
+// changes), a photo tile comes out raw, a photo miss is a blank image, and
+// any other miss or a bad URL is a 404.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
@@ -47,7 +48,12 @@ describe("installProtocol", () => {
 		h.tiles.set("12/1/1", new Uint8Array([9]).buffer);
 		h.tiles.set("12/1/2", new ArrayBuffer(0));
 		expect(bytes(await ask("v10://photo/maptiler/16/5/6"))).toEqual([1, 2, 3]);
-		await expect(ask("v10://photo/sentinel/14/5/6")).rejects.toMatchObject({ status: 404 });
+		// A photo miss is a blank image, never a 404: a 404 makes MapLibre magnify a far ancestor over the hole.
+		vi.stubGlobal("OffscreenCanvas", class {
+			getContext() {}
+			convertToBlob = async () => new Blob([new Uint8Array([7])]);
+		});
+		expect(bytes(await ask("v10://photo/sentinel/14/5/6"))).toEqual([7]);
 		expect(bytes(await ask("v10://planet/12/1/1"))).toEqual([9]);
 		await expect(ask("v10://planet/12/1/2")).rejects.toMatchObject({ status: 404, message: "no tile: v10://planet/12/1/2" });
 		await expect(ask("v10://planet/12/7/7")).rejects.toMatchObject({ status: 404 });
