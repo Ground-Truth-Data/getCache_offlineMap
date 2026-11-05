@@ -179,7 +179,7 @@ $effect(() => {
 					<button class="eye" aria-label="see this blob on the map" title="see on map" onclick={() => eyeBlink.blinkThen(() => onFly(focus), focus.id)}>
 						<ui.MaskedFrameIcon src={eyeBlink.srcFor(focus.id)} frames={ui.eyeAllFrames} size={23} color="var(--rt-yellow, #ffd700)" />
 					</button>
-					<button class="x" onclick={() => copyJson(focus)} title="copy this blob's JSON">{copied === focus.id ? "✓" : copied === `!${focus.id}` ? "✕" : "⧉"}</button>
+					<button class="x copy" onclick={() => copyJson(focus)} title="copy this blob's JSON">{copied === focus.id ? "✓" : copied === `!${focus.id}` ? "✕" : "⧉"}</button>
 					<button class="x" onclick={() => onDelete(focus.id)} disabled={busy} title="delete this blob">✕</button>
 				</div>
 				<div class="line1">
@@ -195,7 +195,7 @@ $effect(() => {
 							<span class="how">
 								{#if p.name === "roads"}<span class="grn">R2 hit</span>
 								{:else if p.note || p.tiles === null}<span class="dim">{p.note ?? "—"}</span>
-								{:else if p.wire}<span class="grn">{p.wire.hit} hit</span> · <span class:amb={p.wire.miss > 0}>{p.wire.miss} upstream</span>{#if p.wire.miss}{#if p.wire.kept}<span class="dim"> · written to R2</span>{:else}<span class="red"> · not saved</span>{/if}{/if}
+								{:else if p.wire}<span class="grn">R2 hit {p.wire.hit}</span> · <span class:amb={p.wire.miss > 0}>{p.source} {p.wire.miss}</span>{#if p.wire.miss && !p.wire.kept}<span class="red"> · not saved to R2</span>{/if}
 								{:else}<span class="dim">saved before counting</span>{/if}
 								{#if p.tiles !== null}<span class="dim"> · {p.tiles} tiles</span>{/if}
 							</span>
@@ -265,17 +265,19 @@ button:disabled { opacity: 0.4; cursor: default; }
 .bsize { font-family: "JetBrains Mono", ui-monospace, monospace; font-weight: 700; font-size: 14px; color: #eab627; white-space: nowrap; }
 .bcoord { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; color: var(--muted); margin-top: 4px; }
 .plines { margin-top: 10px; display: flex; flex-direction: column; border-top: 1px solid rgba(255, 255, 255, 0.1); }
-.pl { display: grid; grid-template-columns: 58px 108px 1fr auto; gap: 8px; align-items: center; padding: 7px 0; border-bottom: 1px dashed rgba(255, 255, 255, 0.1); font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; }
+.pl { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 7px 0; border-bottom: 1px dashed rgba(255, 255, 255, 0.1); font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; }
 .pl:last-child { border-bottom: none; }
 .part { color: var(--muted); }
 .src { display: flex; align-items: center; gap: 6px; font-weight: 700; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .src i { width: 7px; height: 7px; border-radius: 50%; flex: none; }
-.how { font-size: 10.5px; }
-.pl .mb { font-weight: 700; text-align: right; white-space: nowrap; }
+/* Its own line under the source: the dock is too narrow for four columns, and MB must never clip. */
+.how { font-size: 10.5px; grid-row: 2; grid-column: 2 / -1; }
+.pl .mb { grid-row: 1; grid-column: 3; font-weight: 700; text-align: right; white-space: nowrap; }
 .times { margin-top: 6px; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 10.5px; color: var(--muted); }
 .eye { all: unset; cursor: pointer; display: inline-flex; align-items: center; line-height: 0; }
 .eye:active { transform: scale(0.9); }
 .x { background: none; border: 1px solid rgba(255, 255, 255, 0.2); color: rgba(255, 255, 255, 0.6); border-radius: 5px; font: inherit; cursor: pointer; padding: 0 5px; }
+.copy { color: #ffd700; border-color: rgba(255, 215, 0, 0.6); font-size: 1.35em; padding: 0 7px; }
 .more { display: flex; align-items: center; gap: 8px; width: 100%; margin: 12px 0 8px; padding: 9px 12px; border: 1px dashed rgba(255, 255, 255, 0.2); border-radius: 9px; background: none; color: var(--muted); font: 700 11px "JetBrains Mono", ui-monospace, monospace; cursor: pointer; text-align: left; }
 .more:hover { color: var(--text); }
 .moresum { margin-left: auto; font-weight: 500; opacity: 0.7; }

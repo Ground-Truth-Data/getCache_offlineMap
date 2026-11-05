@@ -152,7 +152,7 @@ describe("Squirrel's switch decides every tile", () => {
 		expect([...zooms]).toEqual([14]);
 		expect(tiles).toHaveLength(keysOf(E, 14).length);
 		// Counted as Squirrel counts it: every tile a miss the Worker was told not to keep.
-		expect((await getSatImageByKey(E.photoKey!))?.wire).toEqual({ disk: 0, hit: 0, miss: tiles.length, kept: false });
+		expect((await getSatImageByKey(E.photoKey!))?.wire).toEqual({ disk: 0, hit: 0, miss: tiles.length, tiles: tiles.length, bytes: 7 * tiles.length, kept: false });
 	});
 
 	it("a 12-piece shape on ten blobs holds every piece's cover tiles at its source's zoom, and none coarser", async () => {

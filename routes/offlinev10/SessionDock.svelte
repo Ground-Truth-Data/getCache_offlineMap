@@ -32,7 +32,9 @@ const withPhoto = (r: Region) => {
 	const p = r.photoKey ? photos[r.photoKey] : undefined;
 	return {
 		...r,
+		photoTiles: p?.tiles ?? null,
 		photoBytes: p?.bytes ?? null,
+		photoWire: p?.wire ?? null,
 		photoSource: p?.source ?? null,
 		photoZoom: p?.zoom ?? null,
 		photoMs: p?.ms ?? null,

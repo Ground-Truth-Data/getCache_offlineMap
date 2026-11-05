@@ -64,7 +64,7 @@ vi.mock("./store", () => ({
 	putPhotoTiles: async () => undefined,
 	getPhotoTiles: async () => new Map(),
 	// Every blob's tiles: 2048 bytes on disk.
-	photoTileBytes: async (rs: { id: string }[]) => new Map(rs.map((r) => [r.id, { tiles: 1, bytes: 2048, addedTiles: 1, addedBytes: 2048 }])),
+	photoTileBytes: async (rs: { id: string }[]) => new Map(rs.map((r) => [r.id, { tiles: 1, bytes: 2048 }])),
 }));
 vi.mock("./blobService", () => ({ onBlob: () => () => undefined, photoIds: () => ({ has: () => true }) }));
 
@@ -215,7 +215,7 @@ describe("the photo pass", () => {
 		regions = [askOf(PENTICTON)];
 		await bakePhotos([askOf(PENTICTON)]);
 		const sizes = await photoInfo();
-		expect(sizes[askOf(PENTICTON).photoKey]).toMatchObject({ bytes: 2048, addedBytes: 2048 });
+		expect(sizes[askOf(PENTICTON).photoKey]).toMatchObject({ bytes: 2048 });
 	});
 
 	it("a host that refuses every tile leaves its reason in photoIssue, and a landed photo clears it", async () => {

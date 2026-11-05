@@ -77,6 +77,10 @@ export async function photoTiles(keys: string[], owner: string, source: string =
 				const buf = b ?? new ArrayBuffer(0);
 				got.push([missing[i], buf]);
 				have.set(missing[i], buf);
+				if (wire) {
+					wire.tiles++;
+					wire.bytes += buf.byteLength;
+				}
 				if (!b) return;
 				if (wire && cache === "HIT") wire.hit++;
 				else if (wire && cache === "MISS") wire.miss++;
@@ -156,7 +160,7 @@ export function blobParts(r: Region, photos: Record<string, PhotoInfo>, regions:
 		: !p
 			? { name: "photo", source: "not saved", tiles: null, bytes: null, zoom: "" }
 			: owns
-				? { name: "photo", source: p.source, id, tiles: p.addedTiles, bytes: p.addedBytes, zoom: `z${p.zoom}`, wire: p.wire }
+				? { name: "photo", source: p.source, id, tiles: p.wire?.tiles ?? null, bytes: p.wire?.bytes ?? null, zoom: `z${p.zoom}`, wire: p.wire }
 				: { name: "photo", source: p.source, id, tiles: 0, bytes: 0, zoom: `z${p.zoom}`, note: "reuses an earlier blob's" };
 	return [{ name: "roads", source: "planet roads", tiles: r.fetched, bytes: r.newBytes ?? null, zoom: "z0–13" }, photo];
 }
@@ -165,18 +169,13 @@ export function blobParts(r: Region, photos: Record<string, PhotoInfo>, regions:
 export async function photoInfo(): Promise<Record<string, PhotoInfo>> {
 	const regions = await regionsSnapshot().regions;
 	const [meta, sizes] = await Promise.all([satImageMeta(), photoTileBytes(regions)]);
-	// Blobs sharing an area share its tiles: the covered totals agree, and what was added is the sum of what each credited.
+	// Blobs sharing an area share its tiles, so any one of them sizes it.
 	const byKey = new Map<string, CloseUp>();
-	for (const r of regions) {
-		const c = r.photoKey ? sizes.get(r.id) : undefined;
-		if (!r.photoKey || !c) continue;
-		const have = byKey.get(r.photoKey);
-		byKey.set(r.photoKey, have ? { ...c, addedTiles: have.addedTiles + c.addedTiles, addedBytes: have.addedBytes + c.addedBytes } : c);
-	}
+	for (const r of regions) if (r.photoKey && sizes.has(r.id)) byKey.set(r.photoKey, sizes.get(r.id)!);
 	const out: Record<string, PhotoInfo> = {};
 	for (const m of meta)
 		out[m.key] = {
-			...(byKey.get(m.key) ?? { tiles: 0, bytes: 0, addedTiles: 0, addedBytes: 0 }),
+			...(byKey.get(m.key) ?? { tiles: 0, bytes: 0 }),
 			source: m.source ?? WORLD.name,
 			zoom: m.zoom ?? WORLD.zoom,
 			ms: m.ms,
@@ -244,7 +243,7 @@ async function pass(asks: readonly PhotoAsk[]): Promise<number> {
 		}
 		let img: Awaited<ReturnType<typeof saveAreaTiles>> = null;
 		try {
-			const wire: PhotoWire = { disk: 0, hit: 0, miss: 0, kept: !!active[2][sid] };
+			const wire: PhotoWire = { disk: 0, hit: 0, miss: 0, tiles: 0, bytes: 0, kept: !!active[2][sid] };
 			img = await saveAreaTiles(photoKey, rings, src, (keys, from = sid) => photoTiles(keys, id, from, wire), () => claimArea(id), wire);
 		} catch (error) {
 			if (error instanceof RateLimited) {

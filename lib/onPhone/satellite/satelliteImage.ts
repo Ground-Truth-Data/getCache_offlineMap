@@ -174,6 +174,9 @@ export interface PhotoWire {
 	disk: number;
 	hit: number;
 	miss: number;
+	/** what this bake put on the phone, counted as it landed */
+	tiles: number;
+	bytes: number;
 	kept: boolean;
 }
 

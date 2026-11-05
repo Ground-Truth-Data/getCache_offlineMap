@@ -268,25 +268,18 @@ function photoKeysOf(r: Region): string[] {
 	return Object.entries(SATELLITE_SOURCES).flatMap(([id, s]) => pieceTileKeys(rings, s.zoom).map((k) => `${PHOTO_PREFIX}${id}/${k}`));
 }
 
-/** What a blob's photo tiles are: `tiles`/`bytes` all it covers, `addedTiles`/`addedBytes` only those no earlier blob already covers — what it put on the phone. One cursor pass. */
+/** A blob's photo tiles on disk, all it covers, in one cursor pass. What a bake added is on its record's wire. */
 export interface CloseUp {
 	tiles: number;
 	bytes: number;
-	addedTiles: number;
-	addedBytes: number;
 }
 
 export async function photoTileBytes(regions: readonly Region[]): Promise<Map<string, CloseUp>> {
 	const owners = new Map<string, string[]>();
-	const firstToCover = new Map<string, string>();
 	const out = new Map<string, CloseUp>();
-	// Earliest first: the blob that came first fetched the tile, the later one found it on disk.
-	for (const r of [...regions].sort((a, b) => a.at - b.at || a.id.localeCompare(b.id))) {
-		out.set(r.id, { tiles: 0, bytes: 0, addedTiles: 0, addedBytes: 0 });
-		for (const k of photoKeysOf(r)) {
-			owners.set(k, [...(owners.get(k) ?? []), r.id]);
-			if (!firstToCover.has(k)) firstToCover.set(k, r.id);
-		}
+	for (const r of regions) {
+		out.set(r.id, { tiles: 0, bytes: 0 });
+		for (const k of photoKeysOf(r)) owners.set(k, [...(owners.get(k) ?? []), r.id]);
 	}
 	const db = await open();
 	const st = db.transaction(TILES, "readonly").objectStore(TILES);
@@ -300,11 +293,6 @@ export async function photoTileBytes(regions: readonly Region[]): Promise<Map<st
 				const o = out.get(id) as CloseUp;
 				o.tiles += 1;
 				o.bytes += size;
-			}
-			const first = out.get(firstToCover.get(cur.key as string) ?? "");
-			if (first) {
-				first.addedTiles += 1;
-				first.addedBytes += size;
 			}
 			cur.continue();
 		};
