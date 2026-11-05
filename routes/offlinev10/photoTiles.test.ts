@@ -8,6 +8,7 @@ import { coverTiles, getSatImageByKey, pieceKey, pieceTileKeys } from "../../lib
 import { piecesOf } from "../../lib/shared/anchors";
 import { configureTilesDevHost } from "../../lib/worker/tilesHost";
 import { setBudgetMb } from "./budget";
+import { shrunkPhoto } from "./protocol";
 import { bakePhotos, photoTiles } from "./satellite";
 import { AreaGone, allTileKeys, deleteRegion, PHOTO_PREFIX, photoTileBytes, putPhotoTiles, putRegion, type Region, wipe } from "./store";
 import { regionRange } from "./tiles";
@@ -176,5 +177,30 @@ describe("Squirrel's switch decides every tile", () => {
 		expect(short).toEqual([]);
 		const baked = [...held].filter((k) => !k.startsWith(`${PHOTO_PREFIX}maptiler/`));
 		expect(baked.filter((k) => !k.startsWith(`${PHOTO_PREFIX}sentinel/${zoom}/`))).toEqual([]);
+	});
+});
+
+describe("below its own zoom a photo tile is shrunk from the held tiles under it, never fetched", () => {
+	const draws: { x: number; y: number; w: number }[] = [];
+	beforeEach(() => {
+		draws.length = 0;
+		vi.stubGlobal("createImageBitmap", async () => ({}));
+		vi.stubGlobal("OffscreenCanvas", class {
+			constructor(public width: number, public height: number) {}
+			getContext() { return { drawImage: (_: unknown, x: number, y: number, w: number) => draws.push({ x, y, w }) }; }
+			async convertToBlob() { return new Blob([new Uint8Array(3)]); }
+		});
+		vi.stubGlobal("fetch", vi.fn());
+	});
+	afterEach(() => vi.unstubAllGlobals());
+
+	it("a z13 tile is opaque only over its held z16 children and transparent everywhere else", async () => {
+		// z13 tile 100/200 holds z16 columns 800–807 and rows 1600–1607, each 32 px of the 256 px tile.
+		await putPhotoTiles([["16/801/1602", new ArrayBuffer(9)], ["16/807/1607", new ArrayBuffer(9)], ["16/803/1603", new ArrayBuffer(0)], ["16/808/1600", new ArrayBuffer(9)]], "a", "maptiler");
+		expect(await shrunkPhoto("maptiler", 16, 13, 100, 200)).toBeInstanceOf(ArrayBuffer);
+		// The no-imagery tile and the neighbour's tile are not drawn: that ground stays transparent.
+		expect(draws).toEqual([{ x: 32, y: 64, w: 32 }, { x: 224, y: 224, w: 32 }]);
+		expect(await shrunkPhoto("maptiler", 16, 13, 102, 200)).toBeNull();
+		expect(fetch).not.toHaveBeenCalled();
 	});
 });

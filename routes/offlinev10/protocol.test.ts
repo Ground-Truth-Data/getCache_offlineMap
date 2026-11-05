@@ -43,11 +43,11 @@ describe("installProtocol", () => {
 
 	it("serves a source's satellite tile and an anchor-zoom road tile raw, and counts hits and misses", async () => {
 		installProtocol();
-		h.tiles.set("p/maptiler/13/5/6", new Uint8Array([1, 2, 3]).buffer);
+		h.tiles.set("p/maptiler/16/5/6", new Uint8Array([1, 2, 3]).buffer);
 		h.tiles.set("12/1/1", new Uint8Array([9]).buffer);
 		h.tiles.set("12/1/2", new ArrayBuffer(0));
-		expect(bytes(await ask("v10://photo/maptiler/13/5/6"))).toEqual([1, 2, 3]);
-		await expect(ask("v10://photo/sentinel/13/5/6")).rejects.toMatchObject({ status: 404 });
+		expect(bytes(await ask("v10://photo/maptiler/16/5/6"))).toEqual([1, 2, 3]);
+		await expect(ask("v10://photo/sentinel/14/5/6")).rejects.toMatchObject({ status: 404 });
 		expect(bytes(await ask("v10://planet/12/1/1"))).toEqual([9]);
 		await expect(ask("v10://planet/12/1/2")).rejects.toMatchObject({ status: 404, message: "no tile: v10://planet/12/1/2" });
 		await expect(ask("v10://planet/12/7/7")).rejects.toMatchObject({ status: 404 });

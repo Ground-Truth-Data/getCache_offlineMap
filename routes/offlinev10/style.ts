@@ -268,13 +268,14 @@ export function buildStyle(origin: string): StyleSpecification {
 		},
 	];
 
-	// At every zoom: inside a blob the data ends at a cliff, and the line is the only thing that says so.
+	// At every zoom: inside a blob the data ends at a cliff, and the line is the only thing that says so. Grey, never the
+	// photo edge's gold: a blob is cut on the z10 grid, so in gold it reads as a photo block kilometres wide.
 	const regions: LayerSpecification[] = [
 		{
 			id: "regions-line",
 			type: "line",
 			source: REGIONS,
-			paint: HELD_EDGE,
+			paint: { "line-color": DARK.city_label, "line-opacity": 0.5, "line-width": 0.5 },
 		},
 	];
 
