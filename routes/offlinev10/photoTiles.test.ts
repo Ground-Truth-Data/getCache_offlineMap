@@ -4,25 +4,26 @@
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SATELLITE_SOURCES } from "../../lib/contract/satelliteSources";
-import { areaTileKeys, getSatImageByKey, satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
+import { getSatImageByKey, pieceKey, pieceTileKeys } from "../../lib/onPhone/satellite/satelliteImage";
 import { configureTilesDevHost } from "../../lib/worker/tilesHost";
 import { setBudgetMb } from "./budget";
 import { bakePhotos, photoTiles } from "./satellite";
 import { AreaGone, allTileKeys, deleteRegion, PHOTO_PREFIX, photoTileBytes, putPhotoTiles, putRegion, type Region, wipe } from "./store";
 import { regionRange } from "./tiles";
 
-vi.mock("./blobService", () => ({ onBlob: () => () => undefined, photoIds: () => null }));
+vi.mock("./blobService", () => ({ onBlob: () => () => undefined, photoIds: () => ({ has: () => true }) }));
 const HOST = "https://tiles.test";
 configureTilesDevHost(HOST);
 
 function region(id: string, lng: number, lat: number): Region {
-	return { id, lng, lat, range: regionRange(lng, lat), at: 1, tiles: 1, fetched: 1, bytes: 0, ms: 1, photoKey: satImageKey([lng, lat]), photoCenter: [lng, lat] };
+	const ring: [number, number][] = [[lng, lat], [lng + 0.02, lat], [lng + 0.02, lat + 0.012], [lng, lat + 0.012], [lng, lat]];
+	return { id, lng, lat, range: regionRange(lng, lat), at: 1, tiles: 1, fetched: 1, bytes: 0, ms: 1, photoKey: pieceKey(ring), photoRing: ring };
 }
 
-const keysOf = (r: Region, z: number = SATELLITE_SOURCES.maptiler.zoom) => areaTileKeys([r.lng, r.lat], z);
+const keysOf = (r: Region, z: number = SATELLITE_SOURCES.maptiler.zoom) => pieceTileKeys(r.photoRing!, z);
 const onDisk = async () => [...(await allTileKeys())].filter((k) => k.startsWith(PHOTO_PREFIX));
 
-// Ailsa Craig, and a pin 1 km east: their 2 km discs overlap.
+// Ailsa Craig, and a piece 1 km east: the two overlap.
 const A = region("a", -81.5076, 43.1136);
 const B = region("b", -81.4953, 43.1136);
 
@@ -55,8 +56,8 @@ describe("an area's tiles on disk", () => {
 		expect(await onDisk()).toEqual([]);
 	});
 
-	it("a follow-me blob has no area, so deleting it touches none", async () => {
-		const follow = { ...region("f", -81.5076, 43.1136), photoKey: undefined, photoCenter: undefined };
+	it("a pin's blob has no piece, so deleting it touches none", async () => {
+		const follow = { ...region("f", -81.5076, 43.1136), photoKey: undefined, photoRing: undefined };
 		await putRegion(follow);
 		await deleteRegion("f");
 		expect((await onDisk()).length).toBe(new Set([...keysOf(A), ...keysOf(B)]).size);
@@ -141,7 +142,7 @@ describe("Squirrel's switch decides every tile, the z10–12 overview included",
 			if (url === `${HOST}/squirrel/active`) return new Response(JSON.stringify({ active: "sentinel", cache: { sentinel: false } }));
 			return { ok: true, status: 200, headers: new Headers({ "X-Cache": "MISS" }), arrayBuffer: async () => new ArrayBuffer(7) };
 		}));
-		expect(await bakePhotos([{ id: E.id, photoKey: E.photoKey!, at: E.photoCenter!, area: true }])).toBe(1);
+		expect(await bakePhotos([{ id: E.id, photoKey: E.photoKey!, ring: E.photoRing! }])).toBe(1);
 
 		const [first, ...tiles] = urls;
 		expect(first).toBe(`${HOST}/squirrel/active`);

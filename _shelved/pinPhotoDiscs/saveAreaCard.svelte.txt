@@ -1,0 +1,17 @@
+<!-- ⚠️⚠️ DO NOT DELETE — shelved by Chris 5 Nov 2026. Pin photo discs and circles: a cool asset we will use again. Disconnected, not dead. -->
+<!-- The SAVE AREA card as it sat in getCache_OnlineMap/lib/chrome/MapToolDrawer.svelte. -->
+	{#if saveArea.centre}
+	<div class="tile-wrap" data-tour="map-tool-save-area">
+	<Card onclick={() => { const at = saveArea.centre?.(); if (at) void saveHere(at); }}>
+		{#snippet icon()}
+			<IconBox>
+				<Icon name="download" size={32} />
+			</IconBox>
+		{/snippet}
+		<span class="rt-text-pill">{m.omap_rail_tile_save_area()}</span>
+	</Card>
+	{#if saveArea.note}
+		<button type="button" class="rt-note tile-note" onclick={() => { if (saveArea.ask) void saveHere(saveArea.ask); else saveArea.note = null; }}>{saveArea.note}</button>
+	{/if}
+	</div>
+	{/if}

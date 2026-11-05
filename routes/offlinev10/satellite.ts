@@ -1,11 +1,10 @@
 /**
- * The photo pass: each blob's satellite ground, its source's tiles held once. A blob in the wilderness
- * is a green field with a pin on it; the imagery is the frame of reference.
+ * The photo pass: each block's and piece's satellite ground, every tile its outer ring touches, held once. A pin
+ * gets roads alone.
  */
 
 import { DEFAULT_SOURCE, SATELLITE_SOURCES, type SatelliteSource, sourceAt, sourceOf } from "../../lib/contract/satelliteSources";
 import {
-	PHOTO_COVERAGE_RADIUS_KM,
 	deleteSatImage,
 	getSatImageByKey,
 	isCurrentPhoto,
@@ -111,7 +110,7 @@ export const PHOTO_RETRY_MS = 60_000;
 // MapTiler rate-limits a burst; roads come from our own R2 and keep the full pool.
 const SAT_IN_FLIGHT = 6;
 export const PHOTO_SPEC = {
-	radiusKm: PHOTO_COVERAGE_RADIUS_KM,
+	cover: "every tile a piece's outer ring touches",
 	sources: Object.values(SATELLITE_SOURCES).map(({ name, zoom }) => ({ name, zoom })),
 };
 
@@ -153,7 +152,7 @@ export function blobParts(r: Region, photos: Record<string, PhotoInfo>, regions:
 	const id = p ? Object.entries(SATELLITE_SOURCES).find(([, s]) => s.name === p.source)?.[0] : undefined;
 	const owns = ownsPhoto(r, regions);
 	const photo: BlobPart = !r.photoKey
-		? { name: "photo", source: "none", tiles: null, bytes: null, zoom: "", note: "follow-me · no pin" }
+		? { name: "photo", source: "none", tiles: null, bytes: null, zoom: "", note: "roads only · not a piece" }
 		: !p
 			? { name: "photo", source: "not saved", tiles: null, bytes: null, zoom: "" }
 			: owns
@@ -197,13 +196,11 @@ export function onPhoto(fn: () => void): () => void {
 
 let pausedUntil = 0;
 
-/** A photo to bake as its blob's record names it: the row id that owns the tiles, the key it is stored under, the exact centre. */
+/** A photo to bake as its blob's record names it: the row id that owns the tiles, the key it is stored under, the piece's outer ring. */
 export interface PhotoAsk {
 	id: string;
 	photoKey: string;
-	at: [number, number];
-	/** an area saved without a pin */
-	area?: boolean;
+	ring: [number, number][];
 }
 
 // Asks ride the queue as their row ids: primitives, so a re-ask dedupes. The asks themselves wait here, so no coordinate is ever turned into a key and back.
@@ -212,9 +209,9 @@ const askQueue = passQueue<string>((ids) => pass(ids.map((id) => asked.get(id) a
 
 /** Bake a photo for every ask without one; returns how many landed. */
 export function bakePhotos(asks: readonly PhotoAsk[]): Promise<number> {
-	// The one road to a billed photo tile: a pin's or a saved area's. A row from before only-pins-bake still names a photo; it never gets one.
-	const pins = photoIds();
-	const wanted = asks.filter((a) => a.area || pins?.has(a.id));
+	// The one road to a billed photo tile: a piece the host lists now, under the photo cap.
+	const pieces = photoIds();
+	const wanted = asks.filter((a) => pieces?.has(a.id));
 	for (const a of wanted) asked.set(a.id, a);
 	return askQueue(wanted.map((a) => a.id));
 }
@@ -238,8 +235,8 @@ async function pass(asks: readonly PhotoAsk[]): Promise<number> {
 		return 0;
 	}
 	let landed = 0;
-	for (const { id, photoKey, at } of asks) {
-		const sid = sourceAt(at, active[0]);
+	for (const { id, photoKey, ring } of asks) {
+		const sid = sourceAt(ring[0]!, active[0]);
 		const src = sid === active[0] ? active[1] : sourceOf(sid)!;
 		if (isCurrentPhoto(await getSatImageByKey(photoKey))) {
 			say(`[offlineV10] photo: ${id} already has its photo`);
@@ -248,7 +245,7 @@ async function pass(asks: readonly PhotoAsk[]): Promise<number> {
 		let img: Awaited<ReturnType<typeof saveAreaTiles>> = null;
 		try {
 			const wire: PhotoWire = { disk: 0, hit: 0, miss: 0, kept: !!active[2][sid] };
-			img = await saveAreaTiles(photoKey, at, src, (keys, from = sid) => photoTiles(keys, id, from, wire), () => claimArea(id), wire);
+			img = await saveAreaTiles(photoKey, ring, src, (keys, from = sid) => photoTiles(keys, id, from, wire), () => claimArea(id), wire);
 		} catch (error) {
 			if (error instanceof RateLimited) {
 				pausedUntil = Date.now() + error.ms;
@@ -273,7 +270,7 @@ async function pass(asks: readonly PhotoAsk[]): Promise<number> {
 		}
 		setIssue(null);
 		landed++;
-		say(`[offlineV10] photo: ${PHOTO_COVERAGE_RADIUS_KM} km around ${id} from ${img.source}`);
+		say(`[offlineV10] photo: piece ${id} from ${img.source}`);
 		for (const fn of listeners) fn();
 	}
 	return landed;
@@ -294,7 +291,7 @@ async function activeSource(): Promise<[string, SatelliteSource, Record<string, 
 
 export async function bakeAllPhotos(): Promise<number> {
 	const regions = await regionsSnapshot().regions;
-	return bakePhotos(regions.flatMap((r) => (r.photoKey && r.photoCenter ? [{ id: r.id, photoKey: r.photoKey, at: r.photoCenter, area: r.area }] : [])));
+	return bakePhotos(regions.flatMap((r) => (r.photoKey && r.photoRing ? [{ id: r.id, photoKey: r.photoKey, ring: r.photoRing }] : [])));
 }
 
 export async function dropPhoto(photoKey: string): Promise<void> {
@@ -317,8 +314,8 @@ export function startPhotoService(): () => void {
 		// Not at boot: until the host lists its pins, every ask would be dropped.
 		if (e.kind === "pins") all();
 		// Beside the tiles, not after them: neither needs the other.
-		if (e.kind === "start" && e.photoKey && e.photoCenter)
-			bakePhotos([{ id: e.id, photoKey: e.photoKey, at: e.photoCenter, area: e.area }]).catch((err) => {
+		if (e.kind === "start" && e.photoKey && e.photoRing)
+			bakePhotos([{ id: e.id, photoKey: e.photoKey, ring: e.photoRing }]).catch((err) => {
 				console.warn("[photos] bake failed", err);
 			});
 	});

@@ -1,4 +1,4 @@
-/** An area is held whole or not at all: its disc and its z10–12 overview, asked of the tile source once, a tile the
+/** A piece is held whole or not at all: its cover and its z10–12 overview, asked of the tile source once, a tile the
  * source lacks filled from Sentinel, and nothing asked once the session byte cap trips. */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -14,11 +14,14 @@ vi.mock("../store/keyedIdbStore", () => ({
 	}),
 }));
 
-/** Nice, France: MapTiler at z16. */
-const PIN: [number, number] = [7.2, 43.68];
-const KEY = "7.2000,43.6800";
-/** Measured 84 disc tiles plus 4 overview tiles at this pin; past this the area has grown. */
-const MAX_TILES_PER_AREA = 96;
+type Pt = [number, number];
+/** A square about 800 m a side in Nice, France: MapTiler at z16. */
+const square = ([x, y]: Pt, d = 0.01): Pt[] => [[x, y], [x + d, y], [x + d, y + d * 0.72], [x, y + d * 0.72], [x, y]];
+const PIN: Pt = [7.2, 43.68];
+const RING = square(PIN);
+const KEY = "piece:nice";
+/** Measured at this ring; past this the cover has grown. */
+const MAX_TILES_PER_AREA = 24;
 
 beforeEach(() => {
 	vi.resetModules();
@@ -29,7 +32,7 @@ async function save(answer: (keys: string[], source: string | undefined) => Map<
 	const { saveAreaTiles } = await import("./satelliteImage");
 	const { SATELLITE_SOURCES } = await import("../../contract/satelliteSources");
 	const asked: { keys: string[]; source: string | undefined }[] = [];
-	const img = await saveAreaTiles(KEY, PIN, SATELLITE_SOURCES.maptiler, async (keys, source) => {
+	const img = await saveAreaTiles(KEY, RING, SATELLITE_SOURCES.maptiler, async (keys, source) => {
 		asked.push({ keys, source });
 		return answer(keys, source);
 	});
@@ -38,8 +41,8 @@ async function save(answer: (keys: string[], source: string | undefined) => Map<
 
 const all = (keys: string[]) => new Map(keys.map((k) => [k, new ArrayBuffer(8)]));
 
-describe("an area is whole or not saved", () => {
-	it("every tile arrived: one ask, the disc at z16 and the overview at z10–12, and the record is saved", async () => {
+describe("a piece is whole or not saved", () => {
+	it("every tile arrived: one ask, the cover at z16 and the overview at z10–12, and the record is saved", async () => {
 		const { img, asked } = await save(all);
 		expect(img).toMatchObject({ source: "MapTiler", zoom: 16 });
 		expect(saved.has(KEY)).toBe(true);
@@ -107,22 +110,27 @@ describe("an area is whole or not saved", () => {
 });
 
 describe("the held edge", () => {
-	it("rings two overlapping areas once, with no line inside either", async () => {
-		const { heldEdge } = await import("./satelliteImage");
-		const { kmBetween } = await import("../../shared/kmGeo");
-		const a: [number, number] = PIN;
-		const b: [number, number] = [PIN[0] + 0.03, PIN[1]];
-		const segs = heldEdge([{ center: a, z: 16 }, { center: b, z: 16 }]);
-		const mid = ([p, q]: [number, number][]): [number, number] => [(p![0] + q![0]) / 2, (p![1] + q![1]) / 2];
+	it("rings two overlapping pieces once, with no line inside either", async () => {
+		const { heldEdge, coverTiles } = await import("./satelliteImage");
+		const a = RING;
+		const b = square([PIN[0] + 0.006, PIN[1] + 0.002]);
+		const segs = heldEdge([{ ring: a, z: 16 }, { ring: b, z: 16 }]);
+		const inner = (r: Pt[], [x, y]: Pt) => coverTiles(r, 16).some((t) => x > t.w && x < t.e && y > t.s && y < t.n);
+		const mid = ([p, q]: Pt[]): Pt => [(p![0] + q![0]) / 2, (p![1] + q![1]) / 2];
 		expect(segs.length).toBeGreaterThan(8);
-		expect(segs.filter((seg) => kmBetween(mid(seg), a) < 1.5 && kmBetween(mid(seg), b) < 1.5)).toEqual([]);
+		const d = 1e-6;
+		expect(segs.filter(([p, q]) => {
+			const [mx, my] = mid([p!, q!]);
+			const off: Pt[] = p![0] === q![0] ? [[mx - d, my], [mx + d, my]] : [[mx, my - d], [mx, my + d]];
+			return off.every((o) => inner(a, o) || inner(b, o));
+		})).toEqual([]);
 	});
 
 	it("runs only where held ground meets nothing, across zooms", async () => {
-		const { heldEdge, photoTilesFor } = await import("./satelliteImage");
-		const areas = [{ center: PIN, z: 16 }, { center: [PIN[0] + 0.025, PIN[1] - 0.01] as [number, number], z: 14 }];
+		const { heldEdge, coverTiles } = await import("./satelliteImage");
+		const areas = [{ ring: RING, z: 16 }, { ring: square([PIN[0] + 0.025, PIN[1] - 0.01], 0.02), z: 14 }];
 		const covered = ([lng, lat]: [number, number]) =>
-			areas.some(({ center, z }) => photoTilesFor(center, z).some((t) => lng > t.w && lng < t.e && lat > t.s && lat < t.n));
+			areas.some(({ ring, z }) => coverTiles(ring, z).some((t) => lng > t.w && lng < t.e && lat > t.s && lat < t.n));
 		const segs = heldEdge(areas);
 		expect(segs.length).toBeGreaterThan(8);
 		const d = 1e-6;

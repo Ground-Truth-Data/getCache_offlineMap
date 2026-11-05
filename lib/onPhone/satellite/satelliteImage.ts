@@ -1,23 +1,16 @@
 import { guardBakeGrid } from "../store/downloadGuard";
 import { sessionCap } from "../../shared/sessionByteCap.svelte";
-import { kmBetween, kmToDegSpan } from "../../shared/kmGeo";
-import { latToTileY, lngToTileX, tileToLat, tileToLng } from "../../contract/geo";
+import { tileToLat, tileToLng } from "../../contract/geo";
 import { makeKeyedIdbStore } from "../store/keyedIdbStore";
 import { SATELLITE_SOURCES, type SatelliteSource, sourceNamed } from "../../contract/satelliteSources";
 
-/** What one held area's close tiles cover around its centre. */
-export const PHOTO_COVERAGE_RADIUS_KM = 2;
-/** How close to an area's edge a pin may sit and still use that area. */
-export const PHOTO_EDGE_MARGIN_KM = 1;
-/** A pin within this of an existing area's centre uses that area; beyond it, it holds its own. */
-export const PHOTO_REUSE_KM = PHOTO_COVERAGE_RADIUS_KM - PHOTO_EDGE_MARGIN_KM;
 const DB_NAME = "gc-offlineSatellite";
 const STORE = "photoDiscs";
 
 export type Bounds = [number, number, number, number]; // [w,s,e,n]
 
 /** Bump whenever what an area holds changes: an older record is not current, so the pass saves the area again. */
-export const BAKE_VERSION = 12;
+export const BAKE_VERSION = 13;
 
 /** Every held area also keeps its source's tiles at these zooms, so a zoomed-out map has its ground. */
 export const FAR_ZOOMS = [10, 11, 12] as const;
@@ -25,7 +18,7 @@ export const FAR_ZOOMS = [10, 11, 12] as const;
 /** A source tile as fetched, keyed `z/x/y`. */
 export type RawTile = [string, ArrayBuffer];
 
-export interface DiscTile {
+export interface CoverTile {
 	x: number;
 	y: number;
 	w: number;
@@ -34,39 +27,87 @@ export interface DiscTile {
 	s: number;
 }
 
-/** The zoom-z tiles whose ground reaches within PHOTO_COVERAGE_RADIUS_KM of the centre. */
-export function photoTilesFor(center: [number, number], z: number): DiscTile[] {
-	const [clng, clat] = center;
-	const { dLat, dLng } = kmToDegSpan(PHOTO_COVERAGE_RADIUS_KM, clat);
-	const out: DiscTile[] = [];
-	for (let x = lngToTileX(clng - dLng, z); x <= lngToTileX(clng + dLng, z); x++) {
-		for (let y = latToTileY(clat + dLat, z); y <= latToTileY(clat - dLat, z); y++) {
-			const w = tileToLng(x, z);
-			const e = tileToLng(x + 1, z);
-			const n = tileToLat(y, z);
-			const s = tileToLat(y + 1, z);
-			const cx = Math.min(Math.max(clng, w), e);
-			const cy = Math.min(Math.max(clat, s), n);
-			if (kmBetween([clng, clat], [cx, cy]) <= PHOTO_COVERAGE_RADIUS_KM) out.push({ x, y, w, e, n, s });
+type Pt = [number, number];
+
+// Tile units: a ring that lands on a tile's edge or corner, to rounding, touches that tile.
+const TOUCH = 1e-9;
+
+/** The cover rule: every zoom-z tile the filled ring touches, edge and corner tiles included, so the photos stick out
+ * past the line and none inside is ever missing. */
+export function coverTiles(ring: Pt[], z: number): CoverTile[] {
+	const n = 2 ** z;
+	const P = ring.map(([lng, lat]): Pt => {
+		const r = (lat * Math.PI) / 180;
+		return [((lng + 180) / 360) * n, ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n];
+	});
+	const lo = (v: number) => Math.max(0, Math.ceil(v - TOUCH) - 1);
+	const hi = (v: number) => Math.min(n - 1, Math.floor(v + TOUCH));
+	const hit = new Set<string>();
+	// Liang–Barsky against the tile grown by TOUCH: does segment a→b touch tile x/y?
+	const touches = ([ax, ay]: Pt, [bx, by]: Pt, x: number, y: number): boolean => {
+		let t0 = 0;
+		let t1 = 1;
+		const dx = bx - ax;
+		const dy = by - ay;
+		for (const [p, q] of [[-dx, ax - (x - TOUCH)], [dx, x + 1 + TOUCH - ax], [-dy, ay - (y - TOUCH)], [dy, y + 1 + TOUCH - ay]] as const) {
+			if (p === 0) {
+				if (q < 0) return false;
+				continue;
+			}
+			const t = q / p;
+			if (p < 0) t0 = Math.max(t0, t);
+			else t1 = Math.min(t1, t);
+			if (t0 > t1) return false;
 		}
+		return true;
+	};
+	for (let i = 0; i < P.length; i++) {
+		const a = P[i]!;
+		const b = P[(i + 1) % P.length]!;
+		for (let x = lo(Math.min(a[0], b[0])); x <= hi(Math.max(a[0], b[0])); x++)
+			for (let y = lo(Math.min(a[1], b[1])); y <= hi(Math.max(a[1], b[1])); y++) if (touches(a, b, x, y)) hit.add(`${x}/${y}`);
 	}
+	// A tile no edge touches is wholly inside or wholly out: its centre says which.
+	const inside = (px: number, py: number): boolean => {
+		let c = false;
+		for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+			const [xi, yi] = P[i]!;
+			const [xj, yj] = P[j]!;
+			if (yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) c = !c;
+		}
+		return c;
+	};
+	const xs = P.map((p) => p[0]);
+	const ys = P.map((p) => p[1]);
+	const out: CoverTile[] = [];
+	for (let x = lo(Math.min(...xs)); x <= hi(Math.max(...xs)); x++)
+		for (let y = lo(Math.min(...ys)); y <= hi(Math.max(...ys)); y++)
+			if (hit.has(`${x}/${y}`) || inside(x + 0.5, y + 0.5))
+				out.push({ x, y, w: tileToLng(x, z), e: tileToLng(x + 1, z), n: tileToLat(y, z), s: tileToLat(y + 1, z) });
 	return out;
 }
 
-/** Every `z/x/y` an area centred here holds from a source whose close zoom is `z`: the overview zooms, then the disc. */
-export function areaTileKeys(center: [number, number], z: number): string[] {
-	return [...FAR_ZOOMS, z].flatMap((tz) => photoTilesFor(center, tz).map((t) => `${tz}/${t.x}/${t.y}`));
+/** Every `z/x/y` a piece holds from a source whose close zoom is `z`: the overview zooms, then the close cover. */
+export function pieceTileKeys(ring: Pt[], z: number): string[] {
+	return [...FAR_ZOOMS, z].flatMap((tz) => coverTiles(ring, tz).map((t) => `${tz}/${t.x}/${t.y}`));
 }
 
-/** The outline of every held area together: each disc tile's side, minus the stretches another area's disc covers beyond it. */
-export function heldEdge(areas: Iterable<{ center: [number, number]; z: number }>): [number, number][][] {
+/** A piece's photo key: its outer ring, so an edited piece is a new photo. */
+export function pieceKey(ring: Pt[]): string {
+	let h = 0x811c9dc5;
+	for (const c of ring.map((p) => `${p[0].toFixed(6)},${p[1].toFixed(6)}`).join(";")) h = Math.imul(h ^ c.charCodeAt(0), 0x01000193);
+	return `piece:${(h >>> 0).toString(36)}:${ring.length}`;
+}
+
+/** The jagged outline of every held piece together: each cover tile's side, minus the stretches another piece's cover covers beyond it. */
+export function heldEdge(areas: Iterable<{ ring: Pt[]; z: number }>): [number, number][][] {
 	const pieces: Bounds[] = [];
 	// A side with its own area's tile beyond it is never edge: that drops nearly every side before any search.
 	const owner: number[] = [];
 	const inner: boolean[][] = [];
 	let a = 0;
-	for (const { center, z } of areas) {
-		const disc = photoTilesFor(center, z);
+	for (const { ring, z } of areas) {
+		const disc = coverTiles(ring, z);
 		const own = new Set(disc.map((t) => `${t.x}/${t.y}`));
 		for (const t of disc) {
 			pieces.push([t.w, t.s, t.e, t.n]);
@@ -174,11 +215,11 @@ export type PhotoTileSource = (keys: string[], source?: string) => Promise<Map<s
 /** Fills ground the area's source has no imagery for: free, and covers the whole world. */
 const FILL = "sentinel";
 
-/** Hold an area: every tile `areaTileKeys` names, on disk, then its record. Null unless every tile arrived; the ones
+/** Hold a piece: every tile `pieceTileKeys` names, on disk, then its record. Null unless every tile arrived; the ones
  * that did are kept, so the next pass asks only for the rest. `beforeSave` throws to keep the record off disk. */
 export async function saveAreaTiles(
 	key: string,
-	center: [number, number],
+	ring: Pt[],
 	src: SatelliteSource,
 	tiles: PhotoTileSource,
 	beforeSave?: () => Promise<void>,
@@ -189,8 +230,8 @@ export async function saveAreaTiles(
 	if (sessionCap.tripped) return null;
 
 	const t0 = performance.now();
-	const keys = areaTileKeys(center, src.zoom);
-	guardBakeGrid(keys.length, { center, z: src.zoom, radiusKm: PHOTO_COVERAGE_RADIUS_KM });
+	const keys = pieceTileKeys(ring, src.zoom);
+	guardBakeGrid(keys.length, { key, z: src.zoom });
 	const have = await tiles(keys);
 	if (keys.some((k) => !have.has(k))) return null;
 	const fz = SATELLITE_SOURCES[FILL].zoom;

@@ -4,7 +4,7 @@ const onDisk = new Map<
 	string,
 	{ blob: Blob; bounds: number[]; source?: string }
 >();
-const bakes: Array<{ key: string; center: [number, number]; owner: string }> = [];
+const bakes: Array<{ key: string; ring: [number, number][]; owner: string }> = [];
 let bakeResult: (() => { blob: Blob; bounds: number[] } | null) | null = null;
 // When on, the mocked bake asks for a tile the way the real one does, so the real fetch path runs.
 let probeTiles = false;
@@ -12,7 +12,6 @@ let probeTiles = false;
 vi.mock(
 	"../../lib/onPhone/satellite/satelliteImage",
 	() => ({
-		PHOTO_COVERAGE_RADIUS_KM: 2,
 		getSatImageByKey: async (k: string) => onDisk.get(k),
 		isCurrentPhoto: (img?: { source?: string }) => !!img && img.source !== "USGS",
 		satImageMeta: async () =>
@@ -23,12 +22,12 @@ vi.mock(
 			})),
 		saveAreaTiles: async (
 			key: string,
-			center: [number, number],
+			ring: [number, number][],
 			_src: unknown,
 			_tiles: (keys: string[]) => Promise<unknown>,
 			beforeSave?: () => Promise<void>,
 		) => {
-			bakes.push({ key, center, owner: "" });
+			bakes.push({ key, ring, owner: "" });
 			if (probeTiles) await _tiles(["17/1/2"]);
 			const r = bakeResult?.() ?? null;
 			if (!r) return r;
@@ -88,7 +87,7 @@ const SPOKANE: [number, number] = [-117.426, 47.6588];
 const askOf = ([lng, lat]: [number, number]) => ({
 	id: `${lat.toFixed(5)},${lng.toFixed(5)}`,
 	photoKey: `${lng.toFixed(4)},${lat.toFixed(4)}`,
-	at: [lng, lat] as [number, number],
+	ring: [[lng, lat], [lng + 0.01, lat], [lng + 0.01, lat + 0.01], [lng, lat]] as [number, number][],
 });
 const live = (...at: Array<[number, number]>) => {
 	for (const p of at) rows.set(askOf(p).id, {});
@@ -119,8 +118,8 @@ describe("the photo pass", () => {
 		expect(ask.id).toBe("-14.11775,136.47215");
 		expect(await bakePhotos([ask])).toBe(1);
 		expect(bakes).toHaveLength(1);
-		expect(bakes[0].center).toBe(ask.at);
-		expect(bakes[0].center).toEqual(PIN);
+		expect(bakes[0].ring).toBe(ask.ring);
+		expect(bakes[0].ring[0]).toEqual(PIN);
 		expect(onDisk.has("136.4721,-14.1178")).toBe(true);
 	});
 
@@ -129,7 +128,7 @@ describe("the photo pass", () => {
 		live(PENTICTON);
 		onDisk.set(askOf(PENTICTON).photoKey, { ...photo(), source: "USGS" });
 		await bakePhotos([askOf(PENTICTON)]);
-		expect(bakes.map((b) => b.center)).toEqual([PENTICTON]);
+		expect(bakes.map((b) => b.ring[0])).toEqual([PENTICTON]);
 	});
 
 	it("a blob without a photo gets one, stored under the key its record names", async () => {

@@ -2,8 +2,7 @@
  * however many blobs cover it; a second store lists the blobs. */
 
 import { SATELLITE_SOURCES } from "../../lib/contract/satelliteSources";
-import { areaTileKeys, deleteSatImage, PHOTO_REUSE_KM, type RawTile, satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
-import { kmBetween } from "../../lib/shared/kmGeo";
+import { deleteSatImage, pieceTileKeys, type RawTile } from "../../lib/onPhone/satellite/satelliteImage";
 import { BudgetError, budgetBytes } from "./budget";
 import type { Place } from "./places";
 import {
@@ -15,8 +14,8 @@ import {
 } from "./tiles";
 
 export const DB_NAME = "gc-offlineV10";
-/** Bump when what a blob IS changes; an older blob is then wiped, never half-drawn. 7 keeps 6's blobs: it only names the source in a photo tile's key. */
-const DB_VERSION = 7;
+/** Bump when what a blob IS changes; an older blob is then wiped, never half-drawn. 7 keeps 6's blobs: it only names the source in a photo tile's key. 8: a photo is a piece's ring, not a pin's disc. */
+const DB_VERSION = 8;
 const TILES = "tiles";
 const REGIONS = "regions";
 
@@ -42,10 +41,10 @@ export interface Region {
 	msPaint?: number;
 	/** the camera moved before idle, so there is no honest paint time */
 	paintMoved?: true;
-	/** Where this blob's photo lives in the photo store, chosen once at birth and never re-derived; a neighbour's when its photo already covers this pin. Absent on a follow-me blob: no photo. */
+	/** Where this blob's piece photo lives in the photo store, set once at birth. Absent on a pin's or line's blob: no photo. */
 	photoKey?: string;
-	/** The point that photo is centred on: the pin's own, or the neighbour's it reuses. Set with `photoKey`. */
-	photoCenter?: [number, number];
+	/** The piece's outer ring that photo covers. Set with `photoKey`. */
+	photoRing?: [number, number][];
 	/** null when its tiles hold no town; absent before it was looked up */
 	place?: Place | null;
 	/** ms epoch the map last showed it; absent = never, so `at` stands in */
@@ -56,8 +55,6 @@ export interface Region {
 	filling?: true;
 	/** Born from a pin at this spot; once the host is ready, a pin-born area with no pin here goes. Absent on follow-me. */
 	pin?: true;
-	/** Asked for as ground, no pin: the planter's "save this area", or the map opened here on two occasions. Bakes a photo; only the LRU or the dock removes it. */
-	area?: true;
 }
 
 /** The area a write names has no live row. `removed`: the row says so, a pin was deleted or a download failed. `missing`: no row at all, so whoever named it holds an id no blob was born with. */
@@ -74,27 +71,6 @@ export class AreaGone extends Error {
 /** A blob is its pin's spot — the same spot is the same blob, a pace away is another. */
 export function regionId(lng: number, lat: number): string {
 	return `${lat.toFixed(5)},${lng.toFixed(5)}`;
-}
-
-/** The one place a pin gets its photo: the nearest existing photo CENTRE within PHOTO_REUSE_KM, else a new one centred on the pin. Judged against centres, never pins, so a chain of nearby pins cannot drift off the ground a photo holds. Carried by value from here; nothing downstream rounds or parses a coordinate to rebuild it. */
-export function choosePhoto(at: [number, number], regions: readonly Region[]): { photoKey: string; photoCenter: [number, number] } {
-	const r = photoCovering(at, regions);
-	return r ? { photoKey: r.photoKey!, photoCenter: r.photoCenter! } : { photoKey: satImageKey(at), photoCenter: at };
-}
-
-/** The one coverage test: the nearest held photo that reaches this spot. A pin, a saved area and the open rule all ask it. */
-export function photoCovering(at: [number, number], regions: readonly Region[]): Region | undefined {
-	let best: Region | undefined;
-	let bestKm = PHOTO_REUSE_KM;
-	for (const r of regions) {
-		if (r.removed || !r.photoKey || !r.photoCenter) continue;
-		const km = kmBetween(at, r.photoCenter);
-		if (km <= bestKm) {
-			bestKm = km;
-			best = r;
-		}
-	}
-	return best;
 }
 
 let dbp: Promise<IDBDatabase> | null = null;
@@ -273,11 +249,11 @@ export async function getPhotoTiles(keys: readonly string[], source: string): Pr
 	return out;
 }
 
-/** Every satellite tile a blob's area could hold, from any source: geometry, so a delete needs no record. None for a follow-me blob. */
+/** Every satellite tile a blob's piece could hold, from any source: geometry, so a delete needs no record. None without a piece. */
 function photoKeysOf(r: Region): string[] {
-	const c = r.photoCenter;
-	if (!c) return [];
-	return Object.entries(SATELLITE_SOURCES).flatMap(([id, s]) => areaTileKeys(c, s.zoom).map((k) => `${PHOTO_PREFIX}${id}/${k}`));
+	const ring = r.photoRing;
+	if (!ring) return [];
+	return Object.entries(SATELLITE_SOURCES).flatMap(([id, s]) => pieceTileKeys(ring, s.zoom).map((k) => `${PHOTO_PREFIX}${id}/${k}`));
 }
 
 /** What a blob's photo tiles are: `tiles`/`bytes` all it covers, `addedTiles`/`addedBytes` only those no earlier blob already covers — what it put on the phone. One cursor pass. */

@@ -2,7 +2,7 @@
 <script lang="ts">
 import { SATELLITE_SOURCES, type SatelliteSource, type SourceId, sourceNamed, sourceOf } from "../../lib/contract/satelliteSources";
 import { loadCamera, MAP_HOME_CENTER } from "../../lib/mapState/mapViewport";
-import { PHOTO_COVERAGE_RADIUS_KM, photoTilesFor } from "../../lib/onPhone/satellite/satelliteImage";
+import { coverTiles } from "../../lib/onPhone/satellite/satelliteImage";
 import { type WorkerTarget, getWorkerTarget, satelliteTileUrl, setWorkerTarget, squirrelUrl } from "../../lib/worker/tilesHost";
 import { placeLabel } from "../offlinev10/places";
 import { type BlobPart, type PhotoInfo, blobParts, photoInfo } from "../offlinev10/satellite";
@@ -144,7 +144,8 @@ function sourceRow(id: string, src: SatelliteSource): Row {
 	let projNote: string | undefined;
 	let projTiles: number | undefined;
 	if (src.usdPer1000 > 0) {
-		const perPin = photoTilesFor([-120, 50], src.zoom).length;
+		// A 40 ha square piece at 50° N stands in for a typical one.
+		const perPin = coverTiles([[-120, 50], [-119.9912, 50], [-119.9912, 50.0057], [-120, 50.0057], [-120, 50]], src.zoom).length;
 		const asked = USERS * PINS_PER_USER * perPin;
 		proj = HIT_RATES.map((hr) => billed(asked * (keeps ? 1 - hr : 1)));
 		projNote = `${k(asked)} tiles asked · ${perPin}/pin at z${src.zoom}${keeps ? "" : " · cache off, every tile upstream"}`;
@@ -269,12 +270,12 @@ function toggle(id: string): void {
 	sel = id;
 }
 
-// Footprint: the roads box and the photo disc, on a flat projection centred on the pin.
+// Footprint: the roads box and the photographed piece, on a flat projection centred on the blob.
 const W = 400;
 const H = 300;
 const KM_PER_DEG = 111.32;
 
-/** The photos whose disc covers the searched point, nearest centre first: what the offline map draws there. */
+/** The photos whose piece's box holds the searched point, nearest first: what the offline map draws there. */
 const here = $derived.by(() => {
 	if (!at) return [];
 	const [lat, lng] = [Number(at[1]), Number(at[2])];
@@ -282,8 +283,12 @@ const here = $derived.by(() => {
 	const km = ([x, y]: [number, number]) => Math.hypot((x - lng) * cos, y - lat) * KM_PER_DEG;
 	const byKey = new Map<string, { key: string; km: number; info?: PhotoInfo; blobs: Region[] }>();
 	for (const r of regions) {
-		if (!r.photoKey || !r.photoCenter || km(r.photoCenter) > PHOTO_COVERAGE_RADIUS_KM) continue;
-		const e = byKey.get(r.photoKey) ?? { key: r.photoKey, km: km(r.photoCenter), info: photos[r.photoKey], blobs: [] };
+		const ring = r.photoRing;
+		if (!r.photoKey || !ring) continue;
+		const xs = ring.map((p) => p[0]);
+		const ys = ring.map((p) => p[1]);
+		if (lng < Math.min(...xs) || lng > Math.max(...xs) || lat < Math.min(...ys) || lat > Math.max(...ys)) continue;
+		const e = byKey.get(r.photoKey) ?? { key: r.photoKey, km: km([r.lng, r.lat]), info: photos[r.photoKey], blobs: [] };
 		e.blobs.push(r);
 		byKey.set(r.photoKey, e);
 	}
@@ -305,10 +310,9 @@ const foot = $derived.by(() => {
 	const pxPerKm = Math.min((W - 40) / wKm, (H - 40) / hKm);
 	const x = (lng: number) => W / 2 + (lng - r.lng) * KM_PER_DEG * cos * pxPerKm;
 	const y = (lat: number) => H / 2 - (lat - r.lat) * KM_PER_DEG * pxPerKm;
-	const c = r.photoCenter ?? [r.lng, r.lat];
 	return {
 		roads: { x: x(b.w), y: y(b.n), w: wKm * pxPerKm, h: hKm * pxPerKm },
-		disc: { cx: x(c[0]), cy: y(c[1]), r: 2 * pxPerKm },
+		piece: (r.photoRing ?? []).map(([lng, lat]) => `${x(lng)},${y(lat)}`).join(" "),
 		pin: { x: x(r.lng), y: y(r.lat) },
 		kmWide: W / pxPerKm,
 	};
@@ -690,7 +694,7 @@ function toBody(node: HTMLElement) {
 									<rect x={foot.roads.x} y={foot.roads.y} width={foot.roads.w} height={foot.roads.h} fill="none" stroke={ROADS_COLOR} stroke-width="1.5" stroke-dasharray="5 4" />
 									<text x={foot.roads.x + 5} y={foot.roads.y + 13} fill={ROADS_COLOR} class="svgt">roads</text>
 									{#if picked.parts[1].id}
-										<circle cx={foot.disc.cx} cy={foot.disc.cy} r={foot.disc.r} fill={picked.parts[2].tiles ? picked.parts[1].color : "none"} fill-opacity=".25" stroke={picked.parts[1].color} stroke-width="2" />
+										<polygon points={foot.piece} fill={picked.parts[2].tiles ? picked.parts[1].color : "none"} fill-opacity=".25" stroke={picked.parts[1].color} stroke-width="2" />
 									{/if}
 									<circle cx={foot.pin.x} cy={foot.pin.y} r="5" fill="var(--gold)" stroke="#0a0a0a" stroke-width="2" />
 								</svg>

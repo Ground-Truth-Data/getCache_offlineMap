@@ -214,7 +214,7 @@ function reconcilePhotos(): void {
 	void photos
 		.reconcile(
 			[b.getWest(), b.getSouth(), b.getEast(), b.getNorth()],
-			[...new Map(regions.flatMap((r) => (r.photoKey && r.photoCenter ? [[r.photoKey, { key: r.photoKey, center: r.photoCenter }] as const] : []))).values()],
+			[...new Map(regions.flatMap((r) => (r.photoKey && r.photoRing ? [[r.photoKey, { key: r.photoKey, ring: r.photoRing }] as const] : []))).values()],
 		)
 		.then((n) => {
 			photosNear = n;
@@ -367,7 +367,7 @@ function onUserFix(lng: number, lat: number): void {
 	if (blobBusy()) return;
 	const m = marginKm(lng, lat, regions.map((r) => rangeBox(r.range)));
 	if (m > FOLLOW_MARGIN_KM) return;
-	void queueBlob(lng, lat, { photo: false }).then((ok) => {
+	void queueBlob(lng, lat).then((ok) => {
 		if (ok)
 			console.info(`[offlineV10] follow: ${m === Number.NEGATIVE_INFINITY ? "no map" : `${m.toFixed(1)} km of map`} ahead at ${lat.toFixed(4)},${lng.toFixed(4)} — blob queued`);
 	});

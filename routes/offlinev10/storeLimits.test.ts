@@ -7,10 +7,9 @@ import { blobBusy, onBlob, removeArea, removeStaleAreas, startBlobService, viewi
 import { startPhotoService } from "./satellite";
 import { BudgetError, fullMessage, isStale, OFFLINE_TILES_BYTES, setBudgetMb, STALE_AREA_MONTHS } from "./budget";
 import { downloadRegion, roomFor } from "./download";
-import { satImageKey } from "../../lib/onPhone/satellite/satelliteImage";
+import { pieceKey } from "../../lib/onPhone/satellite/satelliteImage";
 import {
 	AreaGone,
-	choosePhoto,
 	deleteRegion,
 	listRegions,
 	patchRegion,
@@ -45,11 +44,13 @@ const MB = 1048576;
 const DAY = 86_400_000;
 
 function region(id: string, at: number, lng: number, lat: number, more: Partial<Region> = {}): Region {
-	return { id, lng, lat, range: regionRange(lng, lat), at, tiles: 1, fetched: 1, bytes: 0, ms: 1, photoKey: satImageKey([lng, lat]), photoCenter: [lng, lat], ...more };
+	return { id, lng, lat, range: regionRange(lng, lat), at, tiles: 1, fetched: 1, bytes: 0, ms: 1, photoKey: pieceKey(ringAt([lng, lat])), photoRing: ringAt([lng, lat]), ...more };
 }
 
-/** A pin's blob as the engine births it: id and photo key, once. */
-const born = (at: [number, number]) => ({ id: regionId(...at), ...choosePhoto(at, []) });
+/** A piece's small square ring at this spot. */
+const ringAt = ([lng, lat]: [number, number]): [number, number][] => [[lng, lat], [lng + 0.005, lat], [lng + 0.005, lat + 0.003], [lng, lat]];
+/** A piece's blob as the engine births it: id and photo key, once. */
+const born = (at: [number, number]) => ({ id: regionId(...at), photoKey: pieceKey(ringAt(at)), photoRing: ringAt(at) });
 const download = (at: [number, number]) => downloadRegion(at[0], at[1], undefined, born(at));
 
 // Far enough apart that no two blobs share tiles.
@@ -176,7 +177,7 @@ describe("a removed area's row leaves with its pin", () => {
 		await putRegion(r);
 		await putTiles([[ownTile(r), new ArrayBuffer(1024)]], r.id);
 		await removeArea(r);
-		const pins = [{ anchors: [at], lastTouchedAt: new Date().toISOString(), photo: true }];
+		const pins = [{ anchors: [at], rings: [ringAt(at)], lastTouchedAt: new Date().toISOString() }];
 		let changed = (): void => undefined;
 		const ports = {
 			places: () => pins,
@@ -201,7 +202,7 @@ describe("an area lives and dies with its pin", () => {
 		const now = Date.now();
 		const pinned = region(regionId(...p), now, ...p, { pin: true });
 		const tomb = region(regionId(...t), now, ...t, { pin: true, removed: now });
-		const follow = region(regionId(...f), now, ...f, { photoKey: undefined, photoCenter: undefined });
+		const follow = region(regionId(...f), now, ...f, { photoKey: undefined, photoRing: undefined });
 		for (const r of [pinned, tomb, follow]) await putRegion(r);
 		await putTiles([[ownTile(pinned), new ArrayBuffer(1024)]], pinned.id);
 		await putTiles([[ownTile(follow), new ArrayBuffer(1024)]], follow.id);
@@ -226,7 +227,7 @@ describe("an area lives and dies with its pin", () => {
 		await vi.waitFor(async () => expect(await regionKnown(tomb.id)).toBe(false), SWEEP);
 		expect((await listRegions()).map((r) => r.id)).toEqual([follow.id]);
 		expect([...(await allTileKeys())]).toEqual([ownTile(follow)]);
-		expect(photosDropped).toContain(satImageKey(p));
+		expect(photosDropped).toContain(pieceKey(ringAt(p)));
 		stop();
 	});
 
@@ -257,7 +258,7 @@ describe("an area lives and dies with its pin", () => {
 		vi.spyOn(console, "error").mockImplementation(() => undefined);
 		await expect(download(at)).rejects.toThrow("HTTP 500");
 		expect(await regionKnown(regionId(...at))).toBe(false);
-		expect(photosDropped).toEqual([satImageKey(at)]);
+		expect(photosDropped).toEqual([pieceKey(ringAt(at))]);
 		vi.unstubAllGlobals();
 	});
 });
@@ -291,7 +292,7 @@ describe("offline areas are an LRU cache of the 16 MB test budget", () => {
 	function host(extra: [number, number][] = []): HostPorts {
 		const pins = [0, 1, 2, 3].map(far).concat(extra);
 		return {
-			places: () => pins.map((a) => ({ anchors: [a], photo: true })),
+			places: () => pins.map((a) => ({ anchors: [a], rings: [ringAt(a)] })),
 			ready: () => true,
 			onPlacesChanged: (fn: () => void) => (fn(), () => undefined),
 		};
@@ -313,14 +314,14 @@ describe("offline areas are an LRU cache of the 16 MB test budget", () => {
 		vi.unstubAllGlobals();
 	});
 
-	it("A: a dropped pin stores its blob, its satellite photo asked for as its tiles start", async () => {
+	it("A: a drawn piece stores its blob, its satellite photo asked for as its tiles start", async () => {
 		const at = far(5);
 		const stopPhotos = startPhotoService();
-		stop = startBlobService({ ...host(), places: () => [{ anchors: [at], photo: true }] });
+		stop = startBlobService({ ...host(), places: () => [{ anchors: [at], rings: [ringAt(at)] }] });
 		await vi.waitFor(async () => expect(await regionKnown(regionId(...at))).toBe(true), SWEEP);
 		expect((await checkRegions())[regionId(...at)]).toBe(0);
 		expect(await orphanTiles()).toEqual([]);
-		await vi.waitFor(() => expect(baked).toContain(satImageKey(at)), SWEEP);
+		await vi.waitFor(() => expect(baked).toContain(pieceKey(ringAt(at))), SWEEP);
 		stopPhotos();
 	});
 

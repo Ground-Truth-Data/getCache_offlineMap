@@ -7,12 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({
 	bake: vi.fn(async (): Promise<{ blob: Blob } | null> => ({ blob: new Blob(["x"]) })),
 	drop: vi.fn(async () => {}),
-	blob: null as null | ((e: { kind: string; id: string; photoKey?: string; photoCenter?: [number, number] }) => void),
-	regions: [] as Array<{ id: string; photoKey?: string; photoCenter?: [number, number] }>,
-	notPins: new Set<string>(),
+	blob: null as null | ((e: { kind: string; id: string; photoKey?: string; photoRing?: [number, number][] }) => void),
+	regions: [] as Array<{ id: string; photoKey?: string; photoRing?: [number, number][] }>,
+	notPieces: new Set<string>(),
 }));
 vi.mock("../../lib/onPhone/satellite/satelliteImage", () => ({
-	PHOTO_COVERAGE_RADIUS_KM: 2,
 	saveAreaTiles: h.bake,
 	deleteSatImage: h.drop,
 	getSatImageByKey: async () => undefined,
@@ -21,7 +20,7 @@ vi.mock("../../lib/onPhone/satellite/satelliteImage", () => ({
 }));
 vi.mock("./blobService", () => ({
 	onBlob: (fn: typeof h.blob) => ((h.blob = fn), () => void (h.blob = null)),
-	photoIds: () => ({ has: (id: string) => !h.notPins.has(id) }),
+	photoIds: () => ({ has: (id: string) => !h.notPieces.has(id) }),
 }));
 vi.mock("./store", () => ({
 	AreaGone: class extends Error {},
@@ -54,10 +53,10 @@ afterEach(() => {
 });
 
 describe("startPhotoService", () => {
-	it("bakes once the pins are known, on a blob's start and on coming online; one start owns shutdown", async () => {
-		// "shape" was born with a photo under the old rule; it is no pin now, so it never bakes.
-		h.notPins = new Set(["shape"]);
-		h.regions = [{ id: "a", photoKey: "pa", photoCenter: [-119, 49] }, { id: "shape", photoKey: "ps", photoCenter: [-119, 48] }, { id: "follow" }];
+	it("bakes once the pieces are known, on a blob's start and on coming online; one start owns shutdown", async () => {
+		// "pin" was born with a photo under the old rule; it is no piece now, so it never bakes.
+		h.notPieces = new Set(["pin"]);
+		h.regions = [{ id: "a", photoKey: "pa", photoRing: [[-119, 49]] }, { id: "pin", photoKey: "ps", photoRing: [[-119, 48]] }, { id: "follow" }];
 		const landed = vi.fn();
 		const offLanded = onPhoto(landed);
 		const stop = startPhotoService();
@@ -68,13 +67,13 @@ describe("startPhotoService", () => {
 		await vi.waitFor(() => expect(landed).toHaveBeenCalledTimes(1));
 		expect(h.bake.mock.calls.map((c) => (c as unknown[])[0])).toEqual(["pa"]);
 
-		h.blob!({ kind: "start", id: "b", photoKey: "pb", photoCenter: [-118, 48] });
+		h.blob!({ kind: "start", id: "b", photoKey: "pb", photoRing: [[-118, 48]] });
 		h.blob!({ kind: "start", id: "c" });
-		h.blob!({ kind: "done", id: "d", photoKey: "pd", photoCenter: [0, 1] });
+		h.blob!({ kind: "done", id: "d", photoKey: "pd", photoRing: [[0, 1]] });
 		await vi.waitFor(() => expect(landed).toHaveBeenCalledTimes(2));
 		expect(h.bake.mock.calls.map((c) => (c as unknown[])[0])).toEqual(["pa", "pb"]);
 
-		h.regions = [{ id: "e", photoKey: "pe", photoCenter: [-117, 47] }];
+		h.regions = [{ id: "e", photoKey: "pe", photoRing: [[-117, 47]] }];
 		window.dispatchEvent(new Event("online"));
 		await vi.waitFor(() => expect(landed).toHaveBeenCalledTimes(3));
 		offLanded();
@@ -87,21 +86,17 @@ describe("startPhotoService", () => {
 	});
 });
 
-describe("a saved area", () => {
-	it("bakes its photo with no pin, at its start and when its row is swept", async () => {
-		h.notPins = new Set(["saved", "fresh"]);
-		h.regions = [{ id: "saved", photoKey: "pv", photoCenter: [-76.2, 45], area: true } as (typeof h.regions)[number]];
-		const landed = vi.fn();
-		const offLanded = onPhoto(landed);
+describe("a blob the host lists as no piece", () => {
+	it("never bakes, at its start or when its row is swept", async () => {
+		h.notPieces = new Set(["saved", "fresh"]);
+		h.regions = [{ id: "saved", photoKey: "pv", photoRing: [[-76.2, 45]] }];
 		const stop = startPhotoService();
 		h.blob!({ kind: "pins", id: "" });
-		await vi.waitFor(() => expect(landed).toHaveBeenCalledTimes(1));
-		h.blob!({ kind: "start", id: "fresh", photoKey: "pf", photoCenter: [-76.3, 45], area: true } as Parameters<NonNullable<typeof h.blob>>[0]);
-		await vi.waitFor(() => expect(landed).toHaveBeenCalledTimes(2));
-		expect(h.bake.mock.calls.map((c) => (c as unknown[])[0])).toEqual(["pv", "pf"]);
-		offLanded();
+		h.blob!({ kind: "start", id: "fresh", photoKey: "pf", photoRing: [[-76.3, 45]] });
+		await new Promise((r) => setTimeout(r, 10));
+		expect(h.bake).not.toHaveBeenCalled();
 		stop();
-		h.notPins = new Set();
+		h.notPieces = new Set();
 	});
 });
 
@@ -110,7 +105,7 @@ describe("photo issue", () => {
 		const heard = vi.fn();
 		const off = onPhotoIssue(heard);
 		h.bake.mockResolvedValueOnce(null);
-		h.regions = [{ id: "f", photoKey: "pf", photoCenter: [-116, 46] }];
+		h.regions = [{ id: "f", photoKey: "pf", photoRing: [[-116, 46]] }];
 		vi.useFakeTimers({ toFake: ["Date"] });
 		const stop = startPhotoService();
 		h.blob!({ kind: "pins", id: "" });
@@ -133,7 +128,7 @@ describe("a rate-limited imagery host", () => {
 		vi.setSystemTime(Date.now() + 60 * 60_000);
 		h.bake.mockClear();
 		h.bake.mockRejectedValueOnce(new RateLimited(30_000, "https://tiles.test/satellite/17/1/1.jpg"));
-		h.regions = [{ id: "g", photoKey: "pg", photoCenter: [-115, 45] }];
+		h.regions = [{ id: "g", photoKey: "pg", photoRing: [[-115, 45]] }];
 		const stop = startPhotoService();
 		h.blob!({ kind: "pins", id: "" });
 		await vi.waitFor(() => expect(photoIssue()).toBe("imagery host busy, retrying in 30 s"));

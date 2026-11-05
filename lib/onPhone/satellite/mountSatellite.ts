@@ -1,13 +1,12 @@
 // Pure: map and the area records only. Area selection stays with the caller.
 import type * as maplibregl from "maplibre-gl";
-import { FAR_ZOOMS, PHOTO_COVERAGE_RADIUS_KM, getSatImageByKey, heldEdge, type Bounds } from "./satelliteImage";
-import { kmToDegSpan } from "../../shared/kmGeo";
+import { FAR_ZOOMS, getSatImageByKey, heldEdge, type Bounds } from "./satelliteImage";
 import { SATELLITE_SOURCES, sourceNamed } from "../../contract/satelliteSources";
 
-/** A held area as its record names it: the stored key and the exact centre, never rebuilt from each other. */
+/** A held piece as its record names it: the stored key and the outer ring, never rebuilt from each other. */
 export interface PhotoSite {
     key: string;
-    center: [number, number];
+    ring: [number, number][];
 }
 
 export interface SatelliteMount {
@@ -44,9 +43,10 @@ function expanded(camera: Bounds, n: number): Bounds {
     return [w - dx, s - dy, e + dx, no + dy];
 }
 
-function discIntersects(center: [number, number], b: Bounds): boolean {
-    const { dLat, dLng } = kmToDegSpan(PHOTO_COVERAGE_RADIUS_KM, center[1]);
-    return center[0] + dLng >= b[0] && center[0] - dLng <= b[2] && center[1] + dLat >= b[1] && center[1] - dLat <= b[3];
+function ringIntersects(ring: [number, number][], b: Bounds): boolean {
+    const xs = ring.map((p) => p[0]);
+    const ys = ring.map((p) => p[1]);
+    return Math.max(...xs) >= b[0] && Math.min(...xs) <= b[2] && Math.max(...ys) >= b[1] && Math.min(...ys) <= b[3];
 }
 
 export function createSatelliteMount(
@@ -74,7 +74,7 @@ export function createSatelliteMount(
     for (const id of SAT_LAYERS)
         map.addLayer({ id, type: "raster", source: id.slice(0, -2), paint: { "raster-fade-duration": SAT_FADE_MS } }, before());
 
-    const drawEdge = (areas: { center: [number, number]; z: number }[]): void => {
+    const drawEdge = (areas: { ring: [number, number][]; z: number }[]): void => {
         const data: GeoJSON.Feature = { type: "Feature", properties: {}, geometry: { type: "MultiLineString", coordinates: heldEdge(areas) } };
         const source = map.getSource(SAT_EDGE_ID) as maplibregl.GeoJSONSource | undefined;
         if (source) return void source.setData(data);
@@ -101,9 +101,9 @@ export function createSatelliteMount(
             const id = held.map((s) => s.key).sort().join("|");
             if (id !== ringed) {
                 ringed = id;
-                drawEdge(held.map((s) => ({ center: s.center, z: zoomOf.get(s.key)!.z })));
+                drawEdge(held.map((s) => ({ ring: s.ring, z: zoomOf.get(s.key)!.z })));
             }
-            const shown = held.filter((s) => discIntersects(s.center, near));
+            const shown = held.filter((s) => ringIntersects(s.ring, near));
             credits = [...new Set(shown.map((s) => sourceNamed(zoomOf.get(s.key)!.source)?.attribution).filter((a): a is string => !!a))];
             return shown.length;
         },

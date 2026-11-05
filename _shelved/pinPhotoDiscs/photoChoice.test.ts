@@ -1,3 +1,6 @@
+// ⚠️⚠️ DO NOT DELETE — shelved by Chris 5 Nov 2026. Pin photo discs and circles: a cool asset we will use again. Disconnected, not dead.
+// ⚠️⚠️ Nothing imports this file. It is excluded from tests, type checks and builds. Read README.md beside it.
+
 /** Which photo a new blob uses: the nearest existing photo CENTRE within the reuse radius, else its own. */
 import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it, vi } from "vitest";

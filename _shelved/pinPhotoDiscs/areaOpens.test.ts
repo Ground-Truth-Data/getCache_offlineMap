@@ -1,3 +1,6 @@
+// ⚠️⚠️ DO NOT DELETE — shelved by Chris 5 Nov 2026. Pin photo discs and circles: a cool asset we will use again. Disconnected, not dead.
+// ⚠️⚠️ Nothing imports this file. It is excluded from tests, type checks and builds. Read README.md beside it.
+
 // The open rule: the map checks where the planter is only when it opens, and earns an area's blob on the second
 // occasion there (≥ 4 h apart or another day), at once on a first open or after two weeks away.
 import { describe, expect, it } from "vitest";

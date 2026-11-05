@@ -4,7 +4,7 @@
  * its own row and photo, fetching nothing. A deleted pin takes its blob, even one deleted while the engine was not watching. */
 
 import type { HostPorts } from "../../lib/shared/hostPorts";
-import { getSatImageByKey, isCurrentPhoto } from "../../lib/onPhone/satellite/satelliteImage";
+import { getSatImageByKey, isCurrentPhoto, pieceKey } from "../../lib/onPhone/satellite/satelliteImage";
 import { BudgetError, isStale } from "./budget";
 import { downloadRegion, type Progress, roomFor } from "./download";
 import {
@@ -14,7 +14,6 @@ import {
 	keepStorage,
 	listRegions,
 	pinAreas,
-	choosePhoto,
 	type Region,
 	regionId,
 	regionKnown,
@@ -24,7 +23,7 @@ import {
 import { ANCHOR_Z, type Box, boxesIntersect, rangeBox } from "./tiles";
 
 export type BlobEvent =
-	| { kind: "start"; at: [number, number]; id: string; photoKey?: string; photoCenter?: [number, number]; area?: boolean }
+	| { kind: "start"; at: [number, number]; id: string; photoKey?: string; photoRing?: [number, number][] }
 	| { kind: "progress"; progress: Progress }
 	| { kind: "landed"; region: Region }
 	| { kind: "failed"; at: [number, number]; error: unknown }
@@ -41,10 +40,9 @@ interface Ask {
 	at: [number, number];
 	/** born once in queueBlob; nothing downstream re-derives it from `at` */
 	id: string;
-	/** a blob with no pin (follow-me) wants no photo; which photo is chosen when its download starts, against the rows then on disk */
-	photo: boolean;
+	/** the piece's outer ring this blob photographs; absent for a pin, a line or follow-me */
+	ring?: [number, number][];
 	pin?: boolean;
-	area?: boolean;
 	/** the row being repaired: its missing tiles are fetched and the row keeps its place */
 	keep?: Region;
 	/** back in view: a removed row is fetched again rather than left alone */
@@ -92,11 +90,11 @@ const whole = async (id: string): Promise<boolean> => {
 	return !!r && !r.removed && !r.filling;
 };
 
-/** True when actually queued; false when disk or the queue already has this spot. `photo: false` for a blob with no pin; `pin` for one that goes with its pin; `area` for ground asked for without one; `revive` fetches a removed one again. */
+/** True when actually queued; false when disk or the queue already has this spot. `ring` for a piece's blob, which bakes its photo; `pin` for one that goes with its place; `revive` fetches a removed one again. */
 export async function queueBlob(
 	lng: number,
 	lat: number,
-	opts: { photo?: boolean; pin?: boolean; area?: boolean; revive?: boolean } = {},
+	opts: { ring?: [number, number][] | null; pin?: boolean; revive?: boolean } = {},
 ): Promise<boolean> {
 	const id = regionId(lng, lat);
 	if (queued.has(id)) return false;
@@ -104,7 +102,7 @@ export async function queueBlob(
 	// A second ask for the same spot can land during the await.
 	if (queued.has(id)) return false;
 	queued.add(id);
-	queue.push({ at: [lng, lat], id, photo: opts.photo !== false, pin: opts.pin, area: opts.area, revive: opts.revive });
+	queue.push({ at: [lng, lat], id, ring: opts.ring ?? undefined, pin: opts.pin, revive: opts.revive });
 	void drain();
 	return true;
 }
@@ -113,7 +111,7 @@ export async function queueBlob(
 export async function repairBlob(r: Region): Promise<boolean> {
 	if (queued.has(r.id)) return false;
 	queued.add(r.id);
-	queue.push({ at: [r.lng, r.lat], id: r.id, photo: !!r.photoKey, pin: r.pin, area: r.area, keep: r });
+	queue.push({ at: [r.lng, r.lat], id: r.id, pin: r.pin, keep: r });
 	void drain();
 	return true;
 }
@@ -133,7 +131,7 @@ async function drain(): Promise<void> {
 	}
 }
 
-async function download({ at, id, photo, pin, area, keep }: Ask): Promise<void> {
+async function download({ at, id, ring, pin, keep }: Ask): Promise<void> {
 	try {
 		// Before "start": a refused area must not get its photo baked either.
 		await makeRoom(at, id);
@@ -141,10 +139,11 @@ async function download({ at, id, photo, pin, area, keep }: Ask): Promise<void> 
 		emit({ kind: "failed", at, error });
 		return;
 	}
-	// A repair keeps the photo its row was born with; a new blob chooses against the rows on disk now, the one before it included.
-	const chosen = keep ? (keep.photoKey && keep.photoCenter ? { photoKey: keep.photoKey, photoCenter: keep.photoCenter } : undefined) : photo ? choosePhoto(at, await listRegions()) : undefined;
+	// A repair keeps the photo its row was born with.
+	const photoRing = keep ? keep.photoRing : ring;
+	const chosen = photoRing ? { photoKey: keep?.photoKey ?? pieceKey(photoRing), photoRing } : undefined;
 	current = { at, progress: null, startedAt: performance.now() };
-	emit({ kind: "start", at, id, ...chosen, area });
+	emit({ kind: "start", at, id, ...chosen });
 	try {
 		const region = await downloadRegion(
 			at[0],
@@ -154,7 +153,7 @@ async function download({ at, id, photo, pin, area, keep }: Ask): Promise<void> 
 				if (current) current.progress = progress;
 				emit({ kind: "progress", progress });
 			},
-			{ id, ...chosen, pin, area, keep },
+			{ id, ...chosen, pin, keep },
 		);
 		say(
 			`[offlineV10] blob ${region.id}: ${region.fetched} new of ${region.tiles} tiles, ${((region.newBytes ?? 0) / 1048576).toFixed(1)} MB added (${(region.bytes / 1048576).toFixed(1)} MB on the ground), ${region.ms} ms to disk`,
@@ -215,15 +214,15 @@ async function look(box: Box): Promise<void> {
 	// Checked when its hourly touch is due, so panning does not scan the store.
 	if (touched.size) {
 		const missing = await checkRegions([...touched]);
-		const pins = photoIds();
+		const pieces = photoIds();
 		for (const r of rows)
-			if (touched.has(r.id) && ((missing[r.id] ?? 0) > 0 || (r.photoKey && (r.area || pins?.has(r.id)) && !isCurrentPhoto(await getSatImageByKey(r.photoKey))))) void repairBlob(r);
+			if (touched.has(r.id) && ((missing[r.id] ?? 0) > 0 || (r.photoKey && pieces?.has(r.id) && !isCurrentPhoto(await getSatImageByKey(r.photoKey))))) void repairBlob(r);
 	}
 	for (const p of host?.places() ?? [])
-		for (const at of p.anchors) {
-			if (at[0] < box.w || at[0] > box.e || at[1] < box.s || at[1] > box.n) continue;
-			void queueBlob(at[0], at[1], { photo: p.photo, pin: true, revive: true });
-		}
+		p.anchors.forEach((at, i) => {
+			if (at[0] < box.w || at[0] > box.e || at[1] < box.s || at[1] > box.n) return;
+			void queueBlob(at[0], at[1], { ring: p.rings?.[i], pin: true, revive: true });
+		});
 }
 
 async function removeBlob(id: string): Promise<void> {
@@ -252,15 +251,15 @@ export async function removeStaleAreas(now = Date.now()): Promise<Region[]> {
 let stop: (() => void) | null = null;
 let host: HostPorts | null = null;
 
-/** The blobs a photo may bake for: a pin the host lists now. Null until the host has read its maps. */
+/** The blobs a photo may bake for: a piece the host lists now, under the photo cap. Null until the host has read its maps. */
 export function photoIds(): Set<string> | null {
 	if (!host?.ready()) return null;
 	const ids = new Set<string>();
-	for (const p of host.places()) if (p.photo) for (const [lng, lat] of p.anchors) ids.add(regionId(lng, lat));
+	for (const p of host.places()) p.anchors.forEach(([lng, lat], i) => p.rings?.[i] && ids.add(regionId(lng, lat)));
 	return ids;
 }
 
-/** Every place earns a blob at each anchor; only a pin's also bakes a photo. */
+/** Every place earns a blob at each anchor; only a piece's also bakes a photo. */
 export function startBlobService(ports: HostPorts): () => void {
 	if (stop)
 		return () => {
@@ -277,10 +276,10 @@ export function startBlobService(ports: HostPorts): () => void {
 		if (!ports.ready()) return null;
 		const now = new Set<string>();
 		for (const p of ports.places()) {
-			for (const [lng, lat] of p.anchors) {
+			p.anchors.forEach(([lng, lat], i) => {
 				now.add(regionId(lng, lat));
-				void queueBlob(lng, lat, { photo: p.photo, pin: true });
-			}
+				void queueBlob(lng, lat, { ring: p.rings?.[i], pin: true });
+			});
 		}
 		return now;
 	};

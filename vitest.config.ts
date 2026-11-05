@@ -37,10 +37,10 @@ export default defineConfig({
 			$rt: r("./_rapper/rt"),
 		},
 	},
-	// _rapper/ and _siblings/ carry other repos' tests. vitest reads this file, not vite.config.ts.
+	// _rapper/ and _siblings/ carry other repos' tests; _shelved/ is kept, never run. vitest reads this file, not vite.config.ts.
 	test: {
 		silent: "passed-only",
-		exclude: [...configDefaults.exclude, "_rapper/**", "_siblings/**"],
+		exclude: [...configDefaults.exclude, "_rapper/**", "_siblings/**", "_shelved/**"],
 		setupFiles: ["vitest.setup.ts"],
 	},
 });

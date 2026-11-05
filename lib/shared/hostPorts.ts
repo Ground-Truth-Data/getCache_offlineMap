@@ -3,8 +3,9 @@
 export interface HostPlace {
 	/** [lng, lat]. A point has one; a line has many. */
 	anchors: [number, number][];
-	/** Bakes a satellite photo at its anchor. Pins only: the photo source bills per tile, and a shape's anchors would each take one. */
-	photo: boolean;
+	/** Beside each anchor, the outer ring its piece photographs; absent or null bakes no photo. Blocks and pieces under the
+	 * photo cap only: the photo source bills per tile. */
+	rings?: ([number, number][] | null)[];
 }
 
 export interface HostPorts {

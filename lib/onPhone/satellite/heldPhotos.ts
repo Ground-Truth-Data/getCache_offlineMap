@@ -36,9 +36,9 @@ export function attachHeldPhotos(map: maplibregl.Map, onCredits: (credits: strin
 		const mount = photos;
 		if (!mount) return;
 		const b = map.getBounds();
-		const sites = new Map<string, { key: string; center: [number, number] }>();
+		const sites = new Map<string, { key: string; ring: [number, number][] }>();
 		for (const r of await listRegions())
-			if (!r.removed && r.photoKey && r.photoCenter) sites.set(r.photoKey, { key: r.photoKey, center: r.photoCenter });
+			if (!r.removed && r.photoKey && r.photoRing) sites.set(r.photoKey, { key: r.photoKey, ring: r.photoRing });
 		await mount.reconcile([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], [...sites.values()]);
 		if (mount === photos) credit();
 	};

@@ -1,3 +1,5 @@
+// ⚠️⚠️ DO NOT DELETE — shelved by Chris 5 Nov 2026. Pin photo discs and circles: a cool asset we will use again. Disconnected, not dead.
+// ⚠️⚠️ Nothing imports this file. It is excluded from tests, type checks and builds. Read README.md beside it.
 // Per-drop ledger: node tests/pinLedger.mjs [baseUrl]. Fresh profile, drops pins via the dev handle, prints bytes/requests by host and heap.
 import { chromium } from "playwright-core";
 

@@ -1,3 +1,6 @@
+// ⚠️⚠️ DO NOT DELETE — shelved by Chris 5 Nov 2026. Pin photo discs and circles: a cool asset we will use again. Disconnected, not dead.
+// ⚠️⚠️ Nothing imports this file. It is excluded from tests, type checks and builds. Read README.md beside it.
+
 /** The open rule. Location is read only when the map opens, never in the background. An area is a z10 tile, the
  * blob's own anchor; the planter earns its blob by opening the map there on two occasions. */
 

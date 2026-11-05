@@ -98,13 +98,19 @@ export function isBlobAnchor(_f: {
 export const MAX_ANCHORS_PER_FEATURE = 10;
 
 /** Evenly spread, never the first ten, so a long line reaches both ends. */
-function thinToCeiling(pts: Pt[]): Pt[] {
+function thinToCeiling<T>(pts: T[]): T[] {
 	if (pts.length <= MAX_ANCHORS_PER_FEATURE) return pts;
-	const out: Pt[] = [];
+	const out: T[] = [];
 	const step = (pts.length - 1) / (MAX_ANCHORS_PER_FEATURE - 1);
 	for (let i = 0; i < MAX_ANCHORS_PER_FEATURE; i++)
 		out.push(pts[Math.round(i * step)]!);
 	return out;
+}
+
+/** Each piece (a Polygon, or one MultiPolygon part): its anchor and its outer ring, holes dropped. */
+export function piecesOf(g: GeoJSON.Polygon | GeoJSON.MultiPolygon): { at: Pt; ring: Pt[] }[] {
+	const parts = (g.type === "Polygon" ? [g.coordinates] : g.coordinates) as Pt[][][];
+	return thinToCeiling(parts.flatMap((rings) => polygonAnchor(rings).map((at) => ({ at, ring: rings[0] ?? [] }))));
 }
 
 /** The offline-coverage anchors for ANY feature, capped at {@link MAX_ANCHORS_PER_FEATURE}. */
@@ -133,9 +139,8 @@ export function anchorsOf(f: {
 				(g.coordinates as Pt[][]).flatMap((part) => sampleLineAnchors(part)),
 			);
 		case "Polygon":
-			return polygonAnchor(g.coordinates as Pt[][]);
 		case "MultiPolygon":
-			return thinToCeiling((g.coordinates as Pt[][][]).flatMap(polygonAnchor));
+			return piecesOf(g).map((p) => p.at);
 		default: {
 			const c = featureCenter(g);
 			return c ? [c] : [];
