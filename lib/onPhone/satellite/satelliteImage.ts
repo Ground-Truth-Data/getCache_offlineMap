@@ -10,7 +10,7 @@ const STORE = "photoDiscs";
 export type Bounds = [number, number, number, number]; // [w,s,e,n]
 
 /** Bump whenever what an area holds changes: an older record is not current, so the pass saves the area again. */
-export const BAKE_VERSION = 14;
+export const BAKE_VERSION = 15;
 
 /** Lowest zoom a held photo shows at: below its own zoom every tile is shrunk on the phone from the held ones. */
 export const PHOTO_MIN_Z = 10;
@@ -189,6 +189,11 @@ export function isCurrentPhoto(img: SatImage | undefined): img is SatImage {
 
 export async function deleteSatImage(key: string): Promise<void> {
 	await idb.delete(key);
+}
+
+/** The tile store was emptied: a record must not outlive its tiles, or the pass takes it as baked and never bakes again. */
+export async function deleteAllSatImages(): Promise<void> {
+	await Promise.all((await idb.keys()).map((k) => idb.delete(k)));
 }
 
 /** A current record, or absent. */

@@ -2,7 +2,7 @@
  * however many blobs cover it; a second store lists the blobs. */
 
 import { SATELLITE_SOURCES } from "../../lib/contract/satelliteSources";
-import { deleteSatImage, pieceTileKeys, type RawTile } from "../../lib/onPhone/satellite/satelliteImage";
+import { deleteAllSatImages, deleteSatImage, pieceTileKeys, type RawTile } from "../../lib/onPhone/satellite/satelliteImage";
 import { BudgetError, budgetBytes } from "./budget";
 import type { Place } from "./places";
 import {
@@ -79,25 +79,14 @@ function open(): Promise<IDBDatabase> {
 	if (dbp) return dbp;
 	dbp = new Promise((resolve, reject) => {
 		const req = indexedDB.open(DB_NAME, DB_VERSION);
-		req.onupgradeneeded = (e) => {
+		let emptied = false;
+		req.onupgradeneeded = () => {
 			const db = req.result;
-			// Only MapTiler's tiles were kept before, as `p/z/x/y`: moved inside the upgrade, so a kill mid-way moves none.
-			if (e.oldVersion === 6) {
-				const st = req.transaction!.objectStore(TILES);
-				const cur = st.openCursor(IDBKeyRange.bound(`${PHOTO_PREFIX}0`, `${PHOTO_PREFIX}9￿`));
-				cur.onsuccess = () => {
-					const c = cur.result;
-					if (!c) return;
-					st.put(c.value, `${PHOTO_PREFIX}maptiler/${(c.key as string).slice(PHOTO_PREFIX.length)}`);
-					c.delete();
-					c.continue();
-				};
-				return;
-			}
 			for (const name of [TILES, REGIONS])
 				if (db.objectStoreNames.contains(name)) db.deleteObjectStore(name);
 			db.createObjectStore(TILES);
 			db.createObjectStore(REGIONS, { keyPath: "id" });
+			emptied = true;
 		};
 		req.onsuccess = () => {
 			const db = req.result;
@@ -106,7 +95,8 @@ function open(): Promise<IDBDatabase> {
 				db.close();
 				dbp = null;
 			};
-			resolve(db);
+			if (emptied) deleteAllSatImages().then(() => resolve(db), reject);
+			else resolve(db);
 		};
 		req.onerror = () => reject(req.error);
 		req.onblocked = () => reject(new Error("indexedDB open blocked"));
@@ -548,6 +538,7 @@ export async function wipe(): Promise<void> {
 	tx.objectStore(TILES).clear();
 	tx.objectStore(REGIONS).clear();
 	await done(tx);
+	await deleteAllSatImages();
 	tileBytes = Promise.resolve(0);
 	regionsChanged();
 }
