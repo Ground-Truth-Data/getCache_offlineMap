@@ -29,6 +29,8 @@ export type PinKey =
     | "pin"
     | "cones"
     | "truck"
+    | "reefer"
+    | "authority"
     | "bear"
     | "heli"
     | "crossing"
@@ -117,6 +119,8 @@ export const ICONS: readonly IconRow[] = [
     { name: "poop", pin: "glyph", path: pinLibraryUrl("pin_emoji_poop_sm.webp") },
     { name: "tree", pin: "glyph", path: pinLibraryUrl("pin_tree_sm.webp") },
     { name: "cones", pin: "glyph", path: pinLibraryUrl("pin_cone_sm.webp") },
+    { name: "reefer", pin: "glyph", path: pinLibraryUrl("pin_reefer_sm.webp") },
+    { name: "authority", pin: "glyph", path: pinLibraryUrl("pin_authority_sm.webp") },
     { name: "cache", pin: "cachePin", path: pinLibraryUrl("pin_cache_sm.webp") },
     { name: "redCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_red_sm.webp") },
     { name: "orangeCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_orange_sm.webp") },
