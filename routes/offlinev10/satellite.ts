@@ -12,6 +12,7 @@ import {
 	saveAreaTiles,
 	satImageMeta,
 } from "../../lib/onPhone/satellite/satelliteImage";
+import { photoRings } from "$gc/drawLimit";
 import { noteSatelliteTiles } from "../../lib/onPhone/store/downloadGuard";
 import { noteBytes } from "../../lib/shared/dataMeter.svelte";
 import { passQueue } from "../../lib/shared/passQueue";
@@ -235,7 +236,8 @@ async function pass(asks: readonly PhotoAsk[]): Promise<number> {
 	}
 	let landed = 0;
 	for (const { id, photoKey, rings } of asks) {
-		const sid = sourceAt(rings[0]![0]!, active[0]);
+		// Pieces past the close-up cap reach here only on their own, and get Sentinel: free, and wide enough to hold them.
+		const sid = photoRings(rings).wide ? "sentinel" : sourceAt(rings[0]![0]!, active[0]);
 		const src = sid === active[0] ? active[1] : sourceOf(sid)!;
 		if (isCurrentPhoto(await getSatImageByKey(photoKey))) {
 			say(`[offlineV10] photo: ${id} already has its photo`);
