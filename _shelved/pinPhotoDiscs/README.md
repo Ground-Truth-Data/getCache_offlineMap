@@ -25,7 +25,7 @@ ring touches). Pins still get their road blob. The live code is in `lib/onPhone/
 | `mountSatellite.ts` | the same folder: discs drawn by centre, `discIntersects` |
 | `store.ts` | `getCache_OfflineMap/routes/offlinev10/store.ts`: `choosePhoto`, `photoCovering`, `Region.photoCenter` |
 | `areaOpens.ts`, `areaOpens.test.ts` | `routes/offlinev10/`: the open rule |
-| `saveArea.svelte.ts` | `getCache_OnlineMap/lib/chrome/saveArea.svelte.ts`: SAVE AREA and the open rule's hands |
+| `saveArea.svelte.ts` | `getCache_OnlineMap/lib/chrome/saveArea.svelte.ts` (deleted there 5 Nov; `openCamera.ts` kept the camera): SAVE AREA and the open rule's hands |
 | `saveAreaCard.svelte.txt` | the SAVE AREA card from `getCache_OnlineMap/lib/chrome/MapToolDrawer.svelte` |
 | `wholePhoto.test.ts`, `photoChoice.test.ts` | the disc tests |
 

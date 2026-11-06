@@ -77,19 +77,14 @@ tested at z17–18). All serve 256 px JPEG in Web Mercator with no key.
 
 ## When a blob comes down
 
-The phone checks its location only when the map opens (a new session, or back after 30 min in the
-background), never in the background. An area is a z10 tile. `routes/offlinev10/areaOpens.ts` decides:
+Only blocks and pieces get satellite photos (since 5 Nov): each bakes every tile its outer ring touches
+at each photo zoom (`coverTiles` in `lib/onPhone/satellite/satelliteImage.ts`). Pins get their road blob
+and no photo. The pin discs, SAVE AREA and the open rule's area blob were shelved in
+`_shelved/pinPhotoDiscs/` (its README says what each did).
 
-- **First open, or back after 14 days:** the blob at the planter's fix downloads at once and the camera
-  jumps to it at z14. With location off, the Worker's `/where` (Cloudflare's IP lookup, no permission)
-  stands in at z13; a first open with location off shows the sample area instead.
-- **The same area on two occasions** (≥ 4 h apart, or on different days): its blob downloads. On Wi-Fi at
-  once; on cellular the SAVE AREA tile says so and a tap downloads it — never a popup.
-- **Skipped** where a held photo already reaches the spot (`PHOTO_REUSE_KM`).
-- **SAVE AREA** in the map drawer saves the map centre by hand.
-
-The open history is localStorage `gc-map-opens`. An area blob is a `Region` with `area: true`: it bakes a
-photo with no pin, and only the LRU or the dock removes it.
+Opening the map only aims the camera: on a first open, or back after 14 days, it goes to the planter's
+fix at z14, or to the Worker's `/where` (Cloudflare's IP lookup, no permission) at z13 with location off.
+The open history is localStorage `gc-map-opens`.
 
 ## Licence and attribution
 
@@ -109,8 +104,8 @@ A held area's record carries its source's name, and the map credits every source
 | The source list, licences, attributions, prices | `lib/contract/satelliteSources.ts` |
 | A covering source wins (USGS first) | `lib/contract/satelliteSources.ts` (`sourceAt`, `coverOf`) |
 | The online map draws held photos and the sample | `lib/onPhone/satellite/heldPhotos.ts` |
-| The open rule | `routes/offlinev10/areaOpens.ts` |
-| SAVE AREA, the cellular ask, the open camera | `../getCache_OnlineMap/lib/chrome/saveArea.svelte.ts` |
+| Which tiles a block or piece bakes | `lib/onPhone/satellite/satelliteImage.ts` (`coverTiles`, `pieceTileKeys`) |
+| The open camera | `../getCache_OnlineMap/lib/chrome/openCamera.ts` |
 | Worker: edge → R2 → upstream; R2 only when the cache switch says keep | `workers/worker-local-dev/src/index.ts` (`satelliteTile`) |
 | Worker: `/where` | `workers/worker-local-dev/src/index.ts` |
 | Only Chris's Supabase sign-in flips a switch, on either Worker | `workers/worker-local-dev/src/index.ts` (`squirrelAdmin`) |
