@@ -5,6 +5,7 @@ import backupIcon from "../assets/backup_icon.webp";
 import tracksIcon from "$gc/assets/tracks_goldV3.webp";
 import cacheIconUrl from "$gc/assets/cache_icon.webp";
 import bagsBlackUrl from "$gc/assets/bags_icon_black.webp";
+import bagsGoldUrl from "$gc/assets/bags_icon_gold.webp";
 
 const DIR = "/mobileAssets";
 
@@ -145,7 +146,7 @@ export const ICONS: readonly IconRow[] = [
     // One box lifted off the cache pin's stack: a cache holds tree boxes.
     { name: "box", path: `${DIR}/kit/tree/treeBox.webp` },
     { name: "cacheGroup", path: cacheIconUrl },
-    { name: "tally", path: `${DIR}/currency/CAD/minor_fancy.webp` },
+    { name: "tally", path: bagsGoldUrl },
     { name: "poly", path: `${DIR}/polyHeart_sm2.webp` },
     // The map's own polygon colour, for the inbox pill.
     { name: "polyRust", path: `${DIR}/poly_icon_rust_sm.webp` },
