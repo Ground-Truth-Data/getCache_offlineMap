@@ -361,6 +361,8 @@ function makeEndCursorEl(src: string, w: number): HTMLElement {
 // move/up listeners live on WINDOW so the gesture survives the sprite being removed mid-drag when it snaps closed into a piece.
 function wireHandDrag(el: HTMLElement, which: "head" | "tail") {
     let moved = false;
+    // Only the finger that grabbed drives the drag: the thumb holding the phone is a second pointer on the same window.
+    let pointerId = -1;
     // Node-to-pointer gap at grab time, so the node doesn't jump to the cursor.
     let grabDX = 0;
     let grabDY = 0;
@@ -387,12 +389,14 @@ function wireHandDrag(el: HTMLElement, which: "head" | "tail") {
         aimLoupe(map, cursor ?? [lng, lat]);
     };
     const onMove = (e: PointerEvent) => {
-        if (!map) return;
+        if (!map || e.pointerId !== pointerId) return;
         moved = true;
         pendingLL = toLngLat(e);
         if (!raf) raf = requestAnimationFrame(flush);
     };
     const onUp = (e: PointerEvent) => {
+        if (e.pointerId !== pointerId) return;
+        pointerId = -1;
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
         window.removeEventListener("pointercancel", onUp);
@@ -407,9 +411,10 @@ function wireHandDrag(el: HTMLElement, which: "head" | "tail") {
         moved = false;
     };
     el.addEventListener("pointerdown", (e: PointerEvent) => {
-        if (!active || !map) return;
+        if (!active || !map || pointerId !== -1) return;
         e.preventDefault();
         e.stopPropagation();
+        pointerId = e.pointerId;
         moved = false;
         // The cursor's hand closes into a fist around the ruler's hand, as it does for a pan; its pointerup opens it again.
         emitPress("drag");
