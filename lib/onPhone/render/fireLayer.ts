@@ -60,7 +60,7 @@ export const FIRE_LAYER_ID_LIST: readonly string[] = [
 ];
 
 // Terracotta, never red: red is the destructive-action colour.
-const FIRE_DOT = "#b36940";
+const FIRE_DOT = "#c97a4a";
 const FIRE_HOT = "#d18a5e";
 const FIRE_ICON = "rt-fire-flame";
 

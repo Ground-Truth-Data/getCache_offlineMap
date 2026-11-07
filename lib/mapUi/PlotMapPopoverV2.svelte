@@ -450,7 +450,7 @@ function requestClose() {
 		font-weight: 800;
 		font-size: 1.5rem;
 		line-height: 1;
-		color: var(--rt-fg-context, #d9a679);
+		color: var(--rust);
 	}
 	.pp-title-no {
 		font-family: var(--rt-font-display), sans-serif;
@@ -472,7 +472,7 @@ function requestClose() {
 		margin-left: 8px;
 	}
 	.pp-title-code-bar {
-		color: var(--rt-fg-context, #d9a679);
+		color: var(--rust);
 		opacity: 0.85;
 	}
 	.pp-locode-row {
@@ -486,7 +486,7 @@ function requestClose() {
 		font-family: var(--rt-font-mono, ui-monospace, monospace);
 		font-size: 0.72rem;
 		letter-spacing: 0.01em;
-		color: var(--rt-fg-context, #d9a679);
+		color: var(--rust);
 		opacity: 0.7;
 	}
 	.pp-locode-copy {
@@ -525,7 +525,7 @@ function requestClose() {
 		font-family: var(--rt-font-display), sans-serif;
 		font-size: 0.7rem;
 		letter-spacing: 0.08em;
-		color: var(--rt-fg-context, #d9a679);
+		color: var(--rust);
 		margin-top: 2px;
 	}
 	.pp-data {
@@ -588,7 +588,7 @@ function requestClose() {
 		font-size: 0.62rem;
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
-		color: var(--rt-fg-context, #d9a679);
+		color: var(--rust);
 		white-space: nowrap;
 	}
 	.pp-v {
