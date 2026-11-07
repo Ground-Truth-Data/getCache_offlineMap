@@ -1312,9 +1312,10 @@ $effect(() => {
         align-items: stretch;
         gap: 0.25rem;
         padding: 0.25rem;
-        background: rgba(20, 20, 20, 0.45);
-        backdrop-filter: blur(24px) saturate(180%);
-        -webkit-backdrop-filter: blur(24px) saturate(180%);
+        /* Dark glass only: a saturate() or a light tint washes the map white behind the labels. keep in sync with html.native .measure-pop in theme.css */
+        background: var(--rt-popover-glass);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
         border: 1px solid color-mix(in srgb, var(--color-accent), transparent 60%);
         border-radius: 10px;
         box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
@@ -1342,17 +1343,6 @@ $effect(() => {
         letter-spacing: 0.03em;
         cursor: pointer;
         -webkit-tap-highlight-color: transparent;
-        /* Labels wash out over a pale satellite frame without this. */
-        text-shadow:
-            0 1px 1px rgba(0, 0, 0, 0.95),
-            0 0 3px rgba(0, 0, 0, 0.85),
-            0 0 8px rgba(0, 0, 0, 0.5);
-    }
-    .measure-btn :global(svg),
-    .measure-pin-ic,
-    .measure-plot-ic {
-        filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.9))
-            drop-shadow(0 0 3px rgba(0, 0, 0, 0.6));
     }
     /* Sized by HEIGHT: the pin art is much taller than wide and a width cap inflated its button. */
     .measure-pin-ic, .measure-plot-ic { height: 24px; width: auto; flex-shrink: 0; display: block; }
