@@ -1307,12 +1307,10 @@ $effect(() => {
         align-items: stretch;
         gap: 0.25rem;
         padding: 0.25rem;
-        background: rgba(20, 20, 20, 0.45);
-        backdrop-filter: blur(24px) saturate(180%);
-        -webkit-backdrop-filter: blur(24px) saturate(180%);
-        border: 1px solid color-mix(in srgb, var(--color-accent), transparent 60%);
+        background: var(--rt-card-bg);
+        border: 1px solid var(--rt-card-border);
         border-radius: 10px;
-        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+        box-shadow: var(--rt-card-shadow);
     }
     .measure-pop.measure-below { transform: translate(-50%, 52px); }
     .measure-pop.measure-beside { transform: translate(-50%, -50%); }
@@ -1329,7 +1327,7 @@ $effect(() => {
         gap: var(--rt-space-1, 0.25rem);
         padding: var(--rt-space-2, 0.35rem) var(--rt-space-3, 0.55rem);
         background: transparent;
-        border: 1px solid currentColor;
+        border: 1.5px solid currentColor;
         border-radius: var(--rt-radius-sm, 0.4rem);
         font-family: var(--rt-font-display);
         font-size: 0.74rem;
@@ -1337,17 +1335,6 @@ $effect(() => {
         letter-spacing: 0.03em;
         cursor: pointer;
         -webkit-tap-highlight-color: transparent;
-        /* Labels wash out over a pale satellite frame without this. */
-        text-shadow:
-            0 1px 1px rgba(0, 0, 0, 0.95),
-            0 0 3px rgba(0, 0, 0, 0.85),
-            0 0 8px rgba(0, 0, 0, 0.5);
-    }
-    .measure-btn :global(svg),
-    .measure-pin-ic,
-    .measure-plot-ic {
-        filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.9))
-            drop-shadow(0 0 3px rgba(0, 0, 0, 0.6));
     }
     /* Sized by HEIGHT: the pin art is much taller than wide and a width cap inflated its button. */
     .measure-pin-ic, .measure-plot-ic { height: 24px; width: auto; flex-shrink: 0; display: block; }
@@ -1400,8 +1387,8 @@ $effect(() => {
     .measure-plot.at-self:active { background: color-mix(in srgb, #1da1f2 16%, transparent); }
     .measure-col :global(.rt-sharepick) { display: flex; }
     .measure-col :global(.rt-sharepick .measure-btn) { flex: 1; }
-    .measure-share { color: var(--color-accent-terracotta); }
-    .measure-share:active { background: color-mix(in srgb, var(--color-accent-terracotta) 16%, transparent); }
+    .measure-share { color: var(--rt-rust); }
+    .measure-share:active { background: var(--rt-rust-soft); }
     .measure-save { color: var(--color-accent); }
     .measure-save:active { background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
     .measure-plot { color: #f2f2f2; }
