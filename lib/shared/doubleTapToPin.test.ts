@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
+import { DRAG_SLOP_PX } from "$gc/ShovelCursor.svelte";
 import { ACTIVATE_MS, HOLD_MS, attachDoubleTapToPin } from "./doubleTapToPin";
 
 // Node has EventTarget and Event but no DOM: a window plus the two pointer event classes the detector
@@ -96,7 +97,7 @@ describe("mouse: the hold, the drag, the tap", () => {
 		r.map().fire("mousedown", new FakeMouseEvent("mousedown", 200, 300));
 		vi.advanceTimersByTime(ACTIVATE_MS + 500);
 		phases.length = 0;
-		move(210, 300);
+		move(200 + DRAG_SLOP_PX + 2, 300);
 		vi.advanceTimersByTime(HOLD_MS * 2);
 		expect(r.seed()).toHaveBeenCalledTimes(1);
 		expect(phases).toEqual(["end", "drag"]);
@@ -158,7 +159,7 @@ describe("touch: the hold, the pinch, the tap", () => {
 	// The hand fists at its own slop; a press moved that far can never also become a hold.
 	it("a push the hand already fisted for never brings the loupe, even if the map never panned", () => {
 		r.map().fire("touchstart", touch("touchstart", [100, 100]));
-		move(106, 100);
+		move(100 + DRAG_SLOP_PX + 2, 100);
 		vi.advanceTimersByTime(ACTIVATE_MS + HOLD_MS + 2000);
 		expect(r.seed()).not.toHaveBeenCalled();
 	});

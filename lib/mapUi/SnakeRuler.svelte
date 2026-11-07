@@ -939,14 +939,26 @@ $effect(() => {
         }
         if (notMine(e)) return;
         moved = true;
-        const ll = fingerAt(e);
-        moveNode(ll.lng, ll.lat);
+        pending = fingerAt(e);
+        frame ||= requestAnimationFrame(paintFrame);
+    };
+    // Touch events come faster than frames: keep the newest and paint once per frame, as the hands do.
+    let pending: maplibregl.LngLat | null = null;
+    let frame = 0;
+    const paintFrame = () => {
+        frame = 0;
+        if (!dragging || !pending) return;
+        moveNode(pending.lng, pending.lat);
+        pending = null;
         if (cursor) aimLoupe(m, cursor);
         if (born) sideDot(cursor);
         render();
     };
     const up = (e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) => {
         if (!dragging || notMine(e)) return;
+        cancelAnimationFrame(frame);
+        frame = 0;
+        pending = null;
         dragging = false;
         holdMap(m, false);
         glow();
