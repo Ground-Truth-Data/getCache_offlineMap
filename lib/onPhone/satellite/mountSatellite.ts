@@ -29,7 +29,7 @@ const SAT_SHADOW_ID = "v4-sat-shadow";
 // Blur equal to width feathers from the core outward; a narrower blur leaves a hard marker stroke.
 const SHADOW: maplibregl.LineLayerSpecification["paint"] = { "line-color": "#000", "line-opacity": 0.22, "line-width": 14, "line-blur": 14 };
 /** The edge where held ground stops, so it reads as deliberate, not as data that failed. */
-export const HELD_EDGE: maplibregl.LineLayerSpecification["paint"] = { "line-color": "#c97a4a", "line-opacity": 0.9, "line-width": 1 };
+export const HELD_EDGE: maplibregl.LineLayerSpecification["paint"] = { "line-color": "#e88555", "line-opacity": 0.9, "line-width": 1 };
 
 /** Camera zoom below which no edge is drawn: an area is a few pixels there. */
 export const SAT_MIN_Z = 7.5;

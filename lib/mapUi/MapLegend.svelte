@@ -85,11 +85,11 @@ const SWATCH_IMG: Partial<Record<Swatch, string>> = {
 		after: m.ofmap_ui_legend_toggle_hint(),
 		rows: [
 			{ label: m.ofmap_ui_legend_labels(), swatch: "text", kind: "labels", slider: labelDensity },
-			{ label: m.ofmap_ui_legend_piece(), swatch: "fill", color: "#c97a4a", kind: "shapes", slider: polygonOpacity },
+			{ label: m.ofmap_ui_legend_piece(), swatch: "fill", color: "#e88555", kind: "shapes", slider: polygonOpacity },
 			{ label: m.ofmap_ui_legend_pdf_map(), swatch: "pdf", kind: "pdf", slider: overlayOpacity },
 			{ label: m.ofmap_ui_pin(), swatch: "pin", kind: "pins" },
 			{ label: m.ofmap_ui_legend_block(), swatch: "block" },
-			{ label: m.ofmap_ui_legend_line_piece(), swatch: "line", color: "#c97a4a" },
+			{ label: m.ofmap_ui_legend_line_piece(), swatch: "line", color: "#e88555" },
 			{ label: m.ofmap_ui_legend_track(), swatch: "rail", color: "#ffd700", note: m.ofmap_ui_legend_track_note() },
 			{ label: m.ofmap_ui_legend_several_pins(), swatch: "cluster" },
 		],
