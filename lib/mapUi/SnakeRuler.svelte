@@ -200,7 +200,7 @@ function ensureLayers() {
         id: "measure-end-dots", type: "circle", source: MEASURE_ENDDOTS_SRC,
         paint: {
             "circle-radius": ["case", ["==", ["get", "_snapped"], true], 5, 2],
-            "circle-color": ["case", ["==", ["get", "_snapped"], true], "#ffffff", "#e88555"],
+            "circle-color": ["case", ["==", ["get", "_snapped"], true], "#ffffff", "#e99366"],
         },
     });
     // The white dot on a side: where a press drops a new node, and under the finger while it is dragged.

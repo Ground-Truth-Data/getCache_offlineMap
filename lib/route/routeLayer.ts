@@ -29,7 +29,7 @@ export const ROUTE_LAYER_IDS = {
 const GOLD = "#F8D848";
 /** The black edge that keeps gold readable over satellite. */
 const INK = "#0b0b0b";
-const RUST = "#e88555";
+const RUST = "#e99366";
 const HAND_PATHS =
 	"<rect x='6' y='6' width='16' height='11' stroke='none'/><path d='M18 11V6a2 2 0 0 0-4 0'/><path d='M14 10V4a2 2 0 0 0-4 0v2'/><path d='M10 10.5V6a2 2 0 0 0-4 0v8'/><path d='M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15'/>";
 /** Over a waypoint: an open white hand edged in rust — this one moves, it doesn't add. */
