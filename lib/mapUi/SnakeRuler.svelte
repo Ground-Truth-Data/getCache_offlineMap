@@ -1400,8 +1400,8 @@ $effect(() => {
     .measure-plot.at-self:active { background: color-mix(in srgb, #1da1f2 16%, transparent); }
     .measure-col :global(.rt-sharepick) { display: flex; }
     .measure-col :global(.rt-sharepick .measure-btn) { flex: 1; }
-    .measure-share { color: var(--rt-rust); }
-    .measure-share:active { background: var(--rt-rust-soft); }
+    .measure-share { color: var(--rust); }
+    .measure-share:active { background: var(--rust-soft); }
     .measure-save { color: var(--color-accent); }
     .measure-save:active { background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
     .measure-plot { color: #f2f2f2; }
