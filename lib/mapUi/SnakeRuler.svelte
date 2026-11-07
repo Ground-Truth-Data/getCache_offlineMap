@@ -16,6 +16,7 @@ import { BORDER_RUST, POLYGON_FILL, POLYGON_OUTLINE, STROKE } from "$gc/drawDial
 import { type Lnglat, type SnapKind, type SnapRings, sideAt, snapLngLat, snapRings } from "$gc/snapToShapes";
 import { formatArea, formatLength } from "$gc/units.svelte";
 import { keptLegLabels } from "./legLabelCrowding";
+import { touchLog } from "./touchDebug";
 import { type Rect, mapKeepOutRects, readFloorY, readTopBarH, rectsOverlap, shiftClear } from "../shared/mapKeepOut";
 import type {
     MapHostPorts,
@@ -431,6 +432,18 @@ function wireHandDrag(el: HTMLElement, which: "head" | "tail") {
     });
 }
 // The non-pointer half of a hand drag, shared with the teaching-hand tour.
+// A ruler drag owns the touch: the thumb holding the phone plus the dragging finger reads as a pinch, so pan alone is not enough.
+let mapHeld = false;
+const logsMoves = new WeakSet<maplibregl.Map>();
+function holdMap(m: maplibregl.Map | null | undefined, held: boolean) {
+    for (const h of [m?.dragPan, m?.touchZoomRotate]) held ? h?.disable() : h?.enable();
+    mapHeld = held;
+    touchLog?.(held ? "MAP HELD" : "map released");
+    if (touchLog && m && !logsMoves.has(m)) {
+        logsMoves.add(m);
+        m.on("move", () => mapHeld && touchLog?.(`MAP MOVED while held, zoom ${m.getZoom().toFixed(2)}`));
+    }
+}
 function beginGrab(which: "head" | "tail"): Lnglat {
     shapeRings = null;
     lastSnap = null;
@@ -438,13 +451,14 @@ function beginGrab(which: "head" | "tail"): Lnglat {
     const anchor = which === "head" ? verts[0] : verts[verts.length - 1];
     dragAnchor = anchor;
     atAnchor = true;
-    map?.dragPan.disable();
+    if (touchLog && map) { const q = map.project(anchor); touchLog(`PICK ${which} hand, node @${Math.round(q.x)},${Math.round(q.y)} canvas px`); }
+    holdMap(map, true);
     (which === "head" ? headCursor : tailCursor)?.getElement().classList.add("rt-grabbed");
     return anchor;
 }
 function endGrab(ll: Lnglat | null) {
     for (const h of [headCursor, tailCursor]) h?.getElement().classList.remove("rt-grabbed");
-    map?.dragPan.enable();
+    holdMap(map, false);
     if (ll) commitAt(ll[0], ll[1]);
     else {
         cursor = null;
@@ -628,7 +642,8 @@ function hover(lng: number, lat: number) {
     if (map && dragAnchor) {
         const a = map.project({ lng: dragAnchor[0], lat: dragAnchor[1] });
         const p = map.project({ lng, lat });
-        const near = (a.x - p.x) ** 2 + (a.y - p.y) ** 2 < MEASURE_SNAP_PX ** 2;
+        // Same in/out pair as closing a ring: one radius both ways flips the end between anchor and finger as a thumb wobbles on it.
+        const near = (a.x - p.x) ** 2 + (a.y - p.y) ** 2 < (atAnchor ? MEASURE_UNSNAP_PX : MEASURE_SNAP_PX) ** 2;
         if (near && !atAnchor) flashCorners();
         atAnchor = near;
         if (near) {
@@ -856,6 +871,14 @@ $effect(() => {
     let dragging = false;
     let moved = false;
     let hovering = false;
+    // Only the finger that grabbed drives the node, as on the hands: a resting thumb would otherwise pull it halfway over.
+    let finger: number | undefined;
+    const fingerAt = (e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) => {
+        const p = pressPoint(m.getCanvas(), e.originalEvent, finger);
+        return m.unproject([p.x, p.y]);
+    };
+    const notMine = (e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) =>
+        finger !== undefined && "changedTouches" in e.originalEvent && ![...e.originalEvent.changedTouches].some((t) => t.identifier === finger);
     // Every node glows while one is under the mouse or held, so a fat finger sees what it caught.
     const glow = () => {
         if (m.getLayer("measure-nodes-halo")) {
@@ -872,12 +895,14 @@ $effect(() => {
     const grab = (i: number, e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) => {
         moveIndex = i;
         mergeInto = null;
+        finger = "changedTouches" in e.originalEvent ? e.originalEvent.changedTouches[0]?.identifier : undefined;
+        touchLog?.(`PICK node ${i}/${verts.length} @${Math.round(m.project(verts[i]).x)},${Math.round(m.project(verts[i]).y)}, finger #${finger}`);
         e.preventDefault();
         dragging = true;
         moved = false;
         shapeRings = null;
         lastSnap = null;
-        m.dragPan.disable();
+        holdMap(m, true);
         glow();
         emitPress("drag");
         aimLoupe(m, verts[i]);
@@ -885,11 +910,12 @@ $effect(() => {
     // A node is picked up and moved, ends included; only a hand grows the snake.
     const down = (e: maplibregl.MapLayerMouseEvent | maplibregl.MapLayerTouchEvent) => {
         if (!active || verts.length === 0 || dragging) return;
+        const at = pressPoint(m.getCanvas(), e.originalEvent);
         let nearest = -1;
         let nearestD = Number.POSITIVE_INFINITY;
         for (let i = 0; i < verts.length; i++) {
             const q = m.project({ lng: verts[i][0], lat: verts[i][1] });
-            const d = (q.x - e.point.x) ** 2 + (q.y - e.point.y) ** 2;
+            const d = (q.x - at.x) ** 2 + (q.y - at.y) ** 2;
             if (d < nearestD) { nearestD = d; nearest = i; }
         }
         grab(nearest, e);
@@ -905,22 +931,24 @@ $effect(() => {
         grab(s.i + 1, e);
         render();
     };
-    const move = (e: { type: string; lngLat: { lng: number; lat: number }; point: { x: number; y: number } }) => {
+    const move = (e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) => {
         if (!dragging) {
             // A mouse sees the dot before it presses; a finger sees it when it lands.
             if (e.type === "mousemove") sideDot(side(e.point)?.ll ?? null);
             return;
         }
+        if (notMine(e)) return;
         moved = true;
-        moveNode(e.lngLat.lng, e.lngLat.lat);
+        const ll = fingerAt(e);
+        moveNode(ll.lng, ll.lat);
         if (cursor) aimLoupe(m, cursor);
         if (born) sideDot(cursor);
         render();
     };
-    const up = (e: { lngLat: { lng: number; lat: number } }) => {
-        if (!dragging) return;
+    const up = (e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) => {
+        if (!dragging || notMine(e)) return;
         dragging = false;
-        m.dragPan.enable();
+        holdMap(m, false);
         glow();
         sideDot(null);
         emitPress("end", 0, 0, { locked: moved });
@@ -931,7 +959,8 @@ $effect(() => {
         }
         born = false;
         if (moved) {
-            moveNode(e.lngLat.lng, e.lngLat.lat);
+            const ll = fingerAt(e);
+            moveNode(ll.lng, ll.lat);
             const at = moveIndex;
             verts = mergeInto === null ? liveVerts() : verts.filter((_, i) => i !== at);
             if (verts.length < 3) isPolygon = false;

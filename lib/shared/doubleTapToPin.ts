@@ -45,8 +45,9 @@ export const emit = (phase: "arm" | "drag" | "end" | "aim" | "drop", x = 0, y = 
 export const coordLabel = (lng: number, lat: number) => `${lat.toFixed(5)}°, ${lng.toFixed(5)}°`;
 
 /** A press in canvas px, from the raw event: under CSS zoom the renderer's own touch `point` leaves y unscaled. */
-export function pressPoint(canvas: HTMLCanvasElement, ev: MouseEvent | TouchEvent): { x: number; y: number } {
-	const p = "touches" in ev ? ev.touches[0]! : ev;
+/** One finger's canvas px: touch `id`, else the finger that just landed. Never MapLibre's e.point, the centroid of every finger. */
+export function pressPoint(canvas: HTMLCanvasElement, ev: MouseEvent | TouchEvent, id?: number): { x: number; y: number } {
+	const p = "touches" in ev ? ([...ev.touches, ...ev.changedTouches].find((t) => t.identifier === id) ?? ev.changedTouches[0]!) : ev;
 	const r = canvas.getBoundingClientRect();
 	const s = canvas.offsetWidth / r.width;
 	return { x: (p.clientX - r.left) * s, y: (p.clientY - r.top) * s };
