@@ -119,6 +119,11 @@ function snap(lng: number, lat: number, reach?: number): Lnglat {
     if (!map || !snapShapes) return [lng, lat];
     shapeRings ??= snapRings(map, snapShapes());
     const s = snapLngLat(map, [lng, lat], shapeRings, lastSnap, reach);
+    // A saved piece's corners are not the ruler's to take; its edges still are.
+    if (s.kind === "corner") {
+        lastSnap = null;
+        return [lng, lat];
+    }
     if (s.kind) snapped.add(s.ll);
     // The snapping node is under the finger; the far nodes pulsing is what the user can see. Edge → corner pulses again.
     if (s.kind && s.kind !== lastSnap) flashCorners(BORDER_RUST);
@@ -655,18 +660,7 @@ function hover(lng: number, lat: number) {
     }
     isPolygon = false;
     cursor = snap(lng, lat);
-    if (lastSnap === "corner") dropCorner(cursor);
     render();
-}
-// Dragging across a saved corner drops it as a node and the hand keeps going, so tracing a many-cornered border is one drag.
-function dropCorner(ll: Lnglat) {
-    const end = dragFromHead ? verts[0] : verts[verts.length - 1];
-    if (end?.[0] === ll[0] && end[1] === ll[1]) return;
-    if (!mayAddVertex(verts.length)) return;
-    verts = dragFromHead ? [ll, ...verts] : [...verts, ll];
-    // Releasing on the corner just dropped then cancels in commitAt instead of adding it twice.
-    dragAnchor = ll;
-    seedAtSelf = false;
 }
 // A reshaped node parks on a neighbour it touches and every node flashes; elsewhere it snaps as usual.
 function moveNode(lng: number, lat: number) {
