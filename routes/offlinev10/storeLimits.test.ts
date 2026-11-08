@@ -265,7 +265,8 @@ describe("an area lives and dies with its pin", () => {
 
 // The LRU stack: the newest-touched areas keep their blobs, the bottom ones lose theirs, and a pin
 // that comes back into view goes back on top. A real store, a fake network of 10-byte tiles.
-describe("offline areas are an LRU cache of the 16 MB test budget", () => {
+// A test here waits on two sweeps, so the 5 s default would cut off the 10 s each may take.
+describe("offline areas are an LRU cache of the 16 MB test budget", { timeout: 30_000 }, () => {
 	const far = (i: number): [number, number] => [-130 + i * 2, 60];
 	const view = ([lng, lat]: [number, number]) => ({ w: lng - 0.01, e: lng + 0.01, s: lat - 0.01, n: lat + 0.01 });
 	const ids = async () => (await listRegions()).map((r) => r.id).sort();
