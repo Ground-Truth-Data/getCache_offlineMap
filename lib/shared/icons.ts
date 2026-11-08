@@ -6,6 +6,7 @@ import tracksIcon from "$gc/assets/tracks_goldV3.webp";
 import cacheIconUrl from "$gc/assets/cache_icon.webp";
 import bagsBlackUrl from "$gc/assets/bags_icon_black.webp";
 import bagsGoldUrl from "$gc/assets/bags_icon_gold.webp";
+import boxGoldUrl from "$gc/assets/treeBox_gold.webp";
 
 const DIR = "/mobileAssets";
 
@@ -143,8 +144,7 @@ export const ICONS: readonly IconRow[] = [
     // Deliberately unlike the map/poly/line outlines: a block is administrative, not drawn.
     { name: "block", path: `${DIR}/block_icon_sm.webp` },
     { name: "project", path: `${DIR}/project_icon_sm.webp` },
-    // One box lifted off the cache pin's stack: a cache holds tree boxes.
-    { name: "box", path: `${DIR}/kit/tree/treeBox.webp` },
+    { name: "box", path: boxGoldUrl },
     { name: "cacheGroup", path: cacheIconUrl },
     { name: "tally", path: bagsGoldUrl },
     { name: "poly", path: `${DIR}/polyHeart_sm2.webp` },
