@@ -1,15 +1,13 @@
-/** downloadGuard — a HARD circuit breaker on offline-preview network volume; a safety floor, never a tuning knob. Once tripped, only a reload resets it — a runaway must not be able to un-trip itself. */
+/** downloadGuard — safety floors on offline-preview downloads, never tuning knobs. An absurd bake refuses only itself:
+ * a photo the planter asked for is never blocked by anything before it. Only the fires pack cap latches until reload. */
 
-/** One satellite bake's tile grid. ~515 legit (2 km z17, the MapTiler bake); >this = an absurd area → stop cold. */
+/** One satellite bake's tile grid. ~515 legit (2 km z17, the MapTiler bake); >this = an absurd area → refuse it. */
 const PER_BAKE_TILE_CAP = 550;
-/** Satellite tiles per rolling hour; ~13/area. A runaway re-baking every 20 s blows past this in minutes; a human with 440 areas (5,720 tiles) does not, because a full re-bake takes longer than an hour. */
-const HOURLY_TILE_CAP = 5000;
 /** v4 vector /pack downloads per rolling hour. ⚠️ A budget must count what the user does (bake an area), never what the implementation happens to do (issue a request). */
 const HOURLY_PACK_CAP = 5000;
 const WINDOW_MS = 3_600_000;
 
 let windowStart = 0;
-let sessionTiles = 0;
 let sessionPacks = 0;
 
 /** Counts live in one-hour windows; a new hour starts the tally over. The latch itself never resets. */
@@ -17,11 +15,11 @@ function rollWindow(): void {
     const now = Date.now();
     if (now - windowStart < WINDOW_MS) return;
     windowStart = now;
-    sessionTiles = 0;
     sessionPacks = 0;
 }
 let tripped = false;
 let trippedReason = "";
+const refusedBakes = new Set<string>();
 
 /** Thrown by every guard once tripped; callers should let it propagate — it aborts the bake/download loop loudly. */
 export class DownloadBudgetError extends Error {
@@ -38,42 +36,25 @@ function trip(reason: string, extra: Record<string, unknown>): never {
         trippedReason = reason;
         console.error(
             `[downloadGuard] 🛑 CIRCUIT TRIPPED — offline-preview download runaway blocked: ${reason}`,
-            { ...extra, sessionTiles, sessionPacks },
+            { ...extra, sessionPacks },
         );
     }
     throw new DownloadBudgetError(reason);
 }
 
-/** Call BEFORE fetching a satellite disc's tiles; trips if this bake's grid is absurdly large, before a single byte downloads. */
+/** Call BEFORE fetching a satellite disc's tiles; refuses this bake alone if its grid is absurdly large, before a single byte downloads. */
 export function guardBakeGrid(
     tileCount: number,
     ctx: Record<string, unknown>,
 ): void {
-    if (tripped) throw new DownloadBudgetError(trippedReason);
-    if (tileCount > PER_BAKE_TILE_CAP) {
-        trip(
-            `single satellite bake grid ${tileCount} > cap ${PER_BAKE_TILE_CAP}`,
-            {
-                tileCount,
-                ...ctx,
-            },
-        );
+    if (tileCount <= PER_BAKE_TILE_CAP) return;
+    const reason = `single satellite bake grid ${tileCount} > cap ${PER_BAKE_TILE_CAP}`;
+    // The photo pass retries a refused bake every minute; one log, not one per retry.
+    if (!refusedBakes.has(reason)) {
+        refusedBakes.add(reason);
+        console.error(`[downloadGuard] 🛑 bake refused: ${reason}`, { tileCount, ...ctx });
     }
-}
-
-/** Call once per satellite tile fetched; trips when this hour's total blows the ceiling (catches multi-bake / reconcile-loop runaways). */
-export function noteSatelliteTiles(n: number): void {
-    if (tripped) throw new DownloadBudgetError(trippedReason);
-    rollWindow();
-    sessionTiles += n;
-    if (sessionTiles > HOURLY_TILE_CAP) {
-        trip(
-            `satellite tiles this hour ${sessionTiles} > cap ${HOURLY_TILE_CAP}`,
-            {
-                sessionTiles,
-            },
-        );
-    }
+    throw new DownloadBudgetError(reason);
 }
 
 /** Call before each v4 vector /pack download; trips on an implausible number of downloads in one hour. */

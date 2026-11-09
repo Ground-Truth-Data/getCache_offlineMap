@@ -124,6 +124,18 @@ describe("what an area's tiles cost on the wire", () => {
 		expect(wire.hit + wire.miss).toBe(fetched);
 	});
 
+	it("ten fresh photo areas in an hour (5,200 tiles) never trip a breaker, and a bake and a pack still go after", async () => {
+		const F = region("f", -60.1, 47.2);
+		await putRegion(F);
+		for (let bake = 0; bake < 10; bake++) {
+			const keys = Array.from({ length: 520 }, (_, i) => `17/${bake * 1000 + i}/0`);
+			await expect(photoTiles(keys, F.id)).resolves.toBeInstanceOf(Map);
+		}
+		const g = await import("../../lib/onPhone/store/downloadGuard");
+		expect(() => g.guardBakeGrid(520, {})).not.toThrow();
+		expect(() => g.guardPackDownload({})).not.toThrow();
+	});
+
 	it("an area whose row is gone fetches, but lands no tile", async () => {
 		const C = region("c", -81.5076, 43.1226);
 		const before = await onDisk();

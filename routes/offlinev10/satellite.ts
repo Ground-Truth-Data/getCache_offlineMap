@@ -13,7 +13,6 @@ import {
 	satImageMeta,
 } from "../../lib/onPhone/satellite/satelliteImage";
 import { photoRings } from "$gc/drawLimit";
-import { noteSatelliteTiles } from "../../lib/onPhone/store/downloadGuard";
 import { noteBytes } from "../../lib/shared/dataMeter.svelte";
 import { passQueue } from "../../lib/shared/passQueue";
 import { sessionCap, spendBytes } from "../../lib/shared/sessionByteCap.svelte";
@@ -68,7 +67,6 @@ export async function photoTiles(keys: string[], owner: string, source: string =
 	if (missing.length === 0 || (typeof navigator !== "undefined" && navigator.onLine === false)) return have;
 	const urls = missing.map((k) => satelliteTileUrl(source, ...(k.split("/").map(Number) as [number, number, number])));
 	if (urls.some((u) => u === null)) throw new Error("no tiles host configured — configureTilesHost() must run before a photo bakes.");
-	noteSatelliteTiles(missing.length);
 	const got: Array<[string, ArrayBuffer]> = [];
 	try {
 		await getEach(
