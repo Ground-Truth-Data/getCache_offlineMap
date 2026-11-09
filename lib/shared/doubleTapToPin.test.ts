@@ -85,6 +85,30 @@ describe("mouse: the hold, the drag, the tap", () => {
 		expect(r.seed()).toHaveBeenCalledTimes(1);
 	});
 
+	it("a double-tap drops the pin where it lands, unless the map says no", () => {
+		vi.spyOn(console, "info").mockImplementation(() => {});
+		const refused = vi.fn();
+		const off = attachDoubleTapToPin(r.map(), { onMeasureSeed: refused, canSeed: () => false });
+		r.map().fire("dblclick", new FakeMouseEvent("dblclick"));
+		expect(r.seed()).toHaveBeenCalledWith(1, 2);
+		expect(refused).not.toHaveBeenCalled();
+		off();
+	});
+
+	it("the click that ends a held press is swallowed; the next tap goes through", () => {
+		const click = () => {
+			const e = new Event("click", { cancelable: true });
+			(g.window as EventTarget).dispatchEvent(e);
+			return e.defaultPrevented;
+		};
+		r.map().fire("mousedown", new FakeMouseEvent("mousedown", 200, 300));
+		vi.advanceTimersByTime(ACTIVATE_MS);
+		(g.window as EventTarget).dispatchEvent(new FakeMouseEvent("mouseup", 200, 300));
+		r.map().fire("mouseup", new FakeMouseEvent("mouseup", 200, 300));
+		expect(click()).toBe(true);
+		expect(click()).toBe(false);
+	});
+
 	it("under the loupe a fat-finger wobble keeps the countdown; past the slop the ruler drops for a drag", () => {
 		const phases: string[] = [];
 		(g.window as EventTarget).addEventListener("gc-press", (e) => phases.push((e as CustomEvent).detail.phase));

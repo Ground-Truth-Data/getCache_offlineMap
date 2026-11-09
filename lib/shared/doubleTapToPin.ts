@@ -23,8 +23,8 @@ export function swallowNextClick(): void {
 		cleanup();
 	};
 	const cleanup = () => {
-		window.removeEventListener("click", kill, true);
-		window.removeEventListener("pointerdown", cleanup, true);
+		window.removeEventListener("click", kill, { capture: true });
+		window.removeEventListener("pointerdown", cleanup, { capture: true });
 	};
 	window.addEventListener("click", kill, true);
 	window.addEventListener("pointerdown", cleanup, true);
@@ -88,11 +88,6 @@ export function attachDoubleTapToPin(
 		emit("drop");
 	};
 
-	const DEBUG = false;
-	const log = (...a: unknown[]) => {
-		if (DEBUG) console.log("[snake-gesture]", ...a);
-	};
-
 	let pressStart: { x: number; y: number } | null = null;
 	let isTouch = false;
 	let pressTimer: ReturnType<typeof setTimeout> | null = null;
@@ -109,11 +104,10 @@ export function attachDoubleTapToPin(
 		const onRelease = () => {
 			disarmReleaseSwallow = null;
 			swallowNextClick();
-			log("⬆️ release after long-press → swallowing its click");
 		};
 		window.addEventListener(evtName, onRelease, { capture: true, once: true });
 		disarmReleaseSwallow = () => {
-			window.removeEventListener(evtName, onRelease, true);
+			window.removeEventListener(evtName, onRelease, { capture: true });
 			disarmReleaseSwallow = null;
 		};
 	};
@@ -174,7 +168,6 @@ export function attachDoubleTapToPin(
 
 	const fireLongPress = () => {
 		pressTimer = null;
-		log("✅ HOLD → loupe up");
 		startAim();
 	};
 
@@ -193,7 +186,7 @@ export function attachDoubleTapToPin(
 	const onDown = (e: MapMouseEvent | MapTouchEvent) => {
 		const oe = e.originalEvent;
 		if (oe instanceof MouseEvent && oe.button !== 0) return;
-		if (isTouchLike(oe) && oe.touches.length > 1) return cancelPress("second finger");
+		if (isTouchLike(oe) && oe.touches.length > 1) return cancelPress();
 		// A marker (a ruler hand, a pin) is its own handle; MapLibre still reports the press as the map's.
 		if ((oe.target as Element | null)?.closest?.(".maplibregl-marker")) return;
 		// A layer that took the press (the route line, being pulled) owns it; it attaches before us, so its handler ran first.
@@ -204,11 +197,9 @@ export function attachDoubleTapToPin(
 		killTimer();
 		pressTimer = setTimeout(fireLongPress, ACTIVATE_MS);
 		emit("arm", pressStart.x, pressStart.y, { veiled: opts.claimsTap?.(e.point) ?? false });
-		log("⬇️ down — timer armed", { isTouch, at: pressStart });
 	};
 
-	const cancelPress = (why: string) => {
-		if (pressStart) log(`✖️ cancel (${why})`);
+	const cancelPress = () => {
 		if (pressTimer) emit("end");
 		endAim();
 		killTimer();
@@ -219,7 +210,6 @@ export function attachDoubleTapToPin(
 
 	// The loupe leaves at once and the hand grabs; the map is already panning from this same press.
 	const toDrag = () => {
-		log("↔️ move past slop → DRAG for the rest of the press");
 		disarmReleaseSwallow?.();
 		endAim({ locked: true });
 		killTimer();
@@ -237,35 +227,27 @@ export function attachDoubleTapToPin(
 		aimAt(at);
 	};
 
-	const onUp = () => {
-		if (pressTimer) log("⬆️ up before timer → CLICK (no seed)");
-		cancelPress("pointer up");
-	};
-
-	const onMouseOut = () => cancelPress("mouseout");
-	const onTouchCancel = () => cancelPress("touchcancel");
-
 	map.on("dblclick", onDbl);
 	map.on("mousedown", onDown);
-	map.on("mouseup", onUp);
-	map.on("mouseout", onMouseOut);
+	map.on("mouseup", cancelPress);
+	map.on("mouseout", cancelPress);
 	map.on("touchstart", onDown);
-	map.on("touchend", onUp);
-	map.on("touchcancel", onTouchCancel);
+	map.on("touchend", cancelPress);
+	map.on("touchcancel", cancelPress);
 	window.addEventListener("mousemove", onMove, true);
 	window.addEventListener("touchmove", onMove, true);
 
 	return () => {
 		map.off("dblclick", onDbl);
 		map.off("mousedown", onDown);
-		map.off("mouseup", onUp);
-		map.off("mouseout", onMouseOut);
+		map.off("mouseup", cancelPress);
+		map.off("mouseout", cancelPress);
 		map.off("touchstart", onDown);
-		map.off("touchend", onUp);
+		map.off("touchend", cancelPress);
 		window.removeEventListener("mousemove", onMove, true);
 		window.removeEventListener("touchmove", onMove, true);
-		map.off("touchcancel", onTouchCancel);
-		cancelPress("detach");
+		map.off("touchcancel", cancelPress);
+		cancelPress();
 		disarmReleaseSwallow?.();
 	};
 }
