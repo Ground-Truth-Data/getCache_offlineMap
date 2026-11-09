@@ -60,7 +60,8 @@ describe("the cover rule: every tile the filled outer ring touches", () => {
 	it("a thin diagonal sliver leaves no tile it crosses out", () => {
 		const sliver: Pt[] = [[-120, 50], [-119.95, 50.03], [-119.95, 50.03001], [-120, 50.00001], [-120, 50]];
 		const got = keys(sliver);
-		for (const p of inside(sliver, 0.00002)) expect(got.has(tileOf(p))).toBe(true);
+		// Thinner than a tile, so the edge walk alone reaches every tile it crosses; a fine grid only burns CPU.
+		for (const p of inside(sliver, 0.001)) expect(got.has(tileOf(p))).toBe(true);
 		expect(got.size).toBeGreaterThan(10);
 	});
 
