@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { localitiesIn, placeLabel } from "./places";
-import { ANCHOR_Z, latToY, lngToX } from "./tiles";
+import { describe, expect, it, vi } from "vitest";
+import { localitiesIn, nearestPlace, placeLabel } from "./places";
+import { ANCHOR_Z, latToY, lngToX, xToLng, yToLat } from "./tiles";
+
+const disk = new Map<string, ArrayBuffer>();
+vi.mock("./store", () => ({ getTile: async (k: string) => disk.get(k) }));
 
 // A tiny MVT encoder: one `places` layer of points with string tags.
 function varint(out: number[], v: number): void {
@@ -94,8 +97,55 @@ describe("localitiesIn", () => {
 	});
 });
 
+describe("readable names", () => {
+	it("a local name in Latin letters wins; otherwise English, then the Latin spelling, then the local name", () => {
+		const tile = placesTile([
+			{ x: 1, y: 1, tags: { kind: "locality", name: "Trois-Rivières", "name:en": "Three Rivers" } },
+			{ x: 2, y: 2, tags: { kind: "locality", name: "ጎንደር", "name:en": "Gondar", "name:latin": "Gonder" } },
+			{ x: 3, y: 3, tags: { kind: "locality", name: "መቀሌ", "name:latin": "Mekele" } },
+			{ x: 4, y: 4, tags: { kind: "locality", name: "ባህር ዳር" } },
+		]);
+		expect(localitiesIn(tile, ANCHOR_Z, X, Y).map((p) => p.name)).toEqual(["Trois-Rivières", "Gondar", "Mekele", "ባህር ዳር"]);
+	});
+});
+
+describe("nearestPlace", () => {
+	const put = (x: number, y: number, points: P[]) => disk.set(`${ANCHOR_Z}/${x}/${y}`, placesTile(points).slice().buffer);
+	const range = { x0: X, x1: X + 1, y0: Y, y1: Y + 1 };
+
+	it("the nearest town across every tile of the range, its last row and column included", () => {
+		disk.clear();
+		put(X, Y, [{ x: 4000, y: 4000, tags: { kind: "locality", name: "Far" } }]);
+		disk.set(`${ANCHOR_Z}/${X + 1}/${Y}`, new ArrayBuffer(0));
+		put(X + 1, Y + 1, [
+			{ x: 0, y: 0, tags: { kind: "locality", name: "Near" } },
+			{ x: 2000, y: 2000, tags: { kind: "locality", name: "Middle" } },
+		]);
+		return expect(nearestPlace(range, xToLng(X + 1, ANCHOR_Z), yToLat(Y + 1, ANCHOR_Z))).resolves.toEqual({ name: "Near", km: 0 });
+	});
+
+	it("measures great-circle km: one z10 tile east at Oliver's latitude is about 25 km", async () => {
+		disk.clear();
+		put(X + 1, Y, [{ x: 0, y: 0, tags: { kind: "locality", name: "Oliver" } }]);
+		const lat = yToLat(Y, ANCHOR_Z);
+		const p = await nearestPlace(range, xToLng(X, ANCHOR_Z), lat);
+		const expected = (360 / 2 ** ANCHOR_Z) * ((Math.PI * 6371) / 180) * Math.cos((lat * Math.PI) / 180);
+		expect(p?.km).toBeCloseTo(expected, 1);
+		expect(placeLabel(p!)).toBe("25 km from Oliver");
+	});
+
+	it("null when the range holds no town, or no tiles at all", async () => {
+		disk.clear();
+		await expect(nearestPlace(range, OLIVER.lng, OLIVER.lat)).resolves.toBeNull();
+		put(X, Y, [{ x: 1, y: 1, tags: { kind: "region", name: "BC" } }]);
+		await expect(nearestPlace(range, OLIVER.lng, OLIVER.lat)).resolves.toBeNull();
+	});
+});
+
 describe("placeLabel", () => {
 	it("the town alone when the pin is in it, with the distance when it is not", () => {
+		expect(placeLabel({ name: "Oliver", km: 1.49 })).toBe("Oliver");
+		expect(placeLabel({ name: "Oliver", km: 1.5 })).toBe("2 km from Oliver");
 		expect(placeLabel({ name: "Oliver", km: 0.4 })).toBe("Oliver");
 		expect(placeLabel({ name: "Oliver", km: 12.4 })).toBe("12 km from Oliver");
 	});

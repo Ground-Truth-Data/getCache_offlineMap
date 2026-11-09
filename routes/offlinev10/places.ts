@@ -77,8 +77,7 @@ export async function nearestPlace(
 	for (let x = range.x0; x <= range.x1; x++)
 		for (let y = range.y0; y <= range.y1; y++) {
 			const buf = await getTile(tileKey({ z: ANCHOR_Z, x, y }));
-			if (!buf || buf.byteLength === 0) continue;
-			for (const p of localitiesIn(new Uint8Array(buf), ANCHOR_Z, x, y)) {
+			for (const p of localitiesIn(new Uint8Array(buf ?? new ArrayBuffer(0)), ANCHOR_Z, x, y)) {
 				const km = haversineKm(lng, lat, p.lng, p.lat);
 				if (!best || km < best.km) best = { name: p.name, km };
 			}
