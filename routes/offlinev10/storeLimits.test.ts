@@ -282,8 +282,9 @@ describe("offline areas are an LRU cache of the 16 MB test budget", { timeout: 3
 		});
 		for (const r of fill) {
 			await putRegion(r);
-			const keys = rangeTiles(r.range).map(tileKey).filter((k) => k !== ownTile(r));
-			await putTiles([[ownTile(r), new ArrayBuffer(4 * MB - keys.length * 10)], ...keys.map((k): [string, ArrayBuffer] => [k, new ArrayBuffer(10)])], r.id);
+			const own = ownTile(r);
+			const keys = rangeTiles(r.range).map(tileKey).filter((k) => k !== own);
+			await putTiles([[own, new ArrayBuffer(4 * MB - keys.length * 10)], ...keys.map((k): [string, ArrayBuffer] => [k, new ArrayBuffer(10)])], r.id);
 		}
 		expect(await usedBytes()).toBe(16 * MB);
 		return fill.map((r) => r.id);
