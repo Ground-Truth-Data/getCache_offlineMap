@@ -64,7 +64,7 @@ describe("a running meter", () => {
 	it("counts by kind, drops cache hits and dev modules, and writes the day after two seconds", async () => {
 		await seed([{ day: day(-1), kinds: { fires: 300 } }, { day: day(-3), kinds: { app: 100 } }, { day: day(-90), kinds: { app: 1 } }]);
 		const meter = await load();
-		vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+		vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
 		meter.noteBytes("fires", 999);
 		expect(meter.todayTotal()).toBe(0);
 		const stop = meter.startDataMeter();
