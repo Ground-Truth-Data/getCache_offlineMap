@@ -49,6 +49,8 @@ export default defineConfig({
 	// _rapper/ and _siblings/ carry other repos' tests; _shelved/ is kept, never run. vitest reads this file, not vite.config.ts.
 	test: {
 		silent: "passed-only",
+		// One cache at the workspace root, shared by every run: parallel suites hit ENOTEMPTY, and it saved under 10%.
+		fsModuleCache: false,
 		exclude: [...configDefaults.exclude, "_rapper/**", "_siblings/**", "_shelved/**"],
 		setupFiles: ["vitest.setup.ts"],
 	},
