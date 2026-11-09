@@ -267,7 +267,8 @@ describe("an area lives and dies with its pin", () => {
 // that comes back into view goes back on top. A real store, a fake network of 10-byte tiles.
 // A test here waits on two sweeps, so the 5 s default would cut off the 10 s each may take.
 describe("offline areas are an LRU cache of the 16 MB test budget", { timeout: 30_000 }, () => {
-	const far = (i: number): [number, number] => [-130 + i * 2, 60];
+	// At 30° an area is a third of the tiles it is at 60°, and every test here downloads one.
+	const far = (i: number): [number, number] => [-130 + i * 2, 30];
 	const view = ([lng, lat]: [number, number]) => ({ w: lng - 0.01, e: lng + 0.01, s: lat - 0.01, n: lat + 0.01 });
 	const ids = async () => (await listRegions()).map((r) => r.id).sort();
 	let stop = (): void => undefined;
@@ -371,7 +372,7 @@ describe("offline areas are an LRU cache of the 16 MB test budget", { timeout: 3
 	it("E: a pin that cannot fit fails loud with the words the map shows", async () => {
 		await fillToBudget();
 		// The whole stack is on screen: nothing may go.
-		await viewing({ w: -131, e: -123, s: 59, n: 61 }, 12);
+		await viewing({ w: -131, e: -123, s: 29, n: 31 }, 12);
 		const failed: unknown[] = [];
 		const off = onBlob((e) => e.kind === "failed" && failed.push(e.error));
 		const at = far(5);
