@@ -8,7 +8,6 @@ import {
 	CELL_KM,
 	clusterAreaKm2,
 	distanceLine,
-	intensityOf,
 	kmApart,
 	pingAgo,
 	seenLabel,
@@ -22,20 +21,6 @@ const NOW = Date.UTC(2026, 7, 8, 12, 0);
 // The runner's en-US would otherwise start every test in imperial.
 beforeEach(() => {
 	distance.value = "metric";
-});
-
-describe("intensity — the 'how big is this' number", () => {
-	it("bands FRP from low to extreme", () => {
-		expect(intensityOf(2)).toBe("low");
-		expect(intensityOf(25)).toBe("moderate");
-		expect(intensityOf(120)).toBe("high");
-		expect(intensityOf(900)).toBe("extreme");
-	});
-
-	it("treats a garbage FRP as LOW, never as an emergency", () => {
-		expect(intensityOf(Number.NaN)).toBe("low");
-	});
-
 });
 
 describe("distance + bearing — 'is it coming for me?'", () => {

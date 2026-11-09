@@ -104,8 +104,6 @@ export function hospitalsUrl(
 	return h === null ? null : `${h}/hospitals?lng=${lng}&lat=${lat}&km=${km}`;
 }
 
-export const TILES_HOST_LABEL = "see tilesHost()";
-
 const lastProbeFailure: Record<string, string> = {};
 
 export async function probeTarget(

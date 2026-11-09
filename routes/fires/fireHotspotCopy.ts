@@ -21,16 +21,6 @@ const fixed1 = (n: number): string =>
 		useGrouping: false,
 	});
 
-/** Coarse on purpose: FRP (MW) swings with viewing angle and cloud. */
-export type FireIntensity = "low" | "moderate" | "high" | "extreme";
-
-export function intensityOf(frp: number): FireIntensity {
-	if (!Number.isFinite(frp) || frp < 10) return "low";
-	if (frp < 50) return "moderate";
-	if (frp < 200) return "high";
-	return "extreme";
-}
-
 /** Great-circle km; a local copy keeps this module free of map/worker code. */
 export function kmApart(
 	a: readonly [number, number],
