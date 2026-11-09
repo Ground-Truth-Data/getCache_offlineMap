@@ -78,6 +78,21 @@ describe("findRoute", () => {
 		expect(r.ok && r.offRoad.length).toBe(1);
 	});
 
+	it("leaves the highway up a block's downloaded road to a stop no highway reaches", async () => {
+		const highway = road(1, [0, 0], [60_000, 0]);
+		const highways = async (t: TileId) => (t.x === Math.floor(highway.pts[0][0] / 131_072) && t.y === Math.floor(highway.pts[0][1] / 131_072) ? [highway] : []);
+		// 3.6 km off the highway, past the 3 km a stop may walk to a road, so the block is routed in a 12 km square.
+		const block = at(50_000, 3600);
+		// The pack's street copy of the highway stops inside that square: only an entry join at its edge reaches it.
+		const pack = [road(1, [38_800, 0], [50_000, 0], [61_200, 0]), road(1.6, [50_000, 0], [50_000, 3600])];
+		expect((await findRoute([at(0, 0), block], async () => null, highways)).ok).toBe(false);
+		const r = await findRoute([at(0, 0), block], reader(pack), highways);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.line.at(-1)).toEqual(block);
+		expect(r.km).toBeCloseTo(53.6, 0);
+	});
+
 	it("refuses a request too big to be a drive", async () => {
 		const far: LngLat = [ORIGIN[0] + 10, ORIGIN[1]];
 		const r = await findRoute([ORIGIN, far], reader([]));
