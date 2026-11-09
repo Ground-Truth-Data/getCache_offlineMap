@@ -56,6 +56,17 @@ describe("findRoute", () => {
 		expect(r.ok && r.line.some(([, lat]) => lat < ORIGIN[1] - 0.004)).toBe(true);
 	});
 
+	it("takes the shorter road, not the one drawn with fewer bends", async () => {
+		const winding = road(1, ...Array.from({ length: 21 }, (_, i): [number, number] => [i * 100, 0]));
+		// Two straight pieces through a corner 500 m north: fewer edges, 560 m longer.
+		const dogleg = road(1, [0, 0], [2000, -500], [2000, 0]);
+		const r = await findRoute([at(0, 0), at(2000, 0)], reader([winding, dogleg]));
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.km).toBeCloseTo(2, 1);
+		expect(Math.max(...r.line.map(([, lat]) => lat))).toBeCloseTo(at(0, 0)[1], 5);
+	});
+
 	it("routes through a waypoint and ends each leg on its stop", async () => {
 		const loop = [main, road(1, [2000, 0], [2000, 1000], [0, 1000], [0, 0])];
 		const r = await findRoute([at(0, 0), at(1000, 1000), at(2000, 0)], reader(loop));
