@@ -1,6 +1,5 @@
 // @vitest-environment happy-dom
-// The satellite mount on a recording map: one raster pyramid per source over v10://photo, from z10 up to the source's
-// zoom, and the gold edge rings the held areas, redrawn only when that set changes.
+// The satellite mount on a recording map: one raster source per source over v10://photo, at that source's zoom only, and the gold edge rings the held areas, redrawn only when that set changes.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mapDouble } from "$gc/mapDouble";
 
@@ -37,12 +36,12 @@ function rig() {
 }
 
 describe("createSatelliteMount", () => {
-	it("adds one layer per source under the given layer, Sentinel's lowest, each a pyramid from z10 to the source's zoom", () => {
+	it("adds one layer per source under the given layer, Sentinel's lowest, each at its own zoom only", () => {
 		const { d } = rig();
 		expect(d.layers.map((l) => l.id)).toEqual([...SAT_LAYERS, "roads"]);
 		expect(SAT_LAYERS[0]).toBe("v4-sat-sentinel-l");
-		expect(d.sources.get("v4-sat-maptiler")).toMatchObject({ type: "raster", tiles: ["v10://photo/maptiler/{z}/{x}/{y}"], tileSize: 128, minzoom: 10, maxzoom: 16 });
-		expect(d.sources.get("v4-sat-sentinel")).toMatchObject({ tiles: ["v10://photo/sentinel/{z}/{x}/{y}"], minzoom: 10, maxzoom: 14 });
+		expect(d.sources.get("v4-sat-maptiler")).toMatchObject({ type: "raster", tiles: ["v10://photo/maptiler/{z}/{x}/{y}"], tileSize: 128, minzoom: 16, maxzoom: 16 });
+		expect(d.sources.get("v4-sat-sentinel")).toMatchObject({ tiles: ["v10://photo/sentinel/{z}/{x}/{y}"], minzoom: 14, maxzoom: 14 });
 	});
 
 	it("rings every held area once, under the roads; a camera move never redraws it, a change in what is held does", async () => {

@@ -12,9 +12,6 @@ export type Bounds = [number, number, number, number]; // [w,s,e,n]
 /** Bump whenever what an area holds changes: an older record is not current, so the pass saves the area again. */
 export const BAKE_VERSION = 15;
 
-/** Lowest zoom a held photo shows at: below its own zoom every tile is shrunk on the phone from the held ones. */
-export const PHOTO_MIN_Z = 10;
-
 /** A source tile as fetched, keyed `z/x/y`. */
 export type RawTile = [string, ArrayBuffer];
 

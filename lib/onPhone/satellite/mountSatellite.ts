@@ -1,6 +1,6 @@
 // Pure: map and the area records only. Area selection stays with the caller.
 import type * as maplibregl from "maplibre-gl";
-import { getSatImageByKey, heldEdge, PHOTO_MIN_Z, type Bounds } from "./satelliteImage";
+import { getSatImageByKey, heldEdge, type Bounds } from "./satelliteImage";
 import { SATELLITE_SOURCES, sourceNamed } from "../../contract/satelliteSources";
 
 /** A held photo as its record names it: the stored key and its pieces' outer rings, never rebuilt from each other. */
@@ -96,11 +96,11 @@ export function createSatelliteMount(
     const before = (): string | undefined => (map.getLayer(insertBefore) ? insertBefore : undefined);
     const urlOf = (id: string): string[] => [tiles.replace("{source}", id)];
 
-    // One pyramid per source: its own zoom from disk, every zoom down to PHOTO_MIN_Z shrunk from those same tiles by the
-    // protocol, so the patch is one shape at every zoom. tileSize 128 asks two zooms past the camera: sharp on a retina screen.
+    // Each source at its own zoom only; further out the base map shows. tileSize 128 asks two zooms past the camera:
+    // sharp on a retina screen.
     for (const id of IDS) {
         const z = SATELLITE_SOURCES[id as keyof typeof SATELLITE_SOURCES].zoom;
-        map.addSource(sourceId(id), { type: "raster", tiles: urlOf(id), tileSize: 128, minzoom: PHOTO_MIN_Z, maxzoom: z });
+        map.addSource(sourceId(id), { type: "raster", tiles: urlOf(id), tileSize: 128, minzoom: z, maxzoom: z });
     }
     for (const id of SAT_LAYERS)
         map.addLayer({ id, type: "raster", source: id.slice(0, -2), paint: { "raster-fade-duration": SAT_FADE_MS } }, before());

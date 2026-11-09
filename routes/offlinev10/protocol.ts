@@ -8,13 +8,12 @@
 import * as maplibregl from "maplibre-gl";
 import { highwayTile } from "../../lib/route/highways";
 import { clipTile, type Rect } from "./clip";
-import { getTile, PHOTO_PREFIX, photoTilesWithin, regionsSnapshot } from "./store";
-import { sourceOf } from "../../lib/contract/satelliteSources";
+import { getTile, PHOTO_PREFIX, regionsSnapshot } from "./store";
 import { ANCHOR_Z, rangeBox, rangeContains, toMerc } from "./tiles";
 
 export const SCHEME = "v10";
 export const PLANET_TILES = `${SCHEME}://planet/{z}/{x}/{y}`;
-/** A held area's satellite tiles, served raw at the source's zoom and shrunk from those below it; `{source}` is the source's id. */
+/** A held area's satellite tiles, served raw at the source's zoom only; `{source}` is the source's id. */
 export const PHOTO_TILES = `${SCHEME}://photo/{source}/{z}/{x}/{y}`;
 /** The world's highways file, drawn under the blobs. */
 export const HIGHWAY_TILES = `${SCHEME}://highways/{z}/{x}/{y}`;
@@ -84,25 +83,6 @@ async function clippedTile(
 	return data.slice(0);
 }
 
-const SHRUNK_PX = 256;
-
-/** A photo tile below its source's zoom, built only from the held `top` tiles under it, transparent where none is held:
- * nothing below `top` is ever fetched, and the patch keeps one shape at every zoom. */
-export async function shrunkPhoto(source: string, top: number, z: number, x: number, y: number): Promise<ArrayBuffer | null> {
-	const k = 2 ** (top - z);
-	const held = await photoTilesWithin(source, top, [x * k, x * k + k - 1], [y * k, y * k + k - 1]);
-	const real = [...held].filter(([, b]) => b.byteLength);
-	if (!real.length) return null;
-	const cell = SHRUNK_PX / k;
-	const canvas = new OffscreenCanvas(SHRUNK_PX, SHRUNK_PX);
-	const g = canvas.getContext("2d")!;
-	for (const [key, buf] of real) {
-		const [, cx, cy] = key.split("/").map(Number);
-		g.drawImage(await createImageBitmap(new Blob([buf])), (cx! - x * k) * cell, (cy! - y * k) * cell, cell, cell);
-	}
-	return (await canvas.convertToBlob({ type: "image/png" })).arrayBuffer();
-}
-
 let blank: Promise<ArrayBuffer> | null = null;
 // MapLibre transfers the buffer it is handed, so each handout is a copy.
 const blankPng = async (): Promise<ArrayBuffer> => {
@@ -129,8 +109,7 @@ export function installProtocol(): void {
 		const photo = m[1] !== "planet";
 		const key = `${m[2]}/${m[3]}/${m[4]}`;
 		const [z, x, y] = [Number(m[2]), Number(m[3]), Number(m[4])];
-		const top = photo ? sourceOf(m[1].slice(6))?.zoom : undefined;
-		const buf = top !== undefined && z < top ? await shrunkPhoto(m[1].slice(6), top, z, x, y) : await getTile(photo ? `${PHOTO_PREFIX}${m[1].slice(6)}/${key}` : key);
+		const buf = await getTile(photo ? `${PHOTO_PREFIX}${m[1].slice(6)}/${key}` : key);
 		if (buf && buf.byteLength > 0) {
 			const data = !photo && z < ANCHOR_Z ? await clippedTile(key, z, x, y, buf) : buf;
 			if (data) {
@@ -139,8 +118,7 @@ export function installProtocol(): void {
 			}
 		}
 		counts.miss++;
-		// A photo 404 sends MapLibre to the nearest ancestor that loaded, as far up as z10: magnified ~20x, its photo edge
-		// smears dark across the empty tile. An empty tile is drawn as nothing.
+		// Ground nobody holds is a photo tile drawn as nothing, not a 404 raised as a map error.
 		if (photo) return { data: await blankPng() };
 		throw notFound(params.url);
 	});

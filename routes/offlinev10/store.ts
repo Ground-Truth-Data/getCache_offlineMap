@@ -239,18 +239,6 @@ export async function getPhotoTiles(keys: readonly string[], source: string): Pr
 	return out;
 }
 
-/** `source`'s zoom-`z` tiles on disk inside columns `x0..x1` and rows `y0..y1`, keyed `z/x/y`. */
-export async function photoTilesWithin(source: string, z: number, [x0, x1]: [number, number], [y0, y1]: [number, number]): Promise<Map<string, ArrayBuffer>> {
-	const head = `${PHOTO_PREFIX}${source}/${z}/`;
-	const db = await open();
-	const all = (await result(db.transaction(TILES, "readonly").objectStore(TILES).getAllKeys(IDBKeyRange.bound(head, `${head}￿`)))) as string[];
-	const keys = all.map((k) => k.slice(PHOTO_PREFIX.length + source.length + 1)).filter((k) => {
-		const [, x, y] = k.split("/").map(Number);
-		return x! >= x0 && x! <= x1 && y! >= y0 && y! <= y1;
-	});
-	return getPhotoTiles(keys, source);
-}
-
 /** Every satellite tile a blob's piece could hold, from any source: geometry, so a delete needs no record. None without a piece. */
 function photoKeysOf(r: Region): string[] {
 	const rings = r.photoRings;
