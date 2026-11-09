@@ -23,9 +23,6 @@ export function configureWifiCheck(fn: () => Promise<boolean>): void {
 /** May a big download (the 55 MB highways file) come down now? A crew's data plan can't carry it. */
 export const onWifi = (): Promise<boolean> => wifiCheck();
 
-export function isTilesHostConfigured(): boolean {
-	return configuredHost !== null;
-}
 const LOCAL_HOST_NAME = "tiles-local.getcache.org:8787";
 export const LOCAL_DEV_HOST = `http://${LOCAL_HOST_NAME}`;
 

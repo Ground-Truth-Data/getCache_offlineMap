@@ -10,7 +10,6 @@ describe("tiles host must be configured by the app", () => {
 	it("answers NOTHING until configured — no default origin is baked in", async () => {
 		const m = await freshModule();
 		m.setWorkerTarget("worker-cloud-prod");
-		expect(m.isTilesHostConfigured()).toBe(false);
 		expect(m.tilesHost()).toBeNull();
 		expect(m.firesUrl()).toBeNull();
 	});
@@ -19,7 +18,6 @@ describe("tiles host must be configured by the app", () => {
 		const m = await freshModule();
 		m.setWorkerTarget("worker-cloud-prod");
 		m.configureTilesHost("https://tiles.example.test");
-		expect(m.isTilesHostConfigured()).toBe(true);
 		expect(m.firesUrl()).toBe("https://tiles.example.test/fires");
 	});
 
@@ -35,7 +33,6 @@ describe("tiles host must be configured by the app", () => {
 		m.setWorkerTarget("worker-cloud-prod");
 		m.configureTilesHost("   ");
 		// An empty origin would make firesUrl() "/fires", a same-origin 404 that reads as a broken map.
-		expect(m.isTilesHostConfigured()).toBe(false);
 		expect(m.firesUrl()).toBeNull();
 	});
 

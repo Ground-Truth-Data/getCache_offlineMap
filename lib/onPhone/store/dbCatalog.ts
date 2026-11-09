@@ -20,17 +20,6 @@ export function baseDbName(db: string): string {
 	return i === -1 ? db : db.slice(0, i);
 }
 
-/** The OTHER world's name for a base store (`x` ⇄ `x-sandbox`). */
-export function otherWorldDbName(base: string): string {
-	return currentDbName(base) === base ? base + SANDBOX_SUFFIX : base;
-}
-
-/** Callers skip these in per-blob scans: tens of thousands of tiny blobs hang the page. */
-export function isV4Tiles(db: string): boolean {
-	const b = baseDbName(db);
-	return b === V4_TILES_DB || b.startsWith("retreever-v4-tiles");
-}
-
 /** Base names of the live offline stores, either world. */
 export function isLiveBase(b: string): boolean {
 	return (
