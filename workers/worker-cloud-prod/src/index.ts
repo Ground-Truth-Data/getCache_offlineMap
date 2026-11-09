@@ -12,7 +12,7 @@ import {
   MAX_RADIUS_KM,
 } from "../../../lib/worker/firesWorker";
 import { mergeFires } from "../../../lib/worker/fireMerge";
-import { coverOf, DEFAULT_SOURCE, MAP_DEFAULT, MAP_PICKS, type MapBand, SATELLITE_SOURCES, type SatelliteSource, sourceOf } from "../../../lib/contract/satelliteSources";
+import { DEFAULT_SOURCE, SATELLITE_SOURCES, type SatelliteSource, sourceOf } from "../../../lib/contract/satelliteSources";
 import {
   cellKeysForDisc,
   HOSPITAL_MAX_KM,
@@ -34,14 +34,12 @@ interface Env {
   TILES: R2Bucket;
   /** Satellite tiles every phone shares as `source/z/x/y.jpg`, Squirrel's counts and its source switch; bound on tiles-dev only. */
   SAT_CACHE?: R2Bucket;
-  /** Squirrel's counts and the free-tier stops, one bucket for dev and prod: they spend the same keys. */
+  /** Squirrel's counts, one bucket for dev and prod: they spend the same keys. */
   METER?: R2Bucket;
   PMTILES_KEY: string;
   /** Worker SECRETs (`wrangler secret put`), never [vars] — they must not reach the app bundle. */
   GC_firms_map_key: string;
   GC_mapTiler_key: string;
-  GC_esri_key: string;
-  PUBLIC_GC_RT_mapbox_token: string;
 }
 
 class R2Source implements Source {
@@ -122,8 +120,6 @@ const SAT_HEADERS: Record<string, string> = {
   "Content-Type": "image/jpeg",
   "Cache-Control": "public, max-age=31536000, immutable",
 };
-// Esri's and Mapbox's terms let a browser hold a streamed tile for a day at most, never a year.
-const LIVE_CACHE_CONTROL = "public, max-age=86400";
 
 /** The source said no; its status and Retry-After travel on to the phone. */
 class UpstreamRefused extends Error {
@@ -138,7 +134,7 @@ type Tier = "edge" | "r2" | "upstream";
 async function satelliteTile(env: Env, ctx: ExecutionContext, origin: string, id: string, src: SatelliteSource, keep: boolean, z: number, x: number, y: number): Promise<{ body: ArrayBuffer; tier: Tier }> {
   const name = `${id}/${z}/${x}/${y}.jpg`;
   const edge = new Request(`${origin}/satellite/${name}`, { method: "GET" });
-  const near = src.live ? undefined : await caches.default.match(edge);
+  const near = await caches.default.match(edge);
   if (near) return { body: await near.arrayBuffer(), tier: "edge" };
   const bucket = keep ? env.SAT_CACHE : undefined;
   const kept = await bucket?.get(name);
@@ -150,7 +146,7 @@ async function satelliteTile(env: Env, ctx: ExecutionContext, origin: string, id
   const upstream = await fetch(src.tileUrl(src.secret ? env[src.secret] : "", z, x, y));
   if (!upstream.ok || upstream.status === 204) throw new UpstreamRefused(upstream.status, upstream.headers.get("Retry-After"), `${id} responded ${upstream.status} for ${z}/${x}/${y}`);
   const body = await upstream.arrayBuffer();
-  if (!src.live) ctx.waitUntil(caches.default.put(edge, new Response(body, { status: 200, headers: SAT_HEADERS })));
+  ctx.waitUntil(caches.default.put(edge, new Response(body, { status: 200, headers: SAT_HEADERS })));
   if (bucket) {
     ctx.waitUntil(bucket.put(name, body, { httpMetadata: { contentType: "image/jpeg" } }));
     tally(env, ctx, `${id}|stored|tiles`, 1);
@@ -215,31 +211,27 @@ async function activeSource(env: Env): Promise<string> {
   return set ? await set.text() : DEFAULT_SOURCE;
 }
 
-// Squirrel's switches: `_squirrel/cache/<id>` = "on" or "off", a cache switch never written being the source's cacheToR2,
-// and `_squirrel/map/<band>` = the source the online map draws there, MAP_DEFAULT until written.
+// Squirrel's switches: `_squirrel/cache/<id>` = "on" or "off", a cache switch never written being the source's cacheToR2.
 // Re-read each minute, so a switch reaches every isolate within one.
 /** `cache` is what the Worker does; `overrides` names every source where that is not what its toggle says, and why. */
-type Switches = { map: Record<MapBand, string>; cache: Record<string, boolean>; overrides: Record<string, string> };
-let switched = { at: 0, now: { map: { ...MAP_DEFAULT }, cache: {}, overrides: {} } as Switches };
+type Switches = { cache: Record<string, boolean>; overrides: Record<string, string> };
+let switched = { at: 0, now: { cache: {}, overrides: {} } as Switches };
 
 async function switches(env: Env): Promise<Switches> {
   const all = Object.entries(SATELLITE_SOURCES) as [string, SatelliteSource][];
   const bucket = env.SAT_CACHE;
   if (!bucket)
     return {
-      map: { ...MAP_DEFAULT },
       cache: Object.fromEntries(all.map(([id]) => [id, false])),
       overrides: Object.fromEntries(all.filter(([, s]) => s.cacheToR2).map(([id]) => [id, "this Worker has no R2 bucket, so it keeps nothing"])),
     };
   if (Date.now() - switched.at > 60_000) {
     const says = (key: string) => bucket.get(`_squirrel/${key}`).then((o) => o?.text() ?? null);
-    // A live source's licence forbids keeping it, so it has no cache switch.
-    const [far, near, cache] = await Promise.all([says("map/far"), says("map/near"), Promise.all(all.map(([id, s]) => (s.live ? null : says(`cache/${id}`))))]);
+    const cache = await Promise.all(all.map(([id]) => says(`cache/${id}`)));
     switched = {
       at: Date.now(),
       now: {
-        map: { far: far ?? MAP_DEFAULT.far, near: near ?? MAP_DEFAULT.near },
-        cache: Object.fromEntries(all.map(([id, s], i) => [id, !s.live && (cache[i] === null ? s.cacheToR2 : cache[i] === "on")])),
+        cache: Object.fromEntries(all.map(([id, s], i) => [id, cache[i] === null ? s.cacheToR2 : cache[i] === "on"])),
         overrides: {},
       },
     };
@@ -267,29 +259,6 @@ async function squirrelAdmin(request: Request): Promise<string | null> {
   return email && user.email_confirmed_at && SQUIRREL_ADMINS.includes(email) ? email : null;
 }
 
-function upstreamOf(counts: Record<string, number>): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const [k, n] of Object.entries(counts)) if (k.endsWith("|upstream")) out[k.split("|")[0]] = (out[k.split("|")[0]] ?? 0) + n;
-  return out;
-}
-
-// This month's upstream tiles, re-read from the running total each minute; the 10% left over the
-// stop covers what a refresh hasn't seen yet and counts lost with a dead isolate.
-let spent = { month: "", at: 0, tiles: {} as Record<string, number> };
-
-async function freeTierSpent(env: Env, id: string, src: SatelliteSource): Promise<boolean> {
-  if (!src.freeTilesPerMonth) return false;
-  // No bucket, no meter: a metered source is refused rather than run blind.
-  if (!env.METER) return true;
-  const month = new Date().toISOString().slice(0, 7);
-  if (spent.month !== month || Date.now() - spent.at > 60_000)
-    spent = { month, at: Date.now(), tiles: upstreamOf((await env.METER.get(totalKeys().month).then((o) => o?.json<Record<string, number>>())) ?? {}) };
-  return (spent.tiles[id] ?? 0) + (upstreamOf(pending)[id] ?? 0) >= 0.9 * src.freeTilesPerMonth;
-}
-
-const tileLng = (x: number, z: number) => (x / 2 ** z) * 360 - 180;
-const tileLat = (y: number, z: number) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / 2 ** z))) * 180) / Math.PI;
-
 export default {
   // A throw would answer with Cloudflare's own 500, which carries no CORS header: the browser can't read it and the app
   // sees only "Failed to fetch (0)". Every answer goes out readable, with the reason.
@@ -312,11 +281,10 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
 
     // /squirrel: which source the photos bake from, and what each one served. A POST of a source id switches it;
     // only a Worker with the bucket keeps either.
-    // A POST of "on" or "off" to /squirrel/cache/<id> flips that switch; a source id to /squirrel/map/<band> puts it on the map.
+    // A POST of "on" or "off" to /squirrel/cache/<id> flips that switch.
     const cachePath = /^\/squirrel\/cache\/([a-z0-9-]+)$/.exec(url.pathname);
-    const mapPath = /^\/squirrel\/map\/(far|near)$/.exec(url.pathname);
     const forget = /^\/squirrel\/forget\/([a-z0-9-]+)$/.exec(url.pathname);
-    if (url.pathname === "/squirrel" || url.pathname === "/squirrel/active" || cachePath || mapPath || forget) {
+    if (url.pathname === "/squirrel" || url.pathname === "/squirrel/active" || cachePath || forget) {
       const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json", "Cache-Control": "no-store" } });
       // CORS-open, so a write must carry an admin's Supabase sign-in.
       if (request.method === "POST" && !(await squirrelAdmin(request).catch(() => null))) return json({ error: "sign in as Chris on Get Cache to flip Squirrel's switches" }, 401);
@@ -328,19 +296,13 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
         const edge = await Promise.all(names.map((n) => caches.default.delete(new Request(`${url.origin}/satellite/${n}`, { method: "GET" }))));
         return json({ edge: edge.filter(Boolean).length });
       }
-      if (cachePath || mapPath) {
-        if (request.method !== "POST") return json({ error: cachePath ? "POST on or off" : "POST a source id" }, 405);
+      if (cachePath) {
+        if (request.method !== "POST") return json({ error: "POST on or off" }, 405);
         if (!env.SAT_CACHE) return json({ error: "this Worker has no bucket to keep a switch in" }, 409);
         const said = (await request.text()).trim();
-        if (cachePath) {
-          const src = sourceOf(cachePath[1]);
-          if (!src || src.live) return json({ error: `"${cachePath[1]}" has no cache switch` }, 400);
-          if (said !== "on" && said !== "off") return json({ error: `send "on" or "off", not "${said}"` }, 400);
-          await env.SAT_CACHE.put(`_squirrel/cache/${cachePath[1]}`, said);
-        } else {
-          if (!MAP_PICKS.some((id) => id === said)) return json({ error: `the map draws one of ${MAP_PICKS.join(", ")}, not "${said}"` }, 400);
-          await env.SAT_CACHE.put(`_squirrel/map/${mapPath?.[1]}`, said);
-        }
+        if (!sourceOf(cachePath[1])) return json({ error: `"${cachePath[1]}" has no cache switch` }, 400);
+        if (said !== "on" && said !== "off") return json({ error: `send "on" or "off", not "${said}"` }, 400);
+        await env.SAT_CACHE.put(`_squirrel/cache/${cachePath[1]}`, said);
         switched.at = 0;
         return json(await switches(env));
       }
@@ -348,7 +310,6 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
         const id = (await request.text()).trim();
         if (!env.SAT_CACHE) return json({ error: "this Worker has no bucket to keep a switch in" }, 409);
         if (!sourceOf(id)) return json({ error: `no satellite source "${id}"` }, 400);
-        if (sourceOf(id)?.live) return json({ error: `${id} may only be streamed, so photos never bake from it` }, 400);
         await env.SAT_CACHE.put(ACTIVE_KEY, id);
         return json({ active: id });
       }
@@ -362,6 +323,17 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
       return new Response("Method Not Allowed", {
         status: 405,
         headers: { ...CORS_HEADERS, Allow: "GET, HEAD, OPTIONS" },
+      });
+    }
+
+    // /where: roughly where the caller is, from Cloudflare's IP lookup — the map's start with no location permission.
+    if (url.pathname === "/where") {
+      const lng = Number(request.cf?.longitude);
+      const lat = Number(request.cf?.latitude);
+      const known = request.cf?.longitude !== undefined && Number.isFinite(lng) && Number.isFinite(lat);
+      return new Response(known ? JSON.stringify({ lng, lat }) : null, {
+        status: known ? 200 : 204,
+        headers: { ...CORS_HEADERS, "Content-Type": "application/json", "Cache-Control": "private, no-store" },
       });
     }
 
@@ -534,18 +506,11 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
       if (!src)
         return new Response(`Not Found — no satellite source "${id}"; there are: ${Object.keys(SATELLITE_SOURCES).join(", ")}`, { status: 404, headers: CORS_HEADERS });
       const sw = await switches(env);
-      if (src.standby && sw.map.far !== id && sw.map.near !== id)
-        return new Response(`Not Found — ${id} is a standby source and /app/squirrel has not put it on the map`, { status: 404, headers: CORS_HEADERS });
       if (src.secret && !env[src.secret])
         return new Response(`${src.secret} is not configured on this Worker (wrangler secret put ${src.secret})`, { status: 500, headers: CORS_HEADERS });
       const span = 2 ** z;
       if (z > src.maxZ || x >= span || y >= span)
         return new Response(`Bad Request — ${id} serves z 0..${src.maxZ} and x,y 0..${span - 1} at z${z}`, { status: 400, headers: CORS_HEADERS });
-      // A 404 here lets the map draw what lies under this layer.
-      const under = src.live ? coverOf(tileLng(x, z), tileLat(y + 1, z), tileLng(x + 1, z), tileLat(y, z)) : undefined;
-      if (under) return new Response(`Not Found — ${under} covers this tile, so ${id} is never asked for it`, { status: 404, headers: CORS_HEADERS });
-      if (await freeTierSpent(env, id, src))
-        return new Response(`Not Found — ${id} has served 90% of its free tier this month; it stops until the month resets`, { status: 404, headers: CORS_HEADERS });
       let tile: { body: ArrayBuffer; tier: Tier };
       const satStart = performance.now();
       try {
@@ -573,7 +538,6 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
         status: 200,
         headers: {
           ...SAT_HEADERS,
-          ...(src.live && { "Cache-Control": LIVE_CACHE_CONTROL }),
           "X-Tile-Source": id,
           "X-Cache": tile.tier === "upstream" ? "MISS" : "HIT",
           "Server-Timing": `sat;dur=${(performance.now() - satStart).toFixed(1)}`,
@@ -583,7 +547,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
 
     const match = TILE_PATH.exec(url.pathname);
     if (match === null) {
-      return new Response("Not Found — expected /{z}/{x}/{y}.pbf, /satellite/{source}/{z}/{x}/{y}.jpg, /squirrel, /fires?lng=&lat=, or /hospitals?lng=&lat=&km=", {
+      return new Response("Not Found — expected /{z}/{x}/{y}.pbf, /satellite/{source}/{z}/{x}/{y}.jpg, /squirrel, /where, /fires?lng=&lat=, or /hospitals?lng=&lat=&km=", {
         status: 404,
         headers: CORS_HEADERS,
       });
@@ -601,8 +565,10 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
 
     // A bad archive must be a 502, not a 204.
     const t0 = performance.now();
+    let edge: Request;
     try {
-      await archive.getHeader();
+      // Keyed by the archive's etag: a new planet under the same key never mixes with the old one's tiles.
+      edge = new Request(`${url.origin}/${z}/${x}/${y}.pbf?planet=${encodeURIComponent((await archive.getHeader()).etag ?? "")}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return new Response(
@@ -610,6 +576,10 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
         { status: 502, headers: CORS_HEADERS },
       );
     }
+
+    // A hit never reads R2, so an R2 outage only reaches tiles no one near has asked for.
+    const held = await caches.default.match(edge);
+    if (held) return request.method === "HEAD" ? new Response(null, held) : held;
 
     const t1 = performance.now();
     let tile: RangeResponse | undefined;
@@ -635,6 +605,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
       "Server-Timing": `hdr;dur=${(t1 - t0).toFixed(1)}, tile;dur=${(performance.now() - t1).toFixed(1)}`,
     };
 
+    ctx.waitUntil(caches.default.put(edge, new Response(tile.data, { status: 200, headers: responseHeaders })));
     const body = request.method === "HEAD" ? null : tile.data;
     return new Response(body, { status: 200, headers: responseHeaders });
 }

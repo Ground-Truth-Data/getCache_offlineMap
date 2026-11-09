@@ -565,8 +565,10 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
 
     // A bad archive must be a 502, not a 204.
     const t0 = performance.now();
+    let edge: Request;
     try {
-      await archive.getHeader();
+      // Keyed by the archive's etag: a new planet under the same key never mixes with the old one's tiles.
+      edge = new Request(`${url.origin}/${z}/${x}/${y}.pbf?planet=${encodeURIComponent((await archive.getHeader()).etag ?? "")}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return new Response(
@@ -574,6 +576,10 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
         { status: 502, headers: CORS_HEADERS },
       );
     }
+
+    // A hit never reads R2, so an R2 outage only reaches tiles no one near has asked for.
+    const held = await caches.default.match(edge);
+    if (held) return request.method === "HEAD" ? new Response(null, held) : held;
 
     const t1 = performance.now();
     let tile: RangeResponse | undefined;
@@ -599,6 +605,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
       "Server-Timing": `hdr;dur=${(t1 - t0).toFixed(1)}, tile;dur=${(performance.now() - t1).toFixed(1)}`,
     };
 
+    ctx.waitUntil(caches.default.put(edge, new Response(tile.data, { status: 200, headers: responseHeaders })));
     const body = request.method === "HEAD" ? null : tile.data;
     return new Response(body, { status: 200, headers: responseHeaders });
 }
