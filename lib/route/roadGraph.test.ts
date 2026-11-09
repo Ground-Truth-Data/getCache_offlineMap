@@ -139,9 +139,12 @@ describe("findRoute between downloaded areas", () => {
 			return { data: data.buffer };
 		},
 	});
-	const highways = async (t: TileId) => {
-		const got = await archive.getZxy(t.z, t.x, t.y);
-		return got ? decodeRoads(t, got.data) : null;
+	// Each tile is read and decoded once for the whole file: the trips share most of BC.
+	const decoded = new Map<string, Promise<RoadLine[] | null>>();
+	const highways = (t: TileId) => {
+		const key = `${t.z}/${t.x}/${t.y}`;
+		if (!decoded.has(key)) decoded.set(key, archive.getZxy(t.z, t.x, t.y).then((got) => (got ? decodeRoads(t, got.data) : null)));
+		return decoded.get(key)!;
 	};
 	/** Within ~10 km of a town on the way. */
 	const via = (line: readonly LngLat[], [lng, lat]: LngLat) => line.some(([x, y]) => Math.abs(x - lng) < 0.14 && Math.abs(y - lat) < 0.09);
@@ -149,6 +152,7 @@ describe("findRoute between downloaded areas", () => {
 	const VANCOUVER: LngLat = [-123.1, 49.265];
 	const CLEARWATER: LngLat = [-120.04, 51.65];
 	const VALEMOUNT: LngLat = [-119.27, 52.83];
+	const KAMLOOPS: LngLat = [-120.33, 50.675];
 
 	it("drives Vancouver to Kelowna over the Coquihalla, through Merritt", async () => {
 		const r = await findRoute([VANCOUVER, [-119.49, 49.885]], nothingDownloaded, highways);
@@ -163,31 +167,35 @@ describe("findRoute between downloaded areas", () => {
 		expect((await findRoute([VANCOUVER, [-119.59, 49.49]], nothingDownloaded, highways)).ok).toBe(true);
 	});
 
-	it("drives through a town Natural Earth draws no road across (97 meets 16 at Prince George)", async () => {
-		expect((await findRoute([VANCOUVER, [-122.75, 53.917]], nothingDownloaded, highways)).ok).toBe(true);
+	// The junction and route-choice trips start near them: a whole-province corridor costs 150+ ms of routing per test.
+	it("drives through a town Natural Earth draws no road across (Quesnel to Vanderhoof: 97 meets 16 at Prince George)", async () => {
+		const r = await findRoute([[-122.49, 52.98], [-124.0, 54.015]], nothingDownloaded, highways);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(via(r.line, [-122.75, 53.917])).toBe(true);
 	});
 
-	it("drives Vancouver to Valemount on Highway 5, up the North Thompson", async () => {
-		const r = await findRoute([VANCOUVER, VALEMOUNT], nothingDownloaded, highways);
+	it("drives Kamloops to Valemount on Highway 5, up the North Thompson", async () => {
+		const r = await findRoute([KAMLOOPS, VALEMOUNT], nothingDownloaded, highways);
 		expect(r.ok).toBe(true);
 		if (!r.ok) return;
 		expect(via(r.line, CLEARWATER)).toBe(true);
-		expect(r.km).toBeGreaterThan(640);
-		expect(r.km).toBeLessThan(720);
+		expect(r.km).toBeGreaterThan(310);
+		expect(r.km).toBeLessThan(350);
 	});
 
-	it("drives Vancouver to Jasper on Highway 5 through Valemount, not round by Banff", async () => {
-		const r = await findRoute([VANCOUVER, [-118.0814, 52.8737]], nothingDownloaded, highways);
+	it("drives Kamloops to Jasper on Highway 5 through Valemount, not round by Banff", async () => {
+		const r = await findRoute([KAMLOOPS, [-118.0814, 52.8737]], nothingDownloaded, highways);
 		expect(r.ok).toBe(true);
 		if (!r.ok) return;
 		expect(via(r.line, VALEMOUNT)).toBe(true);
 		expect(Math.max(...r.line.map(([lng]) => lng))).toBeLessThan(-117.9);
-		expect(r.km).toBeGreaterThan(770);
-		expect(r.km).toBeLessThan(860);
+		expect(r.km).toBeGreaterThan(435);
+		expect(r.km).toBeLessThan(485);
 	});
 
 	it("drives a trip small enough for street tiles over the highways when none are downloaded (Kamloops to Kelowna)", async () => {
-		const r = await findRoute([[-120.33, 50.675], [-119.49, 49.885]], nothingDownloaded, highways);
+		const r = await findRoute([KAMLOOPS, [-119.49, 49.885]], nothingDownloaded, highways);
 		expect(r.ok).toBe(true);
 		if (!r.ok) return;
 		expect(r.km).toBeGreaterThan(150);
