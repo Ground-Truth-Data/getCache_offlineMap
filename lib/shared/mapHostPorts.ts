@@ -20,7 +20,6 @@ export interface MapHostFeature {
 	featureType: string;
 	featureDesc: string | null;
 	featureDataJson: string | null;
-	contacts?: string[];
 	geometry: Feature | null;
 	importedCount: number | null;
 	hectaresCalc: number | null;
