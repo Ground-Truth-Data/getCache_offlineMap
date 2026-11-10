@@ -20,4 +20,9 @@ describe("the snake ruler is drag-only", () => {
     it("a tap on the shape moves its chrome; only a tap off it dismisses", () => {
         expect(hands).toMatch(/if \(tapOnShape\([^)]*\)\) spotBump\+\+;\s*else discard\(\);/);
     });
+
+    // On a phone a node or side grab steals the press meant for the hand.
+    it("a press on a node or a side never reshapes the shape", () => {
+        expect(src).not.toMatch(/moveIndex|sideAt\(|measure-nodes-halo|measure-side-dot/);
+    });
 });

@@ -10,10 +10,10 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 import area from "@turf/area";
 import turfLength from "@turf/length";
 import { markerCtor } from "../shared/rendererOf";
-import { aimLoupe, emit as emitPress, pressPoint, swallowNextClick } from "../shared/doubleTapToPin";
+import { aimLoupe, emit as emitPress, swallowNextClick } from "../shared/doubleTapToPin";
 import { DRAW_LIMIT_NOTE, mayAddVertex } from "$gc/drawLimit";
 import { BORDER_RUST, POLYGON_FILL, POLYGON_OUTLINE, STROKE } from "$gc/drawDials";
-import { type Lnglat, type SnapKind, type SnapRings, sideAt, snapLngLat, snapRings } from "$gc/snapToShapes";
+import { type Lnglat, type SnapKind, type SnapRings, snapLngLat, snapRings } from "$gc/snapToShapes";
 import { formatArea, formatLength } from "$gc/units.svelte";
 import { keptLegLabels } from "./legLabelCrowding";
 import { touchLog } from "./touchDebug";
@@ -89,9 +89,6 @@ let isPolygon = $state(false);
 let dragFromHead = false;
 let dragAnchor: Lnglat | null = null;
 let atAnchor = false;
-let moveIndex: number | null = $state(null); // vertex being reshaped
-// The neighbour the reshaped node is parked on: let go there and the two become one.
-let mergeInto: number | null = null;
 let mapMoveSeq = $state(0);
 let spotBump = $state(0);
 let armed: "line" | "polygon" | "pin" | null = $state(null);
@@ -136,10 +133,8 @@ const MEASURE_NODES_SRC = "measure-nodes";
 const MEASURE_FILL_SRC = "measure-fill";
 const MEASURE_TICKS_SRC = "measure-ticks";
 const MEASURE_ENDDOTS_SRC = "measure-end-dots";
-const MEASURE_SIDE_SRC = "measure-side-dot";
-const ALL_SRCS = [MEASURE_FILL_SRC, MEASURE_LINE_SRC, MEASURE_TICKS_SRC, MEASURE_NODES_SRC, MEASURE_ENDDOTS_SRC, MEASURE_SIDE_SRC];
+const ALL_SRCS = [MEASURE_FILL_SRC, MEASURE_LINE_SRC, MEASURE_TICKS_SRC, MEASURE_NODES_SRC, MEASURE_ENDDOTS_SRC];
 const MEASURE_SNAP_PX = 18;
-const NODE_GRAB_PX = 16; // = the node halo: inside it a press grabs the node, not the side
 const SELF_SNAP_PX = 22; // ≈44px touch target
 const FINISH_TAP_PX = 22;
 const MEASURE_UNSNAP_PX = 34; // hysteresis: un-snaps only past this
@@ -147,7 +142,6 @@ const LEG_LABEL_FRAC = 0.78;
 const LEG_LABEL_OFF = 18;
 const LABEL_HALF_H = 10;
 const TOTAL_TAIL_BIAS = 0.35;
-const HALO_OPACITY = [0.01, 0.4] as const; // [idle, glowing]
 
 const fc = (features: GeoJSON.Feature[] = []): GeoJSON.FeatureCollection => ({ type: "FeatureCollection", features });
 const pointsFC = (cs: Lnglat[]) =>
@@ -188,25 +182,12 @@ function ensureLayers() {
             "circle-stroke-width": 2,
         },
     });
-    // Fat halo so a node is easy to grab with a finger; invisible until a node is hovered or held.
-    map.addLayer({
-        id: "measure-nodes-halo", type: "circle", source: MEASURE_NODES_SRC,
-        paint: {
-            "circle-radius": 16, "circle-color": "#ffd54a", "circle-blur": 0.6,
-            "circle-opacity": HALO_OPACITY[0], "circle-opacity-transition": { duration: 150, delay: 0 },
-        },
-    });
     map.addLayer({
         id: "measure-end-dots", type: "circle", source: MEASURE_ENDDOTS_SRC,
         paint: {
             "circle-radius": ["case", ["==", ["get", "_snapped"], true], 5, 2],
             "circle-color": ["case", ["==", ["get", "_snapped"], true], "#ffffff", "#e99366"],
         },
-    });
-    // The white dot on a side: where a press drops a new node, and under the finger while it is dragged.
-    map.addLayer({
-        id: "measure-side-dot", type: "circle", source: MEASURE_SIDE_SRC,
-        paint: { "circle-radius": 6, "circle-color": "#ffffff", "circle-stroke-color": "rgba(14,16,8,0.55)", "circle-stroke-width": 1.5 },
     });
     map.addLayer({
         id: "measure-close-flash", type: "circle", source: MEASURE_NODES_SRC,
@@ -288,14 +269,8 @@ function buildTicksFC(ring: Lnglat[]): GeoJSON.FeatureCollection {
     return fc(features);
 }
 
-function liveVerts(): Lnglat[] {
-    if (moveIndex === null || !cursor) return verts;
-    const v = [...verts];
-    v[moveIndex] = cursor;
-    return v;
-}
 function points(): Lnglat[] {
-    if (isPolygon || moveIndex !== null) return liveVerts();
+    if (isPolygon) return verts;
     if (!cursor) return [...verts];
     return dragFromHead ? [cursor, ...verts] : [...verts, cursor];
 }
@@ -313,7 +288,7 @@ function render() {
         ? [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: r } }]
         : []));
     setData(MEASURE_TICKS_SRC, buildTicksFC(r));
-    setData(MEASURE_NODES_SRC, pointsFC(liveVerts()));
+    setData(MEASURE_NODES_SRC, pointsFC(verts));
     // Fill auto-closes the ring while still open; no visible line across the open side.
     setData(MEASURE_FILL_SRC, fc(pts.length >= 3
         ? [{ type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [[...pts, pts[0]]] } }]
@@ -326,7 +301,6 @@ function render() {
 function clearAll() {
     cursor = null;
     isPolygon = false;
-    moveIndex = null;
     shapeRings = null;
     copied = false;
     copyFailed = false;
@@ -662,24 +636,6 @@ function hover(lng: number, lat: number) {
     cursor = snap(lng, lat);
     render();
 }
-// A reshaped node parks on a neighbour it touches and every node flashes; elsewhere it snaps as usual.
-function moveNode(lng: number, lat: number) {
-    const m = map;
-    if (moveIndex === null || !m) return;
-    const n = verts.length;
-    const p = m.project({ lng, lat });
-    const reach = (mergeInto === null ? MEASURE_SNAP_PX : MEASURE_UNSNAP_PX) ** 2;
-    const near = [moveIndex - 1, moveIndex + 1]
-        .map((i) => (isPolygon ? (i + n) % n : i))
-        .find((i) => {
-            if (i < 0 || i >= n || i === moveIndex) return false;
-            const q = m.project({ lng: verts[i][0], lat: verts[i][1] });
-            return (q.x - p.x) ** 2 + (q.y - p.y) ** 2 < reach;
-        }) ?? null;
-    if (near !== null && near !== mergeInto) flashCorners();
-    mergeInto = near;
-    cursor = near === null ? snap(lng, lat) : verts[near];
-}
 function commitAt(lng: number, lat: number) {
     if (!active) return;
     const ll = snap(lng, lat);
@@ -727,7 +683,6 @@ function start(kind: typeof armed, seed?: Lnglat) {
     active = true;
     armed = kind;
     cursor = null;
-    moveIndex = null;
     isPolygon = false;
     spotBump = 0;
     seedAtSelf = snapped?.atSelf ?? false;
@@ -770,7 +725,6 @@ export function undoLast() {
     verts = verts.slice(0, -1);
     if (verts.length < 3) isPolygon = false;
     cursor = null;
-    moveIndex = null;
     render();
 }
 /** Host gates its map-click feature hit-test on this so a mid-measure tap places a node. */
@@ -857,145 +811,6 @@ $effect(() => {
     };
     m.on("click", onClick);
     return () => m.off("click", onClick);
-});
-
-$effect(() => {
-    const m = map;
-    if (!m) return;
-    let dragging = false;
-    let moved = false;
-    let hovering = false;
-    // Only the finger that grabbed drives the node, as on the hands: a resting thumb would otherwise pull it halfway over.
-    let finger: number | undefined;
-    const fingerAt = (e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) => {
-        const p = pressPoint(m.getCanvas(), e.originalEvent, finger);
-        return m.unproject([p.x, p.y]);
-    };
-    const notMine = (e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) =>
-        finger !== undefined && "changedTouches" in e.originalEvent && ![...e.originalEvent.changedTouches].some((t) => t.identifier === finger);
-    // Every node glows while one is under the mouse or held, so a fat finger sees what it caught.
-    const glow = () => {
-        if (m.getLayer("measure-nodes-halo")) {
-            m.setPaintProperty("measure-nodes-halo", "circle-opacity", HALO_OPACITY[hovering || dragging ? 1 : 0]);
-        }
-    };
-    // A node pressed on a side, not yet dragged: let go without moving and it was never there.
-    let born = false;
-    const sideDot = (ll: Lnglat | null) => setData(MEASURE_SIDE_SRC, fc(ll ? [{ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: ll } }] : []));
-    const side = (pt: { x: number; y: number }) =>
-        active && !dragging && verts.length >= 2 && mayAddVertex(verts.length)
-            ? sideAt(m, verts, isPolygon, pt, MEASURE_SNAP_PX, NODE_GRAB_PX)
-            : null;
-    const grab = (i: number, e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) => {
-        moveIndex = i;
-        mergeInto = null;
-        finger = "changedTouches" in e.originalEvent ? e.originalEvent.changedTouches[0]?.identifier : undefined;
-        touchLog?.(`PICK node ${i}/${verts.length} @${Math.round(m.project(verts[i]).x)},${Math.round(m.project(verts[i]).y)}, finger #${finger}`);
-        e.preventDefault();
-        dragging = true;
-        moved = false;
-        shapeRings = null;
-        lastSnap = null;
-        holdMap(m, true);
-        glow();
-        emitPress("drag");
-        aimLoupe(m, verts[i]);
-    };
-    // A node is picked up and moved, ends included; only a hand grows the snake.
-    const down = (e: maplibregl.MapLayerMouseEvent | maplibregl.MapLayerTouchEvent) => {
-        if (!active || verts.length === 0 || dragging) return;
-        const at = pressPoint(m.getCanvas(), e.originalEvent);
-        let nearest = -1;
-        let nearestD = Number.POSITIVE_INFINITY;
-        for (let i = 0; i < verts.length; i++) {
-            const q = m.project({ lng: verts[i][0], lat: verts[i][1] });
-            const d = (q.x - at.x) ** 2 + (q.y - at.y) ** 2;
-            if (d < nearestD) { nearestD = d; nearest = i; }
-        }
-        grab(nearest, e);
-    };
-    // A press on a side drops a node there and drags it, so a straight side bends where it is held.
-    const sideDown = (e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) => {
-        if ("points" in e && e.points.length > 1) return; // a pinch across the snake
-        const s = side(pressPoint(m.getCanvas(), e.originalEvent));
-        if (!s) return;
-        verts = [...verts.slice(0, s.i + 1), s.ll, ...verts.slice(s.i + 1)];
-        born = true;
-        sideDot(s.ll);
-        grab(s.i + 1, e);
-        render();
-    };
-    const move = (e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) => {
-        if (!dragging) {
-            // A mouse sees the dot before it presses; a finger sees it when it lands.
-            if (e.type === "mousemove") sideDot(side(e.point)?.ll ?? null);
-            return;
-        }
-        if (notMine(e)) return;
-        moved = true;
-        pending = fingerAt(e);
-        frame ||= requestAnimationFrame(paintFrame);
-    };
-    // Touch events come faster than frames: keep the newest and paint once per frame, as the hands do.
-    let pending: maplibregl.LngLat | null = null;
-    let frame = 0;
-    const paintFrame = () => {
-        frame = 0;
-        if (!dragging || !pending) return;
-        moveNode(pending.lng, pending.lat);
-        pending = null;
-        if (cursor) aimLoupe(m, cursor);
-        if (born) sideDot(cursor);
-        render();
-    };
-    const up = (e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) => {
-        if (!dragging || notMine(e)) return;
-        cancelAnimationFrame(frame);
-        frame = 0;
-        pending = null;
-        dragging = false;
-        holdMap(m, false);
-        glow();
-        sideDot(null);
-        emitPress("end", 0, 0, { locked: moved });
-        // A tap on a side is aimed at the snake: it must not land as a tap away that dismisses it.
-        if (born && !moved) {
-            verts = verts.filter((_, i) => i !== moveIndex);
-            swallowNextClick();
-        }
-        born = false;
-        if (moved) {
-            const ll = fingerAt(e);
-            moveNode(ll.lng, ll.lat);
-            const at = moveIndex;
-            verts = mergeInto === null ? liveVerts() : verts.filter((_, i) => i !== at);
-            if (verts.length < 3) isPolygon = false;
-            // A moved seed is no longer proof it was dropped on the blue dot.
-            seedAtSelf = false;
-        }
-        moveIndex = null;
-        mergeInto = null;
-        cursor = null;
-        render();
-        moved = false;
-    };
-    const enter = () => { hovering = true; glow(); };
-    const leave = () => { hovering = false; glow(); };
-    const layerEvents = ["mousedown", "touchstart"] as const;
-    const nodeLayers = ["measure-nodes-halo", "measure-nodes"];
-    const mapEvents = [["mousemove", move], ["touchmove", move], ["mouseup", up], ["touchend", up]] as const;
-    for (const l of nodeLayers) for (const ev of layerEvents) m.on(ev, l, down);
-    for (const ev of layerEvents) m.on(ev, sideDown);
-    m.on("mouseenter", "measure-nodes-halo", enter);
-    m.on("mouseleave", "measure-nodes-halo", leave);
-    for (const [ev, fn] of mapEvents) m.on(ev, fn);
-    return () => {
-        for (const l of nodeLayers) for (const ev of layerEvents) m.off(ev, l, down);
-        for (const ev of layerEvents) m.off(ev, sideDown);
-        m.off("mouseenter", "measure-nodes-halo", enter);
-        m.off("mouseleave", "measure-nodes-halo", leave);
-        for (const [ev, fn] of mapEvents) m.off(ev, fn);
-    };
 });
 
 const CHROME_STACK_PX = 150; // popover offset + height
