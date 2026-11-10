@@ -19,7 +19,7 @@ GET /hospitals?lng=&lat=&km=  WORLD hospitals within km (default 200, max 500) o
 ## Run it locally
 
 ```bash
-npx wrangler login    # once — or export CLOUDFLARE_API_TOKEN (R2 read is enough)
+~/DEV/fetch/gitEr/wrangler.sh whoami    # every wrangler call goes through the wrapper: it reads the limited token from Bitwarden
 npm install
 npm run dev           # the Worker runs here, on :8787, reading the REAL planet.pmtiles in R2
 ```
@@ -31,7 +31,7 @@ prod answers. Pick `worker-local-dev` in the map's CONFIG panel.
 ## Deploy
 
 ```bash
-npx wrangler login    # once
+~/DEV/fetch/gitEr/wrangler.sh whoami    # the wrapper reads the limited token; no login
 npm run deploy:dev    # → tiles-dev.getcache.org, no prompt; break this one freely
 npm run deploy        # → tiles-prod.getcache.org, asks for confirmation — every shipped phone reads it
 ```
@@ -44,7 +44,7 @@ the dev Worker; Cloudflare then enforces the prod/dev split.
 ## Park the planet (once)
 
 1. Download a dated build from https://maps.protomaps.com/builds/ (~120 GB).
-2. `npx wrangler r2 bucket create offline-tiles`
+2. `npx wrangler r2 bucket create offline-tiles` (Chris, on his own login)
 3. Upload with rclone (resumable; R2 ingress is free):
    ```bash
    rclone copy 20260601.pmtiles r2:offline-tiles/planet.pmtiles --progress
@@ -64,4 +64,4 @@ delete or merge them (`lib/worker/workersLayout.test.ts` fails).
 
 ~120 GB × $0.015/GB-mo ≈ **$1.80/month** storage; R2 egress is $0; reads sit
 under the free tier. Set a billing alert (~$15/mo) and stop optimising it. To
-stop the bill: `npx wrangler r2 bucket delete offline-tiles`.
+stop the bill: `npx wrangler r2 bucket delete offline-tiles` (Chris, on his own login).
