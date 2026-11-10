@@ -349,12 +349,13 @@ describe("offline areas are an LRU cache of the 16 MB test budget", { timeout: 3
 	});
 
 	it("D: an area on the visible map is never evicted, however old", async () => {
-		const [oldest, second, ...rest] = await fillToBudget();
+		const [shownId, next, ...rest] = await fillToBudget();
 		await viewing(view(far(0)), 12);
+		// The rest opened after it, so the LRU alone would evict the area on screen.
+		for (const [i, id] of [next, ...rest].entries()) await touchRegions([id], Date.now() + 3_600_000 + i);
 		const at = far(5);
 		stop = startBlobService(host([at]));
-		await vi.waitFor(async () => expect(await ids()).toEqual([oldest, ...rest, regionId(...at)].sort()), SWEEP);
-		expect(await ids()).not.toContain(second);
+		await vi.waitFor(async () => expect(await ids()).toEqual([shownId, ...rest, regionId(...at)].sort()), SWEEP);
 	});
 
 	it("D2: the area seen last goes to the top though its hourly mark was not due", async () => {
