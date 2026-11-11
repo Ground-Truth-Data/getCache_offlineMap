@@ -13,7 +13,6 @@ import {
 	deleteRegion,
 	keepStorage,
 	listRegions,
-	featureAreas,
 	type Region,
 	regionId,
 	regionKnown,
@@ -268,9 +267,10 @@ export function startBlobService(ports: HostPorts): () => void {
 	host = ports;
 	say("[offlineV10] blob engine on — every pin, piece and block earns a blob");
 	void removeStaleAreas().catch((e) => console.error("[offlineV10] stale sweep failed", e));
-	// A spot that leaves this set was deleted or moved. Until the first ready read it is the pin-born rows on
-	// disk, so a pin deleted while the engine was not watching still takes its area.
-	let seen: Promise<Set<string>> | null = null;
+	// A spot that leaves this set was deleted or moved while watched. The first ready read only sets it: a fresh file
+	// before its refill reads empty, and judging disk against that deleted every saved area (10 Nov). An area whose pin
+	// went while the app was shut is left to the LRU and the stale sweep.
+	let seen: Set<string> | null = null;
 	// Diff the pins against disk rather than remember what failed: a pin that missed its signal is just a pin with no blob.
 	const reconcile = (): Set<string> | null => {
 		if (!ports.ready()) return null;
@@ -290,11 +290,9 @@ export function startBlobService(ports: HostPorts): () => void {
 		// The map's first look can land before the pins load, and an import lands under a still camera.
 		if (shown) void look(shown);
 		// Only a place change deletes; a reconnect never does.
-		const before = seen ?? featureAreas().then((rows) => new Set(rows.map((r) => r.id)));
-		seen = Promise.resolve(now);
-		void before.then((ids) => {
-			for (const id of ids) if (!now.has(id)) void removeBlob(id);
-		});
+		const before = seen;
+		seen = now;
+		for (const id of before ?? []) if (!now.has(id)) void removeBlob(id);
 	});
 	const online = (): void => void reconcile();
 	window.addEventListener("online", online);

@@ -13,7 +13,6 @@ vi.stubGlobal("window", new EventTarget());
 let keepAsked = 0;
 vi.mock("./store", () => ({
 	AreaGone: class AreaGone extends Error {},
-	featureAreas: async () => disk.filter((r) => r.kind),
 	regionsSnapshot: () => ({ version: 0, regions: Promise.resolve([...disk]) }),
 	regionKnown: async (id: string) => disk.some((r) => r.id === id),
 	listRegions: async () => [...disk],

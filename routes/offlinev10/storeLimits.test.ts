@@ -197,7 +197,8 @@ describe("a removed area's row leaves with its pin", () => {
 });
 
 describe("an area lives and dies with its pin", () => {
-	it("a pin gone while nobody watched takes its area, its photo and its row once the map store is ready", async () => {
+	// 10 Nov: a fresh file reads empty before its refill lands, and judging disk against that deleted every saved area.
+	it("an empty first look, hydrating or ready, deletes no saved area", async () => {
 		const [p, t, f] = SPOTS;
 		const now = Date.now();
 		const pinned = region(regionId(...p), now, ...p, { kind: "pin" });
@@ -218,17 +219,19 @@ describe("an area lives and dies with its pin", () => {
 			},
 		} as unknown as HostPorts;
 		const stop = startBlobService(ports);
-		await new Promise((r) => setTimeout(r, 20));
-		// Hydrating is not empty.
-		expect(await regionKnown(pinned.id)).toBe(true);
-		ready = true;
-		changed();
-		await vi.waitFor(async () => expect(await regionKnown(pinned.id)).toBe(false), SWEEP);
-		await vi.waitFor(async () => expect(await regionKnown(tomb.id)).toBe(false), SWEEP);
-		expect((await listRegions()).map((r) => r.id)).toEqual([follow.id]);
-		expect([...(await allTileKeys())]).toEqual([ownTile(follow)]);
-		expect(photosDropped).toContain(pieceKey([ringAt(p)]));
-		stop();
+		try {
+			await new Promise((r) => setTimeout(r, 20));
+			expect(await regionKnown(pinned.id)).toBe(true);
+			ready = true;
+			changed();
+			await new Promise((r) => setTimeout(r, 50));
+			expect((await listRegions()).map((r) => r.id).sort()).toEqual([pinned.id, follow.id].sort());
+			expect(await regionKnown(tomb.id)).toBe(true);
+			expect([...(await allTileKeys())].sort()).toEqual([ownTile(pinned), ownTile(follow)].sort());
+			expect(photosDropped).toEqual([]);
+		} finally {
+			stop();
+		}
 	});
 
 	it("an area removed mid-download stops the download and leaves no tile without a row", async () => {

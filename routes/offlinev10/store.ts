@@ -328,14 +328,6 @@ export async function claimArea(id: string): Promise<void> {
 	if (!r || r.removed) throw new AreaGone(id, r ? "removed" : "missing");
 }
 
-/** Every feature-born row, removed ones included: what the engine judges against the features once the host is ready. */
-export async function featureAreas(): Promise<Region[]> {
-	const db = await open();
-	const tx = db.transaction(REGIONS, "readonly");
-	const rows = await result(tx.objectStore(REGIONS).getAll() as IDBRequest<Region[]>);
-	return rows.filter((r) => r.kind);
-}
-
 export async function regionRow(id: string): Promise<Region | undefined> {
 	const db = await open();
 	const tx = db.transaction(REGIONS, "readonly");
