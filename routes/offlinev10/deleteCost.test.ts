@@ -1,22 +1,25 @@
-/** A delete covers only its own piece and the pieces near it: on 10 Nov /app/inbox froze for 8 s, each pin delete
- * tiling every held piece at z18 for every source to learn which photo tiles another piece still needs. */
+/** Photo keys are tiled only where tiles can be: on 10 Nov /app/inbox froze for 8 s and the offline map stuttered
+ * through 200 MB bursts, each delete and each size check tiling every held piece at z18 for every source. */
 import "fake-indexeddb/auto";
 import { beforeEach, expect, it, vi } from "vitest";
 
 const covered: string[] = [];
+const zooms: number[] = [];
 vi.mock("../../lib/onPhone/satellite/satelliteImage", async (real) => {
 	const m = await real<typeof import("../../lib/onPhone/satellite/satelliteImage")>();
 	return {
 		...m,
 		pieceTileKeys: (rings: [number, number][][], z: number) => {
 			covered.push(rings[0]![0]!.join(","));
+			zooms.push(z);
 			return m.pieceTileKeys(rings, z);
 		},
 	};
 });
 
 const { pieceKey } = await import("../../lib/onPhone/satellite/satelliteImage");
-const { deleteRegion, putRegion, wipe } = await import("./store");
+const { deleteRegion, photoTileBytes, putPhotoTiles, putRegion, wipe } = await import("./store");
+const { setBudgetMb } = await import("./budget");
 const { regionRange } = await import("./tiles");
 type Region = import("./store").Region;
 
@@ -31,8 +34,16 @@ const FAR = Array.from({ length: 40 }, (_, i) => piece(`far${i}`, 140 + i * 0.5,
 
 beforeEach(async () => {
 	await wipe();
+	setBudgetMb(1024);
 	for (const r of [GONE, NEAR, ...FAR]) await putRegion(r);
+	await putPhotoTiles([["16/1/1", new ArrayBuffer(10)]], GONE.id, "maptiler");
 	covered.length = 0;
+	zooms.length = 0;
+});
+
+it("sizing photos tiles only for a source with tiles on disk", async () => {
+	await photoTileBytes([GONE, NEAR, ...FAR]);
+	expect(new Set(zooms)).toEqual(new Set([16]));
 });
 
 it("a delete never tiles a piece far from it", async () => {

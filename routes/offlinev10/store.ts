@@ -241,11 +241,19 @@ export async function getPhotoTiles(keys: readonly string[], source: string): Pr
 	return out;
 }
 
-/** Every satellite tile a blob's piece could hold, from any source: geometry, so a delete needs no record. None without a piece. */
-function photoKeysOf(r: Region): string[] {
+/** Every satellite tile a blob's piece could hold from these sources: geometry, so a delete needs no record. None without a piece. */
+function photoKeysOf(r: Region, sources: readonly string[]): string[] {
 	const rings = r.photoRings;
 	if (!rings) return [];
-	return Object.entries(SATELLITE_SOURCES).flatMap(([id, s]) => pieceTileKeys(rings, s.zoom).map((k) => `${PHOTO_PREFIX}${id}/${k}`));
+	return sources.flatMap((id) => pieceTileKeys(rings, SATELLITE_SOURCES[id]!.zoom).map((k) => `${PHOTO_PREFIX}${id}/${k}`));
+}
+
+/** Sources with any tile on disk. Tiling a piece for the z18 sources it never used was nearly all the cost. */
+async function heldSources(): Promise<string[]> {
+	const st = (await open()).transaction(TILES, "readonly").objectStore(TILES);
+	const ids = Object.keys(SATELLITE_SOURCES);
+	const held = await Promise.all(ids.map((id) => result(st.getKey(IDBKeyRange.bound(`${PHOTO_PREFIX}${id}/`, `${PHOTO_PREFIX}${id}/￿`)))));
+	return ids.filter((_, i) => held[i] !== undefined);
 }
 
 function ringsBox(r: Region, pad: number): Box | null {
@@ -265,9 +273,10 @@ export interface CloseUp {
 export async function photoTileBytes(regions: readonly Region[]): Promise<Map<string, CloseUp>> {
 	const owners = new Map<string, string[]>();
 	const out = new Map<string, CloseUp>();
+	const sources = await heldSources();
 	for (const r of regions) {
 		out.set(r.id, { tiles: 0, bytes: 0 });
-		for (const k of photoKeysOf(r)) owners.set(k, [...(owners.get(k) ?? []), r.id]);
+		for (const k of photoKeysOf(r, sources)) owners.set(k, [...(owners.get(k) ?? []), r.id]);
 	}
 	const db = await open();
 	const st = db.transaction(TILES, "readonly").objectStore(TILES);
@@ -483,11 +492,12 @@ export async function deleteRegion(id: string, keepRow = false): Promise<number 
 	const keep = others.map((r) => r.range);
 	// Only a piece within one coarsest photo tile can share a tile: tiling every piece at z18 froze the app 8 s.
 	const near = ringsBox(gone, 360 / 2 ** Math.min(...Object.values(SATELLITE_SOURCES).map((s) => s.zoom)));
-	const keepPhoto = new Set(others.filter((r) => near && r.photoRings && boxesIntersect(near, ringsBox(r, 0)!)).flatMap(photoKeysOf));
+	const sources = await heldSources();
+	const keepPhoto = new Set(others.filter((r) => near && r.photoRings && boxesIntersect(near, ringsBox(r, 0)!)).flatMap((r) => photoKeysOf(r, sources)));
 	const doomed = rangeTiles(gone.range)
 		.filter((t) => !keep.some((r) => rangeContains(r, t)))
 		.map(tileKey)
-		.concat(photoKeysOf(gone).filter((k) => !keepPhoto.has(k)));
+		.concat(photoKeysOf(gone, sources).filter((k) => !keepPhoto.has(k)));
 	const db = await open();
 	const tx = db.transaction([TILES, REGIONS], "readwrite");
 	const st = tx.objectStore(TILES);
