@@ -6,6 +6,8 @@ import { deleteAllSatImages, deleteSatImage, pieceTileKeys, type RawTile } from 
 import { BudgetError, budgetBytes } from "./budget";
 import type { Place } from "./places";
 import {
+	type Box,
+	boxesIntersect,
 	missingKeys,
 	type Range,
 	rangeContains,
@@ -246,6 +248,14 @@ function photoKeysOf(r: Region): string[] {
 	return Object.entries(SATELLITE_SOURCES).flatMap(([id, s]) => pieceTileKeys(rings, s.zoom).map((k) => `${PHOTO_PREFIX}${id}/${k}`));
 }
 
+function ringsBox(r: Region, pad: number): Box | null {
+	const pts = r.photoRings?.flat();
+	if (!pts?.length) return null;
+	const lng = pts.map((p) => p[0]);
+	const lat = pts.map((p) => p[1]);
+	return { w: Math.min(...lng) - pad, e: Math.max(...lng) + pad, s: Math.min(...lat) - pad, n: Math.max(...lat) + pad };
+}
+
 /** A blob's photo tiles on disk, all it covers, in one cursor pass. What a bake added is on its record's wire. */
 export interface CloseUp {
 	tiles: number;
@@ -479,7 +489,9 @@ export async function deleteRegion(id: string, keepRow = false): Promise<number 
 	if (!gone) return null;
 	const others = (await listRegions()).filter((r) => r.id !== id);
 	const keep = others.map((r) => r.range);
-	const keepPhoto = new Set(others.flatMap(photoKeysOf));
+	// Only a piece within one coarsest photo tile can share a tile: tiling every piece at z18 froze the app 8 s.
+	const near = ringsBox(gone, 360 / 2 ** Math.min(...Object.values(SATELLITE_SOURCES).map((s) => s.zoom)));
+	const keepPhoto = new Set(others.filter((r) => near && r.photoRings && boxesIntersect(near, ringsBox(r, 0)!)).flatMap(photoKeysOf));
 	const doomed = rangeTiles(gone.range)
 		.filter((t) => !keep.some((r) => rangeContains(r, t)))
 		.map(tileKey)
