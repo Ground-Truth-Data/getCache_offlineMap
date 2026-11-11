@@ -242,18 +242,18 @@ export async function getPhotoTiles(keys: readonly string[], source: string): Pr
 }
 
 /** Every satellite tile a blob's piece could hold from these sources: geometry, so a delete needs no record. None without a piece. */
-function photoKeysOf(r: Region, sources: readonly string[]): string[] {
+function photoKeysOf(r: Region, sources: readonly [string, { zoom: number }][]): string[] {
 	const rings = r.photoRings;
 	if (!rings) return [];
-	return sources.flatMap((id) => pieceTileKeys(rings, SATELLITE_SOURCES[id]!.zoom).map((k) => `${PHOTO_PREFIX}${id}/${k}`));
+	return sources.flatMap(([id, s]) => pieceTileKeys(rings, s.zoom).map((k) => `${PHOTO_PREFIX}${id}/${k}`));
 }
 
 /** Sources with any tile on disk. Tiling a piece for the z18 sources it never used was nearly all the cost. */
-async function heldSources(): Promise<string[]> {
+async function heldSources(): Promise<[string, { zoom: number }][]> {
 	const st = (await open()).transaction(TILES, "readonly").objectStore(TILES);
-	const ids = Object.keys(SATELLITE_SOURCES);
-	const held = await Promise.all(ids.map((id) => result(st.getKey(IDBKeyRange.bound(`${PHOTO_PREFIX}${id}/`, `${PHOTO_PREFIX}${id}/￿`)))));
-	return ids.filter((_, i) => held[i] !== undefined);
+	const all = Object.entries(SATELLITE_SOURCES);
+	const held = await Promise.all(all.map(([id]) => result(st.getKey(IDBKeyRange.bound(`${PHOTO_PREFIX}${id}/`, `${PHOTO_PREFIX}${id}/￿`)))));
+	return all.filter((_, i) => held[i] !== undefined);
 }
 
 function ringsBox(r: Region, pad: number): Box | null {
