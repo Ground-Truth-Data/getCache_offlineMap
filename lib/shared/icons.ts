@@ -26,6 +26,17 @@ export function pinLibraryUrl(file: string): string {
     return url;
 }
 
+let sackCaches = (): boolean => false;
+/** A host whose caches hold sacks (cone mode) swaps every cache pin's art; a reactive `on` keeps templates in step. */
+export const setSackCaches = (on: () => boolean): void => {
+    sackCaches = on;
+};
+function cachePin(name: PinKey, colour: string): IconRow {
+    const box = pinLibraryUrl(`pin_cache_${colour}sm.webp`);
+    const sack = pinLibraryUrl(`pin_sack_${colour}sm.webp`);
+    return { name, pin: "cachePin", get path() { return sackCaches() ? sack : box; } };
+}
+
 // Persisted by this string, so the set is a stable contract.
 export type PinKey =
     | "pin"
@@ -125,21 +136,21 @@ export const ICONS: readonly IconRow[] = [
     { name: "reefer", pin: "glyph", path: pinLibraryUrl("pin_reefer_sm.webp") },
     { name: "authority", pin: "glyph", path: pinLibraryUrl("pin_authority_sm.webp") },
     { name: "nwz", pin: "glyph", path: pinLibraryUrl("pin_nwz_sm.webp") },
-    { name: "cache", pin: "cachePin", path: pinLibraryUrl("pin_cache_sm.webp") },
-    { name: "redCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_red_sm.webp") },
-    { name: "orangeCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_orange_sm.webp") },
-    { name: "yellowCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_yellow_sm.webp") },
-    { name: "greenCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_green_sm.webp") },
-    { name: "blueCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_blue_sm.webp") },
-    { name: "purpleCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_purple_sm.webp") },
-    { name: "pinkCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_pink_sm.webp") },
-    { name: "rainbowCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_rainbow_sm.webp") },
-    { name: "zebraCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_zebra_sm.webp") },
-    { name: "plaidCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_plaid_sm.webp") },
-    { name: "tigerCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_tiger_sm.webp") },
-    { name: "beeCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_bee_sm.webp") },
-    { name: "watermelonCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_watermelon_sm.webp") },
-    { name: "spiderCache", pin: "cachePin", path: pinLibraryUrl("pin_cache_spider_sm.webp") },
+    cachePin("cache", ""),
+    cachePin("redCache", "red_"),
+    cachePin("orangeCache", "orange_"),
+    cachePin("yellowCache", "yellow_"),
+    cachePin("greenCache", "green_"),
+    cachePin("blueCache", "blue_"),
+    cachePin("purpleCache", "purple_"),
+    cachePin("pinkCache", "pink_"),
+    cachePin("rainbowCache", "rainbow_"),
+    cachePin("zebraCache", "zebra_"),
+    cachePin("plaidCache", "plaid_"),
+    cachePin("tigerCache", "tiger_"),
+    cachePin("beeCache", "bee_"),
+    cachePin("watermelonCache", "watermelon_"),
+    cachePin("spiderCache", "spider_"),
     { name: "map", path: `${DIR}/map_icon_v2_sm.webp` },
     // Deliberately unlike the map/poly/line outlines: a block is administrative, not drawn.
     { name: "block", path: `${DIR}/block_icon_sm.webp` },
