@@ -1226,7 +1226,7 @@ $effect(() => {
         flex-direction: column;
     }
     .measure-trio .measure-cache { gap: 0; }
-    .measure-trio .measure-cache .measure-pin-ic { height: 50px; }
+    .measure-trio .measure-cache .measure-pin-ic { height: 50px; transform: translateY(3px); }
 
     /* #1da1f2 matches the user-location dot. */
     .measure-self-badge {
