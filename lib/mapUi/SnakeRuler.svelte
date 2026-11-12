@@ -1,6 +1,6 @@
 <!-- Snake Ruler measure tool. Owns all its own state and never touches draw state, so it cannot open the draw palette. -->
 <script lang="ts">
-import { iconPath } from "../shared/icons";
+import { iconPath, plotsOn } from "../shared/icons";
 import { m } from "$parent/src/lib/paraglide/messages";
 import handShovelCursor from "$gc/assets/hand_shovel_cursor.webp";
 import handShovelCursorRight from "$gc/assets/hand_shovel_cursor_right.webp";
@@ -1082,33 +1082,36 @@ $effect(() => {
 {/if}
 
 {#if active && popAnchor && (canFinish || singlePoint) && !fading}
-    <div class="measure-pop" class:measure-grid={singlePoint} class:measure-at-self={singlePoint && seedAtSelf} class:measure-gliding={!!cursor} class:measure-below={popAnchor.below} class:measure-beside={popAnchor.beside} style="left:{popAnchor.popX}px; top:{popAnchor.y}px;">
+    <div class="measure-pop" class:measure-grid={singlePoint} class:measure-trio={singlePoint && !plotsOn()} class:measure-at-self={singlePoint && seedAtSelf} class:measure-gliding={!!cursor} class:measure-below={popAnchor.below} class:measure-beside={popAnchor.beside} style="left:{popAnchor.popX}px; top:{popAnchor.y}px;">
         {#if singlePoint}
-            <!-- 2×2: copy · plot / pin · cache. A tap off the node dismisses. -->
+            <!-- 2×2: copy · plot / pin · cache. With no plots: copy and pin as bare icons, beside a tall cache.
+                 A tap off the node dismisses. -->
             {#if seedAtSelf}
                 <div class="measure-self-badge">
                     <span class="measure-self-dot"></span>{m.ofmap_ui_at_your_location()}
                 </div>
             {/if}
-            <button class="measure-btn measure-share" onclick={sharePoint} title={m.ofmap_ui_copy_gps_title()}>
+            <button class="measure-btn measure-share" onclick={sharePoint} title={m.ofmap_ui_copy_gps_title()} aria-label={m.ofmap_ui_copy()}>
                 {#if copied}
                     {m.ofmap_ui_copied()}
                 {:else if copyFailed}
                     {m.ofmap_ui_copy_failed()}
                 {:else}
-                    <ports.ui.Icon name="copy" size={13} style="flex-shrink:0" />
-                    {m.ofmap_ui_copy()}
+                    <ports.ui.Icon name="copy" size={plotsOn() ? 13 : 18} style="flex-shrink:0" />
+                    {#if plotsOn()}{m.ofmap_ui_copy()}{/if}
                 {/if}
             </button>
-            <button class="measure-btn measure-plot" class:at-self={seedAtSelf} onclick={dropPlot} title={seedAtSelf ? m.ofmap_ui_drop_plot_self_title() : m.ofmap_ui_drop_plot_title()}>
-                <img class="measure-plot-ic" src={iconPath("qualityWhite")} alt="" />
-                {m.ofmap_ui_plot()}
-            </button>
-            <button class="measure-btn measure-save" onclick={() => savePoint("pin")} title={m.ofmap_ui_drop_pin_title()}>
+            {#if plotsOn()}
+                <button class="measure-btn measure-plot" class:at-self={seedAtSelf} onclick={dropPlot} title={seedAtSelf ? m.ofmap_ui_drop_plot_self_title() : m.ofmap_ui_drop_plot_title()}>
+                    <img class="measure-plot-ic" src={iconPath("qualityWhite")} alt="" />
+                    {m.ofmap_ui_plot()}
+                </button>
+            {/if}
+            <button class="measure-btn measure-save" onclick={() => savePoint("pin")} title={m.ofmap_ui_drop_pin_title()} aria-label={m.ofmap_ui_pin()}>
                 <img class="measure-pin-ic" src={iconPath("pin")} alt="" />
-                {m.ofmap_ui_pin()}
+                {#if plotsOn()}{m.ofmap_ui_pin()}{/if}
             </button>
-            <button class="measure-btn measure-save" onclick={() => savePoint("cachePin")} title={m.ofmap_ui_drop_cache_title()}>
+            <button class="measure-btn measure-save measure-cache" onclick={() => savePoint("cachePin")} title={m.ofmap_ui_drop_cache_title()}>
                 <img class="measure-pin-ic" src={iconPath("cache")} alt="" />
                 {m.ofmap_ui_cache()}
             </button>
@@ -1211,6 +1214,16 @@ $effect(() => {
         padding: 0 0.2rem;
         height: 32px;
     }
+    /* dense: the tall cache fills the right column beside copy, not below pin. */
+    .measure-pop.measure-trio { grid-auto-flow: row dense; }
+    .measure-trio .measure-btn { grid-column: 1; }
+    .measure-trio .measure-btn.measure-cache {
+        grid-column: 2;
+        grid-row: span 2;
+        height: auto;
+        flex-direction: column;
+    }
+    .measure-trio .measure-cache .measure-pin-ic { height: 34px; }
 
     /* #1da1f2 matches the user-location dot. */
     .measure-self-badge {

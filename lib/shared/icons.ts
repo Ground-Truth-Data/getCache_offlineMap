@@ -26,15 +26,18 @@ export function pinLibraryUrl(file: string): string {
     return url;
 }
 
-let sackCaches = (): boolean => false;
-/** A host whose caches hold sacks (cone mode) swaps every cache pin's art; a reactive `on` keeps templates in step. */
-export const setSackCaches = (on: () => boolean): void => {
-    sackCaches = on;
+type WorkMode = { sackCaches: () => boolean; plots: () => boolean };
+let workMode: WorkMode = { sackCaches: () => false, plots: () => true };
+/** What the host's work mode changes on the map: cone caches hold sacks, and a picking mode drops no Quality plots.
+ *  Reactive getters keep templates in step. */
+export const setWorkMode = (on: WorkMode): void => {
+    workMode = on;
 };
+export const plotsOn = (): boolean => workMode.plots();
 function cachePin(name: PinKey, colour: string): IconRow {
     const box = pinLibraryUrl(`pin_cache_${colour}sm.webp`);
     const sack = pinLibraryUrl(`pin_sack_${colour}sm.webp`);
-    return { name, pin: "cachePin", get path() { return sackCaches() ? sack : box; } };
+    return { name, pin: "cachePin", get path() { return workMode.sackCaches() ? sack : box; } };
 }
 
 // Persisted by this string, so the set is a stable contract.
