@@ -26,18 +26,20 @@ export function pinLibraryUrl(file: string): string {
     return url;
 }
 
-type WorkMode = { sackCaches: () => boolean; plots: () => boolean };
-let workMode: WorkMode = { sackCaches: () => false, plots: () => true };
-/** What the host's work mode changes on the map: cone caches hold sacks, and a picking mode drops no Quality plots.
+/** What a cache pin holds: what that crew carries. Every fill has a pin per colour. */
+export type CacheFill = "cache" | "sack" | "basket";
+type WorkMode = { cacheFill: () => CacheFill; plots: () => boolean };
+let workMode: WorkMode = { cacheFill: () => "cache", plots: () => true };
+/** What the host's work mode changes on the map: what a cache holds, and whether Quality plots exist.
  *  Reactive getters keep templates in step. */
 export const setWorkMode = (on: WorkMode): void => {
     workMode = on;
 };
 export const plotsOn = (): boolean => workMode.plots();
+const FILLS: CacheFill[] = ["cache", "sack", "basket"];
 function cachePin(name: PinKey, colour: string): IconRow {
-    const box = pinLibraryUrl(`pin_cache_${colour}sm.webp`);
-    const sack = pinLibraryUrl(`pin_sack_${colour}sm.webp`);
-    return { name, pin: "cachePin", get path() { return workMode.sackCaches() ? sack : box; } };
+    const art = Object.fromEntries(FILLS.map((f) => [f, pinLibraryUrl(`pin_${f}_${colour}sm.webp`)]));
+    return { name, pin: "cachePin", get path() { return art[workMode.cacheFill()]; } };
 }
 
 // Persisted by this string, so the set is a stable contract.
