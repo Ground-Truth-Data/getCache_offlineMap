@@ -115,6 +115,7 @@
 	"ofmap_ui_plot_code_aria": "Code de placette {code}",
 	"ofmap_ui_locode_copy_aria": "Copier le code de lieu",
 	"ofmap_ui_copy": "Copier",
+	"ofmap_ui_gps": "GPS",
 	"ofmap_ui_copied_caps": "COPIÉ",
 	"ofmap_ui_failed_caps": "ÉCHEC",
 	"ofmap_ui_copy_caps": "COPIER",

@@ -115,6 +115,7 @@
 	"ofmap_ui_plot_code_aria": "Plot code {code}",
 	"ofmap_ui_locode_copy_aria": "Copy location code",
 	"ofmap_ui_copy": "Copy",
+	"ofmap_ui_gps": "GPS",
 	"ofmap_ui_copied_caps": "COPIED",
 	"ofmap_ui_failed_caps": "FAILED",
 	"ofmap_ui_copy_caps": "COPY",

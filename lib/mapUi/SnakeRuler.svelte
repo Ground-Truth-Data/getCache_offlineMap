@@ -819,6 +819,7 @@ const VP_MARGIN = 14;
 const OFFSCREEN_HIDE = 40;
 const POP_HALF_W = 42;
 const POP_GRID_W = 160; // keep in sync with .measure-grid width
+const POP_TRIO_W = 132; // keep in sync with .measure-trio width
 const POP_EDGE_PX = 5;
 const TOTAL_HALF_W = 72;
 // keep in sync with the .measure-pop / .measure-total translates
@@ -876,7 +877,7 @@ let popAnchor = $derived.by(() => {
     const floorY = readFloorY(map.getCanvas()) - VP_MARGIN;
     const belowY = maxY + HAND_DROP_PX;
     const fitsBelow = belowY + CHROME_STACK_PX <= floorY;
-    const popHalf = singlePoint ? POP_GRID_W / 2 : POP_HALF_W;
+    const popHalf = singlePoint ? (plotsOn() ? POP_GRID_W : POP_TRIO_W) / 2 : POP_HALF_W;
     const leftX = minX - BESIDE_GAP - popHalf;
     const rightX = maxX + BESIDE_GAP + popHalf;
     // Each tap on the shape steps to the next spot hugging it: the sides that fit, then over it.
@@ -1084,21 +1085,21 @@ $effect(() => {
 {#if active && popAnchor && (canFinish || singlePoint) && !fading}
     <div class="measure-pop" class:measure-grid={singlePoint} class:measure-trio={singlePoint && !plotsOn()} class:measure-at-self={singlePoint && seedAtSelf} class:measure-gliding={!!cursor} class:measure-below={popAnchor.below} class:measure-beside={popAnchor.beside} style="left:{popAnchor.popX}px; top:{popAnchor.y}px;">
         {#if singlePoint}
-            <!-- 2×2: copy · plot / pin · cache. With no plots: copy and pin as bare icons, beside a tall cache.
+            <!-- 2×2: copy · plot / pin · cache. With no plots: GPS and pin stacked beside a tall cache.
                  A tap off the node dismisses. -->
             {#if seedAtSelf}
                 <div class="measure-self-badge">
                     <span class="measure-self-dot"></span>{m.ofmap_ui_at_your_location()}
                 </div>
             {/if}
-            <button class="measure-btn measure-share" onclick={sharePoint} title={m.ofmap_ui_copy_gps_title()} aria-label={m.ofmap_ui_copy()}>
+            <button class="measure-btn measure-share" onclick={sharePoint} title={m.ofmap_ui_copy_gps_title()}>
                 {#if copied}
                     {m.ofmap_ui_copied()}
                 {:else if copyFailed}
                     {m.ofmap_ui_copy_failed()}
                 {:else}
-                    <ports.ui.Icon name="copy" size={plotsOn() ? 13 : 18} style="flex-shrink:0" />
-                    {#if plotsOn()}{m.ofmap_ui_copy()}{/if}
+                    <ports.ui.Icon name="copy" size={13} style="flex-shrink:0" />
+                    {plotsOn() ? m.ofmap_ui_copy() : m.ofmap_ui_gps()}
                 {/if}
             </button>
             {#if plotsOn()}
@@ -1107,9 +1108,9 @@ $effect(() => {
                     {m.ofmap_ui_plot()}
                 </button>
             {/if}
-            <button class="measure-btn measure-save" onclick={() => savePoint("pin")} title={m.ofmap_ui_drop_pin_title()} aria-label={m.ofmap_ui_pin()}>
+            <button class="measure-btn measure-save" onclick={() => savePoint("pin")} title={m.ofmap_ui_drop_pin_title()}>
                 <img class="measure-pin-ic" src={iconPath("pin")} alt="" />
-                {#if plotsOn()}{m.ofmap_ui_pin()}{/if}
+                {m.ofmap_ui_pin()}
             </button>
             <button class="measure-btn measure-save measure-cache" onclick={() => savePoint("cachePin")} title={m.ofmap_ui_drop_cache_title()}>
                 <img class="measure-pin-ic" src={iconPath("cache")} alt="" />
@@ -1215,7 +1216,8 @@ $effect(() => {
         height: 32px;
     }
     /* dense: the tall cache fills the right column beside copy, not below pin. */
-    .measure-pop.measure-trio { grid-auto-flow: row dense; }
+    /* keep in sync with POP_TRIO_W */
+    .measure-pop.measure-trio { grid-auto-flow: row dense; width: 132px; }
     .measure-trio .measure-btn { grid-column: 1; }
     .measure-trio .measure-btn.measure-cache {
         grid-column: 2;
@@ -1223,7 +1225,8 @@ $effect(() => {
         height: auto;
         flex-direction: column;
     }
-    .measure-trio .measure-cache .measure-pin-ic { height: 34px; }
+    .measure-trio .measure-cache { gap: 0; }
+    .measure-trio .measure-cache .measure-pin-ic { height: 50px; }
 
     /* #1da1f2 matches the user-location dot. */
     .measure-self-badge {
