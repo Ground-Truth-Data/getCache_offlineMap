@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { distance } from "$gc/units.svelte";
+import { areaUnit, distance } from "$gc/units.svelte";
 import {
 	areaLabel,
 	bearingLabel,
@@ -21,6 +21,7 @@ const NOW = Date.UTC(2026, 7, 8, 12, 0);
 // The runner's en-US would otherwise start every test in imperial.
 beforeEach(() => {
 	distance.value = "metric";
+	areaUnit.value = "ha";
 });
 
 describe("distance + bearing — 'is it coming for me?'", () => {
@@ -173,7 +174,8 @@ describe("areaLabel — hectares, the unit the job speaks", () => {
 		expect(areaLabel(0.0000005)).toBe("1 m²");
 	});
 
-	it("speaks acres when the phone is set to imperial", () => {
+	it("speaks acres and miles when the phone is set to acres and imperial", () => {
+		areaUnit.value = "ac";
 		distance.value = "imperial";
 		expect(areaLabel(0.042)).toBe("10 ac");
 		expect(areaLabel(2.08)).toBe("514 ac");
