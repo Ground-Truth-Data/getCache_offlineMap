@@ -41,6 +41,7 @@ beforeEach(() => {
 	fetched.length = 0;
 	answer = () => new Response(new Blob([new Uint8Array([9])]));
 	vi.stubGlobal("fetch", async (url: string) => (fetched.push(url), answer()));
+	vi.stubGlobal("addEventListener", () => {});
 	vi.spyOn(console, "error").mockImplementation(() => {});
 });
 afterEach(() => {
@@ -98,6 +99,18 @@ describe("no file yet: no tile, and a minute's wait before the next try", () => 
 		answer = () => new Response(new Blob([new Uint8Array([9])]));
 		await vi.advanceTimersByTimeAsync(60_000);
 		expect(await highwayTile(5, 1, 1)).toBeDefined();
+	});
+
+	it("leaving the page mid-download is no failure: nothing is logged", async () => {
+		let leave = () => {};
+		vi.stubGlobal("addEventListener", (_: string, act: () => void) => (leave = act));
+		vi.stubGlobal("fetch", (_: string, init?: RequestInit) => new Promise((_ok, fail) => init?.signal?.addEventListener("abort", () => fail(init.signal!.reason))));
+		const tile = (await freshPage())(5, 1, 1);
+		await vi.waitFor(() => expect(net.wifiAsked).toBe(1));
+		await Promise.resolve();
+		leave();
+		expect(await tile).toBeUndefined();
+		expect(console.error).not.toHaveBeenCalled();
 	});
 
 	it("with no tiles host it says so", async () => {

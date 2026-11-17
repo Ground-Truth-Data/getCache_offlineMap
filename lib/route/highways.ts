@@ -32,7 +32,9 @@ async function load(): Promise<PMTiles | null> {
 		if (!(await onWifi())) return null;
 		const host = tilesHost();
 		if (!host) throw new Error("no tiles host");
-		const r = await fetch(`${host}/${NAME}`);
+		const leaving = new AbortController();
+		addEventListener("pagehide", () => leaving.abort(), { once: true });
+		const r = await fetch(`${host}/${NAME}`, { signal: leaving.signal });
 		if (!r.ok) throw new Error(`${host}/${NAME} → ${r.status}`);
 		const fresh: Kept = { name: NAME, blob: await r.blob() };
 		await idb("readwrite", (s) => s.put(fresh, KEY));
@@ -49,7 +51,8 @@ let archive: Promise<PMTiles | null> | null = null;
 export async function highwayTile(z: number, x: number, y: number): Promise<ArrayBuffer | undefined> {
 	archive ??= load()
 		.catch((e) => {
-			console.error("[highways] would not load: no drive leaves the downloaded areas, and no road is drawn outside them", e);
+			// Leaving the page cancels the download; the next visit fetches it again.
+			if (e?.name !== "AbortError") console.error("[highways] would not load: no drive leaves the downloaded areas, and no road is drawn outside them", e);
 			return null;
 		})
 		.then((got) => {
