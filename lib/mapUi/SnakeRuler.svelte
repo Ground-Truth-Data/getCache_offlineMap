@@ -11,6 +11,7 @@ import area from "@turf/area";
 import turfLength from "@turf/length";
 import { markerCtor } from "../shared/rendererOf";
 import { aimLoupe, emit as emitPress, swallowNextClick } from "../shared/doubleTapToPin";
+import { LOUPE_H, LOUPE_W, RING_PAD, loupeAt } from "$gc/Loupe.svelte";
 import { DRAW_LIMIT_NOTE, mayAddVertex } from "$gc/drawLimit";
 import { BORDER_RUST, POLYGON_FILL, POLYGON_OUTLINE, STROKE } from "$gc/drawDials";
 import { type Lnglat, type SnapKind, type SnapRings, snapLngLat, snapRings } from "$gc/snapToShapes";
@@ -313,14 +314,17 @@ function clearAll() {
 // component would otherwise leave them on the map with no state behind them and no way to dismiss.
 $effect(() => () => clearAll());
 
+// h: the art's height at w, so the menu can keep off the hands.
 // HEAD (vertex 0) = LEFT hand; TAIL = RIGHT hand. Widths chosen so both render ≈75px tall: a handle the cursor's hand (100px) grabs, so smaller than it.
 const HEAD_CURSOR = {
     src: handShovelCursor,
+    h: 74,
     w: 54,
     offset: [18, 0] as [number, number], // fingertip nudge
 };
 const TAIL_CURSOR = {
     src: handShovelCursorRight,
+    h: 75,
     w: 33,
     offset: [4, 0] as [number, number],
 };
@@ -815,6 +819,27 @@ $effect(() => {
 
 const CHROME_STACK_PX = 150; // popover offset + height
 const HAND_DROP_PX = 34; // hands hang below the end nodes
+// The measurement must stay readable: the menu and total keep off the hands, and off the loupe while it rides a drag.
+function handRects(pts: Lnglat[]): Rect[] {
+    if (!map || isPolygon || pts.length === 0 || armed === "pin") return [];
+    const ends = pts.length >= 2 ? ([[HEAD_CURSOR, pts[0]], [TAIL_CURSOR, pts[pts.length - 1]]] as const) : ([[HEAD_CURSOR, pts[0]]] as const);
+    return ends.map(([cfg, at]) => {
+        const p = map!.project({ lng: at[0], lat: at[1] });
+        return { x: p.x + cfg.offset[0] - cfg.w / 2, y: p.y + cfg.offset[1], w: cfg.w, h: cfg.h };
+    });
+}
+// The loupe is drawn in viewport px (the page is CSS-zoomed); the menu is placed in canvas px.
+function loupeRect(at: Lnglat): Rect {
+    const c = map!.getCanvas();
+    const r = c.getBoundingClientRect();
+    const s = c.offsetWidth / r.width;
+    const p = map!.project({ lng: at[0], lat: at[1] });
+    const o = loupeAt(r.left + p.x / s, r.top + p.y / s, window.innerWidth);
+    const w = LOUPE_W + 2 * RING_PAD;
+    const h = LOUPE_H + 2 * RING_PAD;
+    return { x: (o.x - w / 2 - r.left) * s, y: (o.y - h / 2 - r.top) * s, w: w * s, h: h * s };
+}
+
 const VP_MARGIN = 14;
 const OFFSCREEN_HIDE = 40;
 const POP_HALF_W = 42;
@@ -896,6 +921,8 @@ let popAnchor = $derived.by(() => {
     const cornered = spot === "top";
     const level = spot === "left" || spot === "right" || spot === "over";
     const clampX = (x: number, half: number, edge: number) =>
+        ...handRects(pts),
+        ...(cursor ? [loupeRect(cursor)] : []),
         Math.min(Math.max(x, edge + half), W - edge - half);
     const besideX = leftX - popHalf >= POP_EDGE_PX ? leftX : minX - ARM_RECT.l + ARM_RECT.w + BESIDE_GAP + popHalf;
     let popX = beside ? besideX : spot === "left" ? leftX : spot === "right" ? rightX : clampX(cx, popHalf, POP_EDGE_PX);
@@ -916,6 +943,8 @@ let popAnchor = $derived.by(() => {
     const minPopX = POP_EDGE_PX;
     const maxPopX = W - POP_EDGE_PX - popW;
     const stackBox = (atY: number): Rect => ({
+    // The total rides the dodge with the menu: they are one box.
+    const dodged = shifted !== null && Math.abs(shifted + popHalf - popX) > 1;
         x: popX - popHalf,
         y: beside ? atY - POP_H / 2 : below ? atY + TOTAL_OFFSET_PX : atY - POP_OFFSET_PX - POP_H,
         w: popW,
@@ -949,7 +978,7 @@ let popAnchor = $derived.by(() => {
 
     return {
         popX,
-        totalX: singlePoint || level
+        totalX: singlePoint || level || dodged
             ? popX
             : clampX(cx + (tailX - cx) * TOTAL_TAIL_BIAS, TOTAL_HALF_W, VP_MARGIN),
         y: clampedY,
