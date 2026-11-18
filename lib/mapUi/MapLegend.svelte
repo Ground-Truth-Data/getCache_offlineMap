@@ -18,6 +18,7 @@ import type { MapHostPorts } from "../shared/mapHostPorts";
 import { m } from "$parent/src/lib/paraglide/messages";
 import { iconPath } from "../shared/icons";
 import fireIconUrl from "../assets/fire_icon.webp";
+import Icon from "$gc/Icon.svelte";
 import pdfMapsIconUrl from "../assets/pdf_maps_icon.webp";
 import clusterPinUrl from "../assets/pin_library_small/pin_cluster_gold_sm.webp";
 import hospitalPinUrl from "../../routes/hospitals/hospitalPin.webp";
@@ -134,8 +135,8 @@ function noteFor(row: LegendRow, on: boolean): string | undefined {
 		{:else if row.swatch === "cluster"}<span class="legend-cluster-n">3</span>
 		{:else if row.swatch === "plaque"}<span class="legend-plot-n">3</span><span class="legend-plaque-pct">92%</span>
 		{:else if row.swatch === "dots"}
-			<span class="legend-dot legend-dot--under">−</span>
-			<span class="legend-dot legend-dot--over">+</span>
+			<span class="legend-dot legend-dot--under"><Icon name="minus" size={8} stroke={4} /></span>
+			<span class="legend-dot legend-dot--over"><Icon name="plus" size={8} stroke={4} /></span>
 			<span class="legend-dot legend-dot--fault"></span>
 		{/if}
 	</span>
