@@ -434,11 +434,9 @@ function beginGrab(which: "head" | "tail"): Lnglat {
     dragAnchor = anchor;
     if (touchLog && map) { const q = map.project(anchor); touchLog(`PICK ${which} hand, node @${Math.round(q.x)},${Math.round(q.y)} canvas px`); }
     holdMap(map, true);
-    (which === "head" ? headCursor : tailCursor)?.getElement().classList.add("rt-grabbed");
     return anchor;
 }
 function endGrab(ll: Lnglat | null) {
-    for (const h of [headCursor, tailCursor]) h?.getElement().classList.remove("rt-grabbed");
     holdMap(map, false);
     if (ll) commitAt(ll[0], ll[1]);
     else {
@@ -688,6 +686,8 @@ export function discard() {
     seedAtSelf = false;
     gridSnapDot = null;
     setGridGlow?.(null);
+    // A lesson cancelled mid-drag never reaches endGrab: the map would stay unpannable.
+    if (mapHeld) holdMap(map, false);
     clearAll();
     verts = [];
 }
@@ -1281,9 +1281,6 @@ $effect(() => {
     .measure-plot { color: #f2f2f2; }
     .measure-plot:active { background: color-mix(in srgb, #ffffff 14%, transparent); }
     :global(.rt-measure-grab) {
-        --rt-gold-edge: drop-shadow(1.5px 0 0 var(--rt-yellow)) drop-shadow(-1.5px 0 0 var(--rt-yellow))
-            drop-shadow(0 1.5px 0 var(--rt-yellow)) drop-shadow(0 -1.5px 0 var(--rt-yellow))
-            drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55));
         pointer-events: auto;
         cursor: grab;
         touch-action: none;
@@ -1295,11 +1292,5 @@ $effect(() => {
         display: block;
         height: auto;
         filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55));
-    }
-    /* The hand under the fist: the same gold edging the cursor's own hand wears for a press. */
-    :global(.rt-measure-grab.rt-grabbed img) { filter: var(--rt-gold-edge); }
-    /* Hover tells a hand (grows the snake) from its node (moves). Mouse only: a tap leaves hover stuck on a phone. */
-    @media (hover: hover) {
-        :global(.rt-measure-grab:hover img) { filter: var(--rt-gold-edge); }
     }
 </style>
