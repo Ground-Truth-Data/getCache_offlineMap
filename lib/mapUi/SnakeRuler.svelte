@@ -89,7 +89,6 @@ let cursor: Lnglat | null = $state.raw(null);
 let isPolygon = $state(false);
 let dragFromHead = false;
 let dragAnchor: Lnglat | null = null;
-let atAnchor = false;
 let mapMoveSeq = $state(0);
 let spotBump = $state(0);
 let armed: "line" | "polygon" | "pin" | null = $state(null);
@@ -314,18 +313,18 @@ function clearAll() {
 // component would otherwise leave them on the map with no state behind them and no way to dismiss.
 $effect(() => () => clearAll());
 
-// h: the art's height at w, so the menu can keep off the hands.
 // HEAD (vertex 0) = LEFT hand; TAIL = RIGHT hand. Widths chosen so both render ≈75px tall: a handle the cursor's hand (100px) grabs, so smaller than it.
+// h: the art's height at w, so the menu can keep off the hands.
 const HEAD_CURSOR = {
     src: handShovelCursor,
-    h: 74,
     w: 54,
+    h: 74,
     offset: [18, 0] as [number, number], // fingertip nudge
 };
 const TAIL_CURSOR = {
     src: handShovelCursorRight,
-    h: 75,
     w: 33,
+    h: 75,
     offset: [4, 0] as [number, number],
 };
 let headCursor: maplibregl.Marker | null = null;
@@ -433,7 +432,6 @@ function beginGrab(which: "head" | "tail"): Lnglat {
     dragFromHead = which === "head";
     const anchor = which === "head" ? verts[0] : verts[verts.length - 1];
     dragAnchor = anchor;
-    atAnchor = true;
     if (touchLog && map) { const q = map.project(anchor); touchLog(`PICK ${which} hand, node @${Math.round(q.x)},${Math.round(q.y)} canvas px`); }
     holdMap(map, true);
     (which === "head" ? headCursor : tailCursor)?.getElement().classList.add("rt-grabbed");
@@ -621,21 +619,7 @@ function hover(lng: number, lat: number) {
             return;
         }
     }
-    // Back over the grabbed end: the cursor sits on it and every node flashes, so a let-go there adds nothing.
-    if (map && dragAnchor) {
-        const a = map.project({ lng: dragAnchor[0], lat: dragAnchor[1] });
-        const p = map.project({ lng, lat });
-        // Same in/out pair as closing a ring: one radius both ways flips the end between anchor and finger as a thumb wobbles on it.
-        const near = (a.x - p.x) ** 2 + (a.y - p.y) ** 2 < (atAnchor ? MEASURE_UNSNAP_PX : MEASURE_SNAP_PX) ** 2;
-        if (near && !atAnchor) flashCorners();
-        atAnchor = near;
-        if (near) {
-            isPolygon = false;
-            cursor = dragAnchor;
-            render();
-            return;
-        }
-    }
+    // Never back onto the grabbed end: a hand held there could not be pulled away (QGIS #1096). Let-go there still cancels.
     isPolygon = false;
     cursor = snap(lng, lat);
     render();
@@ -819,6 +803,22 @@ $effect(() => {
 
 const CHROME_STACK_PX = 150; // popover offset + height
 const HAND_DROP_PX = 34; // hands hang below the end nodes
+const VP_MARGIN = 14;
+const OFFSCREEN_HIDE = 40;
+const POP_HALF_W = 42;
+const POP_GRID_W = 160; // keep in sync with .measure-grid width
+const POP_TRIO_W = 132; // keep in sync with .measure-trio width
+const POP_EDGE_PX = 5;
+const TOTAL_HALF_W = 72;
+// keep in sync with the .measure-pop / .measure-total translates
+const POP_OFFSET_PX = 52;
+const TOTAL_OFFSET_PX = 16;
+const POP_H = 78;
+const TOTAL_H = 22;
+// The lone node's ring plus the hand hanging down-right of it (HEAD_CURSOR: 54px wide, ≈75px tall).
+const ARM_RECT = { l: 12, t: 12, w: 62, h: 92 };
+const BESIDE_GAP = 18;
+
 // The measurement must stay readable: the menu and total keep off the hands, and off the loupe while it rides a drag.
 function handRects(pts: Lnglat[]): Rect[] {
     if (!map || isPolygon || pts.length === 0 || armed === "pin") return [];
@@ -839,22 +839,6 @@ function loupeRect(at: Lnglat): Rect {
     const h = LOUPE_H + 2 * RING_PAD;
     return { x: (o.x - w / 2 - r.left) * s, y: (o.y - h / 2 - r.top) * s, w: w * s, h: h * s };
 }
-
-const VP_MARGIN = 14;
-const OFFSCREEN_HIDE = 40;
-const POP_HALF_W = 42;
-const POP_GRID_W = 160; // keep in sync with .measure-grid width
-const POP_TRIO_W = 132; // keep in sync with .measure-trio width
-const POP_EDGE_PX = 5;
-const TOTAL_HALF_W = 72;
-// keep in sync with the .measure-pop / .measure-total translates
-const POP_OFFSET_PX = 52;
-const TOTAL_OFFSET_PX = 16;
-const POP_H = 78;
-const TOTAL_H = 22;
-// The lone node's ring plus the hand hanging down-right of it (HEAD_CURSOR: 54px wide, ≈75px tall).
-const ARM_RECT = { l: 12, t: 12, w: 62, h: 92 };
-const BESIDE_GAP = 18;
 
 // Above the bbox by default; below if above clips the top; `cornered` when neither fits.
 let popAnchor = $derived.by(() => {
@@ -921,8 +905,6 @@ let popAnchor = $derived.by(() => {
     const cornered = spot === "top";
     const level = spot === "left" || spot === "right" || spot === "over";
     const clampX = (x: number, half: number, edge: number) =>
-        ...handRects(pts),
-        ...(cursor ? [loupeRect(cursor)] : []),
         Math.min(Math.max(x, edge + half), W - edge - half);
     const besideX = leftX - popHalf >= POP_EDGE_PX ? leftX : minX - ARM_RECT.l + ARM_RECT.w + BESIDE_GAP + popHalf;
     let popX = beside ? besideX : spot === "left" ? leftX : spot === "right" ? rightX : clampX(cx, popHalf, POP_EDGE_PX);
@@ -939,12 +921,12 @@ let popAnchor = $derived.by(() => {
     const rects = [
         ...mapKeepOutRects(W, undefined, map.getCanvas()),
         ...(spot === "over" ? [] : [snakeRect]),
+        ...handRects(pts),
+        ...(cursor ? [loupeRect(cursor)] : []),
     ];
     const minPopX = POP_EDGE_PX;
     const maxPopX = W - POP_EDGE_PX - popW;
     const stackBox = (atY: number): Rect => ({
-    // The total rides the dodge with the menu: they are one box.
-    const dodged = shifted !== null && Math.abs(shifted + popHalf - popX) > 1;
         x: popX - popHalf,
         y: beside ? atY - POP_H / 2 : below ? atY + TOTAL_OFFSET_PX : atY - POP_OFFSET_PX - POP_H,
         w: popW,
@@ -961,6 +943,8 @@ let popAnchor = $derived.by(() => {
             levelY = midY;
         }
     }
+    // The total rides the dodge with the menu: they are one box.
+    const dodged = shifted !== null && Math.abs(shifted + popHalf - popX) > 1;
     if (shifted !== null) popX = shifted + popHalf;
     // Beside with no sideways lane (arm one side, draw strip the other): drop under the obstacle, still left of the arm.
     if (beside && shifted === null) {
