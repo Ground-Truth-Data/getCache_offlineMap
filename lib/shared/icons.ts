@@ -38,8 +38,8 @@ export const setWorkMode = (on: WorkMode): void => {
 export const plotsOn = (): boolean => workMode.plots();
 const FILLS: CacheFill[] = ["cache", "sack", "basket"];
 function cachePin(name: PinKey, colour: string): IconRow {
-    const art = Object.fromEntries(FILLS.map((f) => [f, pinLibraryUrl(`pin_${f}_${colour}sm.webp`)]));
-    return { name, pin: "cachePin", get path() { return art[workMode.cacheFill()]; } };
+    const art = Object.fromEntries(FILLS.map((f) => [f, pinLibraryUrl(`pin_${f}_${colour}sm.webp`)])) as Record<CacheFill, string>;
+    return { name, pin: "cachePin", art, get path() { return art[workMode.cacheFill()]; } };
 }
 
 // Persisted by this string, so the set is a stable contract.
@@ -103,6 +103,8 @@ export type IconRow = {
     path: string;
     /** Present only on a user-droppable map pin: its library section. A cachePin is land, not a glyph pin. */
     pin?: "glyph" | "cachePin";
+    /** A cache pin's art for each fill; `path` is the one the work mode picks. */
+    art?: Record<CacheFill, string>;
 };
 
 export type PinRow = IconRow & { name: PinKey; pin: "glyph" | "cachePin" };
@@ -188,8 +190,10 @@ export function iconPath(name: IconName): string {
     return (BY_NAME.get(name) ?? BY_NAME.get(DEFAULT_PIN_KEY))?.path ?? "";
 }
 
-export function pinAssetPath(key: PinKey): string {
-    return (BY_NAME.get(key) ?? BY_NAME.get(DEFAULT_PIN_KEY))?.path ?? "";
+/** `fill` names a cache pin's own art, whatever the work mode. */
+export function pinAssetPath(key: PinKey, fill?: CacheFill): string {
+    const row = BY_NAME.get(key) ?? BY_NAME.get(DEFAULT_PIN_KEY);
+    return (fill && row?.art?.[fill]) ?? row?.path ?? "";
 }
 
 const PIN_ROWS: readonly PinRow[] = ICONS.filter(
