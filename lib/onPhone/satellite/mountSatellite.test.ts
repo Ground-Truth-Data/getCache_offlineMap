@@ -14,7 +14,7 @@ vi.mock("./satelliteImage", async (orig) => {
 	};
 });
 
-import { createSatelliteMount, SAT_EDGE_ID, SAT_LAYERS, SAT_MIN_Z } from "./mountSatellite";
+import { createSatelliteMount, SAT_EDGE_ID, SAT_FAR_Z, SAT_LAYERS, SAT_MIN_Z } from "./mountSatellite";
 
 const sq = (x: number, y: number): [number, number][] => [[x, y], [x + 0.01, y], [x + 0.01, y + 0.007], [x, y + 0.007], [x, y]];
 const NEAR = { key: "piece:near", rings: [sq(-119.6, 49.5)] };
@@ -36,12 +36,28 @@ function rig() {
 }
 
 describe("createSatelliteMount", () => {
-	it("adds one layer per source under the given layer, Sentinel's lowest, each at its own zoom only", () => {
+	it("starts with Sentinel alone under the given layer, at its own zoom only", () => {
 		const { d } = rig();
-		expect(d.layers.map((l) => l.id)).toEqual([...SAT_LAYERS, "roads"]);
 		expect(SAT_LAYERS[0]).toBe("v4-sat-sentinel-l");
-		expect(d.sources.get("v4-sat-maptiler")).toMatchObject({ type: "raster", tiles: ["v10://photo/maptiler/{z}/{x}/{y}"], tileSize: 128, minzoom: 16, maxzoom: 16 });
-		expect(d.sources.get("v4-sat-sentinel")).toMatchObject({ tiles: ["v10://photo/sentinel/{z}/{x}/{y}"], minzoom: 14, maxzoom: 14 });
+		expect(d.layers.map((l) => l.id)).toEqual([SAT_LAYERS[0], "roads"]);
+		expect(d.sources.get("v4-sat-sentinel")).toMatchObject({ type: "raster", tiles: ["v10://photo/sentinel/{z}/{x}/{y}"], tileSize: 128, minzoom: 14, maxzoom: 14 });
+		expect(d.sources.has("v4-sat-maptiler")).toBe(false);
+	});
+
+	it("a finer source draws its own zoom, scaled down from camera SAT_FAR_Z, asked only inside its held areas", async () => {
+		const { d, mount } = rig();
+		await mount.reconcile(CAMERA, [NEAR, FAR]);
+		const src = d.sources.get("v4-sat-maptiler") as { tileSize: number; minzoom: number; maxzoom: number; bounds: number[] };
+		expect(src).toMatchObject({ tiles: ["v10://photo/maptiler/{z}/{x}/{y}"], minzoom: 16, maxzoom: 16 });
+		// MapLibre asks tiles at camera + log2(512 / tileSize).
+		expect(SAT_FAR_Z + Math.log2(512 / src.tileSize)).toBe(16);
+		expect(src.bounds).toEqual([-119.6, 47.65, -117.41, 49.507]);
+		expect(d.layers.map((l) => l.id)).toEqual(["v4-sat-shadow", SAT_LAYERS[0], "v4-sat-maptiler-l", SAT_EDGE_ID, "roads"]);
+		await mount.reconcile(CAMERA, [NEAR]);
+		expect((d.sources.get("v4-sat-maptiler") as { bounds: number[] }).bounds).toEqual([...NEAR.rings[0]![0]!, ...NEAR.rings[0]![2]!]);
+		await mount.reconcile(CAMERA, []);
+		expect(d.sources.has("v4-sat-maptiler")).toBe(false);
+		expect(d.layers.some((l) => l.id === "v4-sat-maptiler-l")).toBe(false);
 	});
 
 	it("rings every held area once, under the roads; a camera move never redraws it, a change in what is held does", async () => {
@@ -73,10 +89,10 @@ describe("createSatelliteMount", () => {
 	it("tilesChanged re-sets every source's tiles; dispose stops it", async () => {
 		const { d, mount } = rig();
 		mount.tilesChanged();
-		expect(d.raw.getSource("v4-sat-usgs")!.setTiles).toHaveBeenCalledWith(["v10://photo/usgs/{z}/{x}/{y}"]);
+		expect(d.raw.getSource("v4-sat-sentinel")!.setTiles).toHaveBeenCalledWith(["v10://photo/sentinel/{z}/{x}/{y}"]);
 		mount.dispose();
 		mount.tilesChanged();
-		expect(d.raw.getSource("v4-sat-usgs")!.setTiles).toHaveBeenCalledTimes(1);
+		expect(d.raw.getSource("v4-sat-sentinel")!.setTiles).toHaveBeenCalledTimes(1);
 		expect(await mount.reconcile(CAMERA, [NEAR])).toBe(0);
 	});
 });
