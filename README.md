@@ -5,7 +5,7 @@ Get Cache is a mobile app used in the reforestation industry. See it on the
 [Play Store (Android)](https://play.google.com/store/apps/details?id=com.retreever.map).
 
 The feature is an offline preview: it previews the map data stored on the
-phone (or browser, since it is a Capacitor app) for use offline, and works
+phone (or browser) for use offline, and works
 with no network. The vector roads and satellite tile
 "blobs" are downloaded dynamically based on the user's location and the pins
 and pieces added to the map. Repos:
