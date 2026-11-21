@@ -116,11 +116,6 @@ function snap(lng: number, lat: number, reach?: number): Lnglat {
     if (!map || !snapShapes) return [lng, lat];
     shapeRings ??= snapRings(map, snapShapes());
     const s = snapLngLat(map, [lng, lat], shapeRings, lastSnap, reach);
-    // A saved piece's corners are not the ruler's to take; its edges still are.
-    if (s.kind === "corner") {
-        lastSnap = null;
-        return [lng, lat];
-    }
     if (s.kind) snapped.add(s.ll);
     // The snapping node is under the finger; the far nodes pulsing is what the user can see. Edge → corner pulses again.
     if (s.kind && s.kind !== lastSnap) flashCorners(BORDER_RUST);
