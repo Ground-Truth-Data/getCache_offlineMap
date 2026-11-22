@@ -3,7 +3,8 @@
 <script lang="ts">
 import { m } from "$parent/src/lib/paraglide/messages";
 import type { LngLat } from "../shared/kmGeo";
-import { distanceText, roadKm } from "./routeLayer";
+import { formatLength } from "$gc/units.svelte";
+import { roadKm } from "./routeLayer";
 import sign from "./routeSign.svg";
 import signSm from "./routeSignSm.svg";
 
@@ -20,7 +21,7 @@ let {
 
 {#await roadKm(at) then road}
 	{#if road !== null}
-		{@const [num, unit] = distanceText(road).split(" ")}
+		{@const [num, unit] = formatLength(road * 1000).split(" ")}
 		<button
 			type="button"
 			class="rt-go"
