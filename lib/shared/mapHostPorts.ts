@@ -107,7 +107,7 @@ export interface MapUiPorts {
 	/** The feature editor body; host-owned because it edits the host's store. */
 	FeatureDetail: Component<Record<string, unknown>>;
 	CrowSwitch: Component<Record<string, unknown>>;
-	InboxTruck: Component<{ featureKey: string }>;
+	InboxTruck: Component<{ featureKey: string; link?: string }>;
 	ConfirmModal: Component<{ open: boolean; title: string; onConfirm: () => void; onCancel: () => void }>;
 	copyToClipboard(text: string): Promise<boolean>;
 	/** Svelte action that lifts a node into the host's overlay layer. */
@@ -179,6 +179,8 @@ export interface MapQ704PlotPinData {
 	excess: number | null;
 	faults: string[];
 	comment: string;
+	/** The qaPlotKey; "" for a drop not yet written. */
+	plotKey: string;
 }
 
 /** The in-flight, memory-only map drop. */
@@ -254,7 +256,7 @@ export interface MapQ704Ports {
 	setActiveSpeciesChoices(choices: string[]): Promise<void>;
 	getPendingDrop(): MapQ704PendingDrop | null;
 	pendingDropPinData(): MapQ704PlotPinData | null;
-	trashPlotAt(mapFeatureKey: string): Promise<void>;
+	trashPlot(qaPlotKey: string): Promise<void>;
 }
 
 export interface MapHostPorts {

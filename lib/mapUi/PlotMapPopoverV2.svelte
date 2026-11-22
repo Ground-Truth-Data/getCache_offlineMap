@@ -69,6 +69,7 @@ const displayNo = $derived(plot?.displayNo || plot?.plotNo || pinPlotNo);
 const canOpenInForm = $derived(
 	!isCreate && Number.isInteger(plotNo) && plotNo > 0,
 );
+const plotKey = $derived(isCreate ? "" : (plot?.plotKey ?? ""));
 
 const plotFullCode = $derived(q704 ? q704.plotFullCodeByGpsKey(mapFeatureKey) : "");
 let loCodeCopied = $state(false);
@@ -235,7 +236,7 @@ $effect(() => {
 let confirmingDelete = $state(false);
 async function deleteHere() {
 	confirmingDelete = false;
-	await q704?.trashPlotAt(mapFeatureKey);
+	await q704?.trashPlot(plotKey);
 	onClose();
 }
 
@@ -245,21 +246,23 @@ async function deleteHere() {
 <MapPopoverShell {bbox} {containerWidth} {containerHeight} isPoint={true} wide={true} scrollLocked={focusing}>
 	<div class="plot-pop">
 		<div class="pp-hdr">
-			<img class="pp-glyph" src={iconPath("quality")} alt="" />
-			<span class="pp-kind">{m.ofmap_ui_quality_plot()}</span>
+			<!-- The glyph alone names it: four squares and a label don't fit a 390 px card. -->
+			<img class="pp-glyph" src={iconPath("quality")} alt={m.ofmap_ui_quality_plot()} />
 			<span class="pp-spacer"></span>
 			<!-- Any EXISTING plot, not only a counted one: the plot whose count did not land is the one you most need to open. No close: a tap off the card closes it. -->
 			{#if canOpenInForm}
 				<button class="rt-icon-btn rt-icon-btn--share" aria-label={m.ofmap_ui_plot_share_aria()} title={m.ofmap_ui_share()} use:atvShare onclick={() => onShare("getcache")}>
 					<ports.ui.Icon name="share" size={16} />
 				</button>
-				<ports.ui.InboxTruck featureKey={mapFeatureKey} />
-				<button class="rt-icon-btn" aria-label={m.ofmap_ui_plot_edit_aria()} title={m.ofmap_ui_plot_edit_aria()} onclick={() => onOpenInForm(plotNo)}>
+				{#if plotKey}<ports.ui.InboxTruck featureKey={mapFeatureKey} link={`plot:${plotKey}`} />{/if}
+				<button class="rt-icon-btn rt-icon-btn--share" aria-label={m.ofmap_ui_plot_edit_aria()} title={m.ofmap_ui_plot_edit_aria()} onclick={() => onOpenInForm(plotNo)}>
 					<img class="pp-btn-art" src={iconPath("quality")} alt="" />
 				</button>
-				<button class="rt-icon-btn rt-icon-btn--delete" aria-label={m.ofmap_ui_delete()} title={m.ofmap_ui_delete()} onclick={() => (confirmingDelete = true)}>
-					<ports.ui.Icon name="trash" size={16} />
-				</button>
+				{#if plotKey}
+					<button class="rt-icon-btn rt-icon-btn--delete" aria-label={m.ofmap_ui_delete()} title={m.ofmap_ui_delete()} onclick={() => (confirmingDelete = true)}>
+						<ports.ui.Icon name="trash" size={16} />
+					</button>
+				{/if}
 			{/if}
 		</div>
 
@@ -371,18 +374,10 @@ async function deleteHere() {
 		gap: 6px;
 	}
 	.pp-glyph {
-		width: 39px;
-		height: 39px;
+		width: 36px;
+		height: 36px;
 		object-fit: contain;
 		flex: 0 0 auto;
-	}
-	/* The same label every map card wears (FeatureDetail's header). */
-	.pp-kind {
-		font-weight: 800;
-		font-size: 0.85rem;
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
-		color: var(--rt-yellow, #ffd700);
 	}
 	.pp-spacer {
 		flex: 1 1 auto;
