@@ -107,6 +107,8 @@ export interface MapUiPorts {
 	/** The feature editor body; host-owned because it edits the host's store. */
 	FeatureDetail: Component<Record<string, unknown>>;
 	CrowSwitch: Component<Record<string, unknown>>;
+	InboxTruck: Component<{ featureKey: string }>;
+	ConfirmModal: Component<{ open: boolean; title: string; onConfirm: () => void; onCancel: () => void }>;
 	copyToClipboard(text: string): Promise<boolean>;
 	/** Svelte action that lifts a node into the host's overlay layer. */
 	overlayPortal(node: HTMLElement): { destroy(): void } | void;
@@ -252,6 +254,7 @@ export interface MapQ704Ports {
 	setActiveSpeciesChoices(choices: string[]): Promise<void>;
 	getPendingDrop(): MapQ704PendingDrop | null;
 	pendingDropPinData(): MapQ704PlotPinData | null;
+	trashPlotAt(mapFeatureKey: string): Promise<void>;
 }
 
 export interface MapHostPorts {

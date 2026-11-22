@@ -5,8 +5,8 @@ import { m } from "$parent/src/lib/paraglide/messages";
 import type { Feature } from "geojson";
 import { onDestroy, onMount } from "svelte";
 import { fade } from "svelte/transition";
-import FancyButton from "$gc/FancyButton.svelte";
 import MapPopoverShell from "../panels/MapPopoverShell.svelte";
+import NameTag from "$gc/NameTag.svelte";
 import type {
 	MapHostPorts,
 	MapQ704DeckExports,
@@ -71,12 +71,6 @@ const canOpenInForm = $derived(
 );
 
 const plotFullCode = $derived(q704 ? q704.plotFullCodeByGpsKey(mapFeatureKey) : "");
-// The locally-varying tail (87G3H2PG+QFG → 2PG+QFG).
-const plotShortCode = $derived.by(() => {
-	const plus = plotFullCode.indexOf("+");
-	if (plus < 0) return "";
-	return plotFullCode.slice(Math.max(0, plus - 3));
-});
 let loCodeCopied = $state(false);
 let loCodeCopyFailed = $state(false);
 let loCodeCopiedTimer: ReturnType<typeof setTimeout> | null = null;
@@ -238,8 +232,10 @@ $effect(() => {
 		.catch((e) => console.warn("[PlotMapPopoverV2:species]", e));
 });
 
-// The unfinished-plot gate lives in the HOST so X and tap-outside share ONE gate.
-function requestClose() {
+let confirmingDelete = $state(false);
+async function deleteHere() {
+	confirmingDelete = false;
+	await q704?.trashPlotAt(mapFeatureKey);
 	onClose();
 }
 
@@ -252,38 +248,24 @@ function requestClose() {
 			<img class="pp-glyph" src={iconPath("quality")} alt="" />
 			<span class="pp-kind">{m.ofmap_ui_quality_plot()}</span>
 			<span class="pp-spacer"></span>
-			<!-- Edit belongs to any EXISTING plot, not only a counted one: the plot whose count did not land is the one you most need to open. -->
+			<!-- Any EXISTING plot, not only a counted one: the plot whose count did not land is the one you most need to open. No close: a tap off the card closes it. -->
 			{#if canOpenInForm}
-				<span class="pp-edit">
-					<FancyButton
-						size="sm"
-						ariaLabel={m.ofmap_ui_plot_edit_aria()}
-						title={m.ofmap_ui_edit()}
-						onclick={() => onOpenInForm(plotNo)}
-					>
-						{#snippet icon()}<ports.ui.Icon name="pen" size={18} />{/snippet}
-					</FancyButton>
-				</span>
-			{/if}
-			{#if canOpenInForm}
-				<button class="pp-icon" aria-label={m.ofmap_ui_plot_share_aria()} title={m.ofmap_ui_share()} use:atvShare onclick={() => onShare("getcache")}>
-					<ports.ui.Icon name="share" size={18} />
+				<button class="rt-icon-btn rt-icon-btn--share" aria-label={m.ofmap_ui_plot_share_aria()} title={m.ofmap_ui_share()} use:atvShare onclick={() => onShare("getcache")}>
+					<ports.ui.Icon name="share" size={16} />
+				</button>
+				<ports.ui.InboxTruck featureKey={mapFeatureKey} />
+				<button class="rt-icon-btn" aria-label={m.ofmap_ui_plot_edit_aria()} title={m.ofmap_ui_plot_edit_aria()} onclick={() => onOpenInForm(plotNo)}>
+					<img class="pp-btn-art" src={iconPath("quality")} alt="" />
+				</button>
+				<button class="rt-icon-btn rt-icon-btn--delete" aria-label={m.ofmap_ui_delete()} title={m.ofmap_ui_delete()} onclick={() => (confirmingDelete = true)}>
+					<ports.ui.Icon name="trash" size={16} />
 				</button>
 			{/if}
-			<!-- No delete: a plot pin is the plot's key. -->
-			<button class="rt-popover-close" aria-label={m.ofmap_ui_close()} title={m.ofmap_ui_close()} onclick={requestClose}><ports.ui.Icon name="close-x" /></button>
 		</div>
 
-		<!-- 0 = unnumbered; a dash says "no number yet" instead of claiming plot zero. -->
-		<div class="pp-title" aria-label={displayNo ? m.ofmap_ui_plot_numbered_aria({ no: displayNo }) : m.ofmap_ui_plot_unnumbered_aria()}>
-			<span class="pp-title-lead">{m.ofmap_ui_plot_no_lead()}</span>
-			<span class="pp-title-no">{displayNo || "—"}</span>
-			{#if plotShortCode}
-				<span class="pp-title-code" aria-label={m.ofmap_ui_plot_code_aria({ code: plotShortCode })}>
-					<span class="pp-title-code-bar">|</span>&nbsp;{plotShortCode}
-				</span>
-			{/if}
-			{#if plotFullCode}
+		<!-- 0 = unnumbered: NameTag's dash says "no number yet" instead of claiming plot zero. -->
+		<NameTag name={displayNo ? m.ofmap_ui_plot_name({ no: displayNo }) : ""} />
+		{#if plotFullCode}
 				<div class="pp-locode-row">
 					<span class="pp-locode">{plotFullCode}</span>
 					<button
@@ -313,7 +295,6 @@ function requestClose() {
 					</button>
 				</div>
 			{/if}
-		</div>
 
 		{#if !counted || focusing || justFiledHold}
 			<!-- Stays open while `focusing` so the swipe-to-file animation finishes before the swap. -->
@@ -368,6 +349,7 @@ function requestClose() {
 </MapPopoverShell>
 
 <q704.CelebrateHost target={rewardTargetEl} />
+<ports.ui.ConfirmModal open={confirmingDelete} title={m.ofmap_ui_delete_confirm()} onConfirm={deleteHere} onCancel={() => (confirmingDelete = false)} />
 {/if}
 
 <style>
@@ -394,89 +376,22 @@ function requestClose() {
 		object-fit: contain;
 		flex: 0 0 auto;
 	}
+	/* The same label every map card wears (FeatureDetail's header). */
 	.pp-kind {
-		font-family: var(--rt-font-display), sans-serif;
-		font-weight: 700;
-		font-size: 1.05rem;
-		letter-spacing: 0.02em;
+		font-weight: 800;
+		font-size: 0.85rem;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
 		color: var(--rt-yellow, #ffd700);
 	}
 	.pp-spacer {
 		flex: 1 1 auto;
 	}
-	.pp-icon {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		box-sizing: border-box;
-		width: 39px;
-		height: 39px;
-		border-radius: var(--rt-radius-sm, 8px);
-		border: 1.5px solid var(--rt-gold-1, #f5d565);
-		background: rgba(232, 185, 35, 0.12);
-		color: var(--rt-gold-1, #f5d565);
-		cursor: pointer;
-	}
-
-	.pp-edit {
-		display: inline-flex;
-		flex: none;
-	}
-	.pp-edit :global(.gold-btn) {
-		box-sizing: border-box;
-		width: 39px;
-		height: 39px;
-		padding: 0;
-	}
-	.pp-edit :global(.gold-btn .badge) {
-		width: auto;
-		height: auto;
-		border: none;
-		border-radius: 0;
-		background: none;
-	}
-	.pp-title {
-		display: flex;
-		align-items: center;
-		flex-wrap: wrap;
-		gap: 6px 8px;
-		padding: 8px 12px;
-		border-radius: var(--rt-radius-sm, 8px);
-		background: rgba(0, 0, 0, 0.32);
-		border: 1px solid var(--rt-border, rgba(232, 185, 35, 0.18));
-	}
-	.pp-title-lead {
-		font-family: var(--rt-font-display), sans-serif;
-		font-weight: 800;
-		font-size: 1.5rem;
-		line-height: 1;
-		color: var(--rust);
-	}
-	.pp-title-no {
-		font-family: var(--rt-font-display), sans-serif;
-		font-weight: 800;
-		font-size: 1.5rem;
-		line-height: 1;
-		color: var(--rt-yellow, #ffd700);
-	}
-	.pp-title-code {
-		font-family: var(--rt-font-display), sans-serif;
-		font-weight: 800;
-		font-size: 1.5rem;
-		line-height: 1;
-		letter-spacing: 0.01em;
-		color: var(--rt-yellow, #ffd700);
-		display: inline-flex;
-		align-items: baseline;
-		gap: 8px;
-		margin-left: 8px;
-	}
-	.pp-title-code-bar {
-		color: var(--rust);
-		opacity: 0.85;
+	.pp-btn-art {
+		width: 20px;
+		height: 20px;
 	}
 	.pp-locode-row {
-		flex-basis: 100%;
 		display: flex;
 		align-items: center;
 		gap: 6px;
@@ -597,13 +512,6 @@ function requestClose() {
 		font-size: 1rem;
 		color: var(--rt-fg, #f3ead2);
 		white-space: nowrap;
-	}
-	.plot-pop :global(.rt-popover-close) {
-		box-sizing: border-box;
-		width: 39px;
-		height: 39px;
-		border-radius: var(--rt-radius-sm, 8px);
-		border-width: 1.5px;
 	}
 
 </style>

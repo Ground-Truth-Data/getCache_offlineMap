@@ -35,6 +35,8 @@ export function soloMapPorts(): MapHostPorts {
 		SharePicker: Empty,
 		FeatureDetail: Empty,
 		CrowSwitch: Empty,
+		InboxTruck: Empty,
+		ConfirmModal: Empty,
 		copyToClipboard: async (text: string) => {
 			try {
 				await navigator.clipboard.writeText(text);
