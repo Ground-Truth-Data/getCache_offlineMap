@@ -7,7 +7,7 @@ import { listRegions, onRegionsChanged } from "../../../routes/offlinev10/store"
 import { onPhoto } from "../../../routes/offlinev10/satellite";
 import { MAP_HOME_CENTER } from "../../shared/homeCentre";
 import { pinLibraryUrl } from "../../shared/icons";
-import { createSatelliteMount, type SatelliteMount } from "./mountSatellite";
+import { createSatelliteMount, type PhotoSite, type SatelliteMount } from "./mountSatellite";
 import sampleImage from "./sample/mississippiLake.webp";
 
 /** The online style's IMAGERY_ANCHOR: the imagery goes in under it, then it goes. */
@@ -25,6 +25,14 @@ export const SAMPLE = {
 };
 const SAMPLE_ID = "gc-sample";
 
+/** Every area's photo the phone holds, once per photo. */
+export async function heldSites(): Promise<PhotoSite[]> {
+	const sites = new Map<string, PhotoSite>();
+	for (const r of await listRegions())
+		if (!r.removed && r.photoKey && r.photoRings) sites.set(r.photoKey, { key: r.photoKey, rings: r.photoRings });
+	return [...sites.values()];
+}
+
 /** Remounts the photos on every style load. `onCredits` hears the attributions of the imagery on the map. */
 export function attachHeldPhotos(map: maplibregl.Map, onCredits: (credits: string[]) => void): () => void {
 	let photos: SatelliteMount | null = null;
@@ -36,10 +44,7 @@ export function attachHeldPhotos(map: maplibregl.Map, onCredits: (credits: strin
 		const mount = photos;
 		if (!mount) return;
 		const b = map.getBounds();
-		const sites = new Map<string, { key: string; rings: [number, number][][] }>();
-		for (const r of await listRegions())
-			if (!r.removed && r.photoKey && r.photoRings) sites.set(r.photoKey, { key: r.photoKey, rings: r.photoRings });
-		await mount.reconcile([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], [...sites.values()]);
+		await mount.reconcile([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], await heldSites());
 		if (mount === photos) credit();
 	};
 	const paintSample = (): void => {
