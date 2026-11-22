@@ -336,7 +336,10 @@ async function deleteHere() {
 			{#if faultGroups.length > 0}
 				<div class="pp-fault-strip">
 					{#each faultGroups as [code, count] (code)}
-						<q704.FaultChip {code} {count} />
+						<div class="pp-fault">
+							<q704.FaultChip {code} {count} />
+							<span class="pp-fault-name">{q704.faultTitle(code)}</span>
+						</div>
 					{/each}
 				</div>
 			{/if}
@@ -465,7 +468,7 @@ async function deleteHere() {
 	}
 	.pp-fault-strip {
 		display: flex;
-		flex-wrap: wrap;
+		flex-direction: column;
 		gap: 5px;
 		--chip-h: 22px;
 		--chip-pad-x: 7px;
@@ -474,6 +477,20 @@ async function deleteHere() {
 		--badge-min: 13px;
 		--badge-h: 13px;
 		--badge-font: 9px;
+	}
+	.pp-fault {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		min-width: 0;
+	}
+	.pp-fault-name {
+		font-family: var(--rt-font-meta);
+		font-size: var(--rt-fs-meta);
+		color: var(--rt-fg);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.pp-comments {
 		margin-top: 2px;
