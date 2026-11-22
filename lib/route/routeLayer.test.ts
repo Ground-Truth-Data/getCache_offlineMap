@@ -6,7 +6,7 @@ import { distance } from "$gc/units.svelte";
 import type { LngLat } from "../shared/kmGeo";
 import type { RouteResult } from "./roadGraph";
 import type { ToWorker } from "./routeWorker";
-import { attachRouteLayer, directionsTo, distanceText, kmFromYou, networkTile, type RouteHandle, roadKm, searchTarget } from "./routeLayer";
+import { attachRouteLayer, directionsTo, kmFromYou, networkTile, type RouteHandle, roadKm, searchTarget } from "./routeLayer";
 
 const pinned = vi.hoisted(() => ({ at: null as unknown, el: null as HTMLElement | null }));
 vi.mock("../shared/rendererOf", () => ({
@@ -76,16 +76,6 @@ beforeEach(() => {
 afterEach(() => {
 	h?.();
 	h = null;
-});
-
-describe("distanceText", () => {
-	it("prints one decimal under ten, whole numbers with commas above, in the planter's unit", () => {
-		expect(distanceText(3.24)).toBe("3.2 km");
-		expect(distanceText(12.6)).toBe("13 km");
-		expect(distanceText(1234.4)).toBe("1,234 km");
-		distance.value = "imperial";
-		expect(distanceText(1.609344)).toBe("1.0 mi");
-	});
 });
 
 describe("directions", () => {

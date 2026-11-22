@@ -3,7 +3,7 @@
 import type * as maplibregl from "maplibre-gl";
 import { m } from "$parent/src/lib/paraglide/messages";
 import { safeEaseTo, safeFitBounds } from "$gc/safeMap";
-import { longUnit } from "$gc/units.svelte";
+import { formatLength } from "$gc/units.svelte";
 import { kmBetween, type LngLat } from "../shared/kmGeo";
 import { readStoredFix } from "../shared/liveFix";
 import { tileUrl } from "../worker/tilesHost";
@@ -137,13 +137,6 @@ export function roadKm(at: Readonly<LngLat>): Promise<number | null> {
 		solved.set(key, km);
 	}
 	return km;
-}
-
-/** "3.2 km" in the user's long unit — the one spelling every distance on the map shares. */
-export function distanceText(km: number): string {
-	const u = longUnit();
-	const n = (km * 1000) / u.metres;
-	return `${n < 10 ? n.toFixed(1) : Math.round(n).toLocaleString("en-US")} ${u.name}`;
 }
 
 /** Off the map (the inbox), the trip is saved for the map's restore to solve when it opens. */
@@ -281,12 +274,12 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	const showRoute = (toGoM?: number): void => {
 		if (!result?.ok) return;
 		if (following)
-			say(m.ofmap_route_to_go({ distance: distanceText((toGoM ?? along[along.length - 1]) / 1000) }), undefined, {
+			say(m.ofmap_route_to_go({ distance: formatLength(toGoM ?? along[along.length - 1]) }), undefined, {
 				label: m.ofmap_route_stop_follow(),
 				run: () => setFollow(false),
 			});
 		else
-			say(m.ofmap_route_by_road({ distance: distanceText(result.km) }), undefined, {
+			say(m.ofmap_route_by_road({ distance: formatLength(result.km * 1000) }), undefined, {
 				label: m.ofmap_route_follow(),
 				run: () => setFollow(true),
 			});

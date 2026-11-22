@@ -1,4 +1,22 @@
 <!-- Snake Ruler measure tool. Owns all its own state and never touches draw state, so it cannot open the draw palette. -->
+<script module lang="ts">
+import { STROKE } from "$gc/drawDials";
+
+// Save on open ground makes a block, so the lesson's saved shape wears drawStyle's block paint:
+// BLOCK_GOLD (getCache_OnlineMap drawStyle.ts) at block width, the ground under it unshaded.
+export const SAVED_PAINT = [
+    ["measure-fill", "fill-opacity", 0],
+    ["measure-line-casing", "line-color", "#ffd700"],
+    ["measure-line-casing", "line-width", STROKE.block.line],
+    ["measure-line-casing", "line-opacity", 1],
+    ["measure-ticks", "line-opacity", 0],
+    ["measure-nodes", "circle-stroke-opacity", 0],
+    ["measure-end-dots", "circle-color", "#ffd700"],
+    ["measure-end-dots", "circle-radius", 4],
+    ["measure-end-dots", "circle-opacity", 1],
+] as const;
+</script>
+
 <script lang="ts">
 import { iconPath, plotsOn } from "../shared/icons";
 import { m } from "$parent/src/lib/paraglide/messages";
@@ -13,7 +31,7 @@ import { markerCtor } from "../shared/rendererOf";
 import { aimLoupe, emit as emitPress, swallowNextClick } from "../shared/doubleTapToPin";
 import { LOUPE_H, LOUPE_W, RING_PAD, loupeAt } from "$gc/Loupe.svelte";
 import { DRAW_LIMIT_NOTE, mayAddVertex } from "$gc/drawLimit";
-import { BORDER_RUST, POLYGON_FILL, POLYGON_OUTLINE, STROKE } from "$gc/drawDials";
+import { BORDER_RUST } from "$gc/drawDials";
 import { type Lnglat, type SnapKind, type SnapRings, snapLngLat, snapRings } from "$gc/snapToShapes";
 import { formatArea, formatLength } from "$gc/units.svelte";
 import { keptLegLabels } from "./legLabelCrowding";
@@ -441,26 +459,13 @@ function endGrab(ll: Lnglat | null) {
     }
     dragAnchor = null;
 }
-// The lesson's "saved" beat: the shape turns into a saved piece (drawStyle's own paint), holds,
-// then dims to nothing and is discarded. A new start or a discard mid-fade bumps the token, so the
-// fade leaves whatever replaced it alone.
+// The lesson's "saved" beat: the shape turns into a saved block, holds, then dims to nothing and
+// is discarded. A new start or a discard mid-fade bumps the token, so the fade leaves whatever
+// replaced it alone.
 let fading = $state(false);
 let fadeGen = 0;
 const SAVED_HOLD_MS = 700;
-const SAVED_PAINT = [
-    ["measure-fill", "fill-color", POLYGON_FILL],
-    ["measure-fill", "fill-opacity", 0.35],
-    ["measure-line-casing", "line-color", POLYGON_OUTLINE],
-    ["measure-line-casing", "line-width", STROKE.polygon.line],
-    ["measure-line-casing", "line-opacity", 1],
-    ["measure-ticks", "line-opacity", 0],
-    ["measure-nodes", "circle-stroke-opacity", 0],
-    ["measure-end-dots", "circle-color", POLYGON_OUTLINE],
-    ["measure-end-dots", "circle-radius", 4],
-    ["measure-end-dots", "circle-opacity", 1],
-] as const;
 const DIM_PAINT = [
-    ["measure-fill", "fill-opacity", 0.35],
     ["measure-line-casing", "line-opacity", 1],
     ["measure-end-dots", "circle-opacity", 1],
 ] as const;
