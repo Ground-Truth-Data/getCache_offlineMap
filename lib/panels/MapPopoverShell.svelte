@@ -150,6 +150,14 @@ $effect(() => {
 		overflow-x: hidden;
 		-webkit-overflow-scrolling: touch;
 	}
+	/* Every map popover's header row. The margin adds to the 5px side padding above so the last button sits as far from
+	   the card's edge as from its neighbour. */
+	:global(.rt-pop-hdr) {
+		display: flex;
+		align-items: center;
+		gap: var(--rt-space-2);
+		margin-right: calc(var(--rt-space-2) - 5px);
+	}
 	.rt-fmp--locked {
 		/* BOTH axes: overflow-y:hidden alone promotes overflow-x to auto — a phantom sideways scrollbar. */
 		overflow: hidden;

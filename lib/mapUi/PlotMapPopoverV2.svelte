@@ -245,7 +245,7 @@ async function deleteHere() {
 {#if q704}
 <MapPopoverShell {bbox} {containerWidth} {containerHeight} isPoint={true} wide={true} scrollLocked={focusing}>
 	<div class="plot-pop">
-		<div class="pp-hdr">
+		<div class="rt-pop-hdr">
 			<!-- The glyph alone names it: four squares and a label don't fit a 390 px card. -->
 			<img class="pp-glyph" src={iconPath("quality")} alt={m.ofmap_ui_quality_plot()} />
 			<span class="pp-spacer"></span>
@@ -368,11 +368,6 @@ async function deleteHere() {
 		margin: 4px 0 0;
 	}
 
-	.pp-hdr {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-	}
 	.pp-glyph {
 		width: 36px;
 		height: 36px;
