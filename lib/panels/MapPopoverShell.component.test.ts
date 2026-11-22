@@ -44,6 +44,12 @@ describe("MapPopoverShell", () => {
 		expect(card.classList.contains("rt-fmp--locked")).toBe(false);
 	});
 
+	// The idle Learn lesson finds an open sheet by this role; without it, it played over a fresh cache's sheet and closed it.
+	it("an open card is a dialog", () => {
+		const { getByRole } = render(MapPopoverShell, { bbox, containerWidth: W, containerHeight: H, isPoint: true, children });
+		expect(getByRole("dialog").classList.contains("rt-fmp")).toBe(true);
+	});
+
 	it("a shape gets no leader, and a locked card says so", () => {
 		const { container } = render(MapPopoverShell, { bbox, containerWidth: W, containerHeight: H, wide: true, scrollLocked: true, children });
 		expect(container.querySelector("svg.rt-fmp-leader")).toBeNull();

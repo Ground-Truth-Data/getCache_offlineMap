@@ -112,7 +112,7 @@ $effect(() => {
 		<line x1={leader.x0} y1={leader.y0} x2={leader.x1} y2={leader.y1} />
 	</svg>
 {/if}
-<div class="rt-fmp rt-popover-surface" class:rt-fmp--locked={scrollLocked} {style} bind:this={el}>
+<div class="rt-fmp rt-popover-surface" class:rt-fmp--locked={scrollLocked} {style} bind:this={el} role="dialog">
 	{@render children()}
 </div>
 
