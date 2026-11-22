@@ -239,6 +239,8 @@ export interface MapDrawControlsExports {
 export interface MapQ704Ports {
 	Quality704Deck: Component<MapQ704DeckProps, MapQ704DeckExports>;
 	FaultChip: Component<MapQ704FaultChipProps>;
+	/** A fault code's name ("C3" → "J root"), as the plot drawer shows it. */
+	faultTitle(code: string): string;
 	CelebrateHost: Component<MapQ704CelebrateHostProps>;
 	celebrate: { onInputComplete(): void };
 	/** Svelte action: `<button use:atvShare>` arms the ATV ride on tap. */
