@@ -92,10 +92,12 @@ The open history is localStorage `gc-map-opens`.
 |---|---|---|---|
 | Sentinel | CC BY 4.0 | © EOX, linked to s2maps.eu, which carries the full credit (CC BY §3a2 allows a link) | None asked |
 | USGS | US public domain | The National Map orthoimagery courtesy of the U.S. Geological Survey | None asked |
-| MapTiler | MapTiler Cloud terms; R2 caching approved | © MapTiler © OpenStreetMap contributors | Owed on the free plan only; not shown |
-| Streets (planet PMTiles) | ODbL | © OpenStreetMap contributors | — |
+| MapTiler | MapTiler Cloud terms; R2 caching approved | © MapTiler © OpenStreetMap | Owed on the free plan only; not shown |
+| Streets (planet PMTiles) | ODbL | © OpenStreetMap | — |
 
-A held area's record carries its source's name, and the map credits every source held near the camera.
+A held area's record carries its source's name. The map credits a photo's source only while that photo is drawn: on
+screen, at zoom 12 or closer, its layer switched on. The ⓘ stands on the shovel's blade, one line at most 160×26, and
+opens by itself when MapTiler imagery comes on screen.
 
 ## Where each rule lives
 
