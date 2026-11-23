@@ -12,17 +12,17 @@ describe("nearby cells", () => {
 	it("reads nothing before a fetch, then the held rows, fetching each cell once", async () => {
 		vi.stubGlobal("location", { hostname: "getcache.org", port: "" });
 		const get = vi.fn(async (url: string) =>
-			({ ok: true, status: 200, json: async () => (url.endsWith("/65_10.json") ? [OBERON] : []) }),
+			({ ok: true, status: 200, json: async () => (url.endsWith("/145_-40.json") ? [OBERON] : []) }),
 		);
 		vi.stubGlobal("fetch", get);
 		const cells = cellsAround(146.33, -39.06, 25);
-		expect(cells).toEqual(["65_10"]);
+		expect(cells).toEqual(["145_-40"]);
 		expect(await heldNearby(cells)).toEqual([]);
 		expect(get).not.toHaveBeenCalled();
 
 		await fetchNearby([...cells, "0_0"]);
 		await fetchNearby([...cells, "0_0"]);
-		expect(get.mock.calls.map(([u]) => u)).toEqual(["/mobileAssets/nearby/65_10.json", "/mobileAssets/nearby/0_0.json"]);
+		expect(get.mock.calls.map(([u]) => u)).toEqual(["/mobileAssets/nearby/145_-40.json", "/mobileAssets/nearby/0_0.json"]);
 		expect(await heldNearby(cells)).toEqual([OBERON]);
 		expect(await heldNearby(["0_0"])).toEqual([]);
 	});
