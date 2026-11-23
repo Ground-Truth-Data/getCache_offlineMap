@@ -14,6 +14,7 @@ vi.mock("./store", () => ({
 	usedBytes: async () => 0,
 }));
 vi.mock("./places", () => ({ nearestPlace: async () => null }));
+vi.mock("../../lib/places/nearbyCells", () => ({ cellsAround: () => [], fetchNearby: async () => {} }));
 
 const TILE_BYTES = 1000;
 const fetchMock = vi.fn();
@@ -65,6 +66,16 @@ it("a map and its photo downloading together never have more than 48 requests ou
 	await Promise.all([getEach(urls, () => undefined), getEach(urls, () => undefined)]);
 	expect(fetchMock).toHaveBeenCalledTimes(600);
 	expect(most).toBe(48);
+});
+
+it("with no signal a download costs one request, not a lane's worth", async () => {
+	fetchMock.mockImplementation(async () => {
+		throw new TypeError("Failed to fetch");
+	});
+	const { getEach } = await import("./download");
+	const urls = Array.from({ length: 300 }, (_, i) => `https://tiles.test/${i}`);
+	await expect(getEach(urls, () => undefined)).rejects.toThrow(TypeError);
+	expect(fetchMock).toHaveBeenCalledTimes(1);
 });
 
 it("a photo asks MapTiler at most 6 tiles at a time", async () => {

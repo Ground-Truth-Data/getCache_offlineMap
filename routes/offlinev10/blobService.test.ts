@@ -296,6 +296,30 @@ describe("blob service", () => {
 		off();
 	});
 
+	it("with no signal, a minute of place changes asks once; signal back or a long wait asks again", async () => {
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+		const step = () => vi.advanceTimersByTimeAsync(0);
+		const list = [{ anchors: [PENTICTON], lastTouchedAt: soon() }];
+		const { ports, changed } = fakePorts(() => list);
+		failNext = true;
+		const stop = startBlobService(ports);
+		await step();
+		for (let s = 0; s < 60; s++) {
+			failNext = true;
+			changed();
+			await vi.advanceTimersByTimeAsync(1000);
+		}
+		expect(downloads).toEqual([PENTICTON]);
+		window.dispatchEvent(new Event("online"));
+		await step();
+		expect(downloads).toEqual([PENTICTON, PENTICTON]);
+		await vi.advanceTimersByTimeAsync(10 * 60_000);
+		expect(downloads.length).toBe(3);
+		failNext = false;
+		stop();
+		vi.useRealTimers();
+	});
+
 	it("a pin inside an older blob's ground still earns its own blob", async () => {
 		expect(await queueBlob(...PENTICTON)).toBe(true);
 		await tick();

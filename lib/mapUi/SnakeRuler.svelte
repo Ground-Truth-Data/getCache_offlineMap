@@ -22,7 +22,8 @@ import { iconPath, plotsOn } from "../shared/icons";
 import { m } from "$parent/src/lib/paraglide/messages";
 import handShovelCursor from "$gc/assets/hand_shovel_cursor.webp";
 import handShovelCursorRight from "$gc/assets/hand_shovel_cursor_right.webp";
-import type { Feature } from "geojson";
+import type { Feature, Polygon } from "geojson";
+import RulerSave from "./RulerSave.svelte";
 import type * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import area from "@turf/area";
@@ -49,6 +50,7 @@ let {
     measureEvent = $bindable(null),
     armKind = $bindable(null),
     onPersist,
+    bornAs,
     onSavePoint,
     onPlot,
     onActivate,
@@ -69,7 +71,10 @@ let {
         verts: Lnglat[],
         share: boolean,
         format?: MapShareFormat,
+        asBlock?: boolean,
     ) => void;
+    /** What a polygon drawn here is born as, for Save's glyph; absent, a block. */
+    bornAs?: ((where: Polygon) => Promise<{ block: boolean; overlaps: string | null }>) | undefined;
     onSavePoint?: ((lng: number, lat: number, kind: "pin" | "cachePin") => void) | undefined;
     /** `atSelf` = seed snapped onto the blue dot (proof-of-presence); `plusCode` = snapped grid dot, null if dropped free. Resolves true when it dropped, else the refusal's words ("" when it shows its own cue). */
     onPlot?:
@@ -692,20 +697,20 @@ export function discard() {
     verts = [];
 }
 let lastCommitAt = 0;
-function persist(share: boolean, format?: MapShareFormat) {
+function persist(share: boolean, format?: MapShareFormat, asBlock?: boolean) {
     if (!canFinish) return;
     lastCommitAt = performance.now();
     const kind: "line" | "polygon" = isPolygon ? "polygon" : "line";
     // `verts` holds $state proxies; a shallow copy still hands proxies across and breaks structuredClone in the store.
     const out: Lnglat[] = verts.map((c) => [c[0], c[1]]);
-    onPersist(kind, out, share, format);
+    onPersist(kind, out, share, format, asBlock);
     discard();
 }
 
 // Synchronous so navigator.share keeps the click's user activation.
-const shareFormats: ShareFormat[] = [
-    { ext: "getcache", run: () => persist(true, "getcache") },
-    { ext: "kmz", run: () => persist(true, "kmz") },
+const shareFormats = (asBlock?: boolean): ShareFormat[] => [
+    { ext: "getcache", run: () => persist(true, "getcache", asBlock) },
+    { ext: "kmz", run: () => persist(true, "kmz", asBlock) },
 ];
 /** Palette UNDO: drops the last-placed corner; stays armed at zero. */
 export function undoLast() {
@@ -1134,21 +1139,28 @@ $effect(() => {
             {/if}
         {:else}
             <div class="measure-col">
-                {#if !paletteMode}
-                    <!-- side="below": an upward menu would overlap the app header. -->
-                    <ports.ui.SharePicker formats={shareFormats} side="below">
-                        {#snippet trigger({ toggle }: { toggle: () => void })}
-                            <button class="measure-btn measure-share" onclick={toggle} title={m.ofmap_ui_save_share_title()}>
-                                <ports.ui.Icon name="upload" size={13} style="flex-shrink:0" />
-                                {m.ofmap_ui_share()}
-                            </button>
-                        {/snippet}
-                    </ports.ui.SharePicker>
+                {#snippet sharer(asBlock?: boolean)}
+                    {#if !paletteMode}
+                        <!-- side="below": an upward menu would overlap the app header. -->
+                        <ports.ui.SharePicker formats={shareFormats(asBlock)} side="below">
+                            {#snippet trigger({ toggle }: { toggle: () => void })}
+                                <button class="measure-btn measure-share" onclick={toggle} title={m.ofmap_ui_save_share_title()}>
+                                    <ports.ui.Icon name="upload" size={13} style="flex-shrink:0" />
+                                    {m.ofmap_ui_share()}
+                                </button>
+                            {/snippet}
+                        </ports.ui.SharePicker>
+                    {/if}
+                {/snippet}
+                {#if isPolygon}
+                    <RulerSave ring={verts} {bornAs} onSave={(asBlock) => persist(false, undefined, asBlock)} share={sharer} />
+                {:else}
+                    {@render sharer()}
+                    <button class="measure-btn measure-save" onclick={() => persist(false)} title={m.ofmap_ui_save()}>
+                        <img class="measure-pin-ic" src={iconPath("line")} alt="" />
+                        {m.ofmap_ui_save()}
+                    </button>
                 {/if}
-                <button class="measure-btn measure-save" onclick={() => persist(false)} title={m.ofmap_ui_save()}>
-                    <img class="measure-pin-ic" src={iconPath(isPolygon ? "poly" : "line")} alt="" />
-                    {m.ofmap_ui_save()}
-                </button>
             </div>
         {/if}
     </div>
@@ -1195,7 +1207,7 @@ $effect(() => {
         flex-direction: column;
         gap: 0.25rem;
     }
-    .measure-btn {
+    .measure-btn, .measure-col :global(.measure-btn) {
         display: flex;
         align-items: center;
         justify-content: center;
@@ -1212,7 +1224,7 @@ $effect(() => {
         -webkit-tap-highlight-color: transparent;
     }
     /* Sized by HEIGHT: the pin art is much taller than wide and a width cap inflated its button. */
-    .measure-pin-ic, .measure-plot-ic { height: 24px; width: auto; flex-shrink: 0; display: block; }
+    .measure-pin-ic, .measure-plot-ic, .measure-col :global(.measure-pin-ic) { height: 24px; width: auto; flex-shrink: 0; display: block; }
 
     /* keep in sync with POP_GRID_W */
     .measure-pop.measure-grid {
@@ -1276,8 +1288,8 @@ $effect(() => {
     .measure-col :global(.rt-sharepick .measure-btn) { flex: 1; }
     .measure-share { color: var(--rust); }
     .measure-share:active { background: var(--rust-soft); }
-    .measure-save { color: var(--color-accent); }
-    .measure-save:active { background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
+    .measure-save, .measure-col :global(.measure-save) { color: var(--color-accent); }
+    .measure-save:active, .measure-col :global(.measure-save:active) { background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
     .measure-plot { color: #f2f2f2; }
     .measure-plot:active { background: color-mix(in srgb, #ffffff 14%, transparent); }
     :global(.rt-measure-grab) {
