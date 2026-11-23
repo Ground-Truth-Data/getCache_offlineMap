@@ -4,6 +4,7 @@
 // switch flips it before the save.
 import { fireEvent, render, waitFor } from "@testing-library/svelte";
 import type { Polygon } from "geojson";
+import { createRawSnippet } from "svelte";
 import { describe, expect, it, vi } from "vitest";
 import RulerSave from "./RulerSave.svelte";
 
@@ -55,6 +56,23 @@ describe("the ruler's Save shows block or piece", () => {
 		expect(glyph(container)).toMatch(/polyHeart/);
 		await fireEvent.click(save(container));
 		expect(onSave).toHaveBeenLastCalledWith(false);
+	});
+
+	it("Share saves the kind showing too", async () => {
+		const onShare = vi.fn();
+		const share = createRawSnippet((asBlock: () => boolean | undefined) => ({
+			render: () => `<button class="sharer">Share</button>`,
+			setup: (node) => {
+				node.addEventListener("click", () => onShare(asBlock()));
+			},
+		}));
+		const { container } = render(RulerSave, { ring: OPEN, bornAs, onSave: vi.fn(), share });
+		await waitFor(() => expect(glyph(container)).toMatch(/block_icon/));
+		await fireEvent.click(container.querySelector(".sharer")!);
+		expect(onShare).toHaveBeenLastCalledWith(true);
+		await fireEvent.click(swap(container));
+		await fireEvent.click(container.querySelector(".sharer")!);
+		expect(onShare).toHaveBeenLastCalledWith(false);
 	});
 
 	it("a piece touching a block can be made a block", async () => {

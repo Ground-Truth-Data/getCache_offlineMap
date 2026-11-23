@@ -708,9 +708,9 @@ function persist(share: boolean, format?: MapShareFormat, asBlock?: boolean) {
 }
 
 // Synchronous so navigator.share keeps the click's user activation.
-const shareFormats: ShareFormat[] = [
-    { ext: "getcache", run: () => persist(true, "getcache") },
-    { ext: "kmz", run: () => persist(true, "kmz") },
+const shareFormats = (asBlock?: boolean): ShareFormat[] => [
+    { ext: "getcache", run: () => persist(true, "getcache", asBlock) },
+    { ext: "kmz", run: () => persist(true, "kmz", asBlock) },
 ];
 /** Palette UNDO: drops the last-placed corner; stays armed at zero. */
 export function undoLast() {
@@ -1139,20 +1139,23 @@ $effect(() => {
             {/if}
         {:else}
             <div class="measure-col">
-                {#if !paletteMode}
-                    <!-- side="below": an upward menu would overlap the app header. -->
-                    <ports.ui.SharePicker formats={shareFormats} side="below">
-                        {#snippet trigger({ toggle }: { toggle: () => void })}
-                            <button class="measure-btn measure-share" onclick={toggle} title={m.ofmap_ui_save_share_title()}>
-                                <ports.ui.Icon name="upload" size={13} style="flex-shrink:0" />
-                                {m.ofmap_ui_share()}
-                            </button>
-                        {/snippet}
-                    </ports.ui.SharePicker>
-                {/if}
+                {#snippet sharer(asBlock?: boolean)}
+                    {#if !paletteMode}
+                        <!-- side="below": an upward menu would overlap the app header. -->
+                        <ports.ui.SharePicker formats={shareFormats(asBlock)} side="below">
+                            {#snippet trigger({ toggle }: { toggle: () => void })}
+                                <button class="measure-btn measure-share" onclick={toggle} title={m.ofmap_ui_save_share_title()}>
+                                    <ports.ui.Icon name="upload" size={13} style="flex-shrink:0" />
+                                    {m.ofmap_ui_share()}
+                                </button>
+                            {/snippet}
+                        </ports.ui.SharePicker>
+                    {/if}
+                {/snippet}
                 {#if isPolygon}
-                    <RulerSave ring={verts} {bornAs} onSave={(asBlock) => persist(false, undefined, asBlock)} />
+                    <RulerSave ring={verts} {bornAs} onSave={(asBlock) => persist(false, undefined, asBlock)} share={sharer} />
                 {:else}
+                    {@render sharer()}
                     <button class="measure-btn measure-save" onclick={() => persist(false)} title={m.ofmap_ui_save()}>
                         <img class="measure-pin-ic" src={iconPath("line")} alt="" />
                         {m.ofmap_ui_save()}
