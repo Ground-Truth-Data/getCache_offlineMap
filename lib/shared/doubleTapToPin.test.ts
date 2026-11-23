@@ -109,6 +109,30 @@ describe("mouse: the hold, the drag, the tap", () => {
 		expect(click()).toBe(false);
 	});
 
+	// A hold refused while a shape is live is still no tap: its click would dismiss the shape being drawn.
+	it("a held press the map refused swallows its click; a quick tap does not", () => {
+		const click = () => {
+			const e = new Event("click", { cancelable: true });
+			(g.window as EventTarget).dispatchEvent(e);
+			return e.defaultPrevented;
+		};
+		const map = fakeMap();
+		const seed = vi.fn();
+		const off = attachDoubleTapToPin(map, { onMeasureSeed: seed, canSeed: () => false });
+		const press = (ms: number) => {
+			map.fire("mousedown", new FakeMouseEvent("mousedown", 200, 300));
+			vi.advanceTimersByTime(ms);
+			(g.window as EventTarget).dispatchEvent(new FakeMouseEvent("mouseup", 200, 300));
+			map.fire("mouseup", new FakeMouseEvent("mouseup", 200, 300));
+		};
+		press(ACTIVATE_MS + HOLD_MS);
+		expect(seed).not.toHaveBeenCalled();
+		expect(click()).toBe(true);
+		press(50);
+		expect(click()).toBe(false);
+		off();
+	});
+
 	it("under the loupe a fat-finger wobble keeps the countdown; past the slop the ruler drops for a drag", () => {
 		const phases: string[] = [];
 		(g.window as EventTarget).addEventListener("gc-press", (e) => phases.push((e as CustomEvent).detail.phase));
