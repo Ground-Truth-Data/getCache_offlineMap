@@ -59,6 +59,17 @@ function say(...args: unknown[]): void {
 
 const queue: Ask[] = [];
 const queued = new Set<string>();
+// No signal: one failed GET parks the engine until the browser says it is back or PARK_MS passes, or every pan
+// and place change sends each missing blob again.
+const PARK_MS = 5 * 60_000;
+let parked: ReturnType<typeof setTimeout> | undefined;
+let resume: (() => void) | null = null;
+const offline = (): boolean => parked !== undefined || (typeof navigator !== "undefined" && navigator.onLine === false);
+function unpark(): void {
+	clearTimeout(parked);
+	parked = undefined;
+	resume?.();
+}
 let draining = false;
 let current: InFlight | null = null;
 const listeners = new Set<(e: BlobEvent) => void>();
@@ -122,7 +133,7 @@ async function drain(): Promise<void> {
 	try {
 		while (queue.length) {
 			const ask = queue.shift() as Ask;
-			if (ask.keep || !(await (ask.revive ? whole : onDisk)(ask.id))) await download(ask);
+			if (!offline() && (ask.keep || !(await (ask.revive ? whole : onDisk)(ask.id)))) await download(ask);
 			queued.delete(ask.id);
 		}
 	} finally {
@@ -165,6 +176,8 @@ async function download({ at, id, rings, kind, keep }: Ask): Promise<void> {
 		// Its row went mid-download: whoever removed it already said so.
 		if (error instanceof AreaGone) emit({ kind: "removed", id });
 		else {
+			// fetch rejects with a TypeError only when no answer came back at all.
+			if (error instanceof TypeError) parked ??= setTimeout(unpark, PARK_MS);
 			// A full phone is an answer, not a fault: its red line on the dock says so.
 			if (!(error instanceof BudgetError)) console.error("[offlineV10] download failed", error);
 			emit({ kind: "failed", at, error });
@@ -294,11 +307,14 @@ export function startBlobService(ports: HostPorts): () => void {
 		seen = now;
 		for (const id of before ?? []) if (!now.has(id)) void removeBlob(id);
 	});
-	const online = (): void => void reconcile();
-	window.addEventListener("online", online);
+	resume = () => void reconcile();
+	window.addEventListener("online", unpark);
 	stop = () => {
 		off();
-		window.removeEventListener("online", online);
+		window.removeEventListener("online", unpark);
+		clearTimeout(parked);
+		parked = undefined;
+		resume = null;
 		stop = null;
 		host = null;
 		shown = null;

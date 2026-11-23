@@ -216,17 +216,19 @@ export async function getEach(
 ): Promise<void> {
 	let next = 0;
 	let failed: unknown = null;
-	const lane = async (): Promise<void> => {
-		while (next < urls.length && failed === null && !stop()) {
-			const i = next++;
-			const got = await getOne(urls[i]).catch((e) => {
-				if (!skipFailed || e instanceof RateLimited) return Promise.reject(e);
-				onSkipped?.(e);
-				return NONE;
-			});
-			onTile(i, got.body, got.cache);
-		}
+	const take = async (i: number): Promise<void> => {
+		const got = await getOne(urls[i]).catch((e) => {
+			if (!skipFailed || e instanceof RateLimited) return Promise.reject(e);
+			onSkipped?.(e);
+			return NONE;
+		});
+		onTile(i, got.body, got.cache);
 	};
+	const lane = async (): Promise<void> => {
+		while (next < urls.length && failed === null && !stop()) await take(next++);
+	};
+	// One GET proves the line before the lanes open: with no signal a download costs one request.
+	if (urls.length && !stop()) await take(next++);
 	const lanes = await Promise.allSettled(
 		Array.from({ length: width }, () =>
 			lane().catch((e) => {
