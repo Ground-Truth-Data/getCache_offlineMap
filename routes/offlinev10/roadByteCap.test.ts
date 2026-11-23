@@ -14,6 +14,7 @@ vi.mock("./store", () => ({
 	usedBytes: async () => 0,
 }));
 vi.mock("./places", () => ({ nearestPlace: async () => null }));
+vi.mock("../../lib/places/nearbyCells", () => ({ cellsAround: () => [], fetchNearby: async () => {} }));
 
 const TILE_BYTES = 1000;
 const fetchMock = vi.fn();
