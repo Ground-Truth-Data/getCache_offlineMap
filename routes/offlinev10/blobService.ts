@@ -178,8 +178,9 @@ async function download({ at, id, rings, kind, keep }: Ask): Promise<void> {
 		else {
 			// fetch rejects with a TypeError only when no answer came back at all.
 			if (error instanceof TypeError) parked ??= setTimeout(unpark, PARK_MS);
-			// A full phone is an answer, not a fault: its red line on the dock says so.
-			if (!(error instanceof BudgetError)) console.error("[offlineV10] download failed", error);
+			// No signal is a pause, not a fault: "online" resumes it. A full phone is an answer: its red line on the dock says so.
+			if (error instanceof TypeError && navigator.onLine === false) console.warn("[offlineV10] download paused: no signal");
+			else if (!(error instanceof BudgetError)) console.error("[offlineV10] download failed", error);
 			emit({ kind: "failed", at, error });
 		}
 	} finally {
