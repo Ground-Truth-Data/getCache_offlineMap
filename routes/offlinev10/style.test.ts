@@ -141,3 +141,39 @@ describe("planet fade", () => {
 		expect(mid).toBeLessThan(0.8);
 	});
 });
+
+// Wilsons Prom's walking tracks come down at z12–13 as roads kind=path; stock DARK drew them in the bush's own grey.
+describe("walking tracks", () => {
+	const all = buildStyle("http://x").layers as Array<{
+		id: string;
+		paint?: Record<string, unknown>;
+	}>;
+	const byId = (id: string) => all.find((l) => l.id === id)!;
+	const lum = (c: { r: number; g: number; b: number }) =>
+		255 * (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b);
+	const hex = (h: string) => {
+		const [r, g, b] = [1, 3, 5].map((i) => Number.parseInt(h.slice(i, i + 2), 16) / 255);
+		return { r, g, b };
+	};
+	const flavor = groundFlavor({ ...DARK });
+	const ink = (id: string, z: number) => {
+		const p = byId(id).paint ?? {};
+		const dash = p["line-dasharray"] as number[] | undefined;
+		const on = dash ? dash[0] / (dash[0] + dash[1]) : 1;
+		const contrast = lum(at(p["line-color"], "line", "line-color", z) as never) - lum(hex(DARK.earth as string));
+		return at(p["line-width"], "line", "line-width", z) * on * contrast;
+	};
+
+	it("draws them dashed, clear of every ground they cross", () => {
+		const p = byId("roads_other").paint ?? {};
+		expect(p["line-dasharray"]).toBeDefined();
+		const track = lum(at(p["line-color"], "line", "line-color", 13) as never);
+		for (const g of ["earth", "wood_b", "park_b", "scrub_b"] as const)
+			expect(track - lum(hex(flavor[g] as string)), `track on ${g}`).toBeGreaterThan(30);
+	});
+
+	it("never louder than a minor road", () => {
+		for (const z of [13, 14, 15, 16, 18])
+			expect(ink("roads_other", z), `z${z}`).toBeLessThanOrEqual(ink("roads_minor", z));
+	});
+});
