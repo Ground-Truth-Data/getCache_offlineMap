@@ -29,7 +29,7 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 import area from "@turf/area";
 import turfLength from "@turf/length";
 import { markerCtor } from "../shared/rendererOf";
-import { aimLoupe, emit as emitPress, swallowNextClick } from "../shared/doubleTapToPin";
+import { aimLoupe, emit as emitPress, heldPress, swallowNextClick } from "../shared/doubleTapToPin";
 import { LOUPE_H, LOUPE_W, RING_PAD, loupeAt } from "$gc/Loupe.svelte";
 import { DRAW_LIMIT_NOTE, mayAddVertex } from "$gc/drawLimit";
 import { BORDER_RUST } from "$gc/drawDials";
@@ -796,7 +796,8 @@ $effect(() => {
                 flashCorners();
                 return;
             }
-            if (nearIdx !== -1) return;
+            // A hold elsewhere (refused while the shape is live) is no tap off it.
+            if (nearIdx !== -1 || heldPress()) return;
             // A tap on the shape is aimed at it, not away from it — move its chrome, keep the work.
             if (tapOnShape(m, e.point.x, e.point.y)) spotBump++;
             else discard();
