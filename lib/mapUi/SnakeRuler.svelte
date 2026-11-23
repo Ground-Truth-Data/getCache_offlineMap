@@ -1065,27 +1065,18 @@ $effect(() => {
 $effect(() => {
     const m = map;
     if (!m) return;
-    // A search, a "see on map", any fly nobody's finger started takes the ruler with it. A resize
-    // fires the same events with no originalEvent but leaves the camera where it was.
-    const cam = () => `${m.getCenter().lng},${m.getCenter().lat},${m.getZoom()}`;
-    let restCam: string | null = null;
-    const onMoveStart = (e: { originalEvent?: Event }) => {
-        restCam = active && !e.originalEvent ? cam() : null;
-    };
+    // Only the planter's dismiss closes the ruler: a camera move nobody's finger made rides along.
     const onMove = () => {
         // Guard first: this fires every pan frame for the map's whole life.
         if (!active || fading) return;
-        if (restCam && cam() !== restCam) return discard();
         mapMoveSeq += 1;
         shapeRings = null;
         setData(MEASURE_TICKS_SRC, buildTicksFC(ring()));
         // Rebuild ONLY when the crowding verdict changes; renderLegs recreates every marker's DOM.
         if (legLabelsShown !== legLabelsFit().map(Number).join("")) renderLegs();
     };
-    m.on("movestart", onMoveStart);
     m.on("move", onMove);
     return () => {
-        m.off("movestart", onMoveStart);
         m.off("move", onMove);
     };
 });
