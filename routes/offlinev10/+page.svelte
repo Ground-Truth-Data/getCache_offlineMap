@@ -1,7 +1,7 @@
 <script lang="ts">
 /** The offline preview: a blob is whole z10 tiles and the pyramids under them, so
  * the gold border IS the data's edge at every zoom. */
-import { dev } from "$app/environment";
+import { dev } from "$app/env";
 import { goto, replaceState } from "$app/navigation";
 import { page } from "$app/state";
 import MapTopControls from "../../lib/mapUi/MapTopControls.svelte";

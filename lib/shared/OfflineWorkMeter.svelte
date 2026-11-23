@@ -1,7 +1,7 @@
 <!-- The breaker panel for the online map; renders nothing outside dev. -->
 <script lang="ts">
 import "$rig/dev/devCard.css";
-import { dev } from "$app/environment";
+import { dev } from "$app/env";
 import { onMount } from "svelte";
 import { workStats, resetWorkStats } from "./workMeter.svelte";
 import {
