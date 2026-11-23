@@ -1,4 +1,4 @@
-/** The named features and small places a shape is named after: 5° cells fetched once and kept on the phone. Naming reads only what is held. */
+/** The named features and small places a shape is named after: 2.5° cells, named by their south-west corner, fetched once and kept on the phone. Naming reads only what is held. */
 
 import { makeKeyedIdbStore } from "../onPhone/store/keyedIdbStore";
 import { NEARBY_DB } from "../onPhone/store/dbCatalog";
@@ -6,8 +6,9 @@ import { NEARBY_DB } from "../onPhone/store/dbCatalog";
 /** [name, lng, lat, 1 = feature (bay, beach, peak, park, forest) | 0 = place]. */
 export type NearbyRow = readonly [string, number, number, 0 | 1];
 
-const CELL_DEG = 5;
-const store = makeKeyedIdbStore<NearbyRow[]>({ dbName: NEARBY_DB, storeName: "cells" });
+const CELL_DEG = 2.5;
+// A new store name: a database still holding the 5° "cells" lacks it, so keyedIdbStore drops it and starts empty.
+const store = makeKeyedIdbStore<NearbyRow[]>({ dbName: NEARBY_DB, storeName: "nearbyPlaces" });
 // Capacitor serves the app from localhost with no port, where the cells don't ship; they come from the web host.
 const base = () => (location.hostname === "localhost" && !location.port ? "https://getcache.org" : "");
 
@@ -18,7 +19,7 @@ export function cellsAround(lng: number, lat: number, km: number): string[] {
 	const cells = new Set<string>();
 	for (const x of [lng - dLng, lng + dLng])
 		for (const y of [lat - dLat, lat + dLat])
-			cells.add(`${Math.floor((x + 180) / CELL_DEG)}_${Math.floor((y + 90) / CELL_DEG)}`);
+			cells.add(`${Math.floor(x / CELL_DEG) * CELL_DEG}_${Math.floor(y / CELL_DEG) * CELL_DEG}`);
 	return [...cells];
 }
 
@@ -33,7 +34,7 @@ export async function fetchNearby(cells: readonly string[]): Promise<void> {
 		cells
 			.filter((c) => !held.has(c))
 			.map(async (c) => {
-				const res = await fetch(`${base()}/mobileAssets/nearby/${c}.json`);
+				const res = await fetch(`${base()}/mobileAssets/nearbyPlaces/${c}.json`);
 				if (!res.ok) throw new Error(`nearby cell ${c}: HTTP ${res.status}`);
 				await store.put(c, await res.json());
 			}),
