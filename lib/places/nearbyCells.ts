@@ -7,7 +7,8 @@ import { NEARBY_DB } from "../onPhone/store/dbCatalog";
 export type NearbyRow = readonly [string, number, number, 0 | 1];
 
 const CELL_DEG = 2.5;
-const store = makeKeyedIdbStore<NearbyRow[]>({ dbName: NEARBY_DB, storeName: "cells" });
+// A new store name: a database still holding the 5° "cells" lacks it, so keyedIdbStore drops it and starts empty.
+const store = makeKeyedIdbStore<NearbyRow[]>({ dbName: NEARBY_DB, storeName: "nearbyPlaces" });
 // Capacitor serves the app from localhost with no port, where the cells don't ship; they come from the web host.
 const base = () => (location.hostname === "localhost" && !location.port ? "https://getcache.org" : "");
 
@@ -33,7 +34,7 @@ export async function fetchNearby(cells: readonly string[]): Promise<void> {
 		cells
 			.filter((c) => !held.has(c))
 			.map(async (c) => {
-				const res = await fetch(`${base()}/mobileAssets/nearby/${c}.json`);
+				const res = await fetch(`${base()}/mobileAssets/nearbyPlaces/${c}.json`);
 				if (!res.ok) throw new Error(`nearby cell ${c}: HTTP ${res.status}`);
 				await store.put(c, await res.json());
 			}),
