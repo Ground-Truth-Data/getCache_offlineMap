@@ -13,6 +13,7 @@ export const LEGACY_VECTORS_DB_NAME = "rt-vectors";
 /** Keep in sync with satelliteImage.ts's DB name, or live photos classify as legacy. */
 export const SAT_DB = "gc-offlineSatellite";
 export const FIRE_DB = "rt-fire-cache";
+export const NEARBY_DB = "gc-nearbyPlaces";
 
 /** Strip a world suffix (`-sandbox`, `-sandbox-<name>`) to the base name. */
 export function baseDbName(db: string): string {
@@ -26,6 +27,7 @@ export function isLiveBase(b: string): boolean {
 		b === V4_TILES_DB ||
 		b === SAT_DB ||
 		b === FIRE_DB ||
+		b === NEARBY_DB ||
 		b === LEGACY_VECTORS_DB_NAME
 	);
 }
@@ -47,7 +49,7 @@ export function isLegacyDb(db: string): boolean {
 }
 
 /** Imagery a re-download restores, so sign-out keeps it. A store holding user data here leaks it to the next person at the browser. */
-const IMPERSONAL_BASES = [V4_TILES_DB, SAT_DB];
+const IMPERSONAL_BASES = [V4_TILES_DB, SAT_DB, NEARBY_DB];
 
 /** True when a database must not outlive the signed-in session, either world. */
 export function isPersonalDb(db: string): boolean {
