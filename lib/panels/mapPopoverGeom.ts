@@ -1,4 +1,6 @@
 // Side is CHOSEN BY MEASUREMENT: an always-below card walks off the viewport once the pin pans.
+// The card's own height is never known here: a card above hangs from its bottom edge, so however tall it is,
+// it ends at the pin instead of sliding down over it.
 
 export type Bbox = { minX: number; minY: number; maxX: number; maxY: number };
 
@@ -11,15 +13,15 @@ export type PlaceInput = {
 	/** Chrome reserves: app top bar / draw strip, and tab bar / shovel. */
 	topReserve: number;
 	bottomReserve: number;
-	measuredHeight?: number;
 	/** The crow tile's no-go rect, in container coordinates. */
 	crow?: { left: number; top: number; bottom: number } | null;
 };
 
 export type Placement = {
 	left: number;
-	top: number;
 	width: number;
+	/** The card's edge nearest the anchor: its top when below, its bottom when above. */
+	edge: number;
 	maxH: number;
 	side: "above" | "below";
 };
@@ -29,22 +31,12 @@ const OFFSET = 15;
 const PIN_GAP = 18;
 const PAD = 8;
 const CROW_CLEARANCE = 10;
-export const ESTIMATED_HEIGHT = 220;
-const MIN_HEIGHT = 160;
+/** Tall enough for a cache's header, ledger and three rows of pins: a card never squeezes under this. */
+export const MIN_OPEN = 360;
 const MIN_WIDTH = 160;
 
 export function placePopover(input: PlaceInput): Placement {
-	const {
-		bbox,
-		containerWidth,
-		containerHeight,
-		isPoint,
-		wide,
-		topReserve,
-		bottomReserve,
-		measuredHeight,
-		crow,
-	} = input;
+	const { bbox, containerWidth, containerHeight, isPoint, wide, topReserve, bottomReserve, crow } = input;
 
 	const cap = wide ? containerWidth - 46 : 260;
 	let width = Math.max(MIN_WIDTH, Math.min(cap, containerWidth - PAD * 2));
@@ -53,27 +45,25 @@ export function placePopover(input: PlaceInput): Placement {
 	const usableBottom = containerHeight - bottomReserve;
 
 	const gap = OFFSET + (isPoint ? PIN_GAP : 0);
-	const height =
-		measuredHeight && measuredHeight > 0 ? measuredHeight : ESTIMATED_HEIGHT;
+	const below = bbox.maxY + gap;
+	const above = bbox.minY - gap;
+	const roomBelow = usableBottom - below;
+	// Above may climb into the top reserve, but only as far as it needs.
+	const ceiling = Math.min(usableTop, Math.max(PAD, above - MIN_OPEN));
 
-	const roomBelow = usableBottom - (bbox.maxY + gap);
-	const roomAbove = bbox.minY - gap - usableTop;
-
-	const fitsBelow = roomBelow >= height;
-	const side: "above" | "below" =
-		fitsBelow || roomBelow >= roomAbove ? "below" : "above";
-
-	let top =
-		side === "below"
-			? bbox.maxY + gap
-			: // The card's BOTTOM sits `gap` over the anchor.
-				bbox.minY - gap - height;
-
-	// Top clamp wins — never hide the header under the chrome; a tall card scrolls via maxH.
-	if (side === "below") top = Math.min(top, usableBottom - height);
-	top = Math.max(usableTop, top);
-
-	const maxH = Math.max(MIN_HEIGHT, usableBottom - top);
+	let edge: number;
+	let maxH: number;
+	let side: Placement["side"];
+	if (roomBelow >= MIN_OPEN || roomBelow >= above - PAD) {
+		side = "below";
+		edge = Math.max(PAD, Math.min(below, usableBottom - MIN_OPEN));
+		maxH = usableBottom - edge;
+	} else {
+		// With no room either side, it opens as high as it can at its full minimum, over the pin's top.
+		side = "above";
+		edge = Math.max(above, ceiling + MIN_OPEN);
+		maxH = edge - ceiling;
+	}
 
 	const centerX = (bbox.minX + bbox.maxX) / 2;
 	let left = centerX - width / 2;
@@ -96,39 +86,19 @@ export function placePopover(input: PlaceInput): Placement {
 		}
 	}
 
-	return { left, top, width, maxH, side };
+	return { left, width, edge, maxH, side };
 }
 
 export type Leader = { x0: number; y0: number; x1: number; y1: number };
 
-export function leaderLine(
-	bbox: Bbox,
-	place: Placement,
-	opts: { measuredHeight?: number } = {},
-): Leader | null {
+export function leaderLine(bbox: Bbox, place: Placement): Leader | null {
 	const MIN_RUN = 10;
 	/** Land inside the card's edge, clear of the rounded corners. */
 	const INSET = 16;
 	const x0 = (bbox.minX + bbox.maxX) / 2;
-	const x1 = Math.max(
-		place.left + INSET,
-		Math.min(x0, place.left + place.width - INSET),
-	);
-
-	if (place.side === "below") {
-		const y0 = bbox.maxY + 3;
-		const y1 = place.top;
-		if (y1 - y0 < MIN_RUN) return null;
-		return { x0, y0, x1, y1 };
-	}
-
-	const height =
-		opts.measuredHeight && opts.measuredHeight > 0 ? opts.measuredHeight : null;
-	const cardBottom = height
-		? place.top + Math.min(height, place.maxH)
-		: place.top + place.maxH;
-	const y0 = bbox.minY - 3;
-	const y1 = cardBottom;
-	if (y0 - y1 < MIN_RUN) return null;
+	const x1 = Math.max(place.left + INSET, Math.min(x0, place.left + place.width - INSET));
+	const y0 = place.side === "below" ? bbox.maxY + 3 : bbox.minY - 3;
+	const y1 = place.edge;
+	if (Math.abs(y1 - y0) < MIN_RUN) return null;
 	return { x0, y0, x1, y1 };
 }

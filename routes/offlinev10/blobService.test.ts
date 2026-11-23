@@ -7,7 +7,8 @@ const disk: Region[] = [];
 const downloads: Array<[number, number]> = [];
 const photosDropped: string[] = [];
 let release: (() => void) | null = null;
-let failNext = false;
+/** true throws the no-answer TypeError; a function throws what it returns. */
+let failNext: boolean | (() => Error) = false;
 vi.stubGlobal("window", new EventTarget());
 
 let keepAsked = 0;
@@ -39,8 +40,9 @@ vi.mock("./download", () => ({
 	) => {
 		downloads.push([lng, lat]);
 		if (failNext) {
+			const fail = failNext;
 			failNext = false;
-			throw new TypeError("Failed to fetch");
+			throw fail === true ? new TypeError("Failed to fetch") : fail();
 		}
 		await new Promise<void>((r) => {
 			release = r;
@@ -294,6 +296,68 @@ describe("blob service", () => {
 		await tick();
 		expect(downloads.length).toBe(2);
 		off();
+	});
+
+	it("with no signal, a minute of place changes asks once; signal back or a long wait asks again", async () => {
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+		const step = () => vi.advanceTimersByTimeAsync(0);
+		const list = [{ anchors: [PENTICTON], lastTouchedAt: soon() }];
+		const { ports, changed } = fakePorts(() => list);
+		failNext = true;
+		const stop = startBlobService(ports);
+		await step();
+		for (let s = 0; s < 60; s++) {
+			failNext = true;
+			changed();
+			await vi.advanceTimersByTimeAsync(1000);
+		}
+		expect(downloads).toEqual([PENTICTON]);
+		window.dispatchEvent(new Event("online"));
+		await step();
+		expect(downloads).toEqual([PENTICTON, PENTICTON]);
+		await vi.advanceTimersByTimeAsync(10 * 60_000);
+		expect(downloads.length).toBe(3);
+		failNext = false;
+		stop();
+		vi.useRealTimers();
+	});
+
+	it("losing signal mid-download pauses quietly and resumes online; a failure with signal still errors", async () => {
+		const net = { onLine: true };
+		vi.stubGlobal("navigator", net);
+		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+		const warns = vi.spyOn(console, "warn").mockImplementation(() => {});
+		failNext = () => {
+			net.onLine = false;
+			return new TypeError("Failed to fetch");
+		};
+		const list = [{ anchors: [PENTICTON], lastTouchedAt: soon() }];
+		const { ports } = fakePorts(() => list);
+		const stop = startBlobService(ports);
+		try {
+			await tick();
+			await tick();
+			expect(errors).not.toHaveBeenCalled();
+			expect(warns).toHaveBeenCalledTimes(1);
+			net.onLine = true;
+			window.dispatchEvent(new Event("online"));
+			await tick();
+			expect(downloads).toEqual([PENTICTON, PENTICTON]);
+			release?.();
+			await tick();
+			expect(disk.length).toBe(1);
+			failNext = () => new Error("tile https://tiles/13/1/1.pbf: HTTP 500");
+			expect(await queueBlob(...SPOKANE)).toBe(true);
+			await tick();
+			await tick();
+			expect(errors).toHaveBeenCalledTimes(1);
+		} finally {
+			net.onLine = true;
+			window.dispatchEvent(new Event("online"));
+			stop();
+			errors.mockRestore();
+			warns.mockRestore();
+		}
 	});
 
 	it("a pin inside an older blob's ground still earns its own blob", async () => {

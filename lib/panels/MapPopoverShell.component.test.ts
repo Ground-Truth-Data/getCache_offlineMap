@@ -36,7 +36,8 @@ describe("MapPopoverShell", () => {
 		expect(card.querySelector(".body")!.textContent).toBe("Block 7");
 		const g = placePopover({ bbox, containerWidth: W, containerHeight: H, isPoint: true, wide: false, topReserve: 150, bottomReserve: 8, crow: null });
 		expect(card.style.left).toBe(`${g.left}px`);
-		expect(card.style.top).toBe(`${g.top}px`);
+		if (g.side === "below") expect(card.style.top).toBe(`${g.edge}px`);
+		else expect(card.style.bottom).toBe(`${H - g.edge}px`);
 		expect(card.style.width).toBe(`${g.width}px`);
 		const svg = container.querySelector("svg.rt-fmp-leader")!;
 		expect(svg.getAttribute("viewBox")).toBe(`0 0 ${W} ${H}`);

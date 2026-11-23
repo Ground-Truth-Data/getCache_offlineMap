@@ -180,6 +180,21 @@ export function groundFlavor<T extends Record<string, unknown>>(
 	return out as T;
 }
 
+// Stock DARK draws paths and tracks in the bush's own grey; lighter, but dashed and thin so a minor road still outweighs it.
+const TRACK_LAYERS = new Set(["roads_other", "roads_bridges_other"]);
+const TRACK_PAINT = {
+	"line-color": "#615d55",
+	"line-dasharray": [3, 3],
+	"line-width": ["interpolate", ["linear"], ["zoom"], 12, 0.45, 14, 0.75, 18, 2],
+};
+
+function drawTracks(layer: LayerSpecification): LayerSpecification {
+	if (!TRACK_LAYERS.has(layer.id)) return layer;
+	const l = layer as { paint?: Record<string, unknown> };
+	l.paint = { ...l.paint, ...TRACK_PAINT };
+	return layer;
+}
+
 export function buildStyle(origin: string): StyleSpecification {
 	const flavor = groundFlavor({ ...DARK, regular: FONT, bold: FONT, italic: FONT });
 	const planet = layers(PLANET, flavor, { lang: "en" })
@@ -195,6 +210,7 @@ export function buildStyle(origin: string): StyleSpecification {
 			return l;
 		})
 		.map(oneFont)
+		.map(drawTracks)
 		.map(fadeIn)
 		.map(fadeParkNames);
 
@@ -303,7 +319,7 @@ export function buildStyle(origin: string): StyleSpecification {
 				maxzoom: MAX_Z,
 				// ODbL: the credit and its link are owed wherever the data shows.
 				// Letter for letter the tail of MapTiler's credit, so MapLibre drops this one while a MapTiler photo is up.
-				attribution: '<a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>',
+				attribution: '<a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap</a>',
 			},
 			[REGIONS]: {
 				type: "geojson",

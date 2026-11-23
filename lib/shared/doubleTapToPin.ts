@@ -34,6 +34,10 @@ export function swallowNextClick(): void {
 // up the loupe; once the pointer has rested HOLD_MS the ruler seeds there, finger still down or not.
 export const ACTIVATE_MS = 260;
 export const HOLD_MS = 900;
+
+let pressedAt = 0;
+/** The click now arriving ends a hold, not a tap; a press the map refused still counts. */
+export const heldPress = () => Date.now() - pressedAt >= ACTIVATE_MS;
 // Loupe or no loupe, a move past the hand's own slop is a drag for the rest of the press; under it, the hold counts on.
 // The map's clickTolerance is the same number (mapInit.ts), so it starts panning the moment the press becomes a drag.
 const SLOP_PX = DRAG_SLOP_PX;
@@ -191,6 +195,8 @@ export function attachDoubleTapToPin(
 		if ((oe.target as Element | null)?.closest?.(".maplibregl-marker")) return;
 		// A layer that took the press (the route line, being pulled) owns it; it attaches before us, so its handler ran first.
 		if (e.defaultPrevented) return;
+		// The mousedown Chrome makes from a touch arrives at its release; the touch already started this press.
+		if (!(oe as { sourceCapabilities?: { firesTouchEvents?: boolean } }).sourceCapabilities?.firesTouchEvents) pressedAt = Date.now();
 		if (opts.canSeed?.() === false) return;
 		pressStart = getClientCoords(oe);
 		isTouch = isTouchLike(oe);

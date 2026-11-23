@@ -219,11 +219,20 @@ describe("follow mode", () => {
 		expect(pill().hidden).toBe(false);
 	});
 
-	it("pauses when a hand moves the map", async () => {
+	// Chris, 23 Nov: hours after a pinch-zoom (never a drag), a hold to open the ruler, then a fix, and the map flew to him.
+	it.each(["touchstart", "mousedown", "wheel"])("pauses at any hand on the map (%s), so the next fix moves nothing", async (type) => {
 		await follow();
-		d.fire("dragstart", { originalEvent: new Event("touchstart") });
-		expect(pill().querySelector(".rt-route-pill-go")?.textContent).toBe("Follow");
+		d.fire(type, { point: { x: 0, y: 0 }, lngLat: { lng: -119.3, lat: 50.2 }, originalEvent: new Event(type), preventDefault: vi.fn() });
+		const eased = d.raw.easeTo.mock.calls.length;
+		h!.fix(-119.25, 50.25);
 		expect(roles()).not.toContain("me");
+		expect(d.raw.easeTo.mock.calls.length).toBe(eased);
+		const lift = ({ touchstart: "touchend", mousedown: "mouseup" } as Record<string, string | undefined>)[type];
+		if (lift) {
+			expect(pill().querySelector(".rt-route-pill-go")).toBeNull();
+			window.dispatchEvent(new Event(lift));
+		}
+		expect(pill().querySelector(".rt-route-pill-go")?.textContent).toBe("Follow");
 	});
 });
 

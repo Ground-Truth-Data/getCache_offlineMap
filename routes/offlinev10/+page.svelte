@@ -437,6 +437,7 @@ function toggleLayer(key: string): void {
 		for (const id of rowIds(r)) if (map?.getLayer(id)) map.setLayoutProperty(id, "visibility", r.on ? "none" : "visible");
 		return { ...r, on: !r.on, painted: false };
 	});
+	setPhotoCredits(credits, photos?.attributions() ?? []);
 }
 
 /** A switched-off row stays off for layers that arrive later. */

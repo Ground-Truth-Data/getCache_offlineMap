@@ -10,6 +10,7 @@ import { sessionCap, spendBytes } from "../../lib/shared/sessionByteCap.svelte";
 import { tileUrl } from "../../lib/worker/tilesHost";
 import { BudgetError, budgetBytes } from "./budget";
 import { nearestPlace } from "./places";
+import { cellsAround, fetchNearby } from "../../lib/places/nearbyCells";
 import {
 	AreaGone,
 	allTileKeys,
@@ -23,7 +24,7 @@ import {
 	type Region,
 	usedBytes,
 } from "./store";
-import { rangeTiles, regionRange, type Tile, tileKey, toMerc } from "./tiles";
+import { RADIUS_KM, rangeTiles, regionRange, type Tile, tileKey, toMerc } from "./tiles";
 
 // One GET per tile spreads the reads over many Worker isolates; 96 at once drew 500s.
 const IN_FLIGHT = 48;
@@ -106,7 +107,11 @@ export async function downloadRegion(
 	onProgress?.(p);
 
 	try {
-		await fetchInto(id, todo, p, t0, onProgress);
+		await Promise.all([
+			fetchInto(id, todo, p, t0, onProgress),
+			// Place names never cost the planter an area: a host without the cells names from towns.
+			fetchNearby(cellsAround(lng, lat, RADIUS_KM)).catch((e) => console.warn("[offline] nearby places not fetched", e)),
+		]);
 	} catch (e) {
 		// A row already gone was removed by whoever took it, and a removed one must stay.
 		if (!opts.keep && !(e instanceof AreaGone)) await deleteRegion(id);
@@ -216,17 +221,19 @@ export async function getEach(
 ): Promise<void> {
 	let next = 0;
 	let failed: unknown = null;
-	const lane = async (): Promise<void> => {
-		while (next < urls.length && failed === null && !stop()) {
-			const i = next++;
-			const got = await getOne(urls[i]).catch((e) => {
-				if (!skipFailed || e instanceof RateLimited) return Promise.reject(e);
-				onSkipped?.(e);
-				return NONE;
-			});
-			onTile(i, got.body, got.cache);
-		}
+	const take = async (i: number): Promise<void> => {
+		const got = await getOne(urls[i]).catch((e) => {
+			if (!skipFailed || e instanceof RateLimited) return Promise.reject(e);
+			onSkipped?.(e);
+			return NONE;
+		});
+		onTile(i, got.body, got.cache);
 	};
+	const lane = async (): Promise<void> => {
+		while (next < urls.length && failed === null && !stop()) await take(next++);
+	};
+	// One GET proves the line before the lanes open: with no signal a download costs one request.
+	if (urls.length && !stop()) await take(next++);
 	const lanes = await Promise.allSettled(
 		Array.from({ length: width }, () =>
 			lane().catch((e) => {

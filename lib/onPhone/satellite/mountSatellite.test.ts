@@ -14,6 +14,7 @@ vi.mock("./satelliteImage", async (orig) => {
 	};
 });
 
+import { SATELLITE_SOURCES } from "../../contract/satelliteSources";
 import { createSatelliteMount, SAT_EDGE_ID, SAT_FAR_Z, SAT_LAYERS, SAT_MIN_Z } from "./mountSatellite";
 
 const sq = (x: number, y: number): [number, number][] => [[x, y], [x + 0.01, y], [x + 0.01, y + 0.007], [x, y + 0.007], [x, y]];
@@ -28,8 +29,8 @@ beforeEach(() => {
 	records.set(FAR.key, { zoom: 16, source: "MapTiler" });
 });
 
-function rig() {
-	const d = mapDouble();
+function rig([w, s, e, n] = CAMERA) {
+	const d = mapDouble({ w, s, e, n });
 	d.layers.push({ id: "roads", type: "line" });
 	const mount = createSatelliteMount(d.map as never, "roads", "v10://photo/{source}/{z}/{x}/{y}");
 	return { d, mount };
@@ -76,6 +77,20 @@ describe("createSatelliteMount", () => {
 		await mount.reconcile(CAMERA, [NEAR]);
 		expect(edges.n).toBe(2);
 		expect(edges.last).toEqual([{ ring: NEAR.rings[0], z: 16 }]);
+	});
+
+	it("credits a photo only while it is drawn: on screen, from SAT_FAR_Z, switched on", async () => {
+		const { d, mount } = rig();
+		await mount.reconcile(CAMERA, [NEAR, FAR]);
+		expect(mount.attributions()).toEqual([SATELLITE_SOURCES.maptiler.attribution]);
+		d.map.zoom = SAT_FAR_Z - 0.5;
+		expect(mount.attributions(), "below SAT_FAR_Z only the base map draws").toEqual([]);
+		d.map.zoom = 15;
+		d.map.setLayoutProperty("v4-sat-maptiler-l", "visibility", "none");
+		expect(mount.attributions(), "the photo row is switched off").toEqual([]);
+		const beside = rig([-119.9, 49.4, -119.7, 49.6]);
+		await beside.mount.reconcile([-119.9, 49.4, -119.7, 49.6], [NEAR, FAR]);
+		expect(beside.mount.attributions(), "a photo one screen over is not drawn").toEqual([]);
 	});
 
 	it("an area with no current record is not ringed or credited", async () => {

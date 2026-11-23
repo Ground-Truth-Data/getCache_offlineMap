@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { DRAG_SLOP_PX } from "$gc/ShovelCursor.svelte";
-import { ACTIVATE_MS, HOLD_MS, attachDoubleTapToPin } from "./doubleTapToPin";
+import { ACTIVATE_MS, HOLD_MS, attachDoubleTapToPin, heldPress } from "./doubleTapToPin";
 
 // Node has EventTarget and Event but no DOM: a window plus the two pointer event classes the detector
 // duck-types against is all the real thing needs.
@@ -107,6 +107,32 @@ describe("mouse: the hold, the drag, the tap", () => {
 		r.map().fire("mouseup", new FakeMouseEvent("mouseup", 200, 300));
 		expect(click()).toBe(true);
 		expect(click()).toBe(false);
+	});
+
+	// A refused hold's click still reaches the map, where it ends reshape; only the ruler reads heldPress() and keeps its shape.
+	it("a held press the map refused keeps its click and reads as held; a quick tap reads as a tap", () => {
+		const click = () => {
+			const e = new Event("click", { cancelable: true });
+			(g.window as EventTarget).dispatchEvent(e);
+			return e.defaultPrevented;
+		};
+		const map = fakeMap();
+		const seed = vi.fn();
+		const off = attachDoubleTapToPin(map, { onMeasureSeed: seed, canSeed: () => false });
+		const press = (ms: number) => {
+			map.fire("mousedown", new FakeMouseEvent("mousedown", 200, 300));
+			vi.advanceTimersByTime(ms);
+			(g.window as EventTarget).dispatchEvent(new FakeMouseEvent("mouseup", 200, 300));
+			map.fire("mouseup", new FakeMouseEvent("mouseup", 200, 300));
+		};
+		press(ACTIVATE_MS + HOLD_MS);
+		expect(seed).not.toHaveBeenCalled();
+		expect(heldPress()).toBe(true);
+		expect(click()).toBe(false);
+		press(50);
+		expect(heldPress()).toBe(false);
+		expect(click()).toBe(false);
+		off();
 	});
 
 	it("under the loupe a fat-finger wobble keeps the countdown; past the slop the ruler drops for a drag", () => {
