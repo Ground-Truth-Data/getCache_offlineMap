@@ -26,7 +26,7 @@ export async function heldNearby(cells: readonly string[]): Promise<NearbyRow[]>
 	return (await Promise.all(cells.map((c) => store.get(c)))).flatMap((rows) => rows ?? []);
 }
 
-/** Fetches the cells not yet held; a cell with no file (open ocean) is kept empty. */
+/** Fetches the cells not yet held. A cell with no file (open ocean, or a host without the folder) is not kept, so it is asked for again. */
 export async function fetchNearby(cells: readonly string[]): Promise<void> {
 	const held = new Set(await store.keys());
 	await Promise.all(
@@ -35,8 +35,7 @@ export async function fetchNearby(cells: readonly string[]): Promise<void> {
 			.map(async (c) => {
 				const res = await fetch(`${base()}/mobileAssets/nearby/${c}.json`);
 				if (res.ok) await store.put(c, await res.json());
-				else if (res.status === 404) await store.put(c, []);
-				else throw new Error(`nearby cell ${c}: HTTP ${res.status}`);
+				else if (res.status !== 404) throw new Error(`nearby cell ${c}: HTTP ${res.status}`);
 			}),
 	);
 }

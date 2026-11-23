@@ -1,4 +1,4 @@
-// Naming reads only cells on the phone; a cell is fetched once and kept, an ocean cell is kept empty,
+// Naming reads only cells on the phone; a cell is fetched once and kept, a missing one is asked for again,
 // and the native app (localhost, no port) fetches from the web host.
 import { IDBFactory } from "fake-indexeddb";
 import { describe, expect, it, vi } from "vitest";
@@ -22,7 +22,11 @@ describe("nearby cells", () => {
 
 		await fetchNearby([...cells, "0_0"]);
 		await fetchNearby([...cells, "0_0"]);
-		expect(get.mock.calls.map(([u]) => u)).toEqual(["/mobileAssets/nearby/65_10.json", "/mobileAssets/nearby/0_0.json"]);
+		expect(get.mock.calls.map(([u]) => u)).toEqual([
+			"/mobileAssets/nearby/65_10.json",
+			"/mobileAssets/nearby/0_0.json",
+			"/mobileAssets/nearby/0_0.json",
+		]);
 		expect(await heldNearby(cells)).toEqual([OBERON]);
 		expect(await heldNearby(["0_0"])).toEqual([]);
 	});
