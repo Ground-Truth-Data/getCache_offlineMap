@@ -31,7 +31,8 @@ const SWEEP = { timeout: 10_000 };
 
 vi.stubGlobal("window", new EventTarget());
 vi.mock("./places", () => ({ nearestPlace: async () => null }));
-vi.mock("../../lib/places/nearbyCells", () => ({ cellsAround: () => [], fetchNearby: async () => {} }));
+// Every download here runs against a host without the nearby cells: an area never fails over place names.
+vi.mock("../../lib/places/nearbyCells", () => ({ cellsAround: () => [], fetchNearby: async () => Promise.reject(new Error("no cells")) }));
 const photosDropped = vi.hoisted(() => [] as string[]);
 // An area's tiles come from MapTiler; here the save only records what it was asked for.
 const baked = vi.hoisted(() => [] as string[]);

@@ -107,7 +107,11 @@ export async function downloadRegion(
 	onProgress?.(p);
 
 	try {
-		await Promise.all([fetchInto(id, todo, p, t0, onProgress), fetchNearby(cellsAround(lng, lat, RADIUS_KM))]);
+		await Promise.all([
+			fetchInto(id, todo, p, t0, onProgress),
+			// Place names never cost the planter an area: a host without the cells names from towns.
+			fetchNearby(cellsAround(lng, lat, RADIUS_KM)).catch((e) => console.warn("[offline] nearby places not fetched", e)),
+		]);
 	} catch (e) {
 		// A row already gone was removed by whoever took it, and a removed one must stay.
 		if (!opts.keep && !(e instanceof AreaGone)) await deleteRegion(id);
