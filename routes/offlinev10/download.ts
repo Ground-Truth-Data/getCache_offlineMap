@@ -10,6 +10,7 @@ import { sessionCap, spendBytes } from "../../lib/shared/sessionByteCap.svelte";
 import { tileUrl } from "../../lib/worker/tilesHost";
 import { BudgetError, budgetBytes } from "./budget";
 import { nearestPlace } from "./places";
+import { cellsAround, fetchNearby } from "../../lib/places/nearbyCells";
 import {
 	AreaGone,
 	allTileKeys,
@@ -23,7 +24,7 @@ import {
 	type Region,
 	usedBytes,
 } from "./store";
-import { rangeTiles, regionRange, type Tile, tileKey, toMerc } from "./tiles";
+import { RADIUS_KM, rangeTiles, regionRange, type Tile, tileKey, toMerc } from "./tiles";
 
 // One GET per tile spreads the reads over many Worker isolates; 96 at once drew 500s.
 const IN_FLIGHT = 48;
@@ -106,7 +107,11 @@ export async function downloadRegion(
 	onProgress?.(p);
 
 	try {
-		await fetchInto(id, todo, p, t0, onProgress);
+		await Promise.all([
+			fetchInto(id, todo, p, t0, onProgress),
+			// Place names never cost the planter an area: a host without the cells names from towns.
+			fetchNearby(cellsAround(lng, lat, RADIUS_KM)).catch((e) => console.warn("[offline] nearby places not fetched", e)),
+		]);
 	} catch (e) {
 		// A row already gone was removed by whoever took it, and a removed one must stay.
 		if (!opts.keep && !(e instanceof AreaGone)) await deleteRegion(id);
