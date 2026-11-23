@@ -39,7 +39,12 @@ export function attachHeldPhotos(map: maplibregl.Map, onCredits: (credits: strin
 	let above: string | undefined;
 	let sample: maplibregl.Marker | null = null;
 
-	const credit = (): void => onCredits([...(photos?.attributions() ?? []), ...(sample ? [SAMPLE.credit] : [])]);
+	const sampleInView = (): boolean => {
+		const b = map.getBounds();
+		const [[w, n], [e], [, s]] = SAMPLE.corners;
+		return b.getWest() < e! && b.getEast() > w! && b.getSouth() < n! && b.getNorth() > s!;
+	};
+	const credit = (): void => onCredits([...(photos?.attributions() ?? []), ...(sample && sampleInView() ? [SAMPLE.credit] : [])]);
 	const show = async (): Promise<void> => {
 		const mount = photos;
 		if (!mount) return;
