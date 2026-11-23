@@ -2,16 +2,19 @@
   The switch overrides it until the next move. -->
 <script lang="ts">
 import type { Polygon } from "geojson";
+import type { Snippet } from "svelte";
 import { iconPath } from "../shared/icons";
 import { m } from "$parent/src/lib/paraglide/messages";
 import ShapeSwitch from "./ShapeSwitch.svelte";
 
 type Verdict = { block: boolean; overlaps: string | null };
-let { ring, bornAs, onSave }: {
+let { ring, bornAs, onSave, share }: {
     ring: [number, number][];
     /** Absent (no host store): a block. */
     bornAs?: ((where: Polygon) => Promise<Verdict>) | undefined;
     onSave: (asBlock: boolean) => void;
+    /** Drawn above Save, handed the same kind. */
+    share?: Snippet<[boolean]> | undefined;
 } = $props();
 
 let verdict = $state<Verdict>({ block: true, overlaps: null });
@@ -27,6 +30,7 @@ $effect(() => {
 const asBlock = $derived(!verdict.overlaps && (picked ?? verdict.block));
 </script>
 
+{@render share?.(asBlock)}
 <button class="measure-btn measure-save" onclick={() => onSave(asBlock)} title={m.ofmap_ui_save()}>
     <img class="measure-pin-ic" src={iconPath(asBlock ? "block" : "poly")} alt="" />
     {m.ofmap_ui_save()}
