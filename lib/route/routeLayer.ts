@@ -608,14 +608,20 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		map.on("mouseup", onUp);
 		map.on("touchend", onUp);
 	};
-	// A hand on the map means "let me look": follow pauses, the Follow button brings it back.
-	const onDragStart = (e: { originalEvent?: Event }): void => {
+	// A hand on the map means "let me look": follow pauses, the Follow button brings it back. Any hand, not just a
+	// drag: a pinch, a wheel or a hold to open the ruler left follow on, and the next fix flew the map away from it.
+	const HANDS = ["touchstart", "mousedown", "wheel"] as const;
+	const onHand = (e: { originalEvent?: Event }): void => {
 		if (!following || !e.originalEvent) return;
 		following = false;
 		me = null;
 		stayAwake(false);
-		showRoute();
 		paint();
+		// The Follow button comes back once the hand lifts: a banner rebuilt under a held press reads as the pointer
+		// leaving the map, and the ruler's hold is dropped.
+		const lift = ({ touchstart: "touchend", mousedown: "mouseup" } as Record<string, string | undefined>)[e.originalEvent.type];
+		if (lift) window.addEventListener(lift, () => showRoute(), { once: true, capture: true });
+		else showRoute();
 	};
 	/** A pebble in a puddle: three rings out from the pin until they leave the screen, once. */
 	const ripple = (): void => {
@@ -666,7 +672,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 	const pressLayers = [ROUTE_LAYER_IDS.casing, ROUTE_LAYER_IDS.via];
 	map.on("mousedown", pressLayers, onDown);
 	map.on("touchstart", pressLayers, onDown);
-	map.on("dragstart", onDragStart);
+	for (const t of HANDS) map.on(t, onHand);
 	map.on("mousemove", pressLayers, onHover);
 	map.on("mouseleave", pressLayers, onLeave);
 	// A style swap drops every custom layer.
@@ -677,7 +683,7 @@ export function attachRouteLayer(map: maplibregl.Map, opts: RouteLayerOptions): 
 		asked++;
 		map.off("mousedown", pressLayers, onDown);
 		map.off("touchstart", pressLayers, onDown);
-		map.off("dragstart", onDragStart);
+		for (const t of HANDS) map.off(t, onHand);
 		map.off("mousemove", pressLayers, onHover);
 		map.off("mouseleave", pressLayers, onLeave);
 		map.off("styledata", paint);
