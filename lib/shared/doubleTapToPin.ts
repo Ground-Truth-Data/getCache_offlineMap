@@ -195,7 +195,8 @@ export function attachDoubleTapToPin(
 		if ((oe.target as Element | null)?.closest?.(".maplibregl-marker")) return;
 		// A layer that took the press (the route line, being pulled) owns it; it attaches before us, so its handler ran first.
 		if (e.defaultPrevented) return;
-		pressedAt = Date.now();
+		// The mousedown Chrome makes from a touch arrives at its release; the touch already started this press.
+		if (!(oe as { sourceCapabilities?: { firesTouchEvents?: boolean } }).sourceCapabilities?.firesTouchEvents) pressedAt = Date.now();
 		if (opts.canSeed?.() === false) return;
 		pressStart = getClientCoords(oe);
 		isTouch = isTouchLike(oe);
