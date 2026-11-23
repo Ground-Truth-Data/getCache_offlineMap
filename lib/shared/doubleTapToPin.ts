@@ -191,7 +191,13 @@ export function attachDoubleTapToPin(
 		if ((oe.target as Element | null)?.closest?.(".maplibregl-marker")) return;
 		// A layer that took the press (the route line, being pulled) owns it; it attaches before us, so its handler ran first.
 		if (e.defaultPrevented) return;
-		if (opts.canSeed?.() === false) return;
+		// Refused, a hold is still no tap: its click would dismiss the shape being drawn.
+		if (opts.canSeed?.() === false) {
+			isTouch = isTouchLike(oe);
+			clearTimeout(refusedTimer);
+			refusedTimer = setTimeout(armReleaseSwallow, ACTIVATE_MS);
+			return;
+		}
 		pressStart = getClientCoords(oe);
 		isTouch = isTouchLike(oe);
 		killTimer();
@@ -199,7 +205,9 @@ export function attachDoubleTapToPin(
 		emit("arm", pressStart.x, pressStart.y, { veiled: opts.claimsTap?.(e.point) ?? false });
 	};
 
+	let refusedTimer: ReturnType<typeof setTimeout> | undefined;
 	const cancelPress = () => {
+		clearTimeout(refusedTimer);
 		if (pressTimer) emit("end");
 		endAim();
 		killTimer();
