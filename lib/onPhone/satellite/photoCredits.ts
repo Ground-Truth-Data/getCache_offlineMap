@@ -15,6 +15,12 @@ export function creditsControl(): maplibregl.AttributionControl {
 		queueMicrotask(place);
 		return el;
 	};
+	// A dead map's credits must not wait for the next shovel: bags has one too, and no map.
+	const onRemove = made.onRemove.bind(made);
+	made.onRemove = () => {
+		if (control === made) control = null;
+		onRemove();
+	};
 	return made;
 }
 
