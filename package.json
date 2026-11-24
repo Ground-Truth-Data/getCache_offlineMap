@@ -11,7 +11,7 @@
 	},
 	"dependencies": {
 		"@capacitor/core": "^8.6.2",
-		"@capacitor/geolocation": "^8.2.4",
+		"@capacitor/geolocation": "^8.2.5",
 		"@capacitor/network": "^8.0.1",
 		"@mapbox/vector-tile": "^3.0.0",
 		"@protomaps/basemaps": "^5.7.2",
