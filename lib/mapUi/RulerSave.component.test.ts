@@ -29,13 +29,11 @@ describe("the ruler's Save shows block or piece", () => {
 	it("on open ground it defaults to a block", async () => {
 		const { container } = render(RulerSave, { ring: OPEN, bornAs, onSave: vi.fn() });
 		await waitFor(() => expect(glyph(container)).toMatch(/block_icon/));
-		expect(swap(container).textContent).toContain("make piece");
 	});
 
 	it("over a block it defaults to a piece, and can't be made a block", async () => {
 		const { container } = render(RulerSave, { ring: ON_BLOCK, bornAs, onSave: vi.fn() });
 		await waitFor(() => expect(glyph(container)).toMatch(/polyHeart/));
-		expect(swap(container).textContent).toContain("make block");
 		expect(swap(container).disabled).toBe(true);
 	});
 

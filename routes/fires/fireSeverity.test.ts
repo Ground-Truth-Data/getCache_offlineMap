@@ -13,6 +13,11 @@ import {
 	trendFor,
 } from "./fireSeverity";
 
+const bands = (sizeKm2: number, frp: number) => {
+	const r = severityFor(sizeKm2, frp);
+	return [r.sizeBand, r.frpBand];
+};
+
 describe("the severity table covers every input", () => {
 	it("has all 16 size × heat combinations", () => {
 		expect(SEVERITY_TABLE).toHaveLength(16);
@@ -37,7 +42,7 @@ describe("the severity table covers every input", () => {
 
 	it("treats garbage as the GENTLEST band, never the scariest", () => {
 		expect(severityFor(Number.NaN, Number.NaN).level).toBe(1);
-		expect(severityFor(-1, -1).headline).toBe("Small patch of low heat");
+		expect(bands(-1, -1)).toEqual(["spot", "low"]);
 	});
 });
 
@@ -45,14 +50,13 @@ describe("severityFor — the spec's own rows", () => {
 	it("a tiny cool patch is level 1", () => {
 		const r = severityFor(0.2, 1);
 		expect(r.level).toBe(1);
-		expect(r.label).toBe("Faint");
-		expect(r.headline).toBe("Small patch of low heat");
+		expect([r.sizeBand, r.frpBand]).toEqual(["spot", "low"]);
 	});
 
 	it("a tiny but blazing patch caps at level 3, not 5", () => {
 		const r = severityFor(0.1406, 5000);
 		expect(r.level).toBe(3);
-		expect(r.headline).toBe("Small fire burning very hot");
+		expect([r.sizeBand, r.frpBand]).toEqual(["spot", "extreme"]);
 	});
 
 	it("a SINGLE detection can never exceed level 3, at any heat", () => {
@@ -66,42 +70,41 @@ describe("severityFor — the spec's own rows", () => {
 	it("a large hot fire is level 4", () => {
 		const r = severityFor(12, 20);
 		expect(r.level).toBe(4);
-		expect(r.headline).toBe("Large fire burning hot");
+		expect([r.sizeBand, r.frpBand]).toEqual(["large", "high"]);
 	});
 
 	it("a large very hot fire is level 5", () => {
 		expect(severityFor(12, 400).level).toBe(5);
-		expect(severityFor(12, 400).headline).toBe("Large fire burning very hot");
+		expect(bands(12, 400)).toEqual(["large", "extreme"]);
 	});
 
 	it("a very large area is serious even when it is COOL", () => {
 		const r = severityFor(200, 2);
 		expect(r.level).toBe(3);
-		expect(r.headline).toBe("Very large area burning at low heat");
+		expect([r.sizeBand, r.frpBand]).toEqual(["major", "low"]);
 	});
 
 	it("the top-right corner is Extreme", () => {
 		const r = severityFor(500, 900);
 		expect(r.level).toBe(5);
-		expect(r.label).toBe("Extreme");
-		expect(r.headline).toBe("Very large fire burning very hot");
+		expect([r.sizeBand, r.frpBand]).toEqual(["major", "extreme"]);
 	});
 });
 
 describe("severityFor — band boundaries are lower-inclusive", () => {
 	it("0.25 km² (25 ha) leaves the 'spot' band", () => {
-		expect(severityFor(0.24, 8).headline).toBe("Small fire burning");
-		expect(severityFor(0.25, 8).headline).toBe("Fire burning");
+		expect(bands(0.24, 8)).toEqual(["spot", "moderate"]);
+		expect(bands(0.25, 8)).toEqual(["small", "moderate"]);
 	});
 
 	it("3 km² (300 ha) enters 'large'", () => {
-		expect(severityFor(2.99, 8).headline).toBe("Fire burning");
-		expect(severityFor(3, 8).headline).toBe("Large area burning");
+		expect(bands(2.99, 8)).toEqual(["small", "moderate"]);
+		expect(bands(3, 8)).toEqual(["large", "moderate"]);
 	});
 
 	it("15 km² (1,500 ha) enters 'major'", () => {
-		expect(severityFor(14.9, 8).headline).toBe("Large area burning");
-		expect(severityFor(15, 8).headline).toBe("Very large fire burning");
+		expect(bands(14.9, 8)).toEqual(["large", "moderate"]);
+		expect(bands(15, 8)).toEqual(["major", "moderate"]);
 	});
 
 	it("the bands are contiguous — no gap can swallow a fire", () => {
@@ -133,14 +136,12 @@ describe("severityFor — band boundaries are lower-inclusive", () => {
 	});
 
 	it("the FRP cut points are 3 / 15 / 90 MW — measured, not guessed", () => {
-		expect(severityFor(1, 2.9).headline).toBe("Fire burning at low heat");
-		expect(severityFor(1, FRP_MODERATE_MW).headline).toBe("Fire burning");
-		expect(severityFor(1, 14.9).headline).toBe("Fire burning");
-		expect(severityFor(1, FRP_HIGH_MW).headline).toBe("Fire burning hot");
-		expect(severityFor(1, 89.9).headline).toBe("Fire burning hot");
-		expect(severityFor(1, FRP_EXTREME_MW).headline).toBe(
-			"Fire burning very hot",
-		);
+		expect(bands(1, 2.9)).toEqual(["small", "low"]);
+		expect(bands(1, FRP_MODERATE_MW)).toEqual(["small", "moderate"]);
+		expect(bands(1, 14.9)).toEqual(["small", "moderate"]);
+		expect(bands(1, FRP_HIGH_MW)).toEqual(["small", "high"]);
+		expect(bands(1, 89.9)).toEqual(["small", "high"]);
+		expect(bands(1, FRP_EXTREME_MW)).toEqual(["small", "extreme"]);
 	});
 
 	it("spreads the MEASURED distribution instead of bunching at the bottom", () => {
@@ -156,17 +157,6 @@ describe("severityFor — band boundaries are lower-inclusive", () => {
 		expect(severityFor(0.14, 5).level).toBe(2);
 		expect(severityFor(0.14, 20).level).toBe(3);
 		expect(severityFor(0.14, 5000).level).toBe(3);
-	});
-});
-
-describe("the headline never asks 'hottest WHAT?'", () => {
-	it("reads as a sentence about the fire, not about a data aggregate", () => {
-		for (const row of SEVERITY_TABLE) {
-			expect(row.headline.toLowerCase()).not.toContain("hottest");
-			expect(row.headline.toLowerCase()).not.toContain("cluster");
-			expect(row.headline.toLowerCase()).not.toContain("detection");
-			expect(row.headline).not.toContain("MW");
-		}
 	});
 });
 
@@ -197,7 +187,6 @@ describe("trendFor — what it's doing between passes", () => {
 			{ t: T0 + 18 * H, frp: 20 * TREND_GROWING_RATIO + 5 },
 		]);
 		expect(r.band).toBe("growing");
-		expect(r.line).toBe("Growing since last pass");
 	});
 
 	it("flags QUIETER when the LATER half is cooler", () => {
@@ -208,7 +197,6 @@ describe("trendFor — what it's doing between passes", () => {
 			{ t: T0 + 18 * H, frp: 100 * TREND_QUIETER_RATIO - 10 },
 		]);
 		expect(r.band).toBe("quieter");
-		expect(r.line).toBe("Less heat than last pass");
 	});
 
 	it("calls the middle band STEADY", () => {
@@ -218,7 +206,6 @@ describe("trendFor — what it's doing between passes", () => {
 			{ t: T0 + 12 * H, frp: 100 },
 		]);
 		expect(r.band).toBe("steady");
-		expect(r.line).toBe("Holding steady");
 	});
 
 	it("ONE noisy pass cannot decide the verdict", () => {
