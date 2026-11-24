@@ -1,33 +1,27 @@
-<!-- A drawn polygon's Save: a block or a piece, as the host would make it, re-asked whenever a corner moves.
-  The switch overrides it until the next move. -->
+<!-- A drawn polygon's Save: a block on open ground, a piece on a block, re-asked whenever a corner moves. -->
 <script lang="ts">
 import type { Polygon } from "geojson";
 import type { Snippet } from "svelte";
 import { iconPath } from "../shared/icons";
 import { m } from "$parent/src/lib/paraglide/messages";
-import ShapeSwitch from "./ShapeSwitch.svelte";
 
-type Verdict = { block: boolean; overlaps: string | null };
 let { ring, bornAs, onSave, share }: {
     ring: [number, number][];
     /** Absent (no host store): a block. */
-    bornAs?: ((where: Polygon) => Promise<Verdict>) | undefined;
+    bornAs?: ((where: Polygon) => Promise<{ block: boolean }>) | undefined;
     onSave: (asBlock: boolean) => void;
     /** Drawn above Save, handed the same kind. */
     share?: Snippet<[boolean]> | undefined;
 } = $props();
 
-let verdict = $state<Verdict>({ block: true, overlaps: null });
-let picked = $state<boolean | null>(null);
+let asBlock = $state(true);
 $effect(() => {
     const where: Polygon = { type: "Polygon", coordinates: [[...ring, ring[0]]] };
-    picked = null;
     if (!bornAs) return;
     let live = true;
-    void bornAs(where).then((v) => live && (verdict = v));
+    void bornAs(where).then((v) => live && (asBlock = v.block));
     return () => (live = false);
 });
-const asBlock = $derived(!verdict.overlaps && (picked ?? verdict.block));
 </script>
 
 {@render share?.(asBlock)}
@@ -35,4 +29,3 @@ const asBlock = $derived(!verdict.overlaps && (picked ?? verdict.block));
     <img class="measure-pin-ic" src={iconPath(asBlock ? "block" : "poly")} alt="" />
     {m.ofmap_ui_save()}
 </button>
-<ShapeSwitch isBlock={asBlock} overlaps={verdict.overlaps} onclick={() => (picked = !asBlock)} />
