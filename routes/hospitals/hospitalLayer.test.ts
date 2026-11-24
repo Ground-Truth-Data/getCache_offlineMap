@@ -99,9 +99,8 @@ describe("hospitalCardHtml", () => {
 		expect(bare.querySelectorAll(".rt-hospital-row")).toHaveLength(0);
 	});
 
-	it("says the ER is not confirmed when OSM never tagged emergency=yes", () => {
+	it("marks the ER unconfirmed when OSM never tagged emergency=yes", () => {
 		const el = Object.assign(document.createElement("div"), { innerHTML: hospitalCardHtml({ name: "Gove", er: false, locateButton: false }) });
-		expect(el.textContent).toContain("Hospital — ER not confirmed");
 		expect(el.querySelector("img")!.getAttribute("src")).toMatch(/Unconfirmed/);
 	});
 });

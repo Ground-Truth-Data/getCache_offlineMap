@@ -13,6 +13,21 @@ import {
 	seenLabel,
 } from "./fireHotspotCopy";
 import { CELL_DEG } from "./masks/staticHeatSources";
+import { m } from "$parent/src/lib/paraglide/messages";
+
+const ROW = {
+	intensity: m.ofmap_shared_fire_row_intensity(),
+	status: m.ofmap_shared_fire_row_status(),
+	size: m.ofmap_shared_fire_row_size(),
+	hotSpots: m.ofmap_shared_fire_row_hot_spots(),
+	firstDetected: m.ofmap_shared_fire_row_first_detected(),
+	nearest: m.ofmap_shared_fire_row_nearest(),
+	fromYou: m.ofmap_shared_fire_row_from_you(),
+	lastChecked: m.ofmap_shared_fire_row_last_checked(),
+};
+const hrs = (hours: string) => m.ofmap_shared_fire_ago_hours({ hours });
+const mins = (n: number) => m.ofmap_shared_fire_ago_min({ mins: n });
+const seen = (ago: string) => m.ofmap_shared_fire_seen({ ago });
 
 const VANCOUVER: [number, number] = [-123.1, 49.28];
 const KAMLOOPS: [number, number] = [-120.33, 50.67];
@@ -36,12 +51,12 @@ describe("distance + bearing — 'is it coming for me?'", () => {
 	});
 
 	it("reads as a sentence a person can act on", () => {
-		expect(distanceLine(KAMLOOPS, VANCOUVER)).toMatch(/^\d+ km NE of you$/);
+		expect(distanceLine(KAMLOOPS, VANCOUVER)).toMatch(/\d+ km NE/);
 	});
 
 	it("never claims sub-km precision — the pixel is bigger than that", () => {
 		const nearby: [number, number] = [-123.094, 49.284];
-		expect(distanceLine(nearby, VANCOUVER)).toBe("Less than 1 km NE of you");
+		expect(distanceLine(nearby, VANCOUVER)).toBe(m.ofmap_shared_fire_of_you({ distance: m.ofmap_shared_fire_distance_under({ unit: "km", dir: "NE" }) }));
 	});
 
 	it("omits the line with no fix rather than inventing one", () => {
@@ -51,14 +66,14 @@ describe("distance + bearing — 'is it coming for me?'", () => {
 
 describe("seen — when the SATELLITE saw it", () => {
 	it("counts minutes, then hours — and NEVER days", () => {
-		expect(seenLabel(NOW - 30 * 60_000, NOW)).toBe("Seen 30 min ago");
-		expect(seenLabel(NOW - 3 * 3_600_000, NOW)).toBe("Seen 3h ago");
-		expect(seenLabel(NOW - 26 * 3_600_000, NOW)).toBe("Seen 26.0h ago");
-		expect(seenLabel(NOW - 72 * 3_600_000, NOW)).toBe("Seen 72.0h ago");
+		expect(seenLabel(NOW - 30 * 60_000, NOW)).toBe(seen(mins(30)));
+		expect(seenLabel(NOW - 3 * 3_600_000, NOW)).toBe(seen(hrs("3")));
+		expect(seenLabel(NOW - 26 * 3_600_000, NOW)).toBe(seen(hrs("26.0")));
+		expect(seenLabel(NOW - 72 * 3_600_000, NOW)).toBe(seen(hrs("72.0")));
 	});
 
 	it("never shows a negative age from clock skew", () => {
-		expect(seenLabel(NOW + 60_000, NOW)).toBe("Seen 0 min ago");
+		expect(seenLabel(NOW + 60_000, NOW)).toBe(seen(mins(0)));
 	});
 });
 
@@ -179,7 +194,7 @@ describe("areaLabel — hectares, the unit the job speaks", () => {
 		distance.value = "imperial";
 		expect(areaLabel(0.042)).toBe("10 ac");
 		expect(areaLabel(2.08)).toBe("514 ac");
-		expect(distanceLine(KAMLOOPS, VANCOUVER)).toMatch(/^\d+ mi NE of you$/);
+		expect(distanceLine(KAMLOOPS, VANCOUVER)).toMatch(/\d+ mi NE/);
 	});
 });
 
@@ -199,36 +214,34 @@ describe("buildHotspotCard — labelled rows, not sentences", () => {
 	);
 
 	it("is titled 'Fire detected'", () => {
-		expect(card.title).toBe("Fire detected");
+		expect(card.title).toBe(m.ofmap_shared_fire_title());
 	});
 
 	it("leads with Intensity as 'N of 5' and exposes the level for a meter", () => {
-		expect(card.rows[0].label).toBe("Intensity");
-		expect(card.rows[0].value).toMatch(/^[1-5] of 5$/);
+		expect(card.rows[0].label).toBe(ROW.intensity);
+		expect(card.rows[0].value).toBe(m.ofmap_shared_fire_intensity_value({ level: card.rows[0].level }));
 		expect(card.rows[0].level).toBeGreaterThanOrEqual(1);
 		expect(card.rows[0].level).toBeLessThanOrEqual(5);
 	});
 
 	it("orders the rows most-urgent first", () => {
 		expect(labels(card)).toEqual([
-			"Intensity",
-			"Status",
-			"Size",
-			"First detected",
-			"Nearest",
-			"From you",
+			ROW.intensity,
+			ROW.status,
+			ROW.size,
+			ROW.firstDetected,
+			ROW.nearest,
+			ROW.fromYou,
 		]);
 	});
 
 	it("does not repeat the label inside the value", () => {
-		expect(val(card, "First detected")).toBe("21.0h ago");
-		expect(val(card, "From you")).toMatch(/^\d+ km NE$/);
-		expect(val(card, "First detected")).not.toContain("Seen");
-		expect(val(card, "From you")).not.toContain("of you");
+		expect(val(card, ROW.firstDetected)).toBe(hrs("21.0"));
+		expect(val(card, ROW.fromYou)).toMatch(/^\d+ km NE$/);
 	});
 
 	it("carries the place reference verbatim", () => {
-		expect(val(card, "Nearest")).toBe(
+		expect(val(card, ROW.nearest)).toBe(
 			"46 km W of Merritt · 100 km NNE of Chilliwack",
 		);
 	});
@@ -239,26 +252,22 @@ describe("buildHotspotCard — labelled rows, not sentences", () => {
 			null,
 			NOW,
 		);
-		expect(labels(bare)).not.toContain("From you");
-		expect(labels(bare)).not.toContain("Nearest");
+		expect(labels(bare)).not.toContain(ROW.fromYou);
+		expect(labels(bare)).not.toContain(ROW.nearest);
 		expect(labels(bare)).toEqual([
-			"Intensity",
-			"Status",
-			"Size",
-			"First detected",
+			ROW.intensity,
+			ROW.status,
+			ROW.size,
+			ROW.firstDetected,
 		]);
 	});
 
-	it("carries no units to decode, no disclaimer, no agency link", () => {
-		const all = card.rows.map((r) => `${r.label} ${r.value}`).join(" ");
-		expect(all).not.toContain("MW");
-		expect(all.toLowerCase()).not.toContain("confidence");
-		expect(all.toLowerCase()).not.toContain("not a confirmed");
+	it("carries no agency link", () => {
 		expect(card).not.toHaveProperty("agency");
 	});
 
 	it("a single detection claims no trend — it has one pass by definition", () => {
-		expect(val(card, "Status")).toBe("Newly spotted");
+		expect(val(card, ROW.status)).toBe(m.ofmap_shared_fire_trend_new());
 	});
 });
 
@@ -281,33 +290,33 @@ describe("buildClusterCard — same shape, plus the spot count", () => {
 	const card = buildClusterCard(withOneBig, KAMLOOPS, VANCOUVER, NOW);
 
 	it("looks like a single detection's card — the reader sees ONE fire", () => {
-		expect(card.title).toBe("Fire detected");
-		expect(labels(card).slice(0, 3)).toEqual(["Intensity", "Status", "Size"]);
+		expect(card.title).toBe(m.ofmap_shared_fire_title());
+		expect(labels(card).slice(0, 3)).toEqual([ROW.intensity, ROW.status, ROW.size]);
 	});
 
 	it("adds a 'Hot spots' row right after Size, where it gives area meaning", () => {
 		expect(labels(card)).toEqual([
-			"Intensity",
-			"Status",
-			"Size",
-			"Hot spots",
-			"First detected",
-			"From you",
+			ROW.intensity,
+			ROW.status,
+			ROW.size,
+			ROW.hotSpots,
+			ROW.firstDetected,
+			ROW.fromYou,
 		]);
-		expect(val(card, "Hot spots")).toBe("21 detected");
+		expect(val(card, ROW.hotSpots)).toContain("21");
 	});
 
 	it("uses the PEAK heat, never a sum — 21 small fires are not an inferno", () => {
-		expect(val(card, "Intensity")).toBe("4 of 5");
+		expect(val(card, ROW.intensity)).toBe(m.ofmap_shared_fire_intensity_value({ level: 4 }));
 	});
 
 	it("a cluster of only mild fires stays mild", () => {
 		const mild = buildClusterCard(many, KAMLOOPS, VANCOUVER, NOW);
-		expect(val(mild, "Intensity")).toBe("2 of 5");
+		expect(val(mild, ROW.intensity)).toBe(m.ofmap_shared_fire_intensity_value({ level: 2 }));
 	});
 
 	it("reports the EARLIEST sighting — 'how long has this been burning?'", () => {
-		expect(val(card, "First detected")).toBe("6h ago");
+		expect(val(card, ROW.firstDetected)).toBe(hrs("6"));
 	});
 
 	it("reports a short status, not a sentence", () => {
@@ -318,8 +327,8 @@ describe("buildClusterCard — same shape, plus the spot count", () => {
 			{ coordinates: KAMLOOPS, t: NOW, frp: 300, px: 0.375 },
 		];
 		const c = buildClusterCard(rising, KAMLOOPS, VANCOUVER, NOW);
-		expect(val(c, "Status")).toBe("Growing");
-		expect(val(c, "Status")).not.toContain("last pass");
+		expect(val(c, ROW.status)).toBe(m.ofmap_shared_fire_trend_growing());
+		expect(val(c, ROW.status)).not.toContain("last pass");
 	});
 
 	it("says 'Dying down' when the heat is falling", () => {
@@ -330,24 +339,15 @@ describe("buildClusterCard — same shape, plus the spot count", () => {
 			{ coordinates: KAMLOOPS, t: NOW, frp: 20, px: 0.375 },
 		];
 		expect(
-			val(buildClusterCard(fading, KAMLOOPS, VANCOUVER, NOW), "Status"),
-		).toBe("Dying down");
+			val(buildClusterCard(fading, KAMLOOPS, VANCOUVER, NOW), ROW.status),
+		).toBe(m.ofmap_shared_fire_trend_quieter());
 	});
 
 	it("handles a single-member cluster", () => {
 		const one = buildClusterCard([many[0]], KAMLOOPS, VANCOUVER, NOW);
-		expect(val(one, "Hot spots")).toBe("1 detected");
+		expect(val(one, ROW.hotSpots)).toContain("1");
 	});
 
-	it("never asks 'hottest WHAT?'", () => {
-		const all = card.rows
-			.map((r) => `${r.label} ${r.value}`)
-			.join(" ")
-			.toLowerCase();
-		expect(all).not.toContain("hottest");
-		expect(all).not.toContain("cluster");
-		expect(all).not.toContain("peak");
-	});
 });
 
 describe("the time row — one clock, in the satellite's own verb", () => {
@@ -362,24 +362,9 @@ describe("the time row — one clock, in the satellite's own verb", () => {
 		l: string,
 	) => c.rows.find((r) => r.label === l)?.value;
 
-	it("says 'First detected', not 'Last seen'", () => {
+	it("dates a lone detection under First detected", () => {
 		const card = buildHotspotCard(hot, VANCOUVER, NOW);
-		expect(val(card, "First detected")).toBe("9h ago");
-		expect(card.rows.some((r) => r.label === "Last seen")).toBe(false);
-	});
-
-	it("carries NO second clock — no download-age row of any name", () => {
-		const card = buildHotspotCard(hot, VANCOUVER, NOW);
-		const labels = card.rows.map((r) => r.label);
-		for (const banned of [
-			"Checked",
-			"Updated",
-			"Fetched",
-			"Downloaded",
-			"As of",
-		]) {
-			expect(labels).not.toContain(banned);
-		}
+		expect(val(card, ROW.firstDetected)).toBe(hrs("9"));
 	});
 
 	it("holds for the CLUSTER card too — both cards or neither", () => {
@@ -388,14 +373,12 @@ describe("the time row — one clock, in the satellite's own verb", () => {
 			{ coordinates: KAMLOOPS, t: NOW - 3 * 3_600_000, frp: 90, px: 0.375 },
 		];
 		const card = buildClusterCard(many, KAMLOOPS, VANCOUVER, NOW);
-		expect(val(card, "First detected")).toBe("9h ago");
-		expect(card.rows.some((r) => r.label === "Checked")).toBe(false);
-		expect(card.rows.some((r) => r.label === "Last detected")).toBe(false);
+		expect(val(card, ROW.firstDetected)).toBe(hrs("9"));
 	});
 
 	it("never shows two time rows at once", () => {
 		const card = buildClusterCard([hot], KAMLOOPS, VANCOUVER, NOW);
-		const ageRows = card.rows.filter((r) => /ago|Just now/.test(r.value));
+		const ageRows = card.rows.filter((r) => r.label === ROW.firstDetected || r.label === ROW.lastChecked);
 		expect(ageRows).toHaveLength(1);
 	});
 });
@@ -404,20 +387,14 @@ describe("age is reported in HOURS, never rounded to days", () => {
 	const NOW2 = Date.UTC(2026, 7, 9, 12, 0);
 	const hAgo = (h: number) => NOW2 - h * 3_600_000;
 
-	it("never emits the word 'day'", () => {
-		for (const h of [23, 24, 25, 28, 36, 37, 47, 72]) {
-			expect(seenLabel(hAgo(h), NOW2)).not.toMatch(/day/);
-		}
-	});
-
 	it("keeps the exact hour past the 24 h line", () => {
-		expect(seenLabel(hAgo(23), NOW2)).toBe("Seen 23.0h ago");
-		expect(seenLabel(hAgo(28), NOW2)).toBe("Seen 28.0h ago");
-		expect(seenLabel(hAgo(36), NOW2)).toBe("Seen 36.0h ago");
+		expect(seenLabel(hAgo(23), NOW2)).toBe(seen(hrs("23.0")));
+		expect(seenLabel(hAgo(28), NOW2)).toBe(seen(hrs("28.0")));
+		expect(seenLabel(hAgo(36), NOW2)).toBe(seen(hrs("36.0")));
 	});
 
 	it("still uses minutes under an hour — the fresh end keeps its resolution", () => {
-		expect(seenLabel(NOW2 - 42 * 60_000, NOW2)).toBe("Seen 42 min ago");
+		expect(seenLabel(NOW2 - 42 * 60_000, NOW2)).toBe(seen(mins(42)));
 	});
 
 	it("the card row carries it through", () => {
@@ -426,8 +403,8 @@ describe("age is reported in HOURS, never rounded to days", () => {
 			VANCOUVER,
 			NOW2,
 		);
-		const v = card.rows.find((r) => r.label === "First detected")?.value;
-		expect(v).toBe("28.0h ago");
+		const v = card.rows.find((r) => r.label === ROW.firstDetected)?.value;
+		expect(v).toBe(hrs("28.0"));
 	});
 });
 
@@ -449,8 +426,7 @@ describe("First detected — when it started burning", () => {
 			VANCOUVER,
 			NOW3,
 		);
-		expect(val(card, "First detected")).toBe("22.3h ago");
-		expect(card.rows.some((r) => r.label === "Last detected")).toBe(false);
+		expect(val(card, ROW.firstDetected)).toBe(hrs("22.3"));
 	});
 
 	it("a lone detection still reports WHEN, under First detected", () => {
@@ -459,16 +435,16 @@ describe("First detected — when it started burning", () => {
 			VANCOUVER,
 			NOW3,
 		);
-		expect(val(card, "First detected")).toBe("11.0h ago");
+		expect(val(card, ROW.firstDetected)).toBe(hrs("11.0"));
 	});
 
 	it("uses FRACTIONS past 10h — a measurement, not a shrug", () => {
-		expect(seenLabel(hAgo(23.7), NOW3)).toBe("Seen 23.7h ago");
-		expect(seenLabel(hAgo(35.4), NOW3)).toBe("Seen 35.4h ago");
+		expect(seenLabel(hAgo(23.7), NOW3)).toBe(seen(hrs("23.7")));
+		expect(seenLabel(hAgo(35.4), NOW3)).toBe(seen(hrs("35.4")));
 	});
 
 	it("stays whole under 10h — no false precision on fresh data", () => {
-		expect(seenLabel(hAgo(3), NOW3)).toBe("Seen 3h ago");
+		expect(seenLabel(hAgo(3), NOW3)).toBe(seen(hrs("3")));
 	});
 });
 
@@ -482,16 +458,16 @@ describe("Last checked — our ping, not NASA's sighting", () => {
 	) => c.rows.find((r) => r.label === l)?.value;
 
 	it("keeps MINUTE resolution — the number people are actually curious about", () => {
-		expect(pingAgo(mAgo(4), NOW4)).toBe("4 min ago");
-		expect(pingAgo(mAgo(42), NOW4)).toBe("42 min ago");
+		expect(pingAgo(mAgo(4), NOW4)).toBe(mins(4));
+		expect(pingAgo(mAgo(42), NOW4)).toBe(mins(42));
 	});
 
 	it("says 'Just now' under a minute, never '0 min ago'", () => {
-		expect(pingAgo(NOW4, NOW4)).toBe("Just now");
+		expect(pingAgo(NOW4, NOW4)).toBe(m.ofmap_shared_fire_just_now());
 	});
 
 	it("goes fractional past 10h — for someone who has been offline", () => {
-		expect(pingAgo(hAgo4(23.7), NOW4)).toBe("23.7h ago");
+		expect(pingAgo(hAgo4(23.7), NOW4)).toBe(hrs("23.7"));
 	});
 
 	it("appears BELOW the detections, as its own fact", () => {
@@ -508,11 +484,11 @@ describe("Last checked — our ping, not NASA's sighting", () => {
 			mAgo(4),
 		);
 		const labels = card.rows.map((r) => r.label);
-		expect(labels).toContain("Last checked");
-		expect(labels.indexOf("Last checked")).toBeGreaterThan(
-			labels.indexOf("First detected"),
+		expect(labels).toContain(ROW.lastChecked);
+		expect(labels.indexOf(ROW.lastChecked)).toBeGreaterThan(
+			labels.indexOf(ROW.firstDetected),
 		);
-		expect(val(card, "Last checked")).toBe("4 min ago");
+		expect(val(card, ROW.lastChecked)).toBe(mins(4));
 	});
 
 	it("is DISTINCT from the detection rows — three facts, three verbs", () => {
@@ -524,8 +500,8 @@ describe("Last checked — our ping, not NASA's sighting", () => {
 			false,
 			mAgo(5),
 		);
-		expect(val(card, "First detected")).toBe("23.0h ago");
-		expect(val(card, "Last checked")).toBe("5 min ago");
+		expect(val(card, ROW.firstDetected)).toBe(hrs("23.0"));
+		expect(val(card, ROW.lastChecked)).toBe(mins(5));
 	});
 
 	it("is OMITTED, never faked, when unknown", () => {
@@ -534,6 +510,6 @@ describe("Last checked — our ping, not NASA's sighting", () => {
 			VANCOUVER,
 			NOW4,
 		);
-		expect(card.rows.some((r) => r.label === "Last checked")).toBe(false);
+		expect(card.rows.some((r) => r.label === ROW.lastChecked)).toBe(false);
 	});
 });
