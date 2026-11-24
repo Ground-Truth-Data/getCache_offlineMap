@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
 // What the ruler draws is a block or a piece, never a map: Save wears the kind
-// the store would give it, re-asked as the corners move, and the drawer's own
-// switch flips it before the save.
+// the store would give it, re-asked as the corners move. No switch overrides it.
 import { fireEvent, render, waitFor } from "@testing-library/svelte";
 import type { Polygon } from "geojson";
 import { createRawSnippet } from "svelte";
@@ -11,52 +10,31 @@ import RulerSave from "./RulerSave.svelte";
 type Lnglat = [number, number];
 const OPEN: Lnglat[] = [[0.03, 0], [0.04, 0], [0.04, 0.01]];
 const ON_BLOCK: Lnglat[] = [[0.005, 0.005], [0.015, 0.005], [0.015, 0.015]];
-const TOUCHING: Lnglat[] = [[0.01, 0], [0.02, 0], [0.02, 0.01]];
 
-// West block: 0..0.01 square. Overlap names it; a shared edge only touches.
+// West block: 0..0.01 square.
 const bornAs = vi.fn(async (where: Polygon) => {
 	const xs = where.coordinates[0].map((p) => p[0]);
-	if (Math.min(...xs) >= 0.03) return { block: true, overlaps: null };
-	if (Math.min(...xs) >= 0.01) return { block: false, overlaps: null };
-	return { block: false, overlaps: "West" };
+	return { block: Math.min(...xs) >= 0.03 };
 });
 
 const glyph = (c: HTMLElement) => c.querySelector<HTMLImageElement>(".measure-save img")!.getAttribute("src")!;
 const save = (c: HTMLElement) => c.querySelector<HTMLButtonElement>(".measure-save")!;
-const swap = (c: HTMLElement) => c.querySelector<HTMLButtonElement>(".cl-switch")!;
 
 describe("the ruler's Save shows block or piece", () => {
-	it("on open ground it defaults to a block", async () => {
-		const { container } = render(RulerSave, { ring: OPEN, bornAs, onSave: vi.fn() });
+	it("off a block it saves a block, on a block a piece, and offers no switch", async () => {
+		const onSave = vi.fn();
+		const { container, rerender } = render(RulerSave, { ring: OPEN, bornAs, onSave });
 		await waitFor(() => expect(glyph(container)).toMatch(/block_icon/));
-	});
-
-	it("over a block it defaults to a piece, and can't be made a block", async () => {
-		const { container } = render(RulerSave, { ring: ON_BLOCK, bornAs, onSave: vi.fn() });
-		await waitFor(() => expect(glyph(container)).toMatch(/polyHeart/));
-		expect(swap(container).disabled).toBe(true);
-	});
-
-	it("switches live as a corner is dragged onto and off a block", async () => {
-		const { container, rerender } = render(RulerSave, { ring: OPEN, bornAs, onSave: vi.fn() });
-		await waitFor(() => expect(glyph(container)).toMatch(/block_icon/));
+		await fireEvent.click(save(container));
+		expect(onSave).toHaveBeenLastCalledWith(true);
 		await rerender({ ring: ON_BLOCK });
 		await waitFor(() => expect(glyph(container)).toMatch(/polyHeart/));
-		await rerender({ ring: OPEN });
-		await waitFor(() => expect(glyph(container)).toMatch(/block_icon/));
-	});
-
-	it("Save saves the kind showing after a manual switch", async () => {
-		const onSave = vi.fn();
-		const { container } = render(RulerSave, { ring: OPEN, bornAs, onSave });
-		await waitFor(() => expect(glyph(container)).toMatch(/block_icon/));
-		await fireEvent.click(swap(container));
-		expect(glyph(container)).toMatch(/polyHeart/);
 		await fireEvent.click(save(container));
 		expect(onSave).toHaveBeenLastCalledWith(false);
+		expect(container.querySelectorAll("button")).toHaveLength(1);
 	});
 
-	it("Share saves the kind showing too", async () => {
+	it("Share is handed the same kind", async () => {
 		const onShare = vi.fn();
 		const share = createRawSnippet((asBlock: () => boolean | undefined) => ({
 			render: () => `<button class="sharer">Share</button>`,
@@ -64,21 +42,9 @@ describe("the ruler's Save shows block or piece", () => {
 				node.addEventListener("click", () => onShare(asBlock()));
 			},
 		}));
-		const { container } = render(RulerSave, { ring: OPEN, bornAs, onSave: vi.fn(), share });
-		await waitFor(() => expect(glyph(container)).toMatch(/block_icon/));
-		await fireEvent.click(container.querySelector(".sharer")!);
-		expect(onShare).toHaveBeenLastCalledWith(true);
-		await fireEvent.click(swap(container));
+		const { container } = render(RulerSave, { ring: ON_BLOCK, bornAs, onSave: vi.fn(), share });
+		await waitFor(() => expect(glyph(container)).toMatch(/polyHeart/));
 		await fireEvent.click(container.querySelector(".sharer")!);
 		expect(onShare).toHaveBeenLastCalledWith(false);
-	});
-
-	it("a piece touching a block can be made a block", async () => {
-		const onSave = vi.fn();
-		const { container } = render(RulerSave, { ring: TOUCHING, bornAs, onSave });
-		await waitFor(() => expect(glyph(container)).toMatch(/polyHeart/));
-		await fireEvent.click(swap(container));
-		await fireEvent.click(save(container));
-		expect(onSave).toHaveBeenLastCalledWith(true);
 	});
 });
