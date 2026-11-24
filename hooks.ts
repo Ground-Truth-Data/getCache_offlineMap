@@ -1,4 +1,4 @@
-import type { Reroute } from "@sveltejs/kit";
+import type { Reroute } from "@sveltejs/kit/hooks";
 
 // Keep DEFAULT in sync with this child's defaultPath in $rig/childRegistry.ts.
 // An unlisted path collapses to DEFAULT, so fetch("/api/…") would get the map page's HTML with a 200.

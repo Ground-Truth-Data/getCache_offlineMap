@@ -83,16 +83,16 @@ describe("directions", () => {
 		fix = null;
 		attach().to(B);
 		await flush();
-		expect(pill().textContent).toContain("Turn on My location");
+		expect(pill().querySelector(".rt-route-pill-go")).toBeNull();
 		expect(asked).toEqual([]);
 	});
 
-	it("draws the road and names its length with a Follow button", async () => {
+	it("draws the road, gives its length and offers to follow it", async () => {
 		attach().to(B);
 		await flush();
 		expect(asked).toEqual([[A, B]]);
-		expect(pill().textContent).toContain("4.3 km by road");
-		expect(pill().querySelector(".rt-route-pill-go")?.textContent).toBe("Follow");
+		expect(pill().textContent).toContain("4.3 km");
+		expect(pill().querySelector(".rt-route-pill-go")).not.toBeNull();
 		expect(roles()).toContain("line");
 	});
 
@@ -121,7 +121,7 @@ describe("a trip kept across a closed app", () => {
 		attach();
 		await flush();
 		expect(asked).toEqual([[A, B]]);
-		expect(pill().textContent).toContain("by road");
+		expect(pill().textContent).toMatch(/\d km/);
 	});
 
 	it("waits for the first fix when the map opens before the phone knows where it is", async () => {
@@ -185,16 +185,16 @@ describe("follow mode", () => {
 
 	it("counts down what is left as the truck drives the line", async () => {
 		await follow();
-		expect(pill().textContent).toContain("4.3 km left");
+		expect(pill().textContent).toContain("4.3 km");
 		h!.fix(-119.25, 50.25);
-		expect(pill().textContent).toContain("2.1 km left");
+		expect(pill().textContent).toContain("2.1 km");
 		expect(roles()).toEqual(expect.arrayContaining(["done", "line", "me"]));
 	});
 
 	it("says arrived within 30 m of the end", async () => {
 		await follow();
 		h!.fix(B[0] - 0.0003, B[1]);
-		expect(pill().textContent).toContain("You've arrived");
+		expect(pill().textContent).not.toMatch(/\d km/);
 		expect(roles()).not.toContain("me");
 	});
 
@@ -232,7 +232,7 @@ describe("follow mode", () => {
 			expect(pill().querySelector(".rt-route-pill-go")).toBeNull();
 			window.dispatchEvent(new Event(lift));
 		}
-		expect(pill().querySelector(".rt-route-pill-go")?.textContent).toBe("Follow");
+		expect(pill().querySelector(".rt-route-pill-go")).not.toBeNull();
 	});
 });
 

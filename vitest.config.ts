@@ -32,7 +32,7 @@ export default defineConfig({
 		}),
 	],
 	resolve: {
-		// Keep in sync with svelte.config.js, same order: per-child entries before the bare `$parent`,
+		// Keep in sync with the dressed vite.config.ts's alias, same order: per-child entries before the bare `$parent`,
 		// or it swallows them. An unresolvable alias kills the module graph before any `it()` registers.
 		alias: {
 			"$parent/siblings/ReTreever_who_what": r("../ReTreever_who_what"),

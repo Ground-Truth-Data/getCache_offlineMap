@@ -16,14 +16,14 @@ const RETREEVER = join(FETCH, "ReTreever");
 // asserting nothing. What survives is the route-tree rule, which is about how
 // a parent mounts a child at all and is true whatever the child serves.
 describe("a parent keeps its own route tree", () => {
-	// ⛔ kit.files.routes takes ONE path and doesn't merge — setting it in ReTreever replaces all thirty-odd Get Cache routes with the child's (measured 28 Aug 2026: /menu /cache /map /inbox /account /quality704 all 404'd at once). Share at the import layer instead.
+	// ⛔ files.routes takes ONE path and doesn't merge — setting it in ReTreever replaces all thirty-odd Get Cache routes with the child's (measured 28 Aug 2026: /menu /cache /map /inbox /account /quality704 all 404'd at once). Share at the import layer instead.
 	it("ReTreever does not hand its route tree to the child", () => {
-		const config = join(RETREEVER, "svelte.config.js");
+		const config = join(RETREEVER, "vite.config.ts");
 		if (!existsSync(config)) return; // ReTreever not checked out beside us
 		const src = readFileSync(config, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 		expect(
 			/routes\s*:\s*["'][^"']*getCache_OfflineMap/.test(src),
-			"ReTreever/svelte.config.js sets kit.files.routes to the child. That REPLACES " +
+			"ReTreever/vite.config.ts sets files.routes to the child. That REPLACES " +
 				"ReTreever's whole route tree — every other Get Cache route 404s. " +
 				"Import the component from a route file instead.",
 		).toBe(false);

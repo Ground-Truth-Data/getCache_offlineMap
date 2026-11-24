@@ -21,8 +21,8 @@ const ALLOWED = [
 const BANNED = [
 	"$tinyStore",
 	"mapStore",
-	// A child imports no app $lib at all.
-	"$lib/",
+	// A child imports no app lib at all.
+	"#lib/",
 	"$mobRoutes",
 	"$app/",
 	"@supabase",

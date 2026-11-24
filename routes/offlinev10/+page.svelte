@@ -1,8 +1,8 @@
 <script lang="ts">
 /** The offline preview: a blob is whole z10 tiles and the pyramids under them, so
  * the gold border IS the data's edge at every zoom. */
-import { dev } from "$app/environment";
-import { goto, replaceState } from "$app/navigation";
+import { dev } from "$app/env";
+import { goto } from "$app/navigation";
 import { page } from "$app/state";
 import MapTopControls from "../../lib/mapUi/MapTopControls.svelte";
 import { OFFLINE_PREVIEW_ROUTE, ONLINE_MAP_ROUTE, saveLastMapRoute } from "../../lib/mapState/lastMapRoute.svelte";
@@ -157,7 +157,7 @@ function writeUrl(): void {
 	const u = new URL(location.href);
 	u.searchParams.set("at", `${c.lat.toFixed(6)},${c.lng.toFixed(6)}`);
 	u.searchParams.set("z", map.getZoom().toFixed(2));
-	replaceState(u, page.state);
+	goto(u, { shallow: true, replace: true, state: page.state });
 }
 
 async function refresh(): Promise<void> {
