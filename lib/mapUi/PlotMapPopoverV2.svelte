@@ -379,6 +379,8 @@ async function deleteHere() {
 		height: 20px;
 	}
 	.pp-r2 {
+		--people-icon: 20px;
+		--people-word: 15px;
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
