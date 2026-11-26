@@ -105,6 +105,7 @@
 	"ofmap_ui_legend_toggle_aria": "Show or hide {label}",
 	"ofmap_ui_quality_plot": "Quality plot",
 	"ofmap_ui_plot_edit_aria": "Edit plot in form",
+	"ofmap_ui_plot_open_aria": "Open plot",
 	"ofmap_ui_delete": "Delete",
 	"ofmap_ui_plot_share_aria": "Share plot",
 	"ofmap_ui_share": "Share",

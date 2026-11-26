@@ -109,6 +109,8 @@ export interface MapUiPorts {
 	FeatureDetail: Component<Record<string, unknown>>;
 	CrowSwitch: Component<Record<string, unknown>>;
 	InboxTruck: Component<{ featureKey: string; link?: string }>;
+	/** Opens an item's inbox drawer over the map, as the truck does. */
+	openInbox(link: string): void;
 	ConfirmModal: Component<{ open: boolean; title: string; onConfirm: () => void; onCancel: () => void }>;
 	copyToClipboard(text: string): Promise<boolean>;
 	/** Svelte action that lifts a node into the host's overlay layer. */

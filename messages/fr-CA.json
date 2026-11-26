@@ -105,6 +105,7 @@
 	"ofmap_ui_legend_toggle_aria": "Afficher ou masquer {label}",
 	"ofmap_ui_quality_plot": "Placette de qualité",
 	"ofmap_ui_plot_edit_aria": "Modifier la placette dans le formulaire",
+	"ofmap_ui_plot_open_aria": "Ouvrir la placette",
 	"ofmap_ui_delete": "Supprimer",
 	"ofmap_ui_plot_share_aria": "Partager la placette",
 	"ofmap_ui_share": "Partager",
