@@ -191,6 +191,9 @@ export interface MapQ704PlotPeople {
 	surveyor: Identity;
 	planters: Identity[];
 	at: number;
+	/** Its survey's density and quality percent: one plot has none of its own. null until the survey has them. */
+	density: number | null;
+	quality: number | null;
 }
 
 /** The in-flight, memory-only map drop. */

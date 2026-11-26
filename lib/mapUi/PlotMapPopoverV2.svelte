@@ -11,7 +11,7 @@ import { ago } from "$gc/ago";
 import PeopleGrid from "$gc/PeopleGrid.svelte";
 import NestGroup from "$gc/NestGroup.svelte";
 import NestPill from "$gc/NestPill.svelte";
-import { counts, delta } from "$gc/PlotMarks.svelte";
+import { counts, delta, pct } from "$gc/PlotMarks.svelte";
 import type {
 	MapHostPorts,
 	MapQ704DeckExports,
@@ -75,11 +75,11 @@ const canOpenInForm = $derived(
 const plotKey = $derived(isCreate ? "" : (plot?.plotKey ?? ""));
 
 const plotFullCode = $derived(q704 ? q704.plotFullCodeByGpsKey(mapFeatureKey) : "");
-// A refused clipboard throws, so the share menu says so where it was tapped.
+// A copy row: the menu writes it to the clipboard and says so, or says it was refused, in the row that was tapped.
 const shareFormats = $derived([
 	{ ext: "getcache", run: () => onShare("getcache") },
 	...(plotFullCode
-		? [{ ext: "locode", label: m.ofmap_ui_location_code(), icon: "copy", run: async () => { if (!(await ports.ui.copyToClipboard(plotFullCode))) throw new Error("clipboard refused"); } }]
+		? [{ ext: "locode", label: m.ofmap_ui_location_code(), icon: "copy", run: () => {}, copy: async () => plotFullCode }]
 		: []),
 ]);
 
@@ -89,6 +89,7 @@ const planted = $derived(plot?.planted ?? 0);
 const spots = $derived(plot?.spots ?? 0);
 const excess = $derived(plot?.excess ?? 0);
 const short = $derived(Math.max(0, spots - planted));
+const percent = (n: number) => `${n.toLocaleString(getLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
 const words = $derived({ planted: m.ofmap_ui_planted(), spots: m.ofmap_ui_spots(), missed: m.ofmap_ui_missed(), excess: m.ofmap_ui_excess() });
 
 let people = $state<MapQ704PlotPeople | null>(null);
@@ -284,12 +285,21 @@ async function deleteHere() {
 						<span class="nest-time pp-when">{d.getDate()} {d.toLocaleDateString(getLocale(), { month: "short" })} {d.getFullYear()}<br />{d.toLocaleTimeString(getLocale(), { hour: "numeric", minute: "2-digit", hour12: true }).replace(/\s*([ap])\.?\s*m\.?$/i, (_, x: string) => x.toLowerCase())}</span>
 					{/if}
 				</span>
-				{#if people}<PeopleGrid surveyors={[people.surveyor]} planters={people.planters} words={{ surveyor: m.ofmap_ui_surveyor(), planter: m.ofmap_ui_planter() }} />{/if}
+				{#if people}
+					<span class="pp-r2">
+						<PeopleGrid surveyors={[people.surveyor]} planters={people.planters} words={{ surveyor: m.ofmap_ui_surveyor(), planter: m.ofmap_ui_planter() }} />
+						<!-- Its survey's two percents, as the survey's own pill wears them. -->
+						<span class="pp-pcts">
+							{#if people.density != null}{@render pct("density", percent(people.density), m.ofmap_ui_density())}{/if}
+							{#if people.quality != null}{@render pct("quality", percent(people.quality), m.ofmap_ui_quality())}{/if}
+						</span>
+					</span>
+				{/if}
 			</NestPill>
 			{#if !deckUp}
 				<NestGroup>
 					<NestPill
-						open={faultGroups.length ? unfolded : undefined}
+						open={faultGroups.length ? unfolded : null}
 						ontoggle={faultGroups.length ? () => (unfolded = !unfolded) : undefined}
 						ongo={plotKey ? () => ports.ui.openInbox(`plot:${plotKey}`) : undefined}
 						goLabel={m.ofmap_ui_plot_open_aria()}>
@@ -367,6 +377,19 @@ async function deleteHere() {
 	.pp-btn-art {
 		width: 20px;
 		height: 20px;
+	}
+	.pp-r2 {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 10px;
+	}
+	/* One over the other, the same width, each on a role's line. */
+	.pp-pcts {
+		flex: none;
+		display: grid;
+		gap: 3px;
+		text-align: center;
 	}
 	.pp-r1 {
 		display: flex;
