@@ -1,6 +1,7 @@
 /** The map UI's door to its host. Structural types only, so the host never imports this file to conform. Optional groups (`q704?`, `scenes?`) exist only in some hosts; a component that needs one renders nothing when it is absent. */
 import type { Component } from "svelte";
 import type { Feature } from "geojson";
+import type { Identity } from "$gc/IdentityPill.svelte";
 
 /** A text label baked onto a PDF ground-overlay. */
 export interface MapHostOverlayLabel {
@@ -183,6 +184,13 @@ export interface MapQ704PlotPinData {
 	plotKey: string;
 }
 
+/** Who surveyed a counted plot, who planted it (never empty), and when it was measured, epoch ms. */
+export interface MapQ704PlotPeople {
+	surveyor: Identity;
+	planters: Identity[];
+	at: number;
+}
+
 /** The in-flight, memory-only map drop. */
 export interface MapQ704PendingDrop {
 	plotNo: number;
@@ -243,16 +251,13 @@ export interface MapQ704Ports {
 	faultTitle(code: string): string;
 	CelebrateHost: Component<MapQ704CelebrateHostProps>;
 	celebrate: { onInputComplete(): void };
-	/** Svelte action: `<button use:atvShare>` arms the ATV ride on tap. */
-	atvShare(
-		node: HTMLElement,
-		opts?: { exit?: "left" | "right" | "auto" },
-	): { update?(next?: { exit?: "left" | "right" | "auto" }): void; destroy(): void } | void;
 	loadInspection(): Promise<{ block: MapQ704BlockHeader; rows: MapQ704PlotRow[] } | null>;
 	/** mapFeatureKey → the per-map plot number the user sees. */
 	activeMapNumbering(): Map<string, number>;
 	plotByGpsKey(mapFeatureKey: string): MapQ704PlotPinData | null;
 	plotFullCodeByGpsKey(mapFeatureKey: string): string;
+	/** null until the plot holds a count. */
+	plotPeople(qaPlotKey: string): Promise<MapQ704PlotPeople | null>;
 	/** `rowId` is `q`-prefixed or the bare store key. */
 	updateActivePlot(rowId: string, fields: MapQ704PlotEdit): Promise<MapQ704WriteOutcome>;
 	setActiveSpeciesChoices(choices: string[]): Promise<void>;
