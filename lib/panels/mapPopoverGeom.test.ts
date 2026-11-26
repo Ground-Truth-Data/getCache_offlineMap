@@ -5,6 +5,8 @@ import { leaderLine, MIN_OPEN, type PlaceInput, placePopover } from "./mapPopove
 const TOP = 150;
 const BOTTOM = 95;
 const PAD = 8;
+/** Between a pin and its card. */
+const GAP = 33;
 
 // A phone-shaped map container.
 const W = 390;
@@ -43,8 +45,13 @@ describe("placePopover — open where there is room, never squeezed", () => {
 		expect(p.edge).toBeLessThanOrEqual(bbox.minY);
 	});
 
-	it("is never shorter than its minimum, wherever the pin is", () => {
-		for (let y = TOP; y < H - BOTTOM; y += 25) expect(place({ bbox: pinAt(y) }).maxH).toBeGreaterThanOrEqual(MIN_OPEN);
+	it("takes the side with more room when neither has its full height, capped to that room", () => {
+		for (let y = TOP; y < H - BOTTOM; y += 25) {
+			const bbox = pinAt(y);
+			const p = place({ bbox });
+			const [up, down] = [bbox.minY - GAP - PAD, H - BOTTOM - (bbox.maxY + GAP)];
+			if (down < MIN_OPEN) expect(p.maxH).toBeGreaterThanOrEqual(Math.min(MIN_OPEN, Math.max(up, down)));
+		}
 	});
 
 	it("climbs into the top reserve only when it needs the room, and never off the screen", () => {
@@ -57,11 +64,9 @@ describe("placePopover — open where there is room, never squeezed", () => {
 		}
 	});
 
-	it("never covers the pin it belongs to while one side has room", () => {
-		const GAP = 33;
+	it("never covers the pin it belongs to, wherever the pin is", () => {
 		for (let y = TOP; y < H - BOTTOM; y += 25) {
 			const bbox = pinAt(y);
-			if (Math.max(H - BOTTOM - (bbox.maxY + GAP), bbox.minY - GAP - PAD) < MIN_OPEN) continue;
 			const p = place({ bbox });
 			if (p.side === "above") expect(p.edge).toBeLessThanOrEqual(bbox.minY);
 			else expect(p.edge).toBeGreaterThanOrEqual(bbox.maxY);
