@@ -111,6 +111,8 @@
 	"ofmap_ui_share": "Partager",
 	"ofmap_ui_delete_confirm": "Supprimer ?",
 	"ofmap_ui_plot_name": "placette n° {no}",
+	"ofmap_ui_density": "densité",
+	"ofmap_ui_quality": "qualité",
 	"ofmap_ui_surveyor": "vérificateur",
 	"ofmap_ui_planter": "planteur",
 	"ofmap_ui_location_code": "code de lieu",

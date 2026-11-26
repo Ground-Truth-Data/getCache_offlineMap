@@ -111,6 +111,8 @@
 	"ofmap_ui_share": "Share",
 	"ofmap_ui_delete_confirm": "Delete?",
 	"ofmap_ui_plot_name": "plot #{no}",
+	"ofmap_ui_density": "density",
+	"ofmap_ui_quality": "quality",
 	"ofmap_ui_surveyor": "surveyor",
 	"ofmap_ui_planter": "planter",
 	"ofmap_ui_location_code": "location code",
