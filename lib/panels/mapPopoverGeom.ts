@@ -31,7 +31,7 @@ const OFFSET = 15;
 const PIN_GAP = 18;
 const PAD = 8;
 const CROW_CLEARANCE = 10;
-/** Tall enough for a cache's header, ledger and three rows of pins: a card never squeezes under this. */
+/** Tall enough for a cache's header, ledger and three rows of pins: a side with this much room is taken as it is. */
 export const MIN_OPEN = 360;
 const MIN_WIDTH = 160;
 
@@ -54,15 +54,15 @@ export function placePopover(input: PlaceInput): Placement {
 	let edge: number;
 	let maxH: number;
 	let side: Placement["side"];
-	if (roomBelow >= MIN_OPEN || roomBelow >= above - PAD) {
+	// It never covers its own pin: with no side tall enough, the bigger one caps its height and it scrolls.
+	if (roomBelow >= MIN_OPEN || roomBelow >= above - ceiling) {
 		side = "below";
-		edge = Math.max(PAD, Math.min(below, usableBottom - MIN_OPEN));
-		maxH = usableBottom - edge;
+		edge = below;
+		maxH = roomBelow;
 	} else {
-		// With no room either side, it opens as high as it can at its full minimum, over the pin's top.
 		side = "above";
-		edge = Math.max(above, ceiling + MIN_OPEN);
-		maxH = edge - ceiling;
+		edge = above;
+		maxH = above - ceiling;
 	}
 
 	const centerX = (bbox.minX + bbox.maxX) / 2;
