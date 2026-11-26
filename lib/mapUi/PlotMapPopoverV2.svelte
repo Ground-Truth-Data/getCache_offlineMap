@@ -8,6 +8,8 @@ import { onDestroy, onMount } from "svelte";
 import { fade } from "svelte/transition";
 import MapPopoverShell from "../panels/MapPopoverShell.svelte";
 import { ago } from "$gc/ago";
+import contactGold from "$gc/assets/contact_gold.webp";
+import shovelGold from "$gc/assets/shovel_gold.webp";
 import IdentityPill from "$gc/IdentityPill.svelte";
 import NestGroup from "$gc/NestGroup.svelte";
 import NestPill from "$gc/NestPill.svelte";
@@ -286,10 +288,10 @@ async function deleteHere() {
 				</span>
 				{#if people}
 					<span class="pp-people">
-						<span class="pp-role">{m.ofmap_ui_surveyor()}</span>
+						<span class="pp-role"><img src={contactGold} alt="" />{m.ofmap_ui_surveyor()}</span>
 						<span data-role="surveyor"><IdentityPill who={people.surveyor} /></span>
 						{#each people.planters as p, n (p.key ?? p.label)}
-							<span class="pp-role">{n ? "" : m.ofmap_ui_planter()}</span>
+							<span class="pp-role">{#if !n}<img src={shovelGold} alt="" />{m.ofmap_ui_planter()}{/if}</span>
 							<span data-role="planter"><IdentityPill who={p} /></span>
 						{/each}
 					</span>
@@ -396,14 +398,22 @@ async function deleteHere() {
 	.pp-people {
 		display: grid;
 		grid-template-columns: max-content max-content;
-		gap: 6px 10px;
+		gap: 3px 6px;
 		align-items: center;
 		justify-content: start;
 		white-space: nowrap;
 	}
 	.pp-role {
-		font-size: 15px;
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		font-size: 13px;
 		color: var(--rust);
+	}
+	.pp-role img {
+		width: 15px;
+		height: 15px;
+		object-fit: contain;
 	}
 
 	.pp-sect {
