@@ -2,15 +2,21 @@
 <script lang="ts">
 import { iconPath } from "../shared/icons";
 import { m } from "$parent/src/lib/paraglide/messages";
+import { getLocale } from "$parent/src/lib/paraglide/runtime";
 import type { Feature } from "geojson";
 import { onDestroy, onMount } from "svelte";
 import { fade } from "svelte/transition";
 import MapPopoverShell from "../panels/MapPopoverShell.svelte";
-import NameTag from "$gc/NameTag.svelte";
+import { ago } from "$gc/ago";
+import IdentityPill, { type Identity } from "$gc/IdentityPill.svelte";
+import NestGroup from "$gc/NestGroup.svelte";
+import NestPill from "$gc/NestPill.svelte";
+import { counts, delta } from "$gc/PlotMarks.svelte";
 import type {
 	MapHostPorts,
 	MapQ704DeckExports,
 	MapQ704PlotEdit,
+	MapQ704PlotPeople,
 	MapQ704PlotPinData,
 	MapQ704PlotRow,
 	MapShareFormat,
@@ -41,9 +47,6 @@ let {
 
 // const so {#if q704} narrows in nested blocks.
 const q704 = $derived(ports.q704);
-function atvShare(node: HTMLElement) {
-	return q704 ? q704.atvShare(node) : undefined;
-}
 
 // Never discard a plot on unmount: only the host's "cancel plot" gate discards.
 const mapFeatureKey = $derived((feature?.properties?.mapFeatureKey as string) ?? "");
@@ -72,21 +75,13 @@ const canOpenInForm = $derived(
 const plotKey = $derived(isCreate ? "" : (plot?.plotKey ?? ""));
 
 const plotFullCode = $derived(q704 ? q704.plotFullCodeByGpsKey(mapFeatureKey) : "");
-let loCodeCopied = $state(false);
-let loCodeCopyFailed = $state(false);
-let loCodeCopiedTimer: ReturnType<typeof setTimeout> | null = null;
-async function copyLoCode() {
-	if (!plotFullCode) return;
-	const ok = await ports.ui.copyToClipboard(plotFullCode);
-	loCodeCopied = ok;
-	loCodeCopyFailed = !ok;
-	if (loCodeCopiedTimer) clearTimeout(loCodeCopiedTimer);
-	loCodeCopiedTimer = setTimeout(() => {
-		loCodeCopied = false;
-		loCodeCopyFailed = false;
-		loCodeCopiedTimer = null;
-	}, 1400);
-}
+// A refused clipboard throws, so the share menu says so where it was tapped.
+const shareFormats = $derived([
+	{ ext: "getcache", run: () => onShare("getcache") },
+	...(plotFullCode
+		? [{ ext: "locode", label: m.ofmap_ui_location_code(), icon: "copy", run: async () => { if (!(await ports.ui.copyToClipboard(plotFullCode))) throw new Error("clipboard refused"); } }]
+		: []),
+]);
 
 const counted = $derived(plot != null && plot.planted != null);
 
@@ -94,7 +89,17 @@ const planted = $derived(plot?.planted ?? 0);
 const spots = $derived(plot?.spots ?? 0);
 const excess = $derived(plot?.excess ?? 0);
 const short = $derived(Math.max(0, spots - planted));
-const faultCount = $derived(plot?.faults.length ?? 0);
+const words = $derived({ planted: m.ofmap_ui_planted(), spots: m.ofmap_ui_spots(), missed: m.ofmap_ui_missed(), excess: m.ofmap_ui_excess() });
+
+let people = $state<MapQ704PlotPeople | null>(null);
+$effect(() => {
+	const k = counted ? plotKey : "";
+	if (!k || !q704) return void (people = null);
+	void q704.plotPeople(k).then((p) => k === plotKey && (people = p));
+});
+// A long name never pushes its pill onto a line of its own.
+const cut = (w: Identity): Identity => (w.label.length > 12 ? { ...w, label: `${w.label.slice(0, 12)}…` } : w);
+
 const faultGroups = $derived.by<[string, number][]>(() => {
 	const m = new Map<string, number>();
 	for (const code of plot?.faults ?? []) m.set(code, (m.get(code) ?? 0) + 1);
@@ -117,6 +122,7 @@ let rewardTargetEl = $state<HTMLElement | null>(null);
 let focusing = $state(false);
 // Keeps the just-filed GOLD pill visible for a beat before swapping to read-only.
 let justFiledHold = $state(false);
+const deckUp = $derived(!counted || focusing || justFiledHold);
 let justFiledTimer: ReturnType<typeof setTimeout> | null = null;
 function onDeckFocusingChange(f: boolean) {
 	const wasFocusing = focusing;
@@ -135,7 +141,6 @@ function onDeckFocusingChange(f: boolean) {
 
 onDestroy(() => {
 	if (justFiledTimer) clearTimeout(justFiledTimer);
-	if (loCodeCopiedTimer) clearTimeout(loCodeCopiedTimer);
 });
 
 onMount(async () => {
@@ -251,9 +256,13 @@ async function deleteHere() {
 			<span class="pp-spacer"></span>
 			<!-- Any EXISTING plot, not only a counted one: the plot whose count did not land is the one you most need to open. No close: a tap off the card closes it. -->
 			{#if canOpenInForm}
-				<button class="rt-icon-btn rt-icon-btn--share" aria-label={m.ofmap_ui_plot_share_aria()} title={m.ofmap_ui_share()} use:atvShare onclick={() => onShare("getcache")}>
-					<ports.ui.Icon name="share" size={16} />
-				</button>
+				<ports.ui.SharePicker formats={shareFormats} side="below">
+					{#snippet trigger({ open, toggle }: { open: boolean; toggle: () => void })}
+						<button class="rt-icon-btn rt-icon-btn--share" aria-label={m.ofmap_ui_plot_share_aria()} aria-expanded={open} title={m.ofmap_ui_share()} onclick={toggle}>
+							<ports.ui.Icon name="share" size={16} />
+						</button>
+					{/snippet}
+				</ports.ui.SharePicker>
 				{#if plotKey}<ports.ui.InboxTruck featureKey={mapFeatureKey} link={`plot:${plotKey}`} />{/if}
 				<button class="rt-icon-btn rt-icon-btn--share" aria-label={m.ofmap_ui_plot_edit_aria()} title={m.ofmap_ui_plot_edit_aria()} onclick={() => onOpenInForm(plotNo)}>
 					<img class="pp-btn-art" src={iconPath("quality")} alt="" />
@@ -266,40 +275,47 @@ async function deleteHere() {
 			{/if}
 		</div>
 
-		<!-- 0 = unnumbered: NameTag's dash says "no number yet" instead of claiming plot zero. -->
-		<NameTag name={displayNo ? m.ofmap_ui_plot_name({ no: displayNo }) : ""} />
-		{#if plotFullCode}
-				<div class="pp-locode-row">
-					<span class="pp-locode">{plotFullCode}</span>
-					<button
-						type="button"
-						class="pp-locode-copy"
-						aria-label={m.ofmap_ui_locode_copy_aria()}
-						title={m.ofmap_ui_copy()}
-						onclick={copyLoCode}
-					>
-						{#if loCodeCopied}
-							<svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
-								<path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
-							</svg>
-							<span class="pp-locode-copy-text">{m.ofmap_ui_copied_caps()}</span>
-						{:else if loCodeCopyFailed}
-							<svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
-								<path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
-							</svg>
-							<span class="pp-locode-copy-text">{m.ofmap_ui_failed_caps()}</span>
-						{:else}
-							<svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
-								<rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" stroke-width="2" />
-								<path d="M5 15V5a2 2 0 012-2h10" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-							</svg>
-							<span class="pp-locode-copy-text">{m.ofmap_ui_copy_caps()}</span>
-						{/if}
-					</button>
-				</div>
+		<NestGroup>
+			<NestPill stack="middle">
+				<span class="pp-r1">
+					<!-- 0 = unnumbered: a dash says "no number yet" instead of claiming plot zero. -->
+					<span class="pp-name" data-plot-name>{displayNo ? m.ofmap_ui_plot_name({ no: displayNo }) : "—"}</span>
+					{#if people}
+						{@const d = new Date(people.at)}
+						<span class="nest-time pp-when">{d.getDate()} {d.toLocaleDateString(getLocale(), { month: "short" })} {d.getFullYear()}<br />{d.toLocaleTimeString(getLocale(), { hour: "numeric", minute: "2-digit", hour12: true }).replace(/\s*([ap])\.?\s*m\.?$/i, (_, x: string) => x.toLowerCase())}</span>
+					{/if}
+				</span>
+				{#if people}
+					<span class="pp-people">
+						<span class="pp-role">{m.ofmap_ui_surveyor()}</span>
+						<span data-role="surveyor"><IdentityPill who={cut(people.surveyor)} /></span>
+						<span class="pp-role">{m.ofmap_ui_planter()}</span>
+						<span data-role="planter"><IdentityPill who={cut(people.planters[0]!)} />{#if people.planters.length > 1}<span class="nest-time">+{people.planters.length - 1}</span>{/if}</span>
+					</span>
+				{/if}
+			</NestPill>
+			{#if !deckUp}
+				<NestGroup>
+					<NestPill ongo={() => onOpenInForm(plotNo)} goLabel={m.ofmap_ui_plot_edit_aria()}>
+						{@render counts(planted, spots, words)}
+						{#snippet values()}{@render delta(short, excess, words)}{/snippet}
+						{#snippet corner()}{#if people}<span class="nest-time">{ago(new Date(people.at).toISOString())}</span>{/if}{/snippet}
+					</NestPill>
+					{#if faultGroups.length}
+						<NestGroup>
+							{#each faultGroups as [code, count], i (code)}
+								<NestPill small>
+									{m.ofmap_ui_fault_no({ no: i + 1 })}
+									{#snippet values()}<span class="pp-fault" data-fault={code}><q704.FaultChip {code} {count} /><span class="nest-meta pp-fault-name">{q704.faultTitle(code)}</span></span>{/snippet}
+								</NestPill>
+							{/each}
+						</NestGroup>
+					{/if}
+				</NestGroup>
 			{/if}
+		</NestGroup>
 
-		{#if !counted || focusing || justFiledHold}
+		{#if deckUp}
 			<!-- Stays open while `focusing` so the swipe-to-file animation finishes before the swap. -->
 			<div class="pp-deck" bind:this={rewardTargetEl} in:fade={{ duration: 180 }} out:fade={{ duration: 160 }}>
 				<q704.Quality704Deck
@@ -315,40 +331,10 @@ async function deleteHere() {
 					autoRestoreMissed={false}
 				/>
 			</div>
-		{:else if plot}
-			<div class="pp-view" in:fade={{ duration: 220, delay: 120 }} out:fade={{ duration: 160 }}>
-			<div class="pp-sect">{m.ofmap_ui_plot_data()}</div>
-			<div class="pp-data">
-				<div class="pp-cell" class:pp-cell--under={short > 0}>
-					<span class="pp-k">{m.ofmap_ui_planted()}</span>
-					<span class="pp-v">{plot.planted}</span>
-				</div>
-				<div class="pp-cell"><span class="pp-k">{m.ofmap_ui_spots()}</span><span class="pp-v">{plot.spots}</span></div>
-				<div class="pp-cell" class:pp-cell--over={excess > 0}>
-					<span class="pp-k">{m.ofmap_ui_excess()}</span>
-					<span class="pp-v">{plot.excess}</span>
-				</div>
-				<div class="pp-cell" class:pp-cell--bad={faultCount > 0}>
-					<span class="pp-k">{m.ofmap_ui_faults()}</span>
-					<span class="pp-v">{faultCount}</span>
-				</div>
-			</div>
-			{#if faultGroups.length > 0}
-				<div class="pp-fault-strip">
-					{#each faultGroups as [code, count] (code)}
-						<div class="pp-fault">
-							<q704.FaultChip {code} {count} />
-							<span class="pp-fault-name">{q704.faultTitle(code)}</span>
-						</div>
-					{/each}
-				</div>
-			{/if}
-			{#if plot.comment.trim()}
-				<div class="pp-comments">
-					<div class="pp-sect">{m.ofmap_ui_comments()}</div>
-					<p class="pp-comment-text">{plot.comment}</p>
-				</div>
-			{/if}
+		{:else if plot?.comment.trim()}
+			<div class="pp-comments" in:fade={{ duration: 220, delay: 120 }} out:fade={{ duration: 160 }}>
+				<div class="pp-sect">{m.ofmap_ui_comments()}</div>
+				<p class="pp-comment-text">{plot.comment}</p>
 			</div>
 		{/if}
 	</div>
@@ -384,49 +370,33 @@ async function deleteHere() {
 		width: 20px;
 		height: 20px;
 	}
-	.pp-locode-row {
+	.pp-r1 {
 		display: flex;
-		align-items: center;
-		gap: 6px;
-		margin-top: 2px;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 10px;
 	}
-	.pp-locode {
-		font-family: var(--rt-font-mono, ui-monospace, monospace);
-		font-size: 0.72rem;
-		letter-spacing: 0.01em;
+	.pp-name {
+		font-size: 28px;
+		line-height: 1.1;
+	}
+	.pp-when {
+		flex: none;
+		text-align: right;
+		line-height: 1.4;
+	}
+	/* Label | pill, one person a row: a pill never drops under someone else's label. */
+	.pp-people {
+		display: grid;
+		grid-template-columns: max-content max-content;
+		gap: 6px 10px;
+		align-items: center;
+		justify-content: start;
+		white-space: nowrap;
+	}
+	.pp-role {
+		font-size: 15px;
 		color: var(--rust);
-		opacity: 0.7;
-	}
-	.pp-locode-copy {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 5px;
-		box-sizing: border-box;
-		padding: 0 10px;
-		height: 28px;
-		border-radius: var(--rt-radius-sm, 8px);
-		border: 1.5px solid var(--rt-gold-1, #f5d565);
-		background: rgba(232, 185, 35, 0.12);
-		color: var(--rt-gold-1, #f5d565);
-		font-size: 0.72rem;
-		font-weight: 700;
-		letter-spacing: 0.06em;
-		cursor: pointer;
-		transition: background 120ms ease;
-	}
-	.pp-locode-copy:hover,
-	.pp-locode-copy:active {
-		background: rgba(232, 185, 35, 0.24);
-	}
-	.pp-locode-copy-text {
-		line-height: 1;
-	}
-
-	.pp-view {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
 	}
 
 	.pp-sect {
@@ -436,40 +406,11 @@ async function deleteHere() {
 		color: var(--rust);
 		margin-top: 2px;
 	}
-	.pp-data {
+	.pp-fault {
 		display: flex;
-		flex-wrap: nowrap;
-		gap: 5px;
-	}
-	.pp-cell {
-		display: inline-flex;
-		flex-wrap: wrap;
-		flex: 1 1 auto;
+		align-items: center;
+		gap: 7px;
 		min-width: 0;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 0 6px;
-		padding: 7px 9px;
-		border-radius: 10px;
-		background: rgba(0, 0, 0, 0.28);
-		border: 1px solid rgba(255, 255, 255, 0.18);
-	}
-	.pp-cell--under {
-		background: color-mix(in srgb, var(--rt-q704-under) 16%, rgba(0, 0, 0, 0.28));
-		border-color: var(--rt-q704-under);
-	}
-	.pp-cell--over {
-		background: color-mix(in srgb, var(--rt-q704-over) 16%, rgba(0, 0, 0, 0.28));
-		border-color: var(--rt-q704-over);
-	}
-	.pp-cell--bad {
-		background: color-mix(in srgb, var(--rt-q704-fault) 18%, rgba(0, 0, 0, 0.28));
-		border-color: var(--rt-q704-fault);
-	}
-	.pp-fault-strip {
-		display: flex;
-		flex-direction: column;
-		gap: 5px;
 		--chip-h: 22px;
 		--chip-pad-x: 7px;
 		--chip-font: 12px;
@@ -478,16 +419,7 @@ async function deleteHere() {
 		--badge-h: 13px;
 		--badge-font: 9px;
 	}
-	.pp-fault {
-		display: flex;
-		align-items: center;
-		gap: 7px;
-		min-width: 0;
-	}
 	.pp-fault-name {
-		font-family: var(--rt-font-meta);
-		font-size: var(--rt-fs-meta);
-		color: var(--rt-fg);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -506,19 +438,4 @@ async function deleteHere() {
 		color: var(--rt-fg, #f3ead2);
 		word-break: break-word;
 	}
-	.pp-k {
-		font-size: 0.62rem;
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
-		color: var(--rust);
-		white-space: nowrap;
-	}
-	.pp-v {
-		font-variant-numeric: tabular-nums;
-		font-weight: 700;
-		font-size: 1rem;
-		color: var(--rt-fg, #f3ead2);
-		white-space: nowrap;
-	}
-
 </style>
