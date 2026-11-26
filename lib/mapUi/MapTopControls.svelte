@@ -54,6 +54,14 @@ function toggleEye() {
     }, delay);
 }
 
+// These buttons float over the map's pins: a pin under the pointer takes the tap.
+function yieldToPin(ev: MouseEvent) {
+    const pin = document.elementsFromPoint(ev.clientX, ev.clientY).find((el) => el.closest(".maplibregl-marker"));
+    if (!pin) return;
+    ev.stopPropagation();
+    (pin as HTMLElement).click();
+}
+
 const eyeSrc = $derived.by(() => {
     if (!scenes) return "";
     if (eyePlaying === "open") return scenes.framePath("eye_OPEN_20fps", eyeFrame);
@@ -92,7 +100,7 @@ $effect(() => {
 });
 </script>
 
-<div class="below-top-bar">
+<div class="below-top-bar" onclickcapture={yieldToPin}>
     <button
         class="eye-toggle"
         class:eye-toggle-open={mapOnly}
