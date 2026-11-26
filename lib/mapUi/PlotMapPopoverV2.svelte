@@ -8,9 +8,7 @@ import { onDestroy, onMount } from "svelte";
 import { fade } from "svelte/transition";
 import MapPopoverShell from "../panels/MapPopoverShell.svelte";
 import { ago } from "$gc/ago";
-import contactGold from "$gc/assets/contact_gold.webp";
-import shovelGold from "$gc/assets/shovel_gold.webp";
-import IdentityPill from "$gc/IdentityPill.svelte";
+import PeopleGrid from "$gc/PeopleGrid.svelte";
 import NestGroup from "$gc/NestGroup.svelte";
 import NestPill from "$gc/NestPill.svelte";
 import { counts, delta } from "$gc/PlotMarks.svelte";
@@ -286,16 +284,7 @@ async function deleteHere() {
 						<span class="nest-time pp-when">{d.getDate()} {d.toLocaleDateString(getLocale(), { month: "short" })} {d.getFullYear()}<br />{d.toLocaleTimeString(getLocale(), { hour: "numeric", minute: "2-digit", hour12: true }).replace(/\s*([ap])\.?\s*m\.?$/i, (_, x: string) => x.toLowerCase())}</span>
 					{/if}
 				</span>
-				{#if people}
-					<span class="pp-people">
-						<span class="pp-role"><img src={contactGold} alt="" />{m.ofmap_ui_surveyor()}</span>
-						<span data-role="surveyor"><IdentityPill who={people.surveyor} /></span>
-						{#each people.planters as p, n (p.key ?? p.label)}
-							<span class="pp-role">{#if !n}<img src={shovelGold} alt="" />{m.ofmap_ui_planter()}{/if}</span>
-							<span data-role="planter"><IdentityPill who={p} /></span>
-						{/each}
-					</span>
-				{/if}
+				{#if people}<PeopleGrid surveyors={[people.surveyor]} planters={people.planters} words={{ surveyor: m.ofmap_ui_surveyor(), planter: m.ofmap_ui_planter() }} />{/if}
 			</NestPill>
 			{#if !deckUp}
 				<NestGroup>
@@ -394,28 +383,6 @@ async function deleteHere() {
 		text-align: right;
 		line-height: 1.4;
 	}
-	/* Label | pill, one person a row: a pill never drops under someone else's label. */
-	.pp-people {
-		display: grid;
-		grid-template-columns: max-content max-content;
-		gap: 3px 6px;
-		align-items: center;
-		justify-content: start;
-		white-space: nowrap;
-	}
-	.pp-role {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		font-size: 13px;
-		color: var(--rust);
-	}
-	.pp-role img {
-		width: 15px;
-		height: 15px;
-		object-fit: contain;
-	}
-
 	.pp-sect {
 		font-family: var(--rt-font-display), sans-serif;
 		font-size: 0.7rem;
