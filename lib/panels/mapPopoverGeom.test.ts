@@ -88,9 +88,9 @@ describe("placePopover — horizontal placement", () => {
 		expect(p.left + p.width).toBeLessThanOrEqual(crow.left - 10);
 	});
 
-	it("ignores the crow tile when it sits outside the usable band entirely", () => {
-		const crow = { left: 320, top: H - 40, bottom: H };
-		const p = place({ bbox: pinAt(400), crow });
+	it("keeps its width when it opens wholly under the crow tile", () => {
+		const crow = { left: 320, top: 150, bottom: 220 };
+		const p = place({ bbox: pinAt(330), crow, wide: true });
 		expect(p.left + p.width).toBeGreaterThan(crow.left - 10);
 	});
 });
