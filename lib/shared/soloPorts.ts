@@ -36,6 +36,7 @@ export function soloMapPorts(): MapHostPorts {
 		FeatureDetail: Empty,
 		CrowSwitch: Empty,
 		InboxTruck: Empty,
+		openInbox: () => {},
 		ConfirmModal: Empty,
 		copyToClipboard: async (text: string) => {
 			try {

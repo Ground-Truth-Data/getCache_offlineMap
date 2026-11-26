@@ -71,7 +71,9 @@ export function placePopover(input: PlaceInput): Placement {
 
 	// ⚠️ Width must not depend on height: measured height → width → re-wrap → height loops.
 	if (crow) {
-		const vertOverlap = usableTop < crow.bottom && usableBottom > crow.top;
+		// The card's own span, not the whole map's: one that opens under the crow keeps its width.
+		const [top, bottom] = side === "below" ? [edge, edge + maxH] : [edge - maxH, edge];
+		const vertOverlap = top < crow.bottom && bottom > crow.top;
 		if (vertOverlap) {
 			const maxRight = crow.left - CROW_CLEARANCE;
 			if (left + width > maxRight) {

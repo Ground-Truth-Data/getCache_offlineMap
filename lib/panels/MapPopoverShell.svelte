@@ -41,8 +41,10 @@ function crowExclusion(): { left: number; top: number; bottom: number } | null {
 	if (!crow || !host) return null;
 	const cr = crow.getBoundingClientRect();
 	const hr = host.getBoundingClientRect();
-	if (!cr.width) return null;
-	return { left: cr.left - hr.left, top: cr.top - hr.top, bottom: cr.bottom - hr.top };
+	if (!cr.width || !hr.width) return null;
+	// Client rects are viewport px; the page is CSS-zoomed, so the card's own px are smaller by this ratio.
+	const s = host.offsetWidth / hr.width;
+	return { left: (cr.left - hr.left) * s, top: (cr.top - hr.top) * s, bottom: (cr.bottom - hr.top) * s };
 }
 
 // ⚠️ NO ResizeObserver — measuring height to flip above/below loops forever unless width/top/max-height are proven independent of it.

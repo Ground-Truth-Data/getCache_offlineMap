@@ -236,6 +236,7 @@ $effect(() => {
 		.catch((e) => console.warn("[PlotMapPopoverV2:species]", e));
 });
 
+let unfolded = $state(false);
 let confirmingDelete = $state(false);
 async function deleteHere() {
 	confirmingDelete = false;
@@ -296,20 +297,26 @@ async function deleteHere() {
 			</NestPill>
 			{#if !deckUp}
 				<NestGroup>
-					<NestPill ongo={() => onOpenInForm(plotNo)} goLabel={m.ofmap_ui_plot_edit_aria()}>
+					<NestPill
+						open={faultGroups.length ? unfolded : undefined}
+						ontoggle={faultGroups.length ? () => (unfolded = !unfolded) : undefined}
+						ongo={plotKey ? () => ports.ui.openInbox(`plot:${plotKey}`) : undefined}
+						goLabel={m.ofmap_ui_plot_open_aria()}>
 						{@render counts(planted, spots, words)}
 						{#snippet values()}{@render delta(short, excess, words)}{/snippet}
 						{#snippet corner()}{#if people}<span class="nest-time">{ago(new Date(people.at).toISOString())}</span>{/if}{/snippet}
 					</NestPill>
-					{#if faultGroups.length}
-						<NestGroup>
-							{#each faultGroups as [code, count], i (code)}
-								<NestPill small>
-									{m.ofmap_ui_fault_no({ no: i + 1 })}
-									{#snippet values()}<span class="pp-fault" data-fault={code}><q704.FaultChip {code} {count} /><span class="nest-meta pp-fault-name">{q704.faultTitle(code)}</span></span>{/snippet}
-								</NestPill>
-							{/each}
-						</NestGroup>
+					{#if unfolded && faultGroups.length}
+						<div class="pp-faults">
+							<NestGroup>
+								{#each faultGroups as [code, count], i (code)}
+									<NestPill small>
+										{m.ofmap_ui_fault_no({ no: i + 1 })}
+										{#snippet values()}<span class="pp-fault" data-fault={code}><q704.FaultChip {code} {count} /><span class="nest-meta pp-fault-name">{q704.faultTitle(code)}</span></span>{/snippet}
+									</NestPill>
+								{/each}
+							</NestGroup>
+						</div>
 					{/if}
 				</NestGroup>
 			{/if}
@@ -405,6 +412,13 @@ async function deleteHere() {
 		letter-spacing: 0.08em;
 		color: var(--rust);
 		margin-top: 2px;
+	}
+	/* Three faults and the top of a fourth, so more is seen to be there; the rest scroll here, not the map. */
+	.pp-faults {
+		flex: none;
+		max-height: 146px;
+		overflow-y: auto;
+		overscroll-behavior: contain;
 	}
 	.pp-fault {
 		display: flex;
