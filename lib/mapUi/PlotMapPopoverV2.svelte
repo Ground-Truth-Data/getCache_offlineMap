@@ -287,8 +287,10 @@ async function deleteHere() {
 					<span class="pp-people">
 						<span class="pp-role">{m.ofmap_ui_surveyor()}</span>
 						<span data-role="surveyor"><IdentityPill who={people.surveyor} /></span>
-						<span class="pp-role">{m.ofmap_ui_planter()}</span>
-						<span data-role="planter"><IdentityPill who={people.planters[0]!} />{#if people.planters.length > 1}<span class="nest-time">+{people.planters.length - 1}</span>{/if}</span>
+						{#each people.planters as p, n (p.key ?? p.label)}
+							<span class="pp-role">{n ? "" : m.ofmap_ui_planter()}</span>
+							<span data-role="planter"><IdentityPill who={p} /></span>
+						{/each}
 					</span>
 				{/if}
 			</NestPill>
