@@ -8,7 +8,7 @@ import { onDestroy, onMount } from "svelte";
 import { fade } from "svelte/transition";
 import MapPopoverShell from "../panels/MapPopoverShell.svelte";
 import { ago } from "$gc/ago";
-import IdentityPill, { type Identity } from "$gc/IdentityPill.svelte";
+import IdentityPill from "$gc/IdentityPill.svelte";
 import NestGroup from "$gc/NestGroup.svelte";
 import NestPill from "$gc/NestPill.svelte";
 import { counts, delta } from "$gc/PlotMarks.svelte";
@@ -97,8 +97,6 @@ $effect(() => {
 	if (!k || !q704) return void (people = null);
 	void q704.plotPeople(k).then((p) => k === plotKey && (people = p));
 });
-// A long name never pushes its pill onto a line of its own.
-const cut = (w: Identity): Identity => (w.label.length > 12 ? { ...w, label: `${w.label.slice(0, 12)}…` } : w);
 
 const faultGroups = $derived.by<[string, number][]>(() => {
 	const m = new Map<string, number>();
@@ -288,9 +286,9 @@ async function deleteHere() {
 				{#if people}
 					<span class="pp-people">
 						<span class="pp-role">{m.ofmap_ui_surveyor()}</span>
-						<span data-role="surveyor"><IdentityPill who={cut(people.surveyor)} /></span>
+						<span data-role="surveyor"><IdentityPill who={people.surveyor} /></span>
 						<span class="pp-role">{m.ofmap_ui_planter()}</span>
-						<span data-role="planter"><IdentityPill who={cut(people.planters[0]!)} />{#if people.planters.length > 1}<span class="nest-time">+{people.planters.length - 1}</span>{/if}</span>
+						<span data-role="planter"><IdentityPill who={people.planters[0]!} />{#if people.planters.length > 1}<span class="nest-time">+{people.planters.length - 1}</span>{/if}</span>
 					</span>
 				{/if}
 			</NestPill>
