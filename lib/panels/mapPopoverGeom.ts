@@ -12,6 +12,8 @@ export type PlaceInput = {
 	wide: boolean;
 	/** Chrome reserves: app top bar / draw strip, and tab bar / shovel. */
 	topReserve: number;
+	/** The header's bottom edge: no part of the card ever sits above it. */
+	topWall: number;
 	bottomReserve: number;
 	/** The crow tile's no-go rect, in container coordinates. */
 	crow?: { left: number; top: number; bottom: number } | null;
@@ -36,20 +38,21 @@ export const MIN_OPEN = 360;
 const MIN_WIDTH = 160;
 
 export function placePopover(input: PlaceInput): Placement {
-	const { bbox, containerWidth, containerHeight, isPoint, wide, topReserve, bottomReserve, crow } = input;
+	const { bbox, containerWidth, containerHeight, isPoint, wide, topReserve, topWall, bottomReserve, crow } = input;
 
 	const cap = wide ? containerWidth - 46 : 260;
 	let width = Math.max(MIN_WIDTH, Math.min(cap, containerWidth - PAD * 2));
 
-	const usableTop = topReserve;
 	const usableBottom = containerHeight - bottomReserve;
+	// An anchor panned under the header or the tab bar still gets a card wholly in view.
+	const inView = (y: number) => Math.min(usableBottom, Math.max(topWall, y));
 
 	const gap = OFFSET + (isPoint ? PIN_GAP : 0);
-	const below = bbox.maxY + gap;
-	const above = bbox.minY - gap;
+	const below = inView(bbox.maxY + gap);
+	const above = inView(bbox.minY - gap);
 	const roomBelow = usableBottom - below;
-	// Above may climb into the top reserve, but only as far as it needs.
-	const ceiling = Math.min(usableTop, Math.max(PAD, above - MIN_OPEN));
+	// Above may climb into the top reserve, but only as far as it needs and never past the header.
+	const ceiling = Math.max(topWall, Math.min(topReserve, above - MIN_OPEN));
 
 	let edge: number;
 	let maxH: number;

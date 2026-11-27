@@ -1,7 +1,7 @@
 <script lang="ts">
 import type { Snippet } from "svelte";
 import { leaderLine, placePopover } from "./mapPopoverGeom";
-import { readFloorY } from "../shared/mapKeepOut";
+import { readFloorY, readTopBarH } from "../shared/mapKeepOut";
 
 let {
 	bbox,
@@ -56,6 +56,7 @@ const geom = $derived(
 		isPoint,
 		wide,
 		topReserve: TOP_RESERVE,
+		topWall: readTopBarH() + FLOOR_GAP,
 		bottomReserve: floorReserve(),
 		crow: crowExclusion(),
 	}),

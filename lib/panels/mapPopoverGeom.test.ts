@@ -3,8 +3,9 @@ import { leaderLine, MIN_OPEN, type PlaceInput, placePopover } from "./mapPopove
 
 // Chrome reserves, mirroring MapPopoverShell's.
 const TOP = 150;
+/** The header's bottom edge: a card never climbs past it. */
+const WALL = 84;
 const BOTTOM = 95;
-const PAD = 8;
 /** Between a pin and its card. */
 const GAP = 33;
 
@@ -20,6 +21,7 @@ function place(over: Partial<PlaceInput> = {}) {
 		isPoint: true,
 		wide: false,
 		topReserve: TOP,
+		topWall: WALL,
 		bottomReserve: BOTTOM,
 		...over,
 	});
@@ -49,18 +51,24 @@ describe("placePopover — open where there is room, never squeezed", () => {
 		for (let y = TOP; y < H - BOTTOM; y += 25) {
 			const bbox = pinAt(y);
 			const p = place({ bbox });
-			const [up, down] = [bbox.minY - GAP - PAD, H - BOTTOM - (bbox.maxY + GAP)];
+			const [up, down] = [bbox.minY - GAP - WALL, H - BOTTOM - (bbox.maxY + GAP)];
 			if (down < MIN_OPEN) expect(p.maxH).toBeGreaterThanOrEqual(Math.min(MIN_OPEN, Math.max(up, down)));
 		}
 	});
 
-	it("climbs into the top reserve only when it needs the room, and never off the screen", () => {
+	it("climbs into the top reserve only when it needs the room", () => {
 		for (let y = TOP; y < H - BOTTOM; y += 25) {
 			const p = place({ bbox: pinAt(y) });
-			if (p.side !== "above") continue;
-			const reach = p.edge - p.maxH;
-			expect(reach).toBeGreaterThanOrEqual(PAD);
-			if (p.edge - TOP >= MIN_OPEN) expect(reach).toBe(TOP);
+			if (p.side === "above" && p.edge - TOP >= MIN_OPEN) expect(p.edge - p.maxH).toBe(TOP);
+		}
+	});
+
+	it("stays wholly between the header and the tab bar, wherever the anchor is", () => {
+		for (let y = -200; y < H + 200; y += 5) {
+			const p = place({ bbox: pinAt(y) });
+			const [top, bottom] = p.side === "below" ? [p.edge, p.edge + p.maxH] : [p.edge - p.maxH, p.edge];
+			expect(top).toBeGreaterThanOrEqual(WALL);
+			expect(bottom).toBeLessThanOrEqual(H - BOTTOM);
 		}
 	});
 
