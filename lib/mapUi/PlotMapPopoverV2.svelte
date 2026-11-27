@@ -174,10 +174,7 @@ onMount(async () => {
 	hydrated = true;
 	if (want) {
 		const hit = rows.find((r) => r.plotNo === want);
-		if (hit) {
-			deck?.focusRow(hit.id);
-			if (hit.planted == null && !hit.committed) deck?.openPlantedFor(hit.id);
-		}
+		if (hit) deck?.focusRow(hit.id);
 	}
 });
 

@@ -229,7 +229,6 @@ export interface MapQ704DeckProps {
 /** The deck's `bind:this` surface. */
 export interface MapQ704DeckExports {
 	focusRow(rowId: string): void;
-	openPlantedFor(rowId: string): void;
 }
 
 export interface MapQ704FaultChipProps {
