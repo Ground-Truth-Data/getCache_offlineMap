@@ -506,7 +506,7 @@ function noteFor(row: LegendRow, on: boolean): string | undefined {
 		font-size: 0.48rem;
 		font-weight: 700;
 		line-height: 1;
-		color: #3fb6c8;
+		color: var(--rt-q704-over);
 	}
 	.legend-swatch--dots {
 		align-self: center;
@@ -527,7 +527,7 @@ function noteFor(row: LegendRow, on: boolean): string | undefined {
 		font: 700 8px/1 sans-serif;
 		color: #1a1a1a;
 	}
-	.legend-dot--under { background: #ec6c9c; }
-	.legend-dot--over { background: #3fb6c8; }
+	.legend-dot--under { background: var(--rt-q704-under); }
+	.legend-dot--over { background: var(--rt-q704-over); }
 	.legend-dot--fault { background: #ec6a3a; }
 </style>
