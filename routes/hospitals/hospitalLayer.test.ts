@@ -158,7 +158,7 @@ describe("attachHospitalLayer", () => {
 		expect(p.removed).toBe(1);
 		d.fire("click", point(-119.4, 49.9, null), HOSPITAL_LAYER_IDS.icon);
 		const q = FakePopup.all[1]!;
-		expect(q.el.querySelector("h4")!.textContent!.length).toBeGreaterThan(0);
+		expect(q.el.querySelector("h4")!.textContent, "a nameless hospital shows no name, never a made-up one").toBe("");
 		const close = q.el.querySelector<HTMLButtonElement>(".maplibregl-popup-close-button")!;
 		close.dispatchEvent(new Event("pointerup"));
 		close.dispatchEvent(new Event("pointerup"));
