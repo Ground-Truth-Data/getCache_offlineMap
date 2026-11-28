@@ -62,7 +62,7 @@ const geom = $derived(
 	}),
 );
 const style = $derived(
-	`left:${geom.left}px;${geom.side === "below" ? `top:${geom.edge}` : `bottom:${containerHeight - geom.edge}`}px;width:${geom.width}px;max-height:${geom.maxH}px`,
+	`left:${geom.left}px;${geom.side === "below" ? `top:${geom.edge}` : `bottom:${containerHeight - geom.edge}`}px;width:${geom.width}px;max-height:${geom.maxH}px;--fmp-max:${geom.maxH}px`,
 );
 
 const leader = $derived(isPoint ? leaderLine(bbox, geom) : null);
