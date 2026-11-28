@@ -274,7 +274,7 @@ export function attachHospitalLayer(
 			.setLngLat([at[0], at[1]])
 			.setHTML(
 				hospitalCardHtml({
-					name: typeof props?.name === "string" ? props.name : m.ofmap_shared_hospital_fallback_name(),
+					name: typeof props?.name === "string" ? props.name : "",
 					er: isEr(props),
 					phone: typeof props?.phone === "string" ? props.phone : null,
 					fromYouKm: nearestKm(at, opts.origins()),
